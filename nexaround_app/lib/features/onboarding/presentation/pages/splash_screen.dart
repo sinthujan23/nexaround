@@ -138,6 +138,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
             );
           },
         ),
+        ),
       ),
     );
   }

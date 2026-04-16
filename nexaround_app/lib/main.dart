@@ -4,6 +4,7 @@ import 'package:nexaround_app/app/theme/app_theme.dart';
 import 'package:nexaround_app/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexaround_app/features/auth/data/repositories/auth_repository_impl.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/features/attractions/data/repositories/attraction_repository_impl.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
