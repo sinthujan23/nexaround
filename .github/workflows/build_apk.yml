@@ -25,6 +25,9 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Create local.properties
+        run: echo "flutter.sdk=$FLUTTER_ROOT" > nexaround_app/android/local.properties
+
       - name: Install dependencies
         working-directory: nexaround_app
         run: flutter pub get
