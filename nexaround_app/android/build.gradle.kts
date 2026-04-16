@@ -20,12 +20,33 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// FORCE Kotlin version for older plugins (Fixed ar_flutter_plugin error)
-subprojects {
+// ADVANCED FORCE: Catch Kotlin version at the buildscript level
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
     configurations.all {
         resolutionStrategy.eachDependency {
             if (requested.group == "org.jetbrains.kotlin" && requested.name.startsWith("kotlin-gradle-plugin")) {
-                useVersion("1.9.24")
+                useVersion("2.1.0")
+            }
+        }
+    }
+}
+
+// SECONDARY FORCE: Catch subprojects
+subprojects {
+    buildscript {
+        repositories {
+            google()
+            mavenCentral()
+        }
+        configurations.all {
+            resolutionStrategy.eachDependency {
+                if (requested.group == "org.jetbrains.kotlin" && requested.name.startsWith("kotlin-gradle-plugin")) {
+                    useVersion("2.1.0")
+                }
             }
         }
     }
