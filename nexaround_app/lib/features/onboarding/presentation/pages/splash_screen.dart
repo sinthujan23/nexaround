@@ -2,6 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+
 class AnimatedSplashScreen extends StatefulWidget {
   const AnimatedSplashScreen({super.key});
 
@@ -34,9 +39,16 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
 
     Future.delayed(const Duration(milliseconds: 3000), () {
       if (mounted) {
+        final authState = context.read<AuthBloc>().state;
+        Widget nextRoute = const LoginPage();
+        
+        if (authState is AuthAuthenticated) {
+          nextRoute = const HomePage();
+        }
+
         Navigator.of(context).pushReplacement(
           PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+            pageBuilder: (context, animation, secondaryAnimation) => nextRoute,
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },

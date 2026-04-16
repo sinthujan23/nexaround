@@ -49,21 +49,38 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _startLocationTracking() {
-    _positionStream = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((position) {
-      if (mounted) {
-        context.read<ArBloc>().add(ArUpdateLocation(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          heading: position.heading,
-        ));
+  Future<void> _startLocationTracking() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
       }
-    });
+
+      if (permission == LocationPermission.deniedForever) return;
+
+      _positionStream = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 5,
+        ),
+      ).listen(
+        (position) {
+          if (mounted) {
+            context.read<ArBloc>().add(ArUpdateLocation(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              heading: position.heading,
+            ));
+          }
+        },
+        onError: (e) {
+          debugPrint('Location stream error: $e');
+        },
+      );
+    } catch (e) {
+      debugPrint('Error starting location tracking: $e');
+    }
   }
 
   @override

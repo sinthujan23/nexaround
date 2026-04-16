@@ -34,7 +34,9 @@ void main() async {
   runApp(
     MultiBlocProvider(
       providers: [
-        BlocProvider(create: (_) => AuthBloc(authRepository)),
+        BlocProvider(
+          create: (_) => AuthBloc(authRepository)..add(const AuthCheckStatus()),
+        ),
         BlocProvider(
           create: (_) => MapBloc(attractionRepository)..add(FetchCategories()),
         ),
