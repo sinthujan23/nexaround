@@ -19,6 +19,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
 
+  bool _timerComplete = false;
+
   @override
   void initState() {
     super.initState();
@@ -39,24 +41,35 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
 
     Future.delayed(const Duration(milliseconds: 3000), () {
       if (mounted) {
-        final authState = context.read<AuthBloc>().state;
-        Widget nextRoute = const LoginPage();
-        
-        if (authState is AuthAuthenticated) {
-          nextRoute = const HomePage();
-        }
-
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => nextRoute,
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
+        _timerComplete = true;
+        _checkAndNavigate();
       }
     });
+  }
+
+  void _checkAndNavigate() {
+    if (!_timerComplete) return;
+
+    final authState = context.read<AuthBloc>().state;
+    
+    // If still loading or initial, wait for listener to trigger this again
+    if (authState is AuthInitial || authState is AuthLoading) return;
+
+    Widget nextRoute = const LoginPage();
+    if (authState is AuthAuthenticated) {
+      nextRoute = const HomePage();
+    }
+
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => nextRoute,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 800),
+      ),
+    );
   }
 
   @override
@@ -69,7 +82,11 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> with Single
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.darkBackground,
-      body: Center(
+      body: BlocListener<AuthBloc, AuthState>(
+        listener: (context, state) {
+          _checkAndNavigate();
+        },
+        child: Center(
         child: AnimatedBuilder(
           animation: _controller,
           builder: (context, child) {
