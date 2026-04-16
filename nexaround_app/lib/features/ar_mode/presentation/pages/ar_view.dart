@@ -2,17 +2,8 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:ar_flutter_plugin/ar_flutter_plugin.dart';
-import 'package:ar_flutter_plugin/datatypes/node_types.dart';
-import 'package:ar_flutter_plugin/datatypes/config_planedetection.dart';
-import 'package:ar_flutter_plugin/managers/ar_anchor_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_location_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_object_manager.dart';
-import 'package:ar_flutter_plugin/managers/ar_session_manager.dart';
-import 'package:ar_flutter_plugin/models/ar_node.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:vector_math/vector_math_64.dart' as vector;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/geo_calculator.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_bloc.dart';
@@ -27,14 +18,24 @@ class ArView extends StatefulWidget {
   State<ArView> createState() => _ArViewState();
 }
 
-class _ArViewState extends State<ArView> {
-  ARSessionManager? _arSessionManager;
-  ARObjectManager? _arObjectManager;
+class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   StreamSubscription<Position>? _positionStream;
+  late AnimationController _pulseController;
+  late AnimationController _scanController;
 
   @override
   void initState() {
     super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+
+    _scanController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+
     if (!kIsWeb) {
       _startLocationTracking();
     }
@@ -43,7 +44,8 @@ class _ArViewState extends State<ArView> {
   @override
   void dispose() {
     _positionStream?.cancel();
-    _arSessionManager?.dispose();
+    _pulseController.dispose();
+    _scanController.dispose();
     super.dispose();
   }
 
@@ -64,57 +66,40 @@ class _ArViewState extends State<ArView> {
     });
   }
 
-  void onARViewCreated(
-    ARSessionManager arSessionManager,
-    ARObjectManager arObjectManager,
-    ARAnchorManager arAnchorManager,
-    ARLocationManager arLocationManager,
-  ) {
-    _arSessionManager = arSessionManager;
-    _arObjectManager = arObjectManager;
-
-    _arSessionManager?.onInitialize(
-      showFeaturePoints: false,
-      showPlanes: false,
-      showWorldOrigin: false,
-      handleTaps: true,
-    );
-    _arObjectManager?.onInitialize();
-    
-    context.read<ArBloc>().add(ArSessionStarted());
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return _buildWebFallback();
-    }
-
+    // Show the AR experience UI on all platforms
+    // On mobile, this uses location-based AR overlay
+    // On web, this shows the same UI with simulated data
     return Scaffold(
-      body: BlocConsumer<ArBloc, ArState>(
-        listener: (context, state) {
-          if (state.attractions.isNotEmpty) {
-            _updateArNodes(state);
-          }
-        },
+      backgroundColor: AppColors.darkBackground,
+      body: BlocBuilder<ArBloc, ArState>(
         builder: (context, state) {
           return Stack(
             children: [
-              ARView(
-                onARViewCreated: onARViewCreated,
-                planeDetectionConfig: PlaneDetectionConfig.horizontalAndVertical,
-              ),
-              
-              // Overlay UI
-              _buildTopBar(),
-              
+              // Dark AR-style background with grid
+              _buildArBackground(),
+
+              // Radar/Scanner overlay
+              _buildScannerOverlay(),
+
+              // AR POI markers
+              if (state.attractions.isNotEmpty)
+                ..._buildArMarkers(state),
+
+              // Top status bar
+              _buildTopBar(state),
+
+              // Bottom attraction detail
               if (state.selectedAttraction != null)
                 _buildAttractionDetail(state.selectedAttraction!),
-                
+
+              // Loading indicator
               if (state.status == ArStatus.loading)
-                const Center(child: CircularProgressIndicator()),
-                
-              _buildScannerOverlay(),
+                const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+
+              // "AR Coming Soon" banner
+              if (kIsWeb) _buildWebBanner(),
             ],
           );
         },
@@ -122,88 +107,176 @@ class _ArViewState extends State<ArView> {
     );
   }
 
-  Widget _buildWebFallback() {
-    return Scaffold(
-      backgroundColor: AppColors.darkBackground,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(40),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.mobile_friendly_rounded, size: 80, color: AppColors.primary),
-              ),
-              const SizedBox(height: 32),
-              const Text(
-                'Mobile Required for AR',
-                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Advanced Augmented Reality features require ARCore (Android) or ARKit (iOS) sensors. Please use your mobile device to experience NexAround AR.',
-                style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 16, height: 1.5),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+  Widget _buildArBackground() {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFF0A0E1A),
+            Color(0xFF0D1326),
+            Color(0xFF101832),
+          ],
         ),
       ),
-    );
-  }
-
-  Widget _buildTopBar() {
-    return Positioned(
-      top: 60,
-      left: 20,
-      right: 20,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: const Row(
-              children: [
-                Icon(Icons.radar_rounded, color: AppColors.primary, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Scanning Surroundings',
-                  style: TextStyle(color: Colors.white, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.help_outline_rounded, color: Colors.white),
-            onPressed: () {},
-          ),
-        ],
+      child: CustomPaint(
+        painter: _GridPainter(),
+        size: Size.infinite,
       ),
     );
   }
 
   Widget _buildScannerOverlay() {
     return Center(
-      child: Container(
-        width: 250,
-        height: 250,
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
-          borderRadius: BorderRadius.circular(125),
+      child: AnimatedBuilder(
+        animation: _scanController,
+        builder: (context, child) {
+          return Container(
+            width: 260,
+            height: 260,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppColors.primary.withOpacity(0.2 + 0.2 * _pulseController.value),
+                width: 2,
+              ),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Rotating scan line
+                Transform.rotate(
+                  angle: _scanController.value * 2 * pi,
+                  child: Container(
+                    width: 2,
+                    height: 130,
+                    alignment: Alignment.topCenter,
+                    child: Container(
+                      width: 2,
+                      height: 65,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.primary.withOpacity(0.8),
+                            AppColors.primary.withOpacity(0.0),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Center crosshair
+                const Icon(Icons.add, color: Colors.white24, size: 40),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  List<Widget> _buildArMarkers(ArState state) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final rng = Random(42);
+
+    return state.attractions.take(5).map((attraction) {
+      final bearing = GeoCalculator.bearing(
+        state.currentLatitude,
+        state.currentLongitude,
+        attraction.latitude,
+        attraction.longitude,
+      );
+
+      final distance = GeoCalculator.distance(
+        state.currentLatitude,
+        state.currentLongitude,
+        attraction.latitude,
+        attraction.longitude,
+      );
+
+      // Position markers around the screen based on bearing
+      final angle = (bearing - state.currentHeading) * pi / 180;
+      final x = screenWidth / 2 + (screenWidth * 0.35 * sin(angle));
+      final y = screenHeight * 0.25 + rng.nextDouble() * screenHeight * 0.35;
+
+      return Positioned(
+        left: x - 40,
+        top: y - 40,
+        child: GestureDetector(
+          onTap: () {
+            context.read<ArBloc>().add(ArSelectAttraction(attraction));
+          },
+          child: _ArMarkerWidget(
+            attraction: attraction,
+            distance: distance,
+            pulseAnimation: _pulseController,
+          ),
         ),
-        child: const Center(
-          child: Icon(Icons.add, color: Colors.white24, size: 40),
-        ),
+      );
+    }).toList();
+  }
+
+  Widget _buildTopBar(ArState state) {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 10,
+      left: 20,
+      right: 20,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.6),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedBuilder(
+                  animation: _pulseController,
+                  builder: (context, child) {
+                    return Icon(
+                      Icons.radar_rounded,
+                      color: AppColors.primary.withOpacity(0.5 + 0.5 * _pulseController.value),
+                      size: 20,
+                    );
+                  },
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  state.attractions.isEmpty
+                      ? 'Scanning Surroundings...'
+                      : '${state.attractions.length} Places Found',
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.6),
+              shape: BoxShape.circle,
+              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
+            ),
+            child: IconButton(
+              icon: const Icon(Icons.help_outline_rounded, color: Colors.white, size: 20),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Point your device around to discover nearby places!'),
+                    backgroundColor: AppColors.primary,
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -216,9 +289,16 @@ class _ArViewState extends State<ArView> {
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: AppColors.darkSurface,
+          color: AppColors.darkSurface.withOpacity(0.95),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.15),
+              blurRadius: 20,
+              spreadRadius: 2,
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -238,6 +318,7 @@ class _ArViewState extends State<ArView> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
+                      const SizedBox(height: 4),
                       Text(
                         attraction.address ?? 'Colombo, Sri Lanka',
                         style: const TextStyle(color: Colors.white70, fontSize: 12),
@@ -253,7 +334,12 @@ class _ArViewState extends State<ArView> {
                   ),
                   child: const Text(
                     'AI INSIGHT',
-                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1,
+                    ),
                   ),
                 ),
               ],
@@ -267,7 +353,7 @@ class _ArViewState extends State<ArView> {
             ElevatedButton(
               onPressed: () {},
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white24,
+                backgroundColor: AppColors.primary.withOpacity(0.3),
                 minimumSize: const Size(double.infinity, 50),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
@@ -279,44 +365,127 @@ class _ArViewState extends State<ArView> {
     );
   }
 
-  void _updateArNodes(ArState state) async {
-    if (_arObjectManager == null) return;
+  Widget _buildWebBanner() {
+    return Positioned(
+      bottom: 100,
+      left: 40,
+      right: 40,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.black87,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.primary.withOpacity(0.4)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.info_outline, color: AppColors.primary, size: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Install the app for full AR experience with camera overlay',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-    // Clear existing nodes
-    // Note: In real production, we'd delta-update
-    
-    for (var attraction in state.attractions) {
-      final bearing = GeoCalculator.bearing(
-        state.currentLatitude,
-        state.currentLongitude,
-        attraction.latitude,
-        attraction.longitude,
-      );
-      
-      final distance = GeoCalculator.distance(
-        state.currentLatitude,
-        state.currentLongitude,
-        attraction.latitude,
-        attraction.longitude,
-      );
+// Custom AR Marker Widget
+class _ArMarkerWidget extends StatelessWidget {
+  final AttractionEntity attraction;
+  final double distance;
+  final AnimationController pulseAnimation;
 
-      // Simple placement logic: Place nodes 2-3 meters away in the direction of the POI
-      // Normalized distance for visualization
-      const double visualDistance = 3.0;
-      final angle = (bearing - state.currentHeading) * pi / 180;
-      
-      final x = visualDistance * sin(angle);
-      final z = -visualDistance * cos(angle);
-      
-      final node = ARNode(
-        type: NodeType.localGLTF2,
-        uri: "assets/ar_models/poi_marker.gltf", // Need to ensure this exists or use a primitive
-        position: vector.Vector3(x, 0, z),
-        scale: vector.Vector3(0.5, 0.5, 0.5),
-        name: attraction.id,
-      );
-      
-      await _arObjectManager?.addNode(node);
+  const _ArMarkerWidget({
+    required this.attraction,
+    required this.distance,
+    required this.pulseAnimation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: pulseAnimation,
+      builder: (context, child) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Glowing marker
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.primary.withOpacity(0.15),
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.5 + 0.3 * pulseAnimation.value),
+                  width: 2,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.2 * pulseAnimation.value),
+                    blurRadius: 16,
+                    spreadRadius: 4,
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.place, color: AppColors.primary, size: 28),
+            ),
+            const SizedBox(height: 6),
+            // Label
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    attraction.name,
+                    style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '${distance.toStringAsFixed(0)}m away',
+                    style: TextStyle(color: AppColors.primary.withOpacity(0.8), fontSize: 9),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// Grid painter for AR background
+class _GridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.white.withOpacity(0.03)
+      ..strokeWidth = 0.5;
+
+    const spacing = 40.0;
+
+    // Vertical lines
+    for (double x = 0; x < size.width; x += spacing) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    }
+
+    // Horizontal lines
+    for (double y = 0; y < size.height; y += spacing) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
     }
   }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

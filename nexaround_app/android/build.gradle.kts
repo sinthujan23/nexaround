@@ -20,53 +20,19 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// ADVANCED FORCE: Catch Kotlin version at the buildscript level
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
+// FORCE Kotlin version and JVM Target for all modules
+subprojects {
     configurations.all {
         resolutionStrategy.eachDependency {
-            if (requested.group == "org.jetbrains.kotlin" && requested.name.startsWith("kotlin-gradle-plugin")) {
+            if (requested.group == "org.jetbrains.kotlin") {
+                // Force everything in the kotlin group to 2.1.0
                 useVersion("2.1.0")
             }
         }
     }
-}
-
-// SECONDARY FORCE: Catch subprojects
-subprojects {
-    buildscript {
-        repositories {
-            google()
-            mavenCentral()
-        }
-        configurations.all {
-            resolutionStrategy.eachDependency {
-                if (requested.group == "org.jetbrains.kotlin" && requested.name.startsWith("kotlin-gradle-plugin")) {
-                    useVersion("2.1.0")
-                }
-            }
-        }
-    }
-}
-
-// Safer Auto-fix for older plugins missing 'namespace'
-subprojects {
-    val applyNamespaceFix = {
-        if (project.hasProperty("android")) {
-            val android = project.extensions.getByName("android") as? com.android.build.gradle.BaseExtension
-            if (android != null && android.namespace == null) {
-                android.namespace = "com.nexaround.${project.name.replace(":", ".")}"
-            }
-        }
-    }
-
-    if (project.state.executed) {
-        applyNamespaceFix()
-    } else {
-        project.afterEvaluate { applyNamespaceFix() }
+    
+    tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+        kotlinOptions.jvmTarget = "17"
     }
 }
 
