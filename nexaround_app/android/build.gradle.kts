@@ -20,16 +20,21 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
-// Auto-fix for older plugins missing 'namespace' (like ar_flutter_plugin)
+// Safer Auto-fix for older plugins missing 'namespace'
 subprojects {
-    afterEvaluate {
+    val applyNamespaceFix = {
         if (project.hasProperty("android")) {
             val android = project.extensions.getByName("android") as? com.android.build.gradle.BaseExtension
             if (android != null && android.namespace == null) {
-                // Generate a namespace based on the project name
                 android.namespace = "com.nexaround.${project.name.replace(":", ".")}"
             }
         }
+    }
+
+    if (project.state.executed) {
+        applyNamespaceFix()
+    } else {
+        project.afterEvaluate { applyNamespaceFix() }
     }
 }
 
