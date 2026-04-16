@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.nexaround.nexaround_app"
-    compileSdk = 34
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
