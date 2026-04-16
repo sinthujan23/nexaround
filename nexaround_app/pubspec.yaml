@@ -1,0 +1,78 @@
+name: nexaround_app
+description: "NexAround - AI-powered smart tourism companion"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.11.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_bloc: ^9.1.1
+  equatable: ^2.0.0
+  freezed_annotation: ^3.1.0
+
+  # Routing
+  go_router: ^17.2.1
+
+  # Networking
+  dio: ^5.4.0
+  retrofit: ^4.1.0
+
+  # Dependency Injection
+  get_it: ^9.2.1
+  injectable: ^2.3.0
+
+  # Location & Maps
+  geolocator: ^9.0.2
+  google_maps_flutter: ^2.6.0
+
+  # AR
+  ar_flutter_plugin: ^0.7.3
+
+  # Local Storage
+  hive_flutter: ^1.1.0
+  shared_preferences: ^2.2.0
+
+  # Firebase
+  firebase_core: ^4.7.0
+  firebase_auth: ^6.4.0
+  firebase_messaging: ^16.2.0
+
+  # UI
+  cached_network_image: ^3.3.0
+  shimmer: ^3.0.0
+  lottie: ^3.1.0
+  flutter_animate: ^4.5.0
+
+  # Utilities
+  dartz: ^0.10.1
+  json_annotation: ^4.8.0
+  intl: ^0.20.2
+  permission_handler: ^10.1.0
+  connectivity_plus: ^7.1.1
+  cupertino_icons: ^1.0.6
+  uuid: ^4.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  build_runner: ^2.4.0
+  freezed: ^3.2.5
+  json_serializable: ^6.7.0
+  injectable_generator: ^2.4.0
+  bloc_test: ^10.0.0
+  mocktail: ^1.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/lottie/
+    - assets/ar_models/
