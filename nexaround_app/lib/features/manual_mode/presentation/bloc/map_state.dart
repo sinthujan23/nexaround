@@ -7,6 +7,7 @@ class MapState extends Equatable {
   final MapStatus status;
   final List<AttractionEntity> attractions;
   final List<CategoryEntity> categories;
+  final AttractionEntity? selectedAttraction;
   final String? selectedCategoryId;
   final String? errorMessage;
   final bool isSatellite;
@@ -15,6 +16,7 @@ class MapState extends Equatable {
     this.status = MapStatus.initial,
     this.attractions = const [],
     this.categories = const [],
+    this.selectedAttraction,
     this.selectedCategoryId,
     this.errorMessage,
     this.isSatellite = false,
@@ -24,6 +26,7 @@ class MapState extends Equatable {
     MapStatus? status,
     List<AttractionEntity>? attractions,
     List<CategoryEntity>? categories,
+    AttractionEntity? selectedAttraction,
     String? selectedCategoryId,
     String? errorMessage,
     bool? isSatellite,
@@ -32,6 +35,7 @@ class MapState extends Equatable {
       status: status ?? this.status,
       attractions: attractions ?? this.attractions,
       categories: categories ?? this.categories,
+      selectedAttraction: selectedAttraction ?? this.selectedAttraction,
       selectedCategoryId: selectedCategoryId ?? this.selectedCategoryId,
       errorMessage: errorMessage ?? this.errorMessage,
       isSatellite: isSatellite ?? this.isSatellite,
@@ -43,6 +47,7 @@ class MapState extends Equatable {
     status, 
     attractions, 
     categories, 
+    selectedAttraction,
     selectedCategoryId, 
     errorMessage,
     isSatellite

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 
@@ -8,25 +9,30 @@ class MapSearchBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(28),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.85),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(color: AppColors.secondary.withOpacity(0.3), width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
           Icon(
             Icons.search_rounded,
-            color: isDark ? Colors.white70 : AppColors.textSecondary,
+            color: AppColors.secondary,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -48,7 +54,7 @@ class MapSearchBar extends StatelessWidget {
             height: 32,
             width: 32,
             decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
+              color: AppColors.secondary,
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -58,6 +64,8 @@ class MapSearchBar extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    ),
       ),
     );
   }

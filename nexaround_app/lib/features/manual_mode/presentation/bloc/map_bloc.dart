@@ -10,6 +10,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     on<FetchNearbyAttractions>(_onFetchNearbyAttractions);
     on<FetchCategories>(_onFetchCategories);
     on<UpdateMapType>(_onUpdateMapType);
+    on<SelectAttraction>(_onSelectAttraction);
+    on<SearchAttractions>(_onSearchAttractions);
   }
 
   Future<void> _onFetchNearbyAttractions(
@@ -52,5 +54,27 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
   void _onUpdateMapType(UpdateMapType event, Emitter<MapState> emit) {
     emit(state.copyWith(isSatellite: event.isSatellite));
+  }
+
+  void _onSelectAttraction(SelectAttraction event, Emitter<MapState> emit) {
+    emit(state.copyWith(selectedAttraction: event.attraction));
+  }
+
+  Future<void> _onSearchAttractions(
+    SearchAttractions event,
+    Emitter<MapState> emit,
+  ) async {
+    // Basic search simulation or API call
+    if (event.query.isEmpty) {
+      // If empty, we could re-fetch nearby, but for now just filter locally or keep existing
+      return;
+    }
+    
+    // In a real app, you might call a search API. 
+    // For now, we'll assume the nearby attractions are filtered by name locally for immediate feedback
+    final filtered = state.attractions.where((a) => 
+      a.name.toLowerCase().contains(event.query.toLowerCase())).toList();
+    
+    emit(state.copyWith(attractions: filtered));
   }
 }

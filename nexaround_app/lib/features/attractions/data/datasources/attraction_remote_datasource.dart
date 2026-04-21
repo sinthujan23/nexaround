@@ -40,4 +40,20 @@ class AttractionRemoteDatasource {
     final response = await _dio.get('${ApiConstants.apiVersion}/attractions/$id');
     return AttractionModel.fromJson(response.data);
   }
+
+  Future<Map<String, dynamic>> identifyPlace(List<int> imageBytes) async {
+    final formData = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        imageBytes,
+        filename: 'scan.jpg',
+      ),
+    });
+
+    final response = await _dio.post(
+      '${ApiConstants.apiVersion}/ar/identify',
+      data: formData,
+    );
+    
+    return response.data;
+  }
 }

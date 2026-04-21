@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -12,7 +13,7 @@ class ItineraryPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: AppColors.background,
       body: BlocBuilder<ItineraryBloc, ItineraryState>(
         builder: (context, state) {
           if (state.isLoading) {
@@ -24,7 +25,7 @@ class ItineraryPage extends StatelessWidget {
           return CustomScrollView(
             slivers: [
               SliverAppBar(
-                backgroundColor: AppColors.darkBackground,
+                backgroundColor: AppColors.background,
                 expandedHeight: 120,
                 floating: true,
                 flexibleSpace: const FlexibleSpaceBar(
@@ -33,21 +34,21 @@ class ItineraryPage extends StatelessWidget {
                 ),
                 actions: [
                   IconButton(
-                    icon: const Icon(Icons.tune_rounded, color: Colors.white54),
+                    icon: const Icon(Icons.tune_outlined, color: Colors.white70),
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const DiscoverySettingsPage()),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.primary),
+                    icon: const Icon(Icons.auto_awesome_outlined, color: AppColors.secondary),
                     onPressed: () => Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const AiItineraryWizard(location: 'Colombo')),
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+                    icon: const Icon(Icons.add_circle_outline_rounded, color: AppColors.secondary),
                     onPressed: () => _showCreateDialog(context),
                   ),
                 ],
@@ -91,11 +92,13 @@ class ItineraryPage extends StatelessWidget {
           ElevatedButton(
             onPressed: () => _showCreateDialog(context),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.primary,
+              backgroundColor: AppColors.secondary,
+              foregroundColor: AppColors.primary,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 0,
             ),
-            child: const Text('Create New Trip', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('CREATE NEW TRIP', style: TextStyle(fontWeight: FontWeight.w700, letterSpacing: 1.5, fontSize: 13)),
           ),
         ],
       ),
@@ -107,7 +110,7 @@ class ItineraryPage extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.darkSurface,
+        backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Text('New Trip', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         content: TextField(
@@ -134,8 +137,13 @@ class ItineraryPage extends StatelessWidget {
                 Navigator.pop(context);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
-            child: const Text('Create'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.secondary,
+              foregroundColor: AppColors.primary,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('CREATE', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
           ),
         ],
       ),
@@ -149,21 +157,19 @@ class _TripCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      decoration: BoxDecoration(
-        color: AppColors.darkSurface,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.2),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Material(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
+            ),
+            child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () {},
@@ -189,12 +195,13 @@ class _TripCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
+                        color: AppColors.secondary.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
                       ),
                       child: Text(
                         itinerary.status.toUpperCase(),
-                        style: const TextStyle(color: AppColors.primary, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
+                        style: const TextStyle(color: AppColors.secondary, fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 1),
                       ),
                     ),
                   ],
@@ -216,6 +223,9 @@ class _TripCard extends StatelessWidget {
           ),
         ),
       ),
+    ),
+    ),
+    ),
     );
   }
 

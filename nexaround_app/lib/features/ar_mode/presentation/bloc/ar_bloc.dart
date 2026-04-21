@@ -1,17 +1,43 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
+import 'package:nexaround_app/features/chat/data/repositories/chat_repository.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_event.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_state.dart';
 
 class ArBloc extends Bloc<ArEvent, ArState> {
   final AttractionRepository _repository;
+  final ChatRepository _chatRepository;
 
-  ArBloc(this._repository) : super(const ArState()) {
+  ArBloc(this._repository, this._chatRepository) : super(const ArState()) {
     on<ArSessionStarted>(_onSessionStarted);
     on<ArSessionStopped>(_onSessionStopped);
     on<ArUpdateLocation>(_onUpdateLocation);
     on<ArSelectAttraction>(_onSelectAttraction);
+    on<ArDetectAttraction>(_onDetectAttraction);
+    on<ArFetchAIInsight>(_onFetchAIInsight);
+    on<ArClearDetection>(_onClearDetection);
+    on<ArVisualScan>(_onVisualScan);
+  }
+
+  Future<void> _onVisualScan(
+    ArVisualScan event,
+    Emitter<ArState> emit,
+  ) async {
+    emit(state.copyWith(isScanning: true, clearIdentified: true));
+
+    final result = await _repository.identifyPlace(event.imageBytes);
+
+    result.fold(
+      (failure) => emit(state.copyWith(
+        isScanning: false,
+        errorMessage: failure.message,
+      )),
+      (identifiedObject) => emit(state.copyWith(
+        isScanning: false,
+        identifiedObject: identifiedObject,
+      )),
+    );
   }
 
   Future<void> _onSessionStarted(
@@ -19,8 +45,6 @@ class ArBloc extends Bloc<ArEvent, ArState> {
     Emitter<ArState> emit,
   ) async {
     emit(state.copyWith(status: ArStatus.loading));
-    
-    // Initial fetch of attractions will happen when location is updated
     emit(state.copyWith(status: ArStatus.success));
   }
 
@@ -32,9 +56,8 @@ class ArBloc extends Bloc<ArEvent, ArState> {
     ArUpdateLocation event,
     Emitter<ArState> emit,
   ) async {
-    // Only fetch if moved significantly or if attractions list is empty
-    final shouldFetch = state.attractions.isEmpty; 
-    
+    final shouldFetch = state.attractions.isEmpty;
+
     emit(state.copyWith(
       currentLatitude: event.latitude,
       currentLongitude: event.longitude,
@@ -56,6 +79,60 @@ class ArBloc extends Bloc<ArEvent, ArState> {
   }
 
   void _onSelectAttraction(ArSelectAttraction event, Emitter<ArState> emit) {
-    emit(state.copyWith(selectedAttraction: event.attraction));
+    emit(state.copyWith(
+      selectedAttraction: event.attraction,
+      clearInsight: true,
+    ));
+  }
+
+  void _onDetectAttraction(ArDetectAttraction event, Emitter<ArState> emit) {
+    // Only update if we detected a different attraction
+    if (state.detectedAttraction?.id != event.attraction.id) {
+      emit(state.copyWith(
+        detectedAttraction: event.attraction,
+        detectedDistance: event.distance,
+        clearInsight: true,
+      ));
+    }
+  }
+
+  void _onClearDetection(ArClearDetection event, Emitter<ArState> emit) {
+    emit(state.copyWith(
+      clearDetected: true,
+      clearInsight: true,
+    ));
+  }
+
+  Future<void> _onFetchAIInsight(
+    ArFetchAIInsight event,
+    Emitter<ArState> emit,
+  ) async {
+    emit(state.copyWith(isLoadingInsight: true));
+
+    try {
+      final context =
+          'Place: ${event.attraction.name}. '
+          'Category: ${event.attraction.categoryName ?? "attraction"}. '
+          'Address: ${event.attraction.address ?? "unknown"}. '
+          'Rating: ${event.attraction.rating}/5 with ${event.attraction.reviewCount} reviews. '
+          'Description: ${event.attraction.description ?? "No description available"}.';
+
+      final response = await _chatRepository.sendMessage(
+        'Tell me interesting facts and history about ${event.attraction.name}. '
+        'Keep it concise (3-4 sentences) and engaging for a tourist visiting right now.',
+        context: context,
+      );
+
+      emit(state.copyWith(
+        aiInsight: response,
+        isLoadingInsight: false,
+      ));
+    } catch (e) {
+      emit(state.copyWith(
+        aiInsight: event.attraction.description ?? 
+            'Discover ${event.attraction.name} — a ${event.attraction.categoryName ?? "popular"} attraction nearby!',
+        isLoadingInsight: false,
+      ));
+    }
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -5,6 +6,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 class DiscoverySettingsPage extends StatefulWidget {
   const DiscoverySettingsPage({super.key});
@@ -22,7 +24,6 @@ class _DiscoverySettingsPageState extends State<DiscoverySettingsPage> {
   @override
   void initState() {
     super.initState();
-    // Load current preferences from AuthBloc
     final state = context.read<AuthBloc>().state;
     if (state is AuthAuthenticated) {
       final user = state.user;
@@ -46,7 +47,7 @@ class _DiscoverySettingsPageState extends State<DiscoverySettingsPage> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Preferences updated! AI is now tailored to you.')),
+          const SnackBar(content: Text('AI profile optimized successfully.')),
         );
         Navigator.pop(context);
       }
@@ -64,65 +65,127 @@ class _DiscoverySettingsPageState extends State<DiscoverySettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
-        title: const Text('AI Personalization'),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'AI PERSONALIZATION',
+          style: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 14,
+            letterSpacing: 2,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        physics: const BouncingScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSectionHeader('Your Interests', 'Tell Gemini what you love discover'),
-            const SizedBox(height: 16),
+            _buildSectionHeader('Your Passions', 'Fine-tune the curation engine to your soul')
+                .animate().fade().slideY(begin: 0.2, end: 0),
+            const SizedBox(height: 24),
             Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: _interests.map((interest) {
+              spacing: 10,
+              runSpacing: 10,
+              children: _interests.asMap().entries.map((entry) {
+                final interest = entry.value;
+                final index = entry.key;
                 final isSelected = _selectedInterests.contains(interest);
-                return FilterChip(
-                  label: Text(interest),
-                  selected: isSelected,
-                  selectedColor: AppColors.primary.withOpacity(0.2),
-                  checkmarkColor: AppColors.primary,
-                  labelStyle: TextStyle(
-                    color: isSelected ? AppColors.primary : Colors.white70,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  ),
-                  backgroundColor: Colors.white.withOpacity(0.05),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  onSelected: (val) {
-                    setState(() {
-                      if (val) {
-                        _selectedInterests.add(interest);
-                      } else {
-                        _selectedInterests.remove(interest);
-                      }
-                    });
-                  },
-                );
+                return _buildGalleryChip(interest, isSelected)
+                    .animate().fade(delay: (index * 50).ms).scale(delay: (index * 50).ms);
               }).toList(),
             ),
-            const SizedBox(height: 40),
-            _buildSectionHeader('Travel Style', 'How do you like to explore?'),
-            const SizedBox(height: 16),
-            _buildStyleOption('Relaxed', 'Slow pace, deep exploration', Icons.spa_rounded, 'relaxed'),
-            _buildStyleOption('Balanced', 'A mix of everything', Icons.balance_rounded, 'balanced'),
-            _buildStyleOption('Active', 'High energy, covering more ground', Icons.directions_run_rounded, 'active'),
-            const SizedBox(height: 60),
-            ElevatedButton(
-              onPressed: _isSaving ? null : _saveSettings,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                minimumSize: const Size(double.infinity, 60),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            const SizedBox(height: 48),
+            _buildSectionHeader('Exploration Rhythm', 'Define the pace of your discovery journeys')
+                .animate().fade(delay: 400.ms).slideY(begin: 0.2, end: 0),
+            const SizedBox(height: 24),
+            _buildStyleOption('Relaxed Essence', 'Slow pace, profound connection', Icons.spa_rounded, 'relaxed', 0),
+            _buildStyleOption('Balanced Pulse', 'The perfect harmony of rest and movement', Icons.balance_rounded, 'balanced', 1),
+            _buildStyleOption('High-Energy Current', 'Dynamic pace, covering the world\'s width', Icons.bolt_rounded, 'active', 2),
+            const SizedBox(height: 64),
+            SizedBox(
+              width: double.infinity,
+              height: 64,
+              child: ElevatedButton(
+                onPressed: _isSaving ? null : _saveSettings,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                  elevation: 15,
+                  shadowColor: AppColors.primary.withOpacity(0.4),
+                ),
+                child: _isSaving 
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Text(
+                      'OPTIMIZE MY JOURNEY',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 2),
+                    ),
               ),
-              child: _isSaving 
-                ? const CircularProgressIndicator(color: Colors.white)
-                : const Text('Update AI Persona', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
+            ).animate().fade(delay: 800.ms).slideY(begin: 0.3, end: 0),
+            const SizedBox(height: 40),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGalleryChip(String label, bool isSelected) {
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isSelected) {
+            _selectedInterests.remove(label);
+          } else {
+            _selectedInterests.add(label);
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primary : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: 1,
+          ),
+          boxShadow: [
+            if (isSelected)
+              BoxShadow(
+                color: AppColors.primary.withOpacity(0.3),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
+              )
+            else
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected ? Colors.white : AppColors.textPrimary,
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+          ),
         ),
       ),
     );
@@ -132,29 +195,90 @@ class _DiscoverySettingsPageState extends State<DiscoverySettingsPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5))),
+        Text(
+          title, 
+          style: const TextStyle(
+            color: AppColors.textPrimary, 
+            fontSize: 24, 
+            fontWeight: FontWeight.bold,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle, 
+          style: TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 14,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildStyleOption(String title, String subtitle, IconData icon, String value) {
+  Widget _buildStyleOption(String title, String subtitle, IconData icon, String value, int index) {
     final isSelected = _travelStyle == value;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.white.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: isSelected ? AppColors.primary : Colors.transparent),
-      ),
-      child: ListTile(
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: GestureDetector(
         onTap: () => setState(() => _travelStyle = value),
-        leading: Icon(icon, color: isSelected ? AppColors.primary : Colors.white38),
-        title: Text(title, style: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontWeight: FontWeight.bold)),
-        subtitle: Text(subtitle, style: TextStyle(color: isSelected ? Colors.white54 : Colors.white24, fontSize: 12)),
-        trailing: isSelected ? const Icon(Icons.check_circle, color: AppColors.primary) : null,
-      ),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: isSelected ? AppColors.primary : AppColors.border,
+              width: isSelected ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: isSelected 
+                  ? AppColors.primary.withOpacity(0.08) 
+                  : Colors.black.withOpacity(0.04),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.all(20),
+            leading: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isSelected ? AppColors.primary : AppColors.surfaceVariant,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                icon, 
+                color: isSelected ? Colors.white : AppColors.textTertiary, 
+                size: 24,
+              ),
+            ),
+            title: Text(
+              title, 
+              style: const TextStyle(
+                color: AppColors.textPrimary, 
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                subtitle, 
+                style: TextStyle(
+                  color: AppColors.textSecondary, 
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            trailing: isSelected 
+              ? const Icon(Icons.check_circle_rounded, color: AppColors.primary, size: 24) 
+              : null,
+          ),
+        ),
+      ).animate().fade(delay: (500 + index * 100).ms).slideX(begin: 0.1, end: 0),
     );
   }
 }

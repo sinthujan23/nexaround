@@ -1,0 +1,6 @@
+name: latlong2
+version: 0.9.1
+environment:
+  sdk: '>=2.12.0 <4.0.0'
+dependencies:
+  meta: ^1.7.0

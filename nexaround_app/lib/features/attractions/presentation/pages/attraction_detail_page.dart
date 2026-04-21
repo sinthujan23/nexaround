@@ -1,130 +1,358 @@
+import 'dart:io';
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
-import 'package:nexaround_app/features/attractions/presentation/bloc/review_bloc.dart';
-import 'package:intl/intl.dart';
+import 'package:nexaround_app/core/widgets/glass_card.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
-class AttractionDetailPage extends StatefulWidget {
-  final AttractionEntity attraction;
+class AttractionDetailPage extends StatelessWidget {
+  final String name;
+  final String category;
+  final double rating;
+  final String distance;
+  final String emoji;
+  final String imageUrl;
 
-  const AttractionDetailPage({super.key, required this.attraction});
+  const AttractionDetailPage({
+    super.key,
+    required this.name,
+    required this.category,
+    required this.rating,
+    required this.distance,
+    required this.emoji,
+    required this.imageUrl,
+  });
 
-  @override
-  State<AttractionDetailPage> createState() => _AttractionDetailPageState();
-}
-
-class _AttractionDetailPageState extends State<AttractionDetailPage> {
-  @override
-  void initState() {
-    super.initState();
-    context.read<ReviewBloc>().add(FetchReviews(widget.attraction.id));
+  String _getImageForAttraction(String name) {
+    if (name.contains('Lotus')) return 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop';
+    if (name.contains('Sigiriya')) return 'https://images.unsplash.com/photo-1586713745281-229f3d9ba34c?q=80&w=1000&auto=format&fit=crop';
+    if (name.contains('Café')) return 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1000&auto=format&fit=crop';
+    return 'https://images.unsplash.com/photo-1563245372-f21724e3856d?q=80&w=1000&auto=format&fit=crop';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: AppColors.background,
       body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
         slivers: [
-          _buildAppBar(),
+          // Hero header
+          SliverAppBar(
+            expandedHeight: 320,
+            pinned: true,
+            backgroundColor: AppColors.background,
+            leading: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                margin: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.2),
+                ),
+                child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+              ),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  imageUrl.startsWith('assets/')
+                      ? Image.asset(imageUrl, fit: BoxFit.cover)
+                      : Image.network(imageUrl, fit: BoxFit.cover),
+                  // Gradient overlay
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.3),
+                          Colors.transparent,
+                          AppColors.background,
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Content
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildHeader(),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('Description'),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.attraction.description ?? 'No description available for this attraction.',
-                    style: const TextStyle(color: Colors.white70, height: 1.6),
-                  ),
-                  const SizedBox(height: 24),
-                  _buildSectionTitle('History'),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.attraction.history ?? 'Detailed history coming soon.',
-                    style: const TextStyle(color: Colors.white70, height: 1.6),
-                  ),
-                  const SizedBox(height: 32),
+                  // Category tag
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      _buildSectionTitle('Reviews'),
-                      TextButton(
-                        onPressed: () => _showAddReviewDialog(context),
-                        child: const Text('Add Review', style: TextStyle(color: AppColors.primary)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: AppColors.actionTeal.withOpacity(0.1),
+                        ),
+                        child: Text(
+                          category.toUpperCase(),
+                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.actionTeal, letterSpacing: 1),
+                        ),
                       ),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
+                      const SizedBox(width: 4),
+                      Text('$rating', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      Text(' (2.3k reviews)', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                    ],
+                  ).animate().fade(),
+
+                  const SizedBox(height: 16),
+
+                  // Name
+                  Text(
+                    name,
+                    style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1, height: 1.1),
+                  ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0),
+
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Icon(Icons.location_on_rounded, size: 14, color: AppColors.actionTeal),
+                      const SizedBox(width: 4),
+                      Text(distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
+                      const SizedBox(width: 16),
+                      Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
+                      const SizedBox(width: 4),
+                      const Text('Open · Closes 6 PM', style: TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600)),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  _buildReviewsList(),
-                  const SizedBox(height: 100),
+
+                  const SizedBox(height: 24),
+
+                  // Quick stats row
+                  Row(
+                    children: [
+                      _buildStatChip(Icons.attach_money_rounded, 'LKR 1,500', 'Entry Fee'),
+                      const SizedBox(width: 10),
+                      _buildStatChip(Icons.schedule_rounded, '3-4 hrs', 'Avg Visit'),
+                      const SizedBox(width: 10),
+                      _buildStatChip(Icons.people_rounded, 'Low', 'Crowd'),
+                    ],
+                  ).animate().fade(delay: 200.ms),
+
+                  const SizedBox(height: 28),
+
+                  // History section
+                  _buildInfoSection(
+                    'History',
+                    Icons.history_edu_rounded,
+                    'This magnificent site dates back centuries, serving as a testament to the rich cultural heritage of Sri Lanka. Originally built as a royal fortress, it has witnessed the rise and fall of ancient kingdoms and stands today as a UNESCO World Heritage Site.',
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Cultural Info
+                  _buildInfoSection(
+                    'Cultural Tips',
+                    Icons.info_outline_rounded,
+                    '• Dress modestly — cover shoulders and knees\n• Remove shoes before entering sacred areas\n• Photography may be restricted in certain zones\n• Guides available in English, Sinhala, and Tamil',
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Opening Hours
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Row(
+                          children: [
+                            Icon(Icons.schedule_rounded, size: 18, color: AppColors.textPrimary),
+                            const SizedBox(width: 10),
+                            const Text('Opening Hours', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        _buildHourRow('Monday – Friday', '7:00 AM – 6:00 PM'),
+                        _buildHourRow('Saturday', '7:00 AM – 5:00 PM'),
+                        _buildHourRow('Sunday', '8:00 AM – 4:00 PM'),
+                      ],
+                    ),
+                  ).animate().fade(delay: 400.ms),
+
+                  const SizedBox(height: 20),
+
+                  // User Ratings
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Visitor Reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                        const SizedBox(height: 14),
+                        _buildReview('Sarah M.', 5.0, 'Absolutely breathtaking! One of the most beautiful places I\'ve ever visited.', '2 days ago'),
+                        const Divider(color: AppColors.border, height: 24),
+                        _buildReview('James K.', 4.0, 'Great historical site. The climb is worth it for the views.', '1 week ago'),
+                      ],
+                    ),
+                  ).animate().fade(delay: 500.ms),
+
+                  const SizedBox(height: 120),
                 ],
               ),
             ),
           ),
         ],
       ),
-      bottomSheet: _buildBottomActions(),
-    );
-  }
 
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      expandedHeight: 300,
-      pinned: true,
-      backgroundColor: AppColors.darkBackground,
-      flexibleSpace: FlexibleSpaceBar(
-        background: widget.attraction.photoUrls.isNotEmpty
-            ? Image.network(widget.attraction.photoUrls[0], fit: BoxFit.cover)
-            : Container(
-                decoration: const BoxDecoration(gradient: AppColors.primaryGradient),
-                child: const Icon(Icons.place_rounded, size: 80, color: Colors.white),
-              ),
-      ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
-      ),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.favorite_border_rounded, color: Colors.white),
-          onPressed: () {},
+      // Bottom action bar
+      bottomNavigationBar: Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(top: BorderSide(color: AppColors.border)),
         ),
-      ],
+        child: Row(
+          children: [
+            // Navigate button
+            Expanded(
+              child: Container(
+                height: 56,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.black,
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 6))],
+                ),
+                child: const Center(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.navigation_rounded, color: Colors.white, size: 20),
+                      SizedBox(width: 8),
+                      Text('Navigate', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // AR button
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.black.withOpacity(0.1)),
+                color: AppColors.surfaceVariant,
+              ),
+              child: const Icon(Icons.view_in_ar_rounded, color: Colors.black, size: 24),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildStatChip(IconData icon, String value, String label) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: AppColors.actionTeal),
+            const SizedBox(height: 8),
+            Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoSection(String title, IconData icon, String content) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: AppColors.actionTeal),
+              const SizedBox(width: 10),
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            content,
+            style: TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.6),
+          ),
+        ],
+      ),
+    ).animate().fade(delay: 300.ms);
+  }
+
+  Widget _buildHourRow(String day, String hours) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(day, style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          Text(hours, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReview(String name, double stars, String text, String time) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              child: Text(
-                widget.attraction.name,
-                style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-              ),
-            ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+              width: 34,
+              height: 34,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black12,
               ),
-              child: Row(
+              child: Center(child: Text(name[0], style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w700, fontSize: 14))),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.star_rounded, color: AppColors.primary, size: 16),
-                  const SizedBox(width: 4),
-                  Text(
-                    widget.attraction.rating.toStringAsFixed(1),
-                    style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+                  Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Row(
+                    children: [
+                      ...List.generate(5, (i) => Icon(Icons.star_rounded, size: 12, color: i < stars ? AppColors.ratingGold : Colors.black12)),
+                      const SizedBox(width: 8),
+                      Text(time, style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    ],
                   ),
                 ],
               ),
@@ -132,190 +360,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
           ],
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            const Icon(Icons.location_on_rounded, color: Colors.white38, size: 16),
-            const SizedBox(width: 4),
-            Text(
-              widget.attraction.address ?? 'Colombo, Sri Lanka',
-              style: const TextStyle(color: Colors.white38),
-            ),
-          ],
-        ),
+        Text(text, style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4)),
       ],
-    );
-  }
-
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-    );
-  }
-
-  Widget _buildReviewsList() {
-    return BlocBuilder<ReviewBloc, ReviewState>(
-      builder: (context, state) {
-        if (state.isLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (state.reviews.isEmpty) {
-          return const Center(
-            child: Text('No reviews yet. Be the first!', style: TextStyle(color: Colors.white24)),
-          );
-        }
-        return ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.zero,
-          itemCount: state.reviews.length,
-          itemBuilder: (context, index) {
-            final review = state.reviews[index];
-            return Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.darkSurface,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        review.userDisplayName,
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                      Row(
-                        children: List.generate(
-                          5,
-                          (i) => Icon(
-                            Icons.star_rounded,
-                            size: 14,
-                            color: i < review.rating ? AppColors.primary : Colors.white10,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    DateFormat('MMM dd, yyyy').format(review.createdAt),
-                    style: const TextStyle(color: Colors.white24, fontSize: 11),
-                  ),
-                  if (review.comment != null) ...[
-                    const SizedBox(height: 8),
-                    Text(review.comment!, style: const TextStyle(color: Colors.white70)),
-                  ],
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildBottomActions() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      color: AppColors.darkSurface,
-      child: Row(
-        children: [
-          Expanded(
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                minimumSize: const Size(0, 56),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              ),
-              child: const Text('Add to Itinerary', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Container(
-            height: 56,
-            width: 56,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.directions_rounded, color: Colors.white),
-              onPressed: () {},
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddReviewDialog(BuildContext context) {
-    int rating = 5;
-    final controller = TextEditingController();
-    
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.darkSurface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: EdgeInsets.fromLTRB(20, 20, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('How was your visit?', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) => IconButton(
-                  icon: Icon(
-                    Icons.star_rounded,
-                    size: 40,
-                    color: i < rating ? AppColors.primary : Colors.white10,
-                  ),
-                  onPressed: () => setModalState(() => rating = i + 1),
-                )),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                maxLines: 4,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Share your experience...',
-                  hintStyle: const TextStyle(color: Colors.white24),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.05),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: () {
-                  context.read<ReviewBloc>().add(PostReview(
-                    attractionId: widget.attraction.id,
-                    rating: rating,
-                    comment: controller.text,
-                  ));
-                  Navigator.pop(context);
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  minimumSize: const Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                ),
-                child: const Text('Post Review'),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

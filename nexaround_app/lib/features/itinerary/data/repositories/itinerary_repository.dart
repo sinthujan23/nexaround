@@ -7,7 +7,7 @@ class ItineraryRepository {
   final Dio _dio = ApiClient.instance;
 
   Future<List<Itinerary>> getMyItineraries() async {
-    final response = await _dio.get('${ApiConstants.baseUrl}/itineraries/');
+    final response = await _dio.get(ApiConstants.itineraries);
     
     return (response.data as List).map((json) => Itinerary(
       id: json['id'],
@@ -24,7 +24,7 @@ class ItineraryRepository {
 
   Future<Itinerary> createItinerary(String title, {DateTime? date}) async {
     final response = await _dio.post(
-      '${ApiConstants.baseUrl}/itineraries/',
+      ApiConstants.itineraries,
       data: {
         'title': title,
         'trip_date': date?.toIso8601String().split('T')[0],
@@ -47,7 +47,7 @@ class ItineraryRepository {
     final updatedItems = List<ItineraryItem>.from(currentItems)..add(item);
     
     await _dio.put(
-      '${ApiConstants.baseUrl}/itineraries/$itineraryId',
+      '${ApiConstants.itineraries}/$itineraryId',
       data: {
         'items': updatedItems.map((i) => i.toJson()).toList(),
       },

@@ -1,218 +1,346 @@
+import 'dart:math';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/network/api_client.dart';
-import 'package:nexaround_app/core/constants/api_constants.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:nexaround_app/core/widgets/glass_card.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
-class InteractiveOnboardingPage extends StatefulWidget {
-  const InteractiveOnboardingPage({super.key});
+class OnboardingPage extends StatefulWidget {
+  const OnboardingPage({super.key});
 
   @override
-  State<InteractiveOnboardingPage> createState() => _InteractiveOnboardingPageState();
+  State<OnboardingPage> createState() => _OnboardingPageState();
 }
 
-class _InteractiveOnboardingPageState extends State<InteractiveOnboardingPage> {
+class _OnboardingPageState extends State<OnboardingPage> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
-  final List<String> _selectedInterests = [];
-  String _travelStyle = 'balanced';
+  final List<_OnboardingData> _pages = [
+    _OnboardingData(
+      imagePath: 'assets/images/neva_avatar.png',
+      icon: Icons.auto_awesome_rounded,
+      title: 'AI Companion',
+      subtitle: 'YOUR PERSONAL TRAVEL INTELLIGENCE',
+      description:
+          'An AI that learns your preferences and crafts unique experiences tailored just for you.',
+      gradient: AppColors.primaryGradient,
+      glowColor: AppColors.actionTeal,
+    ),
+    _OnboardingData(
+      imagePath: 'assets/images/lotus_temple.png',
+      icon: Icons.view_in_ar_rounded,
+      title: 'AR Exploration',
+      subtitle: 'SEE THE WORLD THROUGH AI EYES',
+      description:
+          'Point your camera at any landmark and instantly discover its history, ratings, and hidden stories.',
+      gradient: AppColors.primaryGradient,
+      glowColor: AppColors.ratingGold,
+    ),
+    _OnboardingData(
+      imagePath: 'assets/images/hero_luxury.png',
+      icon: Icons.public_rounded,
+      title: '3D Living Map',
+      subtitle: 'NAVIGATE YOUR ADVENTURE',
+      description:
+          'An intelligent map that breathes — showing trending spots, hidden gems, and real-time activity around you.',
+      gradient: AppColors.primaryGradient,
+      glowColor: AppColors.secondary,
+    ),
+  ];
 
-  final List<String> _interests = ['Nature', 'Food', 'Culture', 'Adventure', 'Shopping', 'History', 'Nightlife'];
+  void _next() {
+    if (_currentPage < 2) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      _navigateToLogin();
+    }
+  }
+
+  void _navigateToLogin() {
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, animation, __) => const LoginPage(),
+        transitionsBuilder: (_, animation, __, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 800),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           children: [
-            // Progress bar
+            // Skip button
             Padding(
-              padding: const EdgeInsets.all(24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               child: Row(
-                children: List.generate(3, (index) => Expanded(
-                  child: Container(
-                    height: 4,
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    decoration: BoxDecoration(
-                      color: index <= _currentPage ? AppColors.primary : Colors.white10,
-                      borderRadius: BorderRadius.circular(2),
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '${_currentPage + 1}/3',
+                    style: TextStyle(
+                      color: AppColors.textTertiary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                )),
-              ),
-            ),
-            
-            Expanded(
-              child: PageView(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(),
-                onPageChanged: (page) => setState(() => _currentPage = page),
-                children: [
-                  _buildWelcomeStep(),
-                  _buildInterestsStep(),
-                  _buildStyleStep(),
+                  TextButton(
+                    onPressed: _navigateToLogin,
+                    child: Text(
+                      'Skip',
+                      style: TextStyle(
+                        color: AppColors.textTertiary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-            
-            _buildFooter(),
+
+            // Progress bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Row(
+                children: List.generate(
+                  3,
+                  (index) => Expanded(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      height: 3,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: index <= _currentPage
+                            ? AppColors.primaryGradient
+                            : null,
+                        color: index <= _currentPage
+                            ? null
+                            : AppColors.surfaceVariant,
+                        boxShadow: index <= _currentPage
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.4),
+                                  blurRadius: 8,
+                                ),
+                              ]
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Pages
+            Expanded(
+              child: PageView.builder(
+                controller: _pageController,
+                onPageChanged: (page) => setState(() => _currentPage = page),
+                itemCount: 3,
+                itemBuilder: (context, index) {
+                  return _buildPage(_pages[index], index);
+                },
+              ),
+            ),
+
+            // Bottom button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+              child: _buildButton(),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildWelcomeStep() {
+  Widget _buildPage(_OnboardingData data, int index) {
     return Padding(
-      padding: const EdgeInsets.all(40.0),
+      padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withOpacity(0.1),
-              shape: BoxShape.circle,
+          // Animated icon container
+          _buildIconContainer(data, index),
+          const SizedBox(height: 56),
+
+          // Title
+          ShaderMask(
+            shaderCallback: (bounds) => data.gradient.createShader(
+              Rect.fromLTWH(0, 0, bounds.width, bounds.height),
             ),
-            child: const Icon(Icons.auto_awesome_rounded, size: 80, color: AppColors.primary),
-          ),
-          const SizedBox(height: 40),
-          const Text(
-            'Meet your AI Guide',
-            style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Let\'s personalize your NexAround experience for truly unique discoveries.',
-            style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 16, height: 1.5),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
+            child: Text(
+              data.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 36,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ).animate().fade(delay: 200.ms).slideY(begin: 0.2, end: 0),
 
-  Widget _buildInterestsStep() {
-    return Padding(
-      padding: const EdgeInsets.all(40.0),
-      child: Column(
-        children: [
-          const Text('What do you love?', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          Text('Select at least 3 to help Gemini understand you.', style: TextStyle(color: Colors.white.withOpacity(0.5))),
-          const SizedBox(height: 40),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            alignment: WrapAlignment.center,
-            children: _interests.map((interest) {
-              final isSelected = _selectedInterests.contains(interest);
-              return FilterChip(
-                label: Text(interest),
-                selected: isSelected,
-                onSelected: (val) {
-                  setState(() {
-                    if (val) _selectedInterests.add(interest);
-                    else _selectedInterests.remove(interest);
-                  });
-                },
-                backgroundColor: Colors.white10,
-                selectedColor: AppColors.primary,
-                labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.white70),
-              );
-            }).toList(),
+
+          // Subtitle
+          Text(
+            data.subtitle,
+            style: TextStyle(
+              color: data.glowColor.withOpacity(0.7),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 3,
+            ),
+            textAlign: TextAlign.center,
+          ).animate().fade(delay: 400.ms),
+
+          const SizedBox(height: 24),
+
+          // Description
+          Text(
+            data.description,
+            style: TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 16,
+              height: 1.6,
+            ),
+            textAlign: TextAlign.center,
+          ).animate().fade(delay: 500.ms).slideY(begin: 0.1, end: 0),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIconContainer(_OnboardingData data, int index) {
+    return Container(
+      width: 160,
+      height: 160,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: data.glowColor.withOpacity(0.15)),
+        gradient: RadialGradient(
+          colors: [
+            data.glowColor.withOpacity(0.2),
+            data.glowColor.withOpacity(0.02),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: data.glowColor.withOpacity(0.25),
+            blurRadius: 50,
+            spreadRadius: 2,
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildStyleStep() {
-    return Padding(
-      padding: const EdgeInsets.all(40.0),
-      child: Column(
+      child: Stack(
+        alignment: Alignment.center,
         children: [
-          const Text('Your Travel Style', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 40),
-          _buildStyleCard('Relaxed', 'Take it slow and soak it in.', Icons.spa_rounded, 'relaxed'),
-          const SizedBox(height: 16),
-          _buildStyleCard('Balanced', 'A healthy mix of everything.', Icons.explore_rounded, 'balanced'),
-          const SizedBox(height: 16),
-          _buildStyleCard('Active', 'See as much as possible.', Icons.bolt_rounded, 'active'),
+          // Orbiting ring
+          Container(
+            width: 140,
+            height: 140,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: data.glowColor.withOpacity(0.25),
+                width: 1.5,
+              ),
+            ),
+          )
+              .animate(onPlay: (c) => c.repeat())
+              .rotate(duration: 8.seconds),
+
+          // Cinematic Image
+          ClipRRect(
+            borderRadius: BorderRadius.circular(100),
+            child: Image.asset(
+              data.imagePath,
+              fit: BoxFit.cover,
+              width: 120,
+              height: 120,
+            ),
+          ),
         ],
       ),
-    );
+    )
+        .animate()
+        .scale(
+          begin: const Offset(0.6, 0.6),
+          duration: 800.ms,
+          curve: Curves.easeOutBack,
+        )
+        .fade();
   }
 
-  Widget _buildStyleCard(String title, String subtitle, IconData icon, String value) {
-    final isSelected = _travelStyle == value;
-    return GestureDetector(
-      onTap: () => setState(() => _travelStyle = value),
+  Widget _buildButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 60,
       child: Container(
-        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.white.withOpacity(0.05),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: isSelected ? AppColors.primary : Colors.transparent),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: isSelected ? AppColors.primary : Colors.white38),
-            const SizedBox(width: 20),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
-              ],
+          gradient: AppColors.primaryGradient,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildFooter() {
-    return Padding(
-      padding: const EdgeInsets.all(40),
-      child: ElevatedButton(
-        onPressed: () {
-          if (_currentPage < 2) {
-            _pageController.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
-          } else {
-            _finishOnboarding();
-          }
-        },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.primary,
-          minimumSize: const Size(double.infinity, 60),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: ElevatedButton(
+          onPressed: _next,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+          ),
+          child: Text(
+            _currentPage == 2 ? 'GET STARTED' : 'CONTINUE',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+              letterSpacing: 2,
+            ),
+          ),
         ),
-        child: Text(_currentPage == 2 ? 'Start My Adventure' : 'Continue', style: const TextStyle(fontWeight: FontWeight.bold)),
       ),
-    );
+    ).animate().fade(delay: 600.ms).slideY(begin: 0.3, end: 0);
   }
+}
 
-  Future<void> _finishOnboarding() async {
-    try {
-      await ApiClient.instance.put(
-        '${ApiConstants.baseUrl}/auth/me/preferences',
-        data: {
-          'interests': _selectedInterests,
-          'travel_style': _travelStyle,
-        },
-      );
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
-      }
-    } catch (e) {
-      // Success anyway logic for demo, or handle error
-      if (mounted) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
-      }
-    }
-  }
+class _OnboardingData {
+  final String imagePath;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String description;
+  final Gradient gradient;
+  final Color glowColor;
+
+  _OnboardingData({
+    required this.imagePath,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.description,
+    required this.gradient,
+    required this.glowColor,
+  });
 }

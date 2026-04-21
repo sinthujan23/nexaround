@@ -62,4 +62,103 @@ class AIService:
             print(f"AI Generation Error: {e}")
             return None
 
+    async def get_ar_place_details(self, place_name: str, category: str = "", address: str = "", rating: float = 0.0, description: str = ""):
+        """Generate structured AR overlay details for a place using AI."""
+        if not self.model:
+            return {
+                "key_facts": [
+                    {"icon": "star", "label": "Rating", "value": str(rating)},
+                    {"icon": "category", "label": "Type", "value": category or "Attraction"},
+                ],
+                "short_description": description or f"Discover {place_name} — a remarkable destination.",
+                "historical_significance": "Information currently unavailable.",
+                "visitor_tips": ["Visit during early morning for the best experience."]
+            }
+        
+        prompt = f"""
+        You are 'NexAround AR Guide'. Generate structured details about this place for an AR overlay.
+        
+        Place: {place_name}
+        Category: {category}
+        Address: {address}
+        Rating: {rating}/5
+        Description: {description}
+        
+        Return a valid JSON object with:
+        {{
+            "key_facts": [
+                {{"icon": "building", "label": "Built", "value": "year or N/A"}},
+                {{"icon": "height", "label": "Height/Size", "value": "measurement or N/A"}},
+                {{"icon": "visitors", "label": "Annual Visitors", "value": "number or N/A"}},
+                {{"icon": "feature", "label": "Key Feature", "value": "brief text"}}
+            ],
+            "short_description": "2-3 sentence engaging description",
+            "historical_significance": "1-2 sentences about history/cultural importance",
+            "visitor_tips": ["tip 1", "tip 2", "tip 3"]
+        }}
+        
+        Return ONLY valid JSON, no markdown.
+        """
+        
+        try:
+            response = self.model.generate_content(prompt)
+            text = response.text.replace('```json', '').replace('```', '').strip()
+            import json
+            return json.loads(text)
+        except Exception as e:
+            print(f"AR AI Error: {e}")
+            return {
+                "key_facts": [
+                    {"icon": "star", "label": "Rating", "value": str(rating)},
+                    {"icon": "category", "label": "Type", "value": category or "Attraction"},
+                ],
+                "short_description": description or f"Discover {place_name}.",
+                "historical_significance": "A notable destination worth exploring.",
+                "visitor_tips": ["Visit during golden hour for the best photos."]
+            }
+
+    async def identify_object(self, image_bytes: bytes):
+        """Identify an object from camera frame bytes using multimodal AI."""
+        if not self.model:
+            return "AI Vision is currently offline."
+        
+        try:
+            # Prepare image part for Gemini
+            image_parts = [
+                {
+                    "mime_type": "image/jpeg",
+                    "data": image_bytes
+                }
+            ]
+            
+            prompt = """
+            You are 'NexAround Vision AI'. Identify the primary landmark, building, monument, or object in this photo.
+            
+            Return a valid JSON object with:
+            {
+                "object_name": "Name of the object",
+                "category": "Landmark/Monument/Nature/etc",
+                "significance": "1-2 sentences about what makes this special",
+                "interesting_fact": "One surprising/unique fact",
+                "accuracy_confidence": 0.0-1.0
+            }
+            
+            If you cannot identify anything specific, try to describe the general scene.
+            Return ONLY valid JSON.
+            """
+            
+            response = self.model.generate_content([prompt, image_parts[0]])
+            text = response.text.replace('```json', '').replace('```', '').strip()
+            import json
+            return json.loads(text)
+        except Exception as e:
+            print(f"Vision AI Error: {e}")
+            return {
+                "object_name": "Unknown Discovery",
+                "category": "Exploration",
+                "significance": "We couldn't quite identify this. Try getting closer or improving the lighting.",
+                "interesting_fact": "Every corner of the world has a story, continue exploring!",
+                "accuracy_confidence": 0.0
+            }
+
 ai_service = AIService()

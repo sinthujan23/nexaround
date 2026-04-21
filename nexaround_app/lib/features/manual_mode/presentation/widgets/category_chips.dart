@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
@@ -79,34 +80,39 @@ class _CategoryChip extends StatelessWidget {
     
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        decoration: BoxDecoration(
-          color: isSelected 
-              ? AppColors.primary 
-              : (isDark ? AppColors.darkSurface : Colors.white),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(
-            color: isSelected 
-                ? AppColors.primary 
-                : (isDark ? Colors.white12 : AppColors.border),
-          ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: AppColors.primary.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 4),
-            )
-          ] : [],
-        ),
-        child: Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: isSelected 
+                  ? AppColors.primary 
+                  : Colors.white.withOpacity(0.85),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: isSelected 
+                    ? AppColors.primary 
+                    : AppColors.secondary.withOpacity(0.3),
+                width: 1.5,
+              ),
+              boxShadow: isSelected ? [
+                BoxShadow(
+                  color: AppColors.primary.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                )
+              ] : [],
+            ),
+            child: Row(
           children: [
             if (icon != null) ...[
               Icon(
                 icon,
                 size: 18,
-                color: isSelected ? Colors.white : AppColors.textSecondary,
+                color: isSelected ? AppColors.secondary : AppColors.textSecondary,
               ),
               const SizedBox(width: 8),
             ],
@@ -114,10 +120,14 @@ class _CategoryChip extends StatelessWidget {
               label,
               style: TextStyle(
                 color: isSelected ? Colors.white : AppColors.textSecondary,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.normal,
+                letterSpacing: 0.5,
+                fontSize: 13,
               ),
             ),
           ],
+        ),
+      ),
         ),
       ),
     );

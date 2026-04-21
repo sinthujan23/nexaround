@@ -60,6 +60,18 @@ class AttractionRepositoryImpl implements AttractionRepository {
     }
   }
 
+  @override
+  Future<Either<Failure, Map<String, dynamic>>> identifyPlace(List<int> imageBytes) async {
+    try {
+      final result = await _remoteDatasource.identifyPlace(imageBytes);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
   Failure _handleDioError(DioException e) {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout) {

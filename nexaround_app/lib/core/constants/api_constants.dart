@@ -8,7 +8,7 @@ class ApiConstants {
       return 'http://$host:8000';
     }
     // For Native Mobile (APK/iOS), use the PC's current local IP
-    return 'http://172.22.141.243:8000';
+    return 'http://10.44.211.243:8000';
   }
   static const String apiVersion = '/api/v1';
   
@@ -26,4 +26,21 @@ class ApiConstants {
   
   // Navigation endpoints
   static const String directions = '$apiVersion/navigation/directions';
+  
+  // Itinerary endpoints
+  static const String itineraries = '$apiVersion/itineraries';
+  
+  // Mapbox Configuration
+  static const String mapboxAccessToken = 'YOUR_MAPBOX_ACCESS_TOKEN_HERE';
+  
+  // Mapbox Tile Style URLs (for flutter_map)
+  static String mapboxStyleUrl(String styleId) =>
+    'https://api.mapbox.com/styles/v1/mapbox/$styleId/tiles/256/{z}/{x}/{y}@2x?access_token=$mapboxAccessToken';
+  
+  static String get mapboxStreets => mapboxStyleUrl('streets-v12');
+  static String get mapboxLight => mapboxStyleUrl('light-v11');
+  static String get mapboxDark => mapboxStyleUrl('dark-v11');
+  static String get mapboxSatellite => mapboxStyleUrl('satellite-streets-v12');
+  static String get mapboxOutdoors => mapboxStyleUrl('outdoors-v12');
+  static String get mapboxNavigation => mapboxStyleUrl('navigation-night-v1');
 }

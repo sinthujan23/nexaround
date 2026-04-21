@@ -15,4 +15,6 @@ abstract class AttractionRepository {
   Future<Either<Failure, List<CategoryEntity>>> getCategories();
 
   Future<Either<Failure, AttractionEntity>> getAttractionDetail(String id);
+
+  Future<Either<Failure, Map<String, dynamic>>> identifyPlace(List<int> imageBytes);
 }
