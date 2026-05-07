@@ -8,6 +8,7 @@ abstract class AttractionRepository {
     required double longitude,
     double radius,
     String? categoryId,
+    String? categoryName,
     int limit,
     String sort,
   });

@@ -523,6 +523,9 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 rating: attraction.rating,
                 distance: '${((attraction.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
                 emoji: '🏛',
+                imageUrl: attraction.photoUrls.isNotEmpty
+                    ? attraction.photoUrls.first
+                    : 'https://images.unsplash.com/photo-1563245372-f21724e3856d?q=80&w=1000&auto=format&fit=crop',
               )),
             ),
             child: ClipRRect(

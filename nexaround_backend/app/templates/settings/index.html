@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - NexAround Admin{% endblock %}
+{% block page_title %}General Settings{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align: center; padding: 5rem 2rem;">
+    <div style="width: 80px; height: 80px; background: #fef2f2; color: #ef4444; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; font-size: 2.5rem;">
+        <i class="ti ti-settings"></i>
+    </div>
+    <h2 style="font-weight: 800; margin-bottom: 0.5rem;">Platform Configurations</h2>
+    <p style="color: var(--muted); max-width: 500px; margin: 0 auto 2rem;">
+        General platform settings and security protocols are being configured. Access to these controls will be granted in the upcoming release.
+    </p>
+    <a href="/admin/dashboard" class="btn btn-outline">Return to Mission Control</a>
+</div>
+{% endblock %}

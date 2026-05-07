@@ -8,9 +8,11 @@ class ApiConstants {
       return 'http://$host:8000';
     }
     // For Native Mobile (APK/iOS), use the PC's current local IP
-    return 'http://10.44.211.243:8000';
+    return 'http://192.168.1.195:8000';
   }
   static const String apiVersion = '/api/v1';
+  static const String googleMapsApiKey = 'AIzaSyDV7xSXzCp8tt4BqrjvHqfRyexT9Dhk-jw';
+  static const String geminiApiKey = 'AIzaSyC2y9dsp2ODG_eUy3OFpwonN8MH8TRE9oY';
   
   // Auth endpoints
   static const String register = '$apiVersion/auth/register';

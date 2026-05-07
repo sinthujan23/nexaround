@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Categories - NexAround Admin{% endblock %}
+{% block page_title %}Categories{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+        <p style="color: var(--text-muted);">Organize attractions into logical groups.</p>
+    </div>
+    <button class="btn btn-primary" onclick="showAddCategory()">
+        <i data-lucide="plus"></i>
+        Add New Category
+    </button>
+</div>
+
+<div class="card">
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Icon</th>
+                    <th>Name</th>
+                    <th>Sort Order</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td>
+                        <div style="width: 32px; height: 32px; border-radius: 0.5rem; background: var(--bg-dark); display: flex; align-items: center; justify-content: center;">
+                            <i data-lucide="{{ category.icon or 'tag' }}" style="width: 16px; color: var(--primary-color);"></i>
+                        </div>
+                    </td>
+                    <td><span style="font-weight: 500;">{{ category.name }}</span></td>
+                    <td>{{ category.sort_order }}</td>
+                    <td>
+                        {% if category.is_active %}
+                        <span class="badge badge-success">Active</span>
+                        {% else %}
+                        <span class="badge" style="background: rgba(239, 68, 68, 0.1); color: var(--danger-color);">Inactive</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button onclick="editCategory('{{ category.id }}')" class="btn btn-outline" style="padding: 0.5rem;">
+                                <i data-lucide="edit-3" style="width: 16px;"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Simple Modal Overlay (Pure CSS/JS) -->
+<div id="categoryModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="card" style="width: 100%; max-width: 500px; animation: fadeIn 0.3s ease;">
+        <h3 id="modalTitle">Add Category</h3>
+        <form id="categoryForm">
+            <div class="form-group">
+                <label for="cat_name">Name</label>
+                <input type="text" id="cat_name" required>
+            </div>
+            <div class="form-group">
+                <label for="cat_icon">Icon Name (Lucide)</label>
+                <input type="text" id="cat_icon" placeholder="map-pin, camera, coffee...">
+            </div>
+            <div class="form-group">
+                <label for="cat_order">Sort Order</label>
+                <input type="number" id="cat_order" value="0">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem;">
+                <button type="button" class="btn btn-outline" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Category</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function showAddCategory() {
+        document.getElementById('modalTitle').innerText = 'Add Category';
+        document.getElementById('categoryModal').style.display = 'flex';
+    }
+
+    function closeModal() {
+        document.getElementById('categoryModal').style.display = 'none';
+    }
+
+    // Modal click-away
+    window.onclick = function(event) {
+        if (event.target == document.getElementById('categoryModal')) {
+            closeModal();
+        }
+    }
+</script>
+{% endblock %}

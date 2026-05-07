@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
-import 'package:nexaround_app/features/chat/data/repositories/chat_repository.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_event.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_state.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 class ArBloc extends Bloc<ArEvent, ArState> {
   final AttractionRepository _repository;
-  final ChatRepository _chatRepository;
+  final GeminiService _geminiService = GeminiService();
 
-  ArBloc(this._repository, this._chatRepository) : super(const ArState()) {
+  ArBloc(this._repository) : super(const ArState()) {
     on<ArSessionStarted>(_onSessionStarted);
     on<ArSessionStopped>(_onSessionStopped);
     on<ArUpdateLocation>(_onUpdateLocation);
@@ -18,6 +19,8 @@ class ArBloc extends Bloc<ArEvent, ArState> {
     on<ArFetchAIInsight>(_onFetchAIInsight);
     on<ArClearDetection>(_onClearDetection);
     on<ArVisualScan>(_onVisualScan);
+    on<ArToggleMappingMode>(_onToggleMappingMode);
+    on<ArSubmitDiscovery>(_onSubmitDiscovery);
   }
 
   Future<void> _onVisualScan(
@@ -117,7 +120,9 @@ class ArBloc extends Bloc<ArEvent, ArState> {
           'Rating: ${event.attraction.rating}/5 with ${event.attraction.reviewCount} reviews. '
           'Description: ${event.attraction.description ?? "No description available"}.';
 
-      final response = await _chatRepository.sendMessage(
+          'Description: ${event.attraction.description ?? "No description available"}.';
+
+      final response = await _geminiService.getResponse(
         'Tell me interesting facts and history about ${event.attraction.name}. '
         'Keep it concise (3-4 sentences) and engaging for a tourist visiting right now.',
         context: context,
@@ -134,5 +139,43 @@ class ArBloc extends Bloc<ArEvent, ArState> {
         isLoadingInsight: false,
       ));
     }
+  }
+
+  void _onToggleMappingMode(ArToggleMappingMode event, Emitter<ArState> emit) {
+    emit(state.copyWith(
+      isMappingMode: !state.isMappingMode,
+      clearDetected: true,
+      clearSelected: true,
+    ));
+  }
+
+  Future<void> _onSubmitDiscovery(
+    ArSubmitDiscovery event,
+    Emitter<ArState> emit,
+  ) async {
+    emit(state.copyWith(isSavingDiscovery: true));
+
+    // For now, simulate saving and add to local list for immediate feedback
+    // In a real app, this would call the repository
+    await Future.delayed(const Duration(seconds: 2));
+
+    final newAttraction = AttractionEntity(
+      id: 'discovery-${DateTime.now().millisecondsSinceEpoch}',
+      name: event.name,
+      description: event.description,
+      latitude: event.latitude,
+      longitude: event.longitude,
+      rating: 5.0,
+      reviewCount: 1,
+      photoUrls: [],
+      categoryName: event.categoryId,
+      createdAt: DateTime.now(),
+    );
+
+    emit(state.copyWith(
+      isSavingDiscovery: false,
+      isMappingMode: false,
+      attractions: [newAttraction, ...state.attractions],
+    ));
   }
 }

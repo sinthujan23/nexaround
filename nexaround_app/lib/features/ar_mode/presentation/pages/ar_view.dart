@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
+import 'package:nexaround_app/core/network/geocoding_service.dart';
+import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/geo_calculator.dart';
@@ -26,9 +28,25 @@ class ArView extends StatefulWidget {
 class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   StreamSubscription<Position>? _positionStream;
   CameraController? _cameraController;
+  late ObjectDetector _objectDetector;
   bool _cameraInitialized = false;
   bool _cameraError = false;
+  bool _isProcessing = false;
+  List<DetectedObject> _detectedObjects = [];
   String _currentAddress = 'Locating...';
+  
+  // Mapping Mode Controllers
+  final TextEditingController _placeNameController = TextEditingController();
+  final TextEditingController _descriptionController = TextEditingController();
+  String _selectedCategoryId = 'HERITAGE';
+
+  final List<Map<String, dynamic>> _discoveryCategories = [
+    {'id': 'HERITAGE', 'icon': Icons.account_balance_rounded, 'label': 'Heritage'},
+    {'id': 'DINING', 'icon': Icons.restaurant_rounded, 'label': 'Dining'},
+    {'id': 'VIEWPOINT', 'icon': Icons.photo_camera_rounded, 'label': 'Viewpoint'},
+    {'id': 'SECRET', 'icon': Icons.vpn_key_rounded, 'label': 'Secret Spot'},
+    {'id': 'NATURE', 'icon': Icons.park_rounded, 'label': 'Nature'},
+  ];
 
   late AnimationController _pulseController;
   late AnimationController _scanController;
@@ -39,6 +57,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _initializeDetector();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -53,6 +72,15 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       _initCamera();
       _startLocationTracking();
     }
+  }
+
+  void _initializeDetector() {
+    final options = ObjectDetectorOptions(
+      mode: DetectionMode.stream,
+      classifyObjects: true,
+      multipleObjects: true,
+    );
+    _objectDetector = ObjectDetector(options: options);
   }
 
   Future<void> _initCamera() async {
@@ -83,6 +111,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       await _cameraController!.initialize();
       if (mounted) {
         setState(() => _cameraInitialized = true);
+        _startDetectionStream();
       }
     } catch (e) {
       if (mounted) setState(() => _cameraError = true);
@@ -93,9 +122,68 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   void dispose() {
     _positionStream?.cancel();
     _cameraController?.dispose();
+    _objectDetector.close();
     _pulseController.dispose();
     _scanController.dispose();
     super.dispose();
+  }
+
+  void _startDetectionStream() {
+    _cameraController?.startImageStream((CameraImage image) {
+      if (_isProcessing) return;
+      _isProcessing = true;
+      _processImage(image);
+    });
+  }
+
+  Future<void> _processImage(CameraImage image) async {
+    final InputImage? inputImage = _inputImageFromCameraImage(image);
+    if (inputImage == null) {
+      _isProcessing = false;
+      return;
+    }
+
+    try {
+      final objects = await _objectDetector.processImage(inputImage);
+      if (mounted) {
+        setState(() {
+          _detectedObjects = objects;
+        });
+      }
+    } catch (e) {
+      debugPrint('ML Error: $e');
+    } finally {
+      await Future.delayed(const Duration(milliseconds: 100));
+      _isProcessing = false;
+    }
+  }
+
+  InputImage? _inputImageFromCameraImage(CameraImage image) {
+    final sensorOrientation = _cameraController!.description.sensorOrientation;
+    final InputImageRotation? rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
+    if (rotation == null) return null;
+
+    final InputImageFormat? format = InputImageFormatValue.fromRawValue(image.format.raw);
+    if (format == null || (format != InputImageFormat.yuv420 && format != InputImageFormat.bgra8888)) return null;
+
+    if (image.planes.length != 1 && format == InputImageFormat.bgra8888) return null;
+    if (image.planes.length != 3 && format == InputImageFormat.yuv420) return null;
+
+    final WriteBuffer allBytes = WriteBuffer();
+    for (final Plane plane in image.planes) {
+      allBytes.putUint8List(plane.bytes);
+    }
+    final bytes = allBytes.done().buffer.asUint8List();
+
+    return InputImage.fromBytes(
+      bytes: bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        format: format,
+        bytesPerRow: image.planes[0].bytesPerRow,
+      ),
+    );
   }
 
   Future<void> _startLocationTracking() async {
@@ -151,77 +239,170 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     }
   }
 
+  Future<void> _onMappingToggled(bool isMapping) async {
+    if (isMapping) {
+      // Get current position for geocoding
+      try {
+        final pos = await Geolocator.getCurrentPosition();
+        final service = GeocodingService();
+        final name = await service.getPlaceNameFromCoordinates(pos.latitude, pos.longitude);
+        if (mounted && name != null) {
+          setState(() {
+            _placeNameController.text = name;
+          });
+        }
+      } catch (_) {}
+    } else {
+      _placeNameController.clear();
+      _descriptionController.clear();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: BlocBuilder<ArBloc, ArState>(
-        builder: (context, state) {
-          return Stack(
-            children: [
-              // Layer 1: Camera Feed
-              _buildCameraFeed(),
+      body: BlocListener<ArBloc, ArState>(
+        listenWhen: (prev, curr) => prev.isMappingMode != curr.isMappingMode,
+        listener: (context, state) => _onMappingToggled(state.isMappingMode),
+        child: BlocBuilder<ArBloc, ArState>(
+          builder: (context, state) {
+            return Stack(
+              children: [
+                // Layer 1: Camera Feed
+                _buildCameraFeed(),
 
-              // Layer 2: Subtle scan overlay
-              _buildScanOverlay(),
+                // Layer 2: Subtle scan overlay
+                _buildScanOverlay(),
 
-              // Layer 3: AR POI markers in 3D space
-              if (state.attractions.isNotEmpty) ..._buildArPOI(state),
+                // Layer 3: AR POI markers in 3D space
+                if (state.attractions.isNotEmpty) ..._buildArPOI(state),
 
-              // Layer 4: Top-Left — Place Name Banner
-              if (state.detectedAttraction != null) _buildPlaceNameBanner(state),
+                // Layer 4: Top-Left — Place Name Banner
+                if (state.detectedAttraction != null) _buildPlaceNameBanner(state),
 
-              // Layer 5: Left — Info Pills
-              if (state.detectedAttraction != null) _buildInfoPills(state),
+                // Layer 5: Left — Info Pills
+                if (state.detectedAttraction != null) _buildInfoPills(state),
 
-              // Layer 6: Right — Category Icons
-              _buildCategoryIcons(state),
+                // Layer 6: Right — Category Icons
+                _buildCategoryIcons(state),
 
-              // Layer 7: Top-Right — Status Bar
-              _buildStatusBar(state),
+                // Layer 7: Top-Right — Status Bar
+                _buildStatusBar(state),
 
-              // Layer 8: Bottom — Distance + Address
-              if (state.detectedAttraction != null) _buildDistanceBanner(state),
+                // Layer 8: Bottom — Distance + Address
+                if (state.detectedAttraction != null) _buildDistanceBanner(state),
 
-              // Layer 9: Bottom Dock
-              _buildBottomDock(state),
+                // Layer 9: Bottom Dock
+                _buildBottomDock(state),
 
-              // Layer 10: AI Vision Result Overlay
-              if (state.identifiedObject != null) _buildVisionResultOverlay(state),
+                // Layer 10: AI Vision Result Overlay
+                if (state.identifiedObject != null) _buildVisionResultOverlay(state),
 
-              // Layer 11: Full Detail Sheet
-              if (state.selectedAttraction != null) _buildDetailSheet(state),
+                // Layer 11: Full Detail Sheet
+                if (state.selectedAttraction != null) _buildDetailSheet(state),
 
-              // Loading
-              if (state.status == ArStatus.loading || state.isScanning)
-                const Center(child: CircularProgressIndicator(color: Colors.white)),
-            ],
-          );
-        },
+                // Layer 12: Discovery Crosshair (Only in Mapping Mode)
+                if (state.isMappingMode) _buildDiscoveryCrosshair(),
+
+                // Layer 13: Mapping Form Overlay
+                if (state.isMappingMode) _buildMappingOverlay(state),
+
+                // Loading
+                if (state.status == ArStatus.loading || state.isScanning)
+                  const Center(child: CircularProgressIndicator(color: Colors.white)),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
 
   // ─── Camera ────────────────────────────────────────────
   Widget _buildCameraFeed() {
-    if (_cameraInitialized && _cameraController != null) {
-      return SizedBox.expand(child: CameraPreview(_cameraController!));
-    }
-    // Fallback for web/simulator: Gradient background
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF1A237E).withOpacity(0.8),
-            const Color(0xFF0D47A1).withOpacity(0.6),
-            const Color(0xFF00695C).withOpacity(0.4),
-          ],
+    if (!_cameraInitialized || _cameraController == null) {
+      // Fallback for web/simulator: Gradient background
+      return Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              const Color(0xFF1A237E).withOpacity(0.8),
+              const Color(0xFF0D47A1).withOpacity(0.6),
+              const Color(0xFF00695C).withOpacity(0.4),
+            ],
+          ),
         ),
-      ),
-      child: CustomPaint(painter: _ArGridPainter(), child: const SizedBox.expand()),
-    );
+        child: CustomPaint(painter: _ArGridPainter(), child: const SizedBox.expand()),
+      );
+    }
+    return SizedBox.expand(child: CameraPreview(_cameraController!));
+  }
+
+  List<Widget> _buildDetectedObjects() {
+    if (_detectedObjects.isEmpty || _cameraController == null || !_cameraInitialized) return [];
+
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+    
+    final previewH = _cameraController!.value.previewSize!.width;
+    final previewW = _cameraController!.value.previewSize!.height;
+    
+    final scaleX = screenW / previewW;
+    final scaleY = screenH / previewH;
+
+    return _detectedObjects.map((obj) {
+      final rect = obj.boundingBox;
+      String label = 'OBJECT';
+      if (obj.labels.isNotEmpty) {
+        label = obj.labels.first.text.toUpperCase();
+      }
+
+      return Positioned(
+        left: rect.left * scaleX,
+        top: rect.top * scaleY,
+        child: Container(
+          width: rect.width * scaleX,
+          height: rect.height * scaleY,
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.neonGreen, width: 2),
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(color: AppColors.neonGreen.withOpacity(0.3), blurRadius: 15),
+            ],
+          ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                top: -30,
+                left: 0,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.neonGreen,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.hub_rounded, color: Colors.black, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        label,
+                        style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
   }
 
   Widget _buildScanOverlay() {
@@ -559,35 +740,46 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
           _buildDockButton(Icons.arrow_back_rounded, 'Back', () => Navigator.pop(context)),
           const SizedBox(width: 16),
           // AR Mode (active)
-          _buildDockButton(Icons.view_in_ar_rounded, 'AR', null, isActive: true),
+          _buildDockButton(
+            Icons.view_in_ar_rounded, 
+            'AR', 
+            state.isMappingMode ? () => context.read<ArBloc>().add(ArToggleMappingMode()) : null, 
+            isActive: !state.isMappingMode
+          ),
           const SizedBox(width: 16),
-          // AI Discovery Scan Button (Central)
+          // Central Button
           GestureDetector(
-            onTap: state.isScanning ? null : _captureAndScan,
+            onTap: state.isMappingMode 
+              ? null // Handled by the overlay "Lock" button
+              : (state.isScanning ? null : _captureAndScan),
             child: Container(
               width: 76, height: 76,
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: state.isMappingMode ? AppColors.secondary : AppColors.primary,
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: AppColors.primary.withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 10)),
+                  BoxShadow(
+                    color: (state.isMappingMode ? AppColors.secondary : AppColors.primary).withOpacity(0.4), 
+                    blurRadius: 20, 
+                    offset: const Offset(0, 10)
+                  ),
                 ],
                 border: Border.all(color: Colors.white, width: 3),
               ),
               child: Icon(
-                state.isScanning ? Icons.sync_rounded : Icons.camera_rounded, 
-                color: Colors.white, 
+                state.isMappingMode ? Icons.add_location_alt_rounded : (state.isScanning ? Icons.sync_rounded : Icons.camera_rounded), 
+                color: state.isMappingMode ? Colors.black : Colors.white, 
                 size: 32
               ),
             ),
           ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05)),
           const SizedBox(width: 16),
-          // AI Chat / Insight
+          // Mapping Mode Toggle
           _buildDockButton(
-            Icons.auto_awesome_rounded, 'AI',
-            state.detectedAttraction != null 
-              ? () => context.read<ArBloc>().add(ArFetchAIInsight(state.detectedAttraction!))
-              : null,
+            Icons.map_rounded, 
+            'Map', 
+            () => context.read<ArBloc>().add(ArToggleMappingMode()),
+            isActive: state.isMappingMode
           ),
         ],
       ),
@@ -905,13 +1097,14 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
                         onPressed: () {
                           Navigator.push(
                             context,
-                            MaterialPageRoute(builder: (_) => AttractionDetailPage(
-                              name: point.name,
-                              category: point.categoryName ?? 'Attraction',
-                              rating: point.rating,
-                              distance: '${((point.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-                              emoji: '🏛',
-                            )),
+                              MaterialPageRoute(builder: (_) => AttractionDetailPage(
+                                name: point.name,
+                                category: point.categoryName ?? 'Attraction',
+                                rating: point.rating,
+                                distance: '${((point.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                                emoji: '🏛',
+                                imageUrl: point.photoUrls.isNotEmpty ? point.photoUrls.first : '',
+                              )),
                           );
                         },
                       ),
@@ -924,6 +1117,131 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
         ),
       ),
     ).animate().slideY(begin: 1, end: 0, duration: 400.ms, curve: Curves.easeOutQuart);
+  }
+  Widget _buildDiscoveryCrosshair() {
+    return Center(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 100, height: 100,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.white24, width: 2),
+              shape: BoxShape.circle,
+            ),
+          ).animate(onPlay: (c) => c.repeat()).scale(begin: const Offset(0.8, 0.8), end: const Offset(1.2, 1.2), duration: 2.seconds),
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.secondary, width: 2),
+              shape: BoxShape.circle,
+            ),
+          ),
+          Container(width: 2, height: 20, color: AppColors.secondary),
+          Container(width: 20, height: 2, color: AppColors.secondary),
+        ],
+      ),
+    ).animate().fade().scale(begin: const Offset(2, 2));
+  }
+
+  Widget _buildMappingOverlay(ArState state) {
+    return Positioned(
+      bottom: 200,
+      left: 20,
+      right: 20,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.7),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: Colors.white10),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'DISCOVER NEW PLACE',
+                  style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _placeNameController,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Place Name',
+                    hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+                    filled: true,
+                    fillColor: Colors.white.withOpacity(0.05),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 40,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _discoveryCategories.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (context, index) {
+                      final cat = _discoveryCategories[index];
+                      final isSelected = _selectedCategoryId == cat['id'];
+                      return GestureDetector(
+                        onTap: () => setState(() => _selectedCategoryId = cat['id']),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          decoration: BoxDecoration(
+                            color: isSelected ? AppColors.secondary : Colors.white10,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Center(
+                            child: Text(
+                              cat['label'],
+                              style: TextStyle(
+                                color: isSelected ? Colors.black : Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: state.isSavingDiscovery ? null : () {
+                      context.read<ArBloc>().add(ArSubmitDiscovery(
+                        name: _placeNameController.text,
+                        description: _descriptionController.text,
+                        categoryId: _selectedCategoryId,
+                        latitude: state.currentLatitude,
+                        longitude: state.currentLongitude,
+                      ));
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.secondary,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: state.isSavingDiscovery
+                      ? const CircularProgressIndicator(color: Colors.black)
+                      : const Text('LOCK SPATIAL ANCHOR', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate().slideY(begin: 0.5, end: 0);
   }
 }
 

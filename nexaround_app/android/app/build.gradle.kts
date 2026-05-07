@@ -17,6 +17,7 @@ android {
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_17.toString()
+        freeCompilerArgs = freeCompilerArgs + "-Xskip-metadata-version-check"
     }
 
     defaultConfig {

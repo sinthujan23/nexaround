@@ -1,7 +1,13 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.admin.router import router as admin_router
+from app.services.google_lens_service import google_lens_service
+
+from app.core.database import engine, Base
 
 app = FastAPI(
     title="NexAround API",
@@ -10,6 +16,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+@app.on_event("startup")
+async def startup():
+    # Create tables if they don't exist
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+# Static files
+app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # CORS — allow all origins during development
 app.add_middleware(
@@ -20,8 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include API routes
+# Include routes
 app.include_router(api_router)
+app.include_router(admin_router)
 
 
 @app.get("/", tags=["Health"])
@@ -45,3 +61,13 @@ async def health_check():
             "attractions": "active",
         },
     }
+
+@app.post("/api/lens/identify")
+async def identify_image(file: UploadFile = File(...)):
+    """Identify an image using Google Lens."""
+    try:
+        image_bytes = await file.read()
+        result = google_lens_service.identify(image_bytes)
+        return JSONResponse(content=result)
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})

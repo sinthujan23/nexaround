@@ -1,11 +1,17 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/register_page.dart';
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -28,277 +34,293 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _handleLogin() {
-    setState(() => _isLoading = true);
-    // Simulate login delay
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, animation, __) => HomePage(),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
-    });
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter email and password')),
+      );
+      return;
+    }
+
+    context.read<AuthBloc>().add(AuthLoginRequested(
+          email: email,
+          password: password,
+        ));
   }
 
   void _handleSocialLogin(String provider) {
-    setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 1200), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, animation, __) => HomePage(),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
-    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('$provider login coming soon')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Background glow
-          Positioned(
-            top: -100,
-            right: -80,
-            child: Container(
-              width: 300,
-              height: 300,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.primary.withOpacity(0.08),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) async {
+        if (state is AuthAuthenticated) {
+          await CacheService.setLoggedIn(true);
+          if (!mounted) return;
+          
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (_, animation, __) => HomePage(),
+              transitionsBuilder: (_, animation, __, child) =>
+                  FadeTransition(opacity: animation, child: child),
+              transitionDuration: const Duration(milliseconds: 800),
             ),
-          ),
-          Positioned(
-            bottom: -80,
-            left: -60,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.secondary.withOpacity(0.06),
-                    Colors.transparent,
-                  ],
+          );
+        } else if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: AppColors.error),
+          );
+        }
+      },
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Stack(
+              children: [
+                // Background glow
+                Positioned(
+                  top: -100,
+                  right: -80,
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primary.withOpacity(0.08),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-
-          // Content
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    _buildLogo(),
-                    const SizedBox(height: 32),
-
-                    // Title
-                    const Text(
-                      'Welcome Back',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -0.5,
+                Positioned(
+                  bottom: -80,
+                  left: -60,
+                  child: Container(
+                    width: 250,
+                    height: 250,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.secondary.withOpacity(0.06),
+                          Colors.transparent,
+                        ],
                       ),
-                    ).animate().fade().slideY(begin: 0.2, end: 0),
-
-                    const SizedBox(height: 8),
-                    Text(
-                      'Sign in to explore the extraordinary',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: AppColors.textSecondary,
-                      ),
-                    ).animate().fade(delay: 200.ms),
-
-                    const SizedBox(height: 48),
-
-                    // Social login buttons
-                    _buildSocialButton(
-                      icon: Icons.g_mobiledata_rounded,
-                      label: 'Continue with Google',
-                      onTap: () => _handleSocialLogin('google'),
-                      delay: 300,
                     ),
-                    const SizedBox(height: 14),
-                    _buildSocialButton(
-                      icon: Icons.apple_rounded,
-                      label: 'Continue with Apple',
-                      onTap: () => _handleSocialLogin('apple'),
-                      delay: 400,
-                    ),
+                  ),
+                ),
 
-                    const SizedBox(height: 32),
+                // Content
+                SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          _buildLogo(),
+                          const SizedBox(height: 32),
 
-                    // Divider
-                    Row(
-                      children: [
-                        Expanded(child: Container(height: 1, color: AppColors.border)),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text(
-                            'OR',
+                          // Title
+                          const Text(
+                            'Welcome Back',
                             style: TextStyle(
-                              color: AppColors.textTertiary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 1,
+                              fontSize: 32,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.5,
                             ),
-                          ),
-                        ),
-                        Expanded(child: Container(height: 1, color: AppColors.border)),
-                      ],
-                    ),
+                          ).animate().fade().slideY(begin: 0.2, end: 0),
 
-                    const SizedBox(height: 32),
-
-                    // Email field
-                    _buildTextField(
-                      controller: _emailController,
-                      hint: 'Email address',
-                      icon: Icons.email_outlined,
-                    ).animate().fade(delay: 500.ms).slideX(begin: -0.05, end: 0),
-
-                    const SizedBox(height: 16),
-
-                    // Password field
-                    _buildTextField(
-                      controller: _passwordController,
-                      hint: 'Password',
-                      icon: Icons.lock_outline_rounded,
-                      obscure: _obscurePassword,
-                      suffix: IconButton(
-                        icon: Icon(
-                          _obscurePassword
-                              ? Icons.visibility_off_outlined
-                              : Icons.visibility_outlined,
-                          color: AppColors.textTertiary,
-                          size: 20,
-                        ),
-                        onPressed: () =>
-                            setState(() => _obscurePassword = !_obscurePassword),
-                      ),
-                    ).animate().fade(delay: 600.ms).slideX(begin: -0.05, end: 0),
-
-                    const SizedBox(height: 12),
-
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {},
-                        child: Text(
-                          'Forgot Password?',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Sign In button
-                    _buildSignInButton(),
-
-                    const SizedBox(height: 32),
-
-                    // Create account
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'New to NexAround? ',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const RegisterPage(),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Sign in to explore the extraordinary',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: AppColors.textSecondary,
                             ),
+                          ).animate().fade(delay: 200.ms),
+
+                          const SizedBox(height: 48),
+
+                          // Social login buttons
+                          _buildSocialButton(
+                            icon: Icons.g_mobiledata_rounded,
+                            label: 'Continue with Google',
+                            onTap: () => _handleSocialLogin('google'),
+                            delay: 300,
                           ),
-                          child: ShaderMask(
-                            shaderCallback: (bounds) =>
-                                AppColors.primaryGradient.createShader(
-                              Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                          const SizedBox(height: 14),
+                          _buildSocialButton(
+                            icon: Icons.apple_rounded,
+                            label: 'Continue with Apple',
+                            onTap: () => _handleSocialLogin('apple'),
+                            delay: 400,
+                          ),
+
+                          const SizedBox(height: 32),
+
+                          // Divider
+                          Row(
+                            children: [
+                              Expanded(child: Container(height: 1, color: AppColors.border)),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  'OR',
+                                  style: TextStyle(
+                                    color: AppColors.textTertiary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ),
+                              Expanded(child: Container(height: 1, color: AppColors.border)),
+                            ],
+                          ),
+
+                          const SizedBox(height: 32),
+
+                          // Email field
+                          _buildTextField(
+                            controller: _emailController,
+                            hint: 'Email address',
+                            icon: Icons.email_outlined,
+                          ).animate().fade(delay: 500.ms).slideX(begin: -0.05, end: 0),
+
+                          const SizedBox(height: 16),
+
+                          // Password field
+                          _buildTextField(
+                            controller: _passwordController,
+                            hint: 'Password',
+                            icon: Icons.lock_outline_rounded,
+                            obscure: _obscurePassword,
+                            suffix: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                color: AppColors.textTertiary,
+                                size: 20,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _obscurePassword = !_obscurePassword),
                             ),
-                            child: const Text(
-                              'Create Account',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
+                          ).animate().fade(delay: 600.ms).slideX(begin: -0.05, end: 0),
+
+                          const SizedBox(height: 12),
+
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () {},
+                              child: Text(
+                                'Forgot Password?',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
 
-          // Loading overlay
-          if (_isLoading)
-            Positioned.fill(
-              child: Container(
-                color: AppColors.background.withOpacity(0.8),
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 48,
-                        height: 48,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-                        ),
+                          const SizedBox(height: 24),
+
+                          // Sign In button
+                          _buildSignInButton(isLoading),
+
+                          const SizedBox(height: 32),
+
+                          // Create account
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'New to NexAround? ',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const RegisterPage(),
+                                  ),
+                                ),
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      AppColors.primaryGradient.createShader(
+                                    Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                                  ),
+                                  child: const Text(
+                                    'Create Account',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 20),
-                      Text(
-                        'AUTHENTICATING...',
-                        style: TextStyle(
-                          color: AppColors.textTertiary,
-                          fontSize: 11,
-                          letterSpacing: 3,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+
+                // Loading overlay
+                if (isLoading)
+                  Positioned.fill(
+                    child: Container(
+                      color: AppColors.background.withOpacity(0.8),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                              ),
+                            ),
+                            const SizedBox(height: 20),
+                            Text(
+                              'AUTHENTICATING...',
+                              style: TextStyle(
+                                color: AppColors.textTertiary,
+                                fontSize: 11,
+                                letterSpacing: 3,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -390,7 +412,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  Widget _buildSignInButton() {
+  Widget _buildSignInButton(bool isLoading) {
     return SizedBox(
       width: double.infinity,
       height: 58,
@@ -407,7 +429,7 @@ class _LoginPageState extends State<LoginPage> {
           ],
         ),
         child: ElevatedButton(
-          onPressed: _isLoading ? null : _handleLogin,
+          onPressed: isLoading ? null : _handleLogin,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,

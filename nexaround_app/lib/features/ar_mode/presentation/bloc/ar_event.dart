@@ -65,3 +65,24 @@ class ArVisualScan extends ArEvent {
   @override
   List<Object?> get props => [imageBytes];
 }
+
+class ArToggleMappingMode extends ArEvent {}
+
+class ArSubmitDiscovery extends ArEvent {
+  final String name;
+  final String description;
+  final String categoryId;
+  final double latitude;
+  final double longitude;
+
+  const ArSubmitDiscovery({
+    required this.name,
+    required this.description,
+    required this.categoryId,
+    required this.latitude,
+    required this.longitude,
+  });
+
+  @override
+  List<Object?> get props => [name, description, categoryId, latitude, longitude];
+}

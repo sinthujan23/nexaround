@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/onboarding_page.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 
 class AnimatedSplashScreen extends StatefulWidget {
   const AnimatedSplashScreen({super.key});
@@ -31,21 +35,20 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
       duration: const Duration(seconds: 6),
     )..repeat();
 
-    Future.delayed(const Duration(milliseconds: 3500), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                const OnboardingPage(),
-            transitionsBuilder:
-                (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 1200),
-          ),
-        );
-      }
-    });
+    _navigateToNext();
+  }
+
+  void _navigateToNext() async {
+    await Future.delayed(const Duration(milliseconds: 3500));
+    if (!mounted) return;
+
+    if (CacheService.isFirstTime()) {
+      context.go('/onboarding');
+    } else {
+      // Go to home - GoRouter's redirect logic will handle 
+      // sending them to /login if the session is invalid
+      context.go('/home');
+    }
   }
 
   @override

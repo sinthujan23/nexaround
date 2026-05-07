@@ -78,4 +78,29 @@ class AttractionModel extends AttractionEntity {
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'history': history,
+      'latitude': latitude,
+      'longitude': longitude,
+      'category_id': categoryId,
+      'category_name': categoryName,
+      'address': address,
+      'opening_hours': openingHours,
+      'entry_fee': entryFee,
+      'currency': currency,
+      'rating': rating,
+      'review_count': reviewCount,
+      'photo_urls': photoUrls,
+      'tags': tags,
+      'geofence_radius_m': geofenceRadiusM,
+      'distance_m': distanceM,
+      'is_active': isActive,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
 }

@@ -1,59 +1,93 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
+import 'dart:convert';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
-          child: Column(
-            children: [
-              // Header
-              _buildProfileHeader(context),
-              const SizedBox(height: 28),
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        if (state is AuthAuthenticated) {
+          final user = state.user;
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
+                child: Column(
+                  children: [
+                    // Header
+                    _buildProfileHeader(context, user),
+                    const SizedBox(height: 28),
 
-              // Stats row
-              _buildStatsRow(),
-              const SizedBox(height: 28),
+                    // Stats row
+                    _buildStatsRow(),
+                    const SizedBox(height: 28),
 
-              // Saved Places
-              _buildSection('Saved Places', Icons.bookmark_rounded, [
-                _buildSavedPlace('Sigiriya Rock Fortress', '🏛', 4.8, 'Culture'),
-                _buildSavedPlace('Ministry of Crab', '🦀', 4.8, 'Restaurant'),
-                _buildSavedPlace('Lotus Temple', '🪷', 4.9, 'Temple'),
-              ]),
-              const SizedBox(height: 24),
+                    // Saved Places
+                    ValueListenableBuilder<int>(
+                      valueListenable: CacheService.savedPlacesNotifier,
+                      builder: (context, _, __) {
+                        return _buildSection('Saved Places', Icons.bookmark_rounded, [
+                          if (CacheService.getSavedPlaceJsons().isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(child: Text('No saved places yet', style: TextStyle(color: AppColors.textTertiary))),
+                            )
+                          else
+                            ...CacheService.getSavedPlaceJsons().map((jsonStr) {
+                              final attraction = AttractionModel.fromJson(json.decode(jsonStr));
+                              return _buildSavedPlace(
+                                attraction.name, 
+                                attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛', 
+                                attraction.rating, 
+                                attraction.categoryName ?? 'Attraction'
+                              );
+                            }),
+                        ]);
+                      },
+                    ),
+                    const SizedBox(height: 24),
 
-              // Completed Trips
-              _buildSection('Completed Trips', Icons.flight_takeoff_rounded, [
-                _buildTripCard('Sri Lanka Explorer', '🇱🇰', 'Dec 2025', '12 places visited'),
-                _buildTripCard('Bali Adventure', '🇮🇩', 'Aug 2025', '8 places visited'),
-              ]),
-              const SizedBox(height: 24),
+                    // Preferences 
+                    _buildPreferencesSection(user.preferences),
+                    const SizedBox(height: 24),
 
-              // Preferences 
-              _buildPreferencesSection(),
-              const SizedBox(height: 24),
-
-              // Settings menu
-              _buildSettingsMenu(context),
-            ],
-          ),
-        ),
-      ),
+                    // Settings menu
+                    _buildSettingsMenu(context, user),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }
+        return const Scaffold(
+          backgroundColor: AppColors.background,
+          body: Center(child: CircularProgressIndicator()),
+        );
+      },
     );
   }
 
-  Widget _buildProfileHeader(BuildContext context) {
+  Widget _buildProfileHeader(BuildContext context, dynamic user) {
+    final String name = user.displayName?.toString() ?? '';
+    final initials = name.isNotEmpty 
+        ? name.split(' ').where((String e) => e.isNotEmpty).map((String e) => e[0]).take(2).join('').toUpperCase()
+        : '??';
+
     return Column(
       children: [
         // Avatar + edit
@@ -74,16 +108,31 @@ class ProfilePage extends StatelessWidget {
                   ),
                 ],
               ),
-              child: const Center(
-                child: Text(
-                  'AK',
-                  style: TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
+              child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(50),
+                    child: CachedNetworkImage(
+                      imageUrl: user.avatarUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(color: AppColors.surfaceVariant),
+                      errorWidget: (context, url, error) => Center(
+                        child: Text(
+                          initials,
+                          style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  )
+                : Center(
+                    child: Text(
+                      initials,
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
-                ),
-              ),
             ),
             Container(
               width: 32,
@@ -99,9 +148,9 @@ class ProfilePage extends StatelessWidget {
         ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
         const SizedBox(height: 16),
 
-        const Text(
-          'Alex Karunarathne',
-          style: TextStyle(
+        Text(
+          user.displayName?.toString() ?? 'Guest User',
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w700,
             color: AppColors.textPrimary,
@@ -110,8 +159,8 @@ class ProfilePage extends StatelessWidget {
 
         const SizedBox(height: 4),
         Text(
-          'alex.k@email.com',
-          style: TextStyle(fontSize: 14, color: AppColors.textTertiary),
+          user.email?.toString() ?? '',
+          style: const TextStyle(fontSize: 14, color: AppColors.textTertiary),
         ).animate().fade(delay: 300.ms),
 
         const SizedBox(height: 12),
@@ -125,13 +174,13 @@ class ProfilePage extends StatelessWidget {
               BoxShadow(color: AppColors.secondary.withOpacity(0.3), blurRadius: 12),
             ],
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.diamond_rounded, color: Colors.white, size: 14),
-              const SizedBox(width: 6),
-              const Text(
-                'Explorer Level 5',
+              Icon(Icons.diamond_rounded, color: Colors.white, size: 14),
+              SizedBox(width: 6),
+              Text(
+                'Explorer Level 1',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.5),
               ),
             ],
@@ -142,15 +191,16 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildStatsRow() {
+    final savedCount = CacheService.getSavedPlaceJsons().length;
     return Row(
       children: [
-        _buildStat('23', 'Places\nVisited', AppColors.primary),
+        _buildStat('0', 'Places\nVisited', AppColors.primary),
         const SizedBox(width: 10),
-        _buildStat('3', 'Trips\nCompleted', AppColors.secondary),
+        _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
         const SizedBox(width: 10),
-        _buildStat('15', 'Places\nSaved', AppColors.neonGreen),
+        _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen),
         const SizedBox(width: 10),
-        _buildStat('4.8', 'Avg\nRating', AppColors.warning),
+        _buildStat('--', 'Avg\nRating', AppColors.warning),
       ],
     ).animate().fade(delay: 300.ms);
   }
@@ -169,7 +219,7 @@ class ProfilePage extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               label,
-              style: TextStyle(fontSize: 10, color: AppColors.textTertiary, height: 1.3),
+              style: const TextStyle(fontSize: 10, color: AppColors.textTertiary, height: 1.3),
               textAlign: TextAlign.center,
             ),
           ],
@@ -210,64 +260,27 @@ class ProfilePage extends StatelessWidget {
                 Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                 Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 12, color: AppColors.warning),
+                    const Icon(Icons.star_rounded, size: 12, color: AppColors.warning),
                     const SizedBox(width: 3),
-                    Text('$rating', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                    Text('$rating', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                     const SizedBox(width: 8),
-                    Text(type, style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    Text(type, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
                   ],
                 ),
               ],
             ),
           ),
-          Icon(Icons.bookmark_rounded, size: 18, color: AppColors.primary),
+          const Icon(Icons.bookmark_rounded, size: 18, color: AppColors.primary),
         ],
       ),
     );
   }
 
-  Widget _buildTripCard(String name, String flag, String date, String summary) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              gradient: AppColors.secondaryGradient.scale(0.5),
-            ),
-            child: Center(child: Text(flag, style: const TextStyle(fontSize: 26))),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.calendar_today_rounded, size: 11, color: AppColors.textTertiary),
-                    const SizedBox(width: 4),
-                    Text(date, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                    const SizedBox(width: 10),
-                    Text(summary, style: TextStyle(fontSize: 12, color: AppColors.primary)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.textTertiary),
-        ],
-      ),
-    );
-  }
+  Widget _buildPreferencesSection(Map<String, dynamic> preferences) {
+    final List<String> prefs = preferences.isNotEmpty 
+      ? preferences.keys.take(4).toList() 
+      : ['🍜 Food', '🏛 Culture', '🌿 Nature', '🏔 Adventure'];
 
-  Widget _buildPreferencesSection() {
-    final prefs = ['🍜 Food', '🏛 Culture', '🌿 Nature', '🏔 Adventure'];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -295,14 +308,15 @@ class ProfilePage extends StatelessWidget {
         const SizedBox(height: 10),
         TextButton.icon(
           onPressed: () {},
-          icon: Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
-          label: Text('Edit Preferences', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          icon: const Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
+          label: const Text('Edit Preferences', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600)),
         ),
       ],
     );
   }
 
-  Widget _buildSettingsMenu(BuildContext context) {
+  Widget _buildSettingsMenu(BuildContext context, dynamic user) {
+    final language = user.language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -314,8 +328,13 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        _buildMenuItem(Icons.language_rounded, 'Language', 'English'),
-        _buildMenuItem(Icons.attach_money_rounded, 'Currency', 'LKR (රු)'),
+        _buildMenuItem(Icons.language_rounded, 'Language', language.toUpperCase()),
+        _buildMenuItem(
+          Icons.attach_money_rounded,
+          'Currency',
+          user.preferences['currency']?.toString().toUpperCase() ?? 'USD',
+          onTap: () => _showCurrencyPicker(context, user),
+        ),
         _buildMenuItem(Icons.notifications_rounded, 'Notifications', 'On'),
         _buildMenuItem(Icons.dark_mode_rounded, 'Dark Mode', 'Always'),
         _buildMenuItem(Icons.privacy_tip_rounded, 'Privacy', ''),
@@ -336,8 +355,8 @@ class ProfilePage extends StatelessWidget {
                   (route) => false,
                 );
               },
-              icon: Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
-              label: Text('Sign Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+              icon: const Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
+              label: const Text('Sign Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
             ),
           ),
         ),
@@ -345,25 +364,89 @@ class ProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String label, String value) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        color: AppColors.surfaceVariant,
-        border: Border.all(color: AppColors.border),
+  void _showCurrencyPicker(BuildContext context, dynamic user) {
+    final currencies = [
+      {'code': 'USD', 'name': 'US Dollar', 'symbol': r'$'},
+      {'code': 'EUR', 'name': 'Euro', 'symbol': '€'},
+      {'code': 'GBP', 'name': 'British Pound', 'symbol': '£'},
+      {'code': 'LKR', 'name': 'Sri Lankan Rupee', 'symbol': 'රු'},
+      {'code': 'INR', 'name': 'Indian Rupee', 'symbol': '₹'},
+      {'code': 'JPY', 'name': 'Japanese Yen', 'symbol': '¥'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Select Currency', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 20),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: currencies.length,
+                itemBuilder: (context, index) {
+                  final c = currencies[index];
+                  final isSelected = (user.preferences['currency'] ?? 'USD') == c['code'];
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(child: Text(c['symbol']!, style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textSecondary, fontWeight: FontWeight.bold))),
+                    ),
+                    title: Text(c['name']!, style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textPrimary, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
+                    trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
+                    onTap: () {
+                      final newPrefs = Map<String, dynamic>.from(user.preferences);
+                      newPrefs['currency'] = c['code'];
+                      context.read<AuthBloc>().add(UpdateUserPreferences(newPrefs));
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: AppColors.textSecondary),
-          const SizedBox(width: 14),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
-          if (value.isNotEmpty)
-            Text(value, style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
-          const SizedBox(width: 8),
-          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.textMuted),
-        ],
+    );
+  }
+
+  Widget _buildMenuItem(IconData icon, String label, String value, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(14),
+          color: AppColors.surfaceVariant,
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: AppColors.textSecondary),
+            const SizedBox(width: 14),
+            Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
+            if (value.isNotEmpty)
+              Text(value, style: const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.textMuted),
+          ],
+        ),
       ),
     );
   }

@@ -111,3 +111,36 @@ class AttractionService:
         # Re-fetch to load relationship
         full_attraction = await self.repo.get_by_id(attraction.id)
         return self._map_to_response(full_attraction)
+
+    async def update_attraction(self, attraction_id: uuid.UUID, data: dict) -> AttractionResponse:
+        """Update an existing attraction."""
+        attraction = await self.repo.get_by_id(attraction_id)
+        if not attraction:
+            raise NotFoundException(detail="Attraction not found")
+        
+        # Update fields if present in data
+        if "name" in data: attraction.name = data["name"]
+        if "description" in data: attraction.description = data["description"]
+        if "history" in data: attraction.history = data["history"]
+        if "latitude" in data and "longitude" in data:
+            attraction.location = create_point(data["latitude"], data["longitude"])
+        if "category_id" in data: attraction.category_id = data["category_id"]
+        if "address" in data: attraction.address = data["address"]
+        if "opening_hours" in data: attraction.opening_hours = data["opening_hours"]
+        if "entry_fee" in data: attraction.entry_fee = data["entry_fee"]
+        if "currency" in data: attraction.currency = data["currency"]
+        if "tags" in data: attraction.tags = data["tags"]
+        if "geofence_radius_m" in data: attraction.geofence_radius_m = data["geofence_radius_m"]
+        if "is_active" in data: attraction.is_active = data["is_active"]
+        
+        updated_attraction = await self.repo.update(attraction)
+        return self._map_to_response(updated_attraction)
+
+    async def delete_attraction(self, attraction_id: uuid.UUID) -> bool:
+        """Delete an attraction."""
+        attraction = await self.repo.get_by_id(attraction_id)
+        if not attraction:
+            raise NotFoundException(detail="Attraction not found")
+        
+        await self.repo.delete(attraction)
+        return True

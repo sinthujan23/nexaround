@@ -1,12 +1,25 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
-import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/utils/place_image_helper.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/currency_service.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'dart:async';
 
 class LivingMapPage extends StatefulWidget {
   const LivingMapPage({super.key});
@@ -20,22 +33,13 @@ class _LivingMapPageState extends State<LivingMapPage>
   late AnimationController _pulseController;
   bool _showProximityAlert = false;
   String _selectedCategory = 'All';
+  double? _userLatitude;
+  double? _userLongitude;
+  StreamSubscription<geo.Position>? _positionSubscription;
 
-  final List<String> _categories = [
-    'All', 'Attractions', 'Restaurants', 'Hotels', 'Cafés', 'Shopping'
-  ];
+  // We'll use the state data instead of these dummy lists
 
-  final List<_MockAttraction> _trendingPlaces = [
-    _MockAttraction('Lotus Tower', 'Temple', 4.9, '800 m', 'assets/images/lotus_temple.png', '🪷'),
-    _MockAttraction('Sigiriya Fortress', 'Ancient', 4.8, '1.2 km', 'assets/images/sigiriya.png', '🏛'),
-    _MockAttraction('Colombo Café', 'Café', 4.5, '350 m', 'assets/images/food_corner.png', '☕'),
-    _MockAttraction('Galle Fort', 'Heritage', 4.7, '2 km', 'assets/images/craft_market.png', '🏰'),
-  ];
-
-  final List<_MockAttraction> _hiddenGems = [
-    _MockAttraction('Secret Beach Cove', 'Nature', 4.6, '1.8 km', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop', '🏖'),
-    _MockAttraction('Dambulla Cave Art', 'Culture', 4.7, '1.5 km', 'https://images.unsplash.com/photo-1544644181-1484b3fdfc62?q=80&w=1000&auto=format&fit=crop', '🎨'),
-  ];
+  String _currentLocationName = 'Locating...';
 
   @override
   void initState() {
@@ -45,147 +49,301 @@ class _LivingMapPageState extends State<LivingMapPage>
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
+    // Initial data fetch
+    _fetchInitialData();
+    _startLocationTracking();
+
     // Show proximity alert after a delay (simulated)
     Future.delayed(const Duration(seconds: 4), () {
       if (mounted) setState(() => _showProximityAlert = true);
     });
   }
 
+  void _startLocationTracking() {
+    _positionSubscription = geo.Geolocator.getPositionStream(
+      locationSettings: const geo.LocationSettings(
+        accuracy: geo.LocationAccuracy.high,
+        distanceFilter: 100, // Update every 100 meters
+      ),
+    ).listen((position) async {
+      final locationName = await GooglePlacesService.reverseGeocode(
+        position.latitude,
+        position.longitude,
+      );
+      if (mounted) {
+        setState(() {
+          _userLatitude = position.latitude;
+          _userLongitude = position.longitude;
+          _currentLocationName = locationName;
+        });
+      }
+    });
+  }
+
+  Future<void> _fetchInitialData() async {
+    try {
+      bool serviceEnabled;
+      geo.LocationPermission permission;
+
+      // Test if location services are enabled.
+      serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled.');
+      }
+
+      permission = await geo.Geolocator.checkPermission();
+      if (permission == geo.LocationPermission.denied) {
+        permission = await geo.Geolocator.requestPermission();
+        if (permission == geo.LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+      
+      if (permission == geo.LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied.');
+      }
+
+      final position = await geo.Geolocator.getCurrentPosition();
+      
+      // Reverse geocode to get human readable address
+      final locationName = await GooglePlacesService.reverseGeocode(
+        position.latitude, 
+        position.longitude
+      );
+
+      if (mounted) {
+        setState(() {
+          _userLatitude = position.latitude;
+          _userLongitude = position.longitude;
+          _currentLocationName = locationName;
+        });
+        context.read<MapBloc>().add(FetchNearbyAttractions(
+          latitude: position.latitude,
+          longitude: position.longitude,
+        ));
+        context.read<MapBloc>().add(const FetchCategories());
+      }
+    } catch (e) {
+      debugPrint('Error fetching location: $e');
+      if (mounted) {
+        setState(() {
+          _currentLocationName = 'Colombo, Sri Lanka';
+          _userLatitude = 6.9271; // Fallback to Colombo
+          _userLongitude = 79.8612;
+        });
+        // Still fetch data with fallback location
+        context.read<MapBloc>().add(FetchNearbyAttractions(
+          latitude: 6.9271,
+          longitude: 79.8612,
+        ));
+        context.read<MapBloc>().add(const FetchCategories());
+      }
+    }
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
+    _positionSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // 3D Map Background
-        _buildMapBackground(),
+    return BlocBuilder<MapBloc, MapState>(
+      builder: (context, state) {
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          body: Stack(
+            children: [
+              // Layer 2: Content
+              CustomScrollView(
+                physics: const BouncingScrollPhysics(),
+                slivers: [
+                  // Header
+                  SliverAppBar(
+                    floating: true,
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    toolbarHeight: 80,
+                    flexibleSpace: ClipRRect(
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                        child: Container(color: AppColors.background.withOpacity(0.5)),
+                      ),
+                    ),
+                    title: _buildHeader(),
+                  ),
+      
+                  // Greeting + AI prompt
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildGreeting(),
+                          const SizedBox(height: 24),
+                          _buildAIPromptBar(),
+                          const SizedBox(height: 16),
+                          _buildCurrencyIntelligence(),
+                          const SizedBox(height: 16),
+                          _buildOdysseyCTA(),
+                        ],
+                      ),
+                    ),
+                  ),
+      
+                  // Categories
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 28, bottom: 8),
+                      child: _buildCategoryScroller(state.categories),
+                    ),
+                  ),
+      
+                  // Computed lists
+                  ...() {
+                    List<AttractionEntity> trendingPlaces = [];
+                    if (_selectedCategory != 'All') {
+                      trendingPlaces = state.attractions.take(5).toList();
+                    } else {
+                      final Map<String, AttractionEntity> categoryMap = {};
+                      for (var place in state.attractions) {
+                        final cat = place.categoryName ?? 'Attractions';
+                        if (!categoryMap.containsKey(cat)) {
+                          categoryMap[cat] = place;
+                        }
+                      }
+                      trendingPlaces = categoryMap.values.toList();
+                    }
 
-        // Content overlay
-        CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            // Header
-            SliverAppBar(
-              floating: true,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              toolbarHeight: 80,
-              flexibleSpace: ClipRRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                  child: Container(color: AppColors.background.withOpacity(0.5)),
-                ),
+                    final trendingIds = trendingPlaces.map((e) => e.id).toSet();
+                    final nearbyPlaces = state.attractions.where((e) => !trendingIds.contains(e.id)).toList();
+
+                    return [
+                      // Trending Section
+                      if (trendingPlaces.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                            child: _buildSectionHeader(
+                              '🔥  Trending Near You', 
+                              'See all',
+                              onTap: () {
+                                if (_userLatitude != null && _userLongitude != null) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => SmartTourismMapPage(
+                                        initialLat: _userLatitude!,
+                                        initialLng: _userLongitude!,
+                                        destinationName: _currentLocationName,
+                                        initialCategory: _selectedCategory,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces)),
+                      ],
+
+                      // Nearby Places
+                      if (nearbyPlaces.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              '✨  Nearby Places', 
+                              'Explore',
+                              onTap: () {
+                                if (_userLatitude != null && _userLongitude != null) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => SmartTourismMapPage(
+                                        initialLat: _userLatitude!,
+                                        initialLng: _userLongitude!,
+                                        destinationName: _currentLocationName,
+                                        initialCategory: _selectedCategory,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildHiddenGemCards(nearbyPlaces)),
+                      ],
+                    ];
+                  }(),
+      
+                  // Cluster suggestion
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: _buildClusterSuggestion(state.attractions),
+                    ),
+                  ),
+      
+                  const SliverToBoxAdapter(child: SizedBox(height: 120)),
+                ],
               ),
-              title: _buildHeader(),
-            ),
 
-            // Greeting + AI prompt
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildGreeting(),
-                    const SizedBox(height: 24),
-                    _buildAIPromptBar(),
-                    const SizedBox(height: 16),
-                    _buildOdysseyCTA(),
-                  ],
-                ),
-              ),
-            ),
-
-            // Categories
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 28, bottom: 8),
-                child: _buildCategoryScroller(),
-              ),
-            ),
-
-            // Trending Section
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                child: _buildSectionHeader('🔥  Trending Near You', 'See all'),
-              ),
-            ),
-            SliverToBoxAdapter(child: _buildTrendingCards()),
-
-            // Hidden Gems
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                child: _buildSectionHeader('✨  Hidden Gems', 'Explore'),
-              ),
-            ),
-            SliverToBoxAdapter(child: _buildHiddenGemCards()),
-
-            // Cluster suggestion
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: _buildClusterSuggestion(),
-              ),
-            ),
-
-            const SliverToBoxAdapter(child: SizedBox(height: 120)),
+              // Proximity alert bottom sheet
+            if (_showProximityAlert && state.attractions.isNotEmpty) 
+              _buildProximityAlert(state.attractions.first),
           ],
         ),
-
-        // Proximity alert bottom sheet
-        if (_showProximityAlert) _buildProximityAlert(),
-      ],
+        );
+      },
     );
   }
-
-  Widget _buildMapBackground() {
-    return Positioned.fill(
-      child: Container(color: AppColors.background),
-    );
-  }
-
-
 
   Widget _buildHeader() {
     return Row(
       children: [
-        GlassCard(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          borderRadius: BorderRadius.circular(100),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: AppColors.primaryGradient,
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+        Flexible(
+          child: GlassCard(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            borderRadius: BorderRadius.circular(100),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: AppColors.primaryGradient,
+                    boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+                  ),
+                  child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
                 ),
-                child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
-              ),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'CURRENT NEIGHBORHOOD',
-                    style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'EXPLORING',
+                        style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
+                      ),
+                      Text(
+                        _currentLocationName,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                  const Text(
-                    'Colombo, Sri Lanka',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
         const Spacer(),
@@ -214,29 +372,43 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildGreeting() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Good Afternoon, Alex',
-          style: TextStyle(
-            fontSize: 14,
-            color: AppColors.textTertiary,
-            fontWeight: FontWeight.w500,
-          ),
-        ).animate().fade(),
-        const SizedBox(height: 8),
-        const Text(
-          'Where shall we\ndiscover today?',
-          style: TextStyle(
-            fontSize: 36,
-            fontWeight: FontWeight.w700,
-            height: 1.15,
-            color: AppColors.textPrimary,
-            letterSpacing: -1,
-          ),
-        ).animate().fade(delay: 100.ms).slideY(begin: 0.15, end: 0),
-      ],
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        String name = 'Explorer';
+        if (state is AuthAuthenticated) {
+          name = state.user.displayName.split(' ')[0];
+        }
+
+        final hour = DateTime.now().hour;
+        String timeGreeting = 'Good Morning';
+        if (hour >= 12 && hour < 17) timeGreeting = 'Good Afternoon';
+        else if (hour >= 17 || hour < 5) timeGreeting = 'Good Evening';
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$timeGreeting, $name',
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textTertiary,
+                fontWeight: FontWeight.w500,
+              ),
+            ).animate().fade(),
+            const SizedBox(height: 8),
+            const Text(
+              'Where shall we\ndiscover today?',
+              style: TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w700,
+                height: 1.15,
+                color: AppColors.textPrimary,
+                letterSpacing: -1,
+              ),
+            ).animate().fade(delay: 100.ms).slideY(begin: 0.15, end: 0),
+          ],
+        );
+      },
     );
   }
 
@@ -304,11 +476,85 @@ class _LivingMapPageState extends State<LivingMapPage>
     ).animate().fade(delay: 300.ms).slideY(begin: 0.1, end: 0);
   }
 
+  Widget _buildCurrencyIntelligence() {
+    return BlocBuilder<AuthBloc, AuthState>(
+      builder: (context, state) {
+        String baseCurrency = 'USD';
+        if (state is AuthAuthenticated) {
+          baseCurrency = state.user.preferences['currency'] ?? 'USD';
+        }
+
+        return FutureBuilder<Map<String, double>>(
+          future: CurrencyService.getExchangeRates(baseCurrency),
+          builder: (context, snapshot) {
+            final rates = snapshot.data ?? {};
+            final topRates = ['USD', 'EUR', 'LKR', 'INR'].where((c) => c != baseCurrency).take(3).toList();
+
+            return GlassCard(
+              padding: const EdgeInsets.all(20),
+              glowColor: AppColors.actionTeal,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'CURRENCY INTELLIGENCE',
+                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.actionTeal, letterSpacing: 1.5),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Base: $baseCurrency',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(color: AppColors.actionTeal.withOpacity(0.1), shape: BoxShape.circle),
+                        child: const Icon(Icons.currency_exchange_rounded, color: AppColors.actionTeal, size: 18),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  if (snapshot.connectionState == ConnectionState.waiting)
+                    const LinearProgressIndicator(minHeight: 2, backgroundColor: Colors.transparent)
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: topRates.map((code) {
+                        final rate = rates[code] ?? 0.0;
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(code, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.textTertiary)),
+                            const SizedBox(height: 2),
+                            Text(
+                              rate.toStringAsFixed(2),
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildOdysseyCTA() {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const OdysseyPlannerPage()),
+        MaterialPageRoute(builder: (_) => OdysseyPlannerPage()),
       ),
       child: Container(
         padding: const EdgeInsets.all(20),
@@ -380,18 +626,41 @@ class _LivingMapPageState extends State<LivingMapPage>
     ).animate().fade(delay: 400.ms).slideX(begin: 0.1, end: 0);
   }
 
-  Widget _buildCategoryScroller() {
+  Widget _buildCategoryScroller(List<CategoryEntity> categories) {
+    // Filter categories to only include those relevant to the user's request if needed
+    // or just use what comes from the backend.
+    final displayCategories = ['All', ...categories.map((c) => c.name).where((name) => name != 'Transport')];
+    
     return SizedBox(
       height: 44,
       child: ListView.builder(
         padding: const EdgeInsets.symmetric(horizontal: 24),
         scrollDirection: Axis.horizontal,
-        itemCount: _categories.length,
+        itemCount: displayCategories.length,
         itemBuilder: (context, index) {
-          final cat = _categories[index];
-          final isActive = _selectedCategory == cat;
+          final catName = displayCategories[index];
+          final isActive = _selectedCategory == catName;
+          
           return GestureDetector(
-            onTap: () => setState(() => _selectedCategory = cat),
+            onTap: () async {
+              setState(() => _selectedCategory = catName);
+              
+              // Fetch nearby places for this category
+              final position = await geo.Geolocator.getCurrentPosition();
+              String? catId;
+              if (catName != 'All') {
+                catId = categories.firstWhere((c) => c.name == catName).id;
+              }
+              
+              if (mounted) {
+                context.read<MapBloc>().add(FetchNearbyAttractions(
+                  latitude: position.latitude,
+                  longitude: position.longitude,
+                  categoryId: catId,
+                  categoryName: catName == 'All' ? null : catName,
+                ));
+              }
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 300),
               margin: const EdgeInsets.only(right: 10),
@@ -409,7 +678,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
               child: Center(
                 child: Text(
-                  cat,
+                  catName,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
@@ -424,7 +693,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildSectionHeader(String title, String action) {
+  Widget _buildSectionHeader(String title, String action, {VoidCallback? onTap}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -437,7 +706,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
         ),
         GestureDetector(
-          onTap: () {},
+          onTap: onTap ?? () {},
           child: ShaderMask(
             shaderCallback: (b) => AppColors.primaryGradient.createShader(
               Rect.fromLTWH(0, 0, b.width, b.height),
@@ -456,26 +725,36 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildTrendingCards() {
+  Widget _buildTrendingCards(List<AttractionEntity> attractions) {
     return SizedBox(
       height: 240,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: _trendingPlaces.length,
+        itemCount: min(attractions.length, 5),
         itemBuilder: (context, index) {
-          final p = _trendingPlaces[index];
+          final p = attractions[index];
           return _buildPlaceCard(p, index);
         },
       ),
     );
   }
 
-  Widget _buildPlaceCard(_MockAttraction place, int index) {
+  Widget _buildPlaceCard(AttractionEntity place, int index) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(name: place.name, category: place.category, rating: place.rating, distance: place.distance, emoji: place.emoji, imageUrl: place.imageUrl)),
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: place.id,
+          name: place.name,
+          category: place.categoryName ?? 'Attraction', 
+          rating: place.rating, 
+          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
+          emoji: '📍', 
+          imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+          latitude: place.latitude,
+          longitude: place.longitude,
+        )),
       ),
       child: Container(
         width: 200,
@@ -487,9 +766,11 @@ class _LivingMapPageState extends State<LivingMapPage>
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
                 image: DecorationImage(
-                  image: place.imageUrl.startsWith('assets/') 
-                      ? AssetImage(place.imageUrl) as ImageProvider
-                      : NetworkImage(place.imageUrl),
+                  image: _getImageProvider(
+                  place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                  place.categoryName ?? 'Attraction',
+                  place.name,
+                ),
                   fit: BoxFit.cover,
                 ),
                 boxShadow: [
@@ -522,10 +803,10 @@ class _LivingMapPageState extends State<LivingMapPage>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Emoji + category
+                  // Icon + category
                   Row(
                     children: [
-                      Text(place.emoji, style: const TextStyle(fontSize: 28)),
+                      const Text('📍', style: TextStyle(fontSize: 28)),
                       const Spacer(),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -534,7 +815,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           color: Colors.white.withOpacity(0.2),
                         ),
                         child: Text(
-                          place.category,
+                          place.categoryName ?? 'LANDMARK',
                           style: const TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -578,7 +859,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                       const SizedBox(width: 3),
                       Text(
-                        place.distance,
+                        '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.white.withOpacity(0.7),
@@ -614,11 +895,11 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildHiddenGemCards() {
+  Widget _buildHiddenGemCards(List<AttractionEntity> attractions) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
-        children: _hiddenGems.asMap().entries.map((entry) {
+        children: attractions.take(3).toList().asMap().entries.map((entry) {
           final p = entry.value;
           final i = entry.key;
           return _buildGemRow(p, i);
@@ -627,11 +908,21 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildGemRow(_MockAttraction place, int index) {
+  Widget _buildGemRow(AttractionEntity place, int index) {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(name: place.name, category: place.category, rating: place.rating, distance: place.distance, emoji: place.emoji, imageUrl: place.imageUrl)),
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: place.id,
+          name: place.name,
+          category: place.categoryName ?? 'Attraction', 
+          rating: place.rating, 
+          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
+          emoji: '📍', 
+          imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+          latitude: place.latitude,
+          longitude: place.longitude,
+        )),
       ),
       child: GlassCard(
         margin: const EdgeInsets.only(bottom: 12),
@@ -645,8 +936,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                 borderRadius: BorderRadius.circular(16),
                 gradient: AppColors.secondaryGradient.scale(0.3),
               ),
-              child: Center(
-                child: Text(place.emoji, style: const TextStyle(fontSize: 24)),
+              child: const Center(
+                child: Text('📍', style: TextStyle(fontSize: 24)),
               ),
             ),
             const SizedBox(width: 14),
@@ -669,7 +960,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       const SizedBox(width: 3),
                       Text('${place.rating}', style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 10),
-                      Text(place.distance, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                      Text('${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                     ],
                   ),
                 ],
@@ -682,7 +973,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildClusterSuggestion() {
+  Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {
+    if (attractions.isEmpty) return const SizedBox.shrink();
+
     return GlassCard(
       padding: const EdgeInsets.all(20),
       glowColor: AppColors.secondary,
@@ -712,13 +1005,16 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           const SizedBox(height: 16),
           // Route items
-          _buildRouteItem('1', 'Lotus Tower', '10 min walk', AppColors.primary),
-          _buildRouteConnector(),
-          _buildRouteItem('2', 'Colombo Museum', '5 min walk', AppColors.secondary),
-          _buildRouteConnector(),
-          _buildRouteItem('3', 'Independence Square', '8 min walk', AppColors.neonGreen),
-          _buildRouteConnector(),
-          _buildRouteItem('4', 'Colombo Café Lounge', 'Destination', AppColors.accent),
+          ...attractions.take(3).toList().asMap().entries.map((entry) {
+            final p = entry.value;
+            final i = entry.key;
+            return Column(
+              children: [
+                _buildRouteItem('${i + 1}', p.name, '${((p.distanceM ?? 0) / 10).toStringAsFixed(0)} min walk', AppColors.primary),
+                if (i < 2 && i < attractions.length - 1) _buildRouteConnector(),
+              ],
+            );
+          }),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -777,7 +1073,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildProximityAlert() {
+  Widget _buildProximityAlert(AttractionEntity place) {
     return Positioned(
       bottom: 110,
       left: 20,
@@ -812,9 +1108,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                       ),
                       const SizedBox(height: 4),
-                      const Text(
-                        'You are near Lotus Temple',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      Text(
+                        'You are near ${place.name}',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
                       ),
                     ],
                   ),
@@ -836,7 +1132,17 @@ class _LivingMapPageState extends State<LivingMapPage>
                       gradient: AppColors.primaryGradient,
                     ),
                     child: TextButton(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AttractionDetailPage(name: 'Lotus Tower', category: 'Temple', rating: 4.9, distance: '200 m', emoji: '🪷', imageUrl: 'assets/images/lotus_temple.png'))),
+                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AttractionDetailPage(
+                        id: place.id,
+                        name: place.name,
+                        category: place.categoryName ?? 'Attraction', 
+                        rating: place.rating, 
+                        distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
+                        emoji: '📍', 
+                        imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                        latitude: place.latitude,
+                        longitude: place.longitude,
+                      ))),
                       child: const Text('View Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
                   ),
@@ -862,17 +1168,12 @@ class _LivingMapPageState extends State<LivingMapPage>
       ).animate().slideY(begin: 1, end: 0, duration: 500.ms, curve: Curves.easeOutBack).fade(),
     );
   }
+
+  ImageProvider _getImageProvider(String? url, String category, String name) {
+    return PlaceImageHelper.getImageProvider(url, category, name);
+  }
 }
 
-class _MockAttraction {
-  final String name;
-  final String category;
-  final double rating;
-  final String distance;
-  final String imageUrl;
-  final String emoji;
 
-  const _MockAttraction(this.name, this.category, this.rating, this.distance, this.imageUrl, this.emoji);
-}
 
 

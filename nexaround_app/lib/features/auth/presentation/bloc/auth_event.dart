@@ -39,3 +39,12 @@ class AuthLogoutRequested extends AuthEvent {
 class AuthCheckStatus extends AuthEvent {
   const AuthCheckStatus();
 }
+
+class UpdateUserPreferences extends AuthEvent {
+  final Map<String, dynamic> preferences;
+
+  const UpdateUserPreferences(this.preferences);
+
+  @override
+  List<Object?> get props => [preferences];
+}

@@ -32,6 +32,7 @@ class User(Base):
     # Relationships
     reviews = relationship("Review", back_populates="user", lazy="selectin")
     itineraries = relationship("Itinerary", back_populates="user", lazy="selectin")
+    budgets = relationship("Budget", back_populates="user", lazy="selectin")
 
     def __repr__(self) -> str:
         return f"<User {self.email}>"

@@ -18,6 +18,9 @@ class ArState extends Equatable {
   final bool isScanning;
   final String? errorMessage;
 
+  final bool isMappingMode;
+  final bool isSavingDiscovery;
+
   const ArState({
     this.status = ArStatus.initial,
     this.attractions = const [],
@@ -32,6 +35,8 @@ class ArState extends Equatable {
     this.currentLongitude = 0.0,
     this.currentHeading = 0.0,
     this.errorMessage,
+    this.isMappingMode = false,
+    this.isSavingDiscovery = false,
   });
 
   ArState copyWith({
@@ -48,6 +53,8 @@ class ArState extends Equatable {
     double? currentLongitude,
     double? currentHeading,
     String? errorMessage,
+    bool? isMappingMode,
+    bool? isSavingDiscovery,
     bool clearDetected = false,
     bool clearSelected = false,
     bool clearInsight = false,
@@ -67,6 +74,8 @@ class ArState extends Equatable {
       currentLongitude: currentLongitude ?? this.currentLongitude,
       currentHeading: currentHeading ?? this.currentHeading,
       errorMessage: errorMessage ?? this.errorMessage,
+      isMappingMode: isMappingMode ?? this.isMappingMode,
+      isSavingDiscovery: isSavingDiscovery ?? this.isSavingDiscovery,
     );
   }
 
@@ -85,5 +94,7 @@ class ArState extends Equatable {
     currentLongitude,
     currentHeading,
     errorMessage,
+    isMappingMode,
+    isSavingDiscovery,
   ];
 }

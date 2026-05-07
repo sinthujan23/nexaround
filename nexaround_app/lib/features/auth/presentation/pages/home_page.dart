@@ -11,6 +11,14 @@ import 'package:nexaround_app/features/profile/presentation/pages/profile_page.d
 import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
+import 'package:nexaround_app/features/budget/presentation/bloc/budget_event.dart';
+import 'package:nexaround_app/features/budget/data/repositories/budget_repository_impl.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
+
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
   HomePage() : super(key: homeKey);
@@ -30,6 +38,12 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
     });
   }
 
+  void switchToExplore() {
+    setState(() {
+      _selectedIndex = 0; // Explore/Map Tab
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -45,11 +59,22 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       backgroundColor: AppColors.background,
       extendBody: true,
       resizeToAvoidBottomInset: false,
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
+      body: BlocListener<AuthBloc, AuthState>(
+        listener: (context, state) {
+          if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+              (route) => false,
+            );
+            return;
+          }
+        },
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: pages,
+        ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),
     );
   }
 
@@ -74,16 +99,19 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(0, Icons.explore_rounded, 'Home'),
-                _buildNavItem(1, Icons.view_in_ar_rounded, 'AR'),
-                _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
-                _buildNavItem(3, Icons.restaurant_rounded, 'Food'),
-                _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
-                _buildNavItem(5, Icons.person_rounded, 'Profile'),
-              ],
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildNavItem(0, Icons.explore_rounded, 'Home'),
+                  _buildNavItem(1, Icons.view_in_ar_rounded, 'AR'),
+                  _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
+                  _buildNavItem(3, Icons.restaurant_rounded, 'Food'),
+                  _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
+                  _buildNavItem(5, Icons.person_rounded, 'Me'),
+                ],
+              ),
             ),
           ),
         ),
@@ -98,37 +126,47 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       onTap: () => setState(() => _selectedIndex = index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
           gradient: isActive ? AppColors.primaryGradient : null,
-          boxShadow: isActive
-              ? [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ]
-              : null,
         ),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 22,
-              color: isActive ? Colors.white : AppColors.textTertiary,
-            ),
+            label == 'NEVA'
+                ? Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isActive ? Colors.white : Colors.transparent,
+                        width: 1.5,
+                      ),
+                      image: const DecorationImage(
+                        image: AssetImage('assets/images/neva_avatar.png'),
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  )
+                : Icon(
+                    icon,
+                    size: 20,
+                    color: isActive ? Colors.white : AppColors.textTertiary,
+                  ),
             if (isActive) ...[
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               Text(
                 label,
                 style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
+                maxLines: 1,
+                overflow: TextOverflow.fade,
+                softWrap: false,
               ),
             ],
           ],

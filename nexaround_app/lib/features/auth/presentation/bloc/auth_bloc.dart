@@ -11,6 +11,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthLoginRequested>(_onLogin);
     on<AuthRegisterRequested>(_onRegister);
     on<AuthLogoutRequested>(_onLogout);
+    on<UpdateUserPreferences>(_onUpdatePreferences);
+  }
+
+  Future<void> _onUpdatePreferences(
+    UpdateUserPreferences event,
+    Emitter<AuthState> emit,
+  ) async {
+    if (state is AuthAuthenticated) {
+      final currentAuth = state as AuthAuthenticated;
+      final result = await _authRepository.updatePreferences(event.preferences);
+      result.fold(
+        (failure) => null, // Keep existing state on failure
+        (updatedUser) => emit(AuthAuthenticated(
+          user: updatedUser,
+          accessToken: currentAuth.accessToken,
+        )),
+      );
+    }
   }
 
   Future<void> _onCheckStatus(

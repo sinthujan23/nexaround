@@ -16,6 +16,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     required double longitude,
     double radius = 1000.0,
     String? categoryId,
+    String? categoryName,
     int limit = 50,
     String sort = 'proximity',
   }) async {
@@ -25,6 +26,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
         longitude: longitude,
         radius: radius,
         categoryId: categoryId,
+        categoryName: categoryName,
         limit: limit,
         sort: sort,
       );

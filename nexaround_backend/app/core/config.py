@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # AI Keys
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
+    HUGGINGFACE_API_KEY: str = ""
 
     model_config = SettingsConfigDict(
         case_sensitive=True, 

@@ -25,6 +25,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       longitude: event.longitude,
       radius: event.radius,
       categoryId: event.categoryId,
+      categoryName: event.categoryName,
     );
 
     result.fold(

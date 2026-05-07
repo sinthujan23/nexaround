@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}User Directory - NexAround Admin{% endblock %}
+{% block page_title %}User Directory{% endblock %}
+
+{% block content %}
+<div class="card" style="text-align: center; padding: 5rem 2rem;">
+    <div style="width: 80px; height: 80px; background: #ecfdf5; color: #10b981; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; font-size: 2.5rem;">
+        <i class="ti ti-users"></i>
+    </div>
+    <h2 style="font-weight: 800; margin-bottom: 0.5rem;">User & Explorer Management</h2>
+    <p style="color: var(--muted); max-width: 500px; margin: 0 auto 2rem;">
+        The User Directory is scheduled for Phase 2. This will allow you to manage explorer profiles, monitor engagement, and handle platform permissions.
+    </p>
+    <a href="/admin/dashboard" class="btn btn-outline">Return to Mission Control</a>
+</div>
+{% endblock %}

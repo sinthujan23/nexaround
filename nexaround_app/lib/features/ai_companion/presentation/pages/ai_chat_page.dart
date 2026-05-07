@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
@@ -19,6 +23,8 @@ class _AiChatPageState extends State<AiChatPage> {
   final List<_ChatMessage> _messages = [];
   bool _isTyping = false;
   bool _showSuggestions = true;
+  List<AttractionEntity> _nearbyAttractions = [];
+  final GeminiService _geminiService = GeminiService();
 
   final List<String> _quickPrompts = [
     '🌙 Safe night spots',
@@ -27,15 +33,6 @@ class _AiChatPageState extends State<AiChatPage> {
     '💸 Local prices',
   ];
 
-  final Map<String, String> _mockResponses = {
-    'lotus': "The Lotus Temple is an architectural masterpiece. It was designed to symbolize purity and peace. Currently, it's one of the most visited spots in the city for both tourists and spiritual practitioners.",
-    'museum': "The Colombo Museum is the oldest public museum in the country. It houses some of the most precious royal artifacts from the Kandyan era. I recommend seeing the royal throne!",
-    'food': "Ah, the Street Food Corner! You'll find the best hoppers in the city here. Make sure to try them with the 'pol sambol' for a real authentic kick.",
-    'night': "Colombo comes alive at night. If you're near Galle Face, the street food there is legendary, but for a more 'hidden' vibe, I'd suggest the lounge at the Dutch Hospital. Totally safe and very chill.",
-    'history': "Most people miss the colonial tunnels beneath the fort area. They aren't officially open, but walk by the old lighthouse and you'll feel the history breathing through the stone.",
-    'market': "The Craft Market is where traditional artisans from all over the island come to sell. It's the best place for unique, hand-carved souvenirs.",
-    'default': "I'm looking into that for you. Based on your current mood and the local vibe, I'd say you're about to discover something amazing. What else is on your mind?",
-  };
 
   @override
   void initState() {
@@ -51,9 +48,26 @@ class _AiChatPageState extends State<AiChatPage> {
         if (mounted) _sendMessage(widget.initialPrompt!);
       });
     }
+    _fetchNearby();
   }
 
-  void _sendMessage(String text) {
+  Future<void> _fetchNearby() async {
+    try {
+      final pos = await geo.Geolocator.getCurrentPosition();
+      final places = await GooglePlacesService.fetchNearbyPlaces(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        radius: 2000,
+      );
+      if (mounted) {
+        setState(() => _nearbyAttractions = places);
+      }
+    } catch (e) {
+      debugPrint('Error fetching nearby in chat: $e');
+    }
+  }
+
+  void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
     setState(() {
@@ -64,16 +78,14 @@ class _AiChatPageState extends State<AiChatPage> {
     _controller.clear();
     _scrollToBottom();
 
-    final key = text.toLowerCase();
-    String response = _mockResponses['default']!;
-    for (final entry in _mockResponses.entries) {
-      if (key.contains(entry.key)) {
-        response = entry.value;
-        break;
-      }
-    }
+    try {
+      // Create context string from nearby attractions
+      final contextStr = _nearbyAttractions.isEmpty 
+          ? "The user is in Colombo, Sri Lanka." 
+          : "The user is in Colombo. Nearby attractions: ${_nearbyAttractions.take(5).map((e) => e.name).join(', ')}. Act as Neva, a spatial cognition partner.";
 
-    Future.delayed(const Duration(milliseconds: 2200), () {
+      final response = await _geminiService.getResponse(text, context: contextStr);
+
       if (mounted) {
         setState(() {
           _isTyping = false;
@@ -81,7 +93,20 @@ class _AiChatPageState extends State<AiChatPage> {
         });
         _scrollToBottom();
       }
-    });
+    } catch (e) {
+      debugPrint('Gemini Chat Error: $e');
+      if (mounted) {
+        setState(() {
+          _isTyping = false;
+          _messages.add(_ChatMessage(
+            text: "I'm having a bit of trouble connecting to my central processing ($e). Please check if the Gemini API key is active!", 
+            isUser: false, 
+            timestamp: DateTime.now()
+          ));
+        });
+        _scrollToBottom();
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -144,6 +169,11 @@ class _AiChatPageState extends State<AiChatPage> {
                 if (_showSuggestions) ...[
                   const SizedBox(height: 12),
                   _buildQuickSuggestions(),
+                ],
+                // Nearby Attractions Carousel
+                if (_nearbyAttractions.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  _buildNearbyCarousel(),
                 ],
                 Padding(
                   padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom > 0 ? 12 : 110),
@@ -342,6 +372,68 @@ class _AiChatPageState extends State<AiChatPage> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildNearbyCarousel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'NEARBY FOR CONTEXT',
+            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.black38, letterSpacing: 1.2),
+          ),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 100,
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            scrollDirection: Axis.horizontal,
+            itemCount: _nearbyAttractions.length,
+            itemBuilder: (context, index) {
+              return _buildNearbyItem(_nearbyAttractions[index]);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNearbyItem(AttractionEntity place) {
+    return Container(
+      width: 140,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            child: Image.network(
+              place.photoUrls.isNotEmpty ? place.photoUrls.first : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+              height: 60,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+            child: Text(
+              place.name,
+              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

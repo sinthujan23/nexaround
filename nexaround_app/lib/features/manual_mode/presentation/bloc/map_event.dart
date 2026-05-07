@@ -13,19 +13,23 @@ class FetchNearbyAttractions extends MapEvent {
   final double longitude;
   final double radius;
   final String? categoryId;
+  final String? categoryName;
 
   const FetchNearbyAttractions({
     required this.latitude,
     required this.longitude,
     this.radius = 50000.0,
     this.categoryId,
+    this.categoryName,
   });
 
   @override
-  List<Object?> get props => [latitude, longitude, radius, categoryId];
+  List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName];
 }
 
-class FetchCategories extends MapEvent {}
+class FetchCategories extends MapEvent {
+  const FetchCategories();
+}
 
 class UpdateMapType extends MapEvent {
   final bool isSatellite;

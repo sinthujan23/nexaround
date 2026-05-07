@@ -1,9 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -13,160 +19,279 @@ class RegisterPage extends StatefulWidget {
 }
 
 class _RegisterPageState extends State<RegisterPage> {
-  final _nameController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  bool _isLoading = false;
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   void _handleRegister() {
-    setState(() => _isLoading = true);
-    Future.delayed(const Duration(milliseconds: 1800), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (_, animation, __) => HomePage(),
-            transitionsBuilder: (_, animation, __, child) =>
-                FadeTransition(opacity: animation, child: child),
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
-    });
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+    final firstName = _firstNameController.text.trim();
+    final lastName = _lastNameController.text.trim();
+
+    if (email.isEmpty || password.isEmpty || firstName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill all required fields')),
+      );
+      return;
+    }
+
+    context.read<AuthBloc>().add(AuthRegisterRequested(
+          email: email,
+          password: password,
+          displayName: '$firstName $lastName'.trim(),
+        ));
+  }
+
+  void _handleGoogleVerify() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Google verification coming soon')),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // Background glows
-          Positioned(
-            top: -50,
-            left: -50,
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    AppColors.actionTeal.withOpacity(0.08),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) async {
+        if (state is AuthAuthenticated) {
+          await CacheService.setLoggedIn(true);
+          if (!mounted) return;
+          
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (_, animation, __) => HomePage(),
+              transitionsBuilder: (_, animation, __, child) =>
+                  FadeTransition(opacity: animation, child: child),
+              transitionDuration: const Duration(milliseconds: 800),
             ),
-          ),
-
-          SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    NexaroundLogo(size: 60),
-                    const SizedBox(height: 32),
-
-                    const Text(
-                      'Create Account',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -1,
+          );
+        } else if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: AppColors.error),
+          );
+        }
+      },
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Stack(
+              children: [
+                // Background glows
+                Positioned(
+                  top: -50,
+                  left: -50,
+                  child: Container(
+                    width: 250,
+                    height: 250,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.actionTeal.withOpacity(0.08),
+                          Colors.transparent,
+                        ],
                       ),
-                    ).animate().fade().slideY(begin: 0.2, end: 0),
-
-                    const SizedBox(height: 8),
-                    Text(
-                      'Join the intelligence collective',
-                      style: TextStyle(
-                        fontSize: 15,
-                        color: AppColors.textSecondary,
-                      ),
-                    ).animate().fade(delay: 200.ms),
-
-                    const SizedBox(height: 48),
-
-                    _buildTextField(
-                      controller: _nameController,
-                      label: 'FULL NAME',
-                      hint: 'Enter your name',
-                      icon: Icons.person_outline_rounded,
-                      delay: 300,
                     ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _emailController,
-                      label: 'EMAIL ADDRESS',
-                      hint: 'Enter your email',
-                      icon: Icons.email_outlined,
-                      keyboardType: TextInputType.emailAddress,
-                      delay: 400,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildTextField(
-                      controller: _passwordController,
-                      label: 'PASSWORD',
-                      hint: 'Create a password',
-                      icon: Icons.lock_outline_rounded,
-                      isPassword: true,
-                      obscureText: _obscurePassword,
-                      onToggleVisibility: () =>
-                          setState(() => _obscurePassword = !_obscurePassword),
-                      delay: 500,
-                    ),
+                  ),
+                ),
 
-                    const SizedBox(height: 40),
+                SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const NexaroundLogo(size: 60),
+                          const SizedBox(height: 32),
 
-                    _buildRegisterButton(),
-
-                    const SizedBox(height: 32),
-
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'Already have an account? ',
-                          style: TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 14,
-                          ),
-                        ),
-                        GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: const Text(
-                            'Sign In',
+                          const Text(
+                            'Create Account',
                             style: TextStyle(
-                              color: Colors.black,
+                              fontSize: 32,
                               fontWeight: FontWeight.w800,
-                              fontSize: 14,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -1,
                             ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                          ).animate().fade().slideY(begin: 0.2, end: 0),
 
-          if (_isLoading) _buildLoadingOverlay(),
-        ],
+                          const SizedBox(height: 8),
+                          Text(
+                            'Join the intelligence collective',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: AppColors.textSecondary,
+                            ),
+                          ).animate().fade(delay: 200.ms),
+
+                          const SizedBox(height: 40),
+
+                          // Gmail Verification Button
+                          _buildSocialVerifyButton(
+                            label: 'Verify with Gmail',
+                            iconPath: 'assets/icons/google.png',
+                            onTap: _handleGoogleVerify,
+                            delay: 250,
+                          ),
+
+                          const SizedBox(height: 32),
+
+                          Row(
+                            children: [
+                              Expanded(child: Divider(color: AppColors.textMuted.withOpacity(0.1))),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(
+                                  'OR USE EMAIL',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.textMuted.withOpacity(0.5),
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                              ),
+                              Expanded(child: Divider(color: AppColors.textMuted.withOpacity(0.1))),
+                            ],
+                          ).animate().fade(delay: 300.ms),
+
+                          const SizedBox(height: 32),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _firstNameController,
+                                  label: 'FIRST NAME',
+                                  hint: 'First',
+                                  icon: Icons.person_outline_rounded,
+                                  delay: 400,
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: _buildTextField(
+                                  controller: _lastNameController,
+                                  label: 'LAST NAME',
+                                  hint: 'Last',
+                                  icon: Icons.person_outline_rounded,
+                                  delay: 450,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _emailController,
+                            label: 'EMAIL ADDRESS',
+                            hint: 'Enter your email',
+                            icon: Icons.email_outlined,
+                            keyboardType: TextInputType.emailAddress,
+                            delay: 500,
+                          ),
+                          const SizedBox(height: 16),
+                          _buildTextField(
+                            controller: _passwordController,
+                            label: 'PASSWORD',
+                            hint: 'Create a password',
+                            icon: Icons.lock_outline_rounded,
+                            isPassword: true,
+                            obscureText: _obscurePassword,
+                            onToggleVisibility: () =>
+                                setState(() => _obscurePassword = !_obscurePassword),
+                            delay: 600,
+                          ),
+
+                          const SizedBox(height: 40),
+
+                          _buildRegisterButton(isLoading),
+
+                          const SizedBox(height: 32),
+
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Already have an account? ',
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: () => Navigator.pop(context),
+                                child: const Text(
+                                  'Sign In',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                if (isLoading) _buildLoadingOverlay(),
+              ],
+            ),
+          );
+        },
       ),
     );
+  }
+
+  Widget _buildSocialVerifyButton({
+    required String label,
+    required String iconPath,
+    required VoidCallback onTap,
+    int delay = 0,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.black.withOpacity(0.08)),
+          color: Colors.white,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
+            SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fade(delay: delay.ms).slideY(begin: 0.1, end: 0);
   }
 
   Widget _buildTextField({
@@ -239,7 +364,7 @@ class _RegisterPageState extends State<RegisterPage> {
     ).animate().fade(delay: delay.ms).slideY(begin: 0.05, end: 0);
   }
 
-  Widget _buildRegisterButton() {
+  Widget _buildRegisterButton(bool isLoading) {
     return SizedBox(
       width: double.infinity,
       height: 58,
@@ -256,7 +381,7 @@ class _RegisterPageState extends State<RegisterPage> {
           ],
         ),
         child: ElevatedButton(
-          onPressed: _isLoading ? null : _handleRegister,
+          onPressed: isLoading ? null : _handleRegister,
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.transparent,
             shadowColor: Colors.transparent,

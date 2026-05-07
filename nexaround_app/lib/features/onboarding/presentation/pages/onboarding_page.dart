@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -61,7 +62,10 @@ class _OnboardingPageState extends State<OnboardingPage> {
     }
   }
 
-  void _navigateToLogin() {
+  void _navigateToLogin() async {
+    await CacheService.setOnboardingComplete();
+    if (!mounted) return;
+    
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
         pageBuilder: (_, animation, __) => const LoginPage(),

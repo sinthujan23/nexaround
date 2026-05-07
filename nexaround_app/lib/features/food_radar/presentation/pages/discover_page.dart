@@ -1,9 +1,30 @@
 import 'dart:math';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
+import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
+import 'package:nexaround_app/features/budget/presentation/bloc/budget_state.dart';
+import 'package:nexaround_app/features/budget/presentation/bloc/budget_event.dart';
+import 'package:nexaround_app/features/budget/domain/entities/budget.dart' as budget_entity;
+import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/utils/place_image_helper.dart';
+import 'package:camera/camera.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
+import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
+
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
+import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -15,18 +36,135 @@ class DiscoverPage extends StatefulWidget {
 class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMixin {
   int _selectedTab = 0;
   late AnimationController _radarController;
+  Position? _currentPosition;
 
-  final List<String> _tabs = ['Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
+  // Real data lists for each category to avoid mixing
+  List<AttractionEntity> _foodList = [];
+  List<AttractionEntity> _experienceList = [];
+  List<AttractionEntity> _shoppingList = [];
+
+  // AI Vision state
+  CameraController? _cameraController;
+  bool _isCameraReady = false;
+  bool _isScanning = false;
+  bool _scanComplete = false;
+  Map<String, dynamic>? _scanResult;
+  String? _scanError;
+
+  final List<String> _tabs = ['AI Scan', 'Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
 
   @override
   void initState() {
     super.initState();
     _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+    _initLocationAndFetch();
+  }
+
+  Future<void> _initLocationAndFetch() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
+      setState(() => _currentPosition = position);
+      _fetchForTab(1); // Fetch food initially (tab index shifted by AI Scan)
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+    }
+  }
+
+  void _fetchForTab(int index) {
+    if (_currentPosition == null) return;
+    
+    // Offset by 1 because AI Scan is now tab 0
+    String? category;
+    if (index == 1) category = 'Food & Drink';
+    if (index == 2) category = 'Attractions';
+    if (index == 3) category = 'Shopping';
+
+    if (index == 0) {
+      // AI Scan tab — trigger auto-capture
+      _startAIScan();
+      return;
+    }
+
+    if (category != null) {
+      context.read<MapBloc>().add(FetchNearbyAttractions(
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+        categoryName: category,
+      ));
+    }
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+      _cameraController = CameraController(
+        cameras.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+      await _cameraController!.initialize();
+      if (mounted) setState(() => _isCameraReady = true);
+      // Auto-scan on first load
+      Future.delayed(const Duration(milliseconds: 1500), () => _startAIScan());
+    } catch (e) {
+      debugPrint('Camera init error: \$e');
+    }
+  }
+
+  Future<void> _startAIScan() async {
+    if (!_isCameraReady || _cameraController == null || _isScanning) return;
+    if (_currentPosition == null) return;
+
+    setState(() {
+      _isScanning = true;
+      _scanComplete = false;
+      _scanResult = null;
+      _scanError = null;
+    });
+
+    try {
+      // Capture image silently
+      final xFile = await _cameraController!.takePicture();
+      final bytes = await xFile.readAsBytes();
+
+      // Send to Gemini Vision
+      final rawResponse = await GeminiService().identifyPlace(
+        imageBytes: bytes,
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+      );
+
+      // Parse JSON response (strip markdown if present)
+      String jsonStr = rawResponse.trim();
+      if (jsonStr.startsWith('```')) {
+        jsonStr = jsonStr.replaceAll(RegExp(r'^```json?\n?'), '').replaceAll(RegExp(r'\n?```\$'), '');
+      }
+      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      if (mounted) {
+        setState(() {
+          _scanResult = result;
+          _scanComplete = true;
+          _isScanning = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('AI Scan error: \$e');
+      if (mounted) {
+        setState(() {
+          _scanError = 'Could not identify this place. Try again!';
+          _isScanning = false;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _radarController.dispose();
+    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -35,83 +173,152 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-              child: Row(
-                children: [
-                  ShaderMask(
-                    shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-                    child: const Text(
-                      'Discover',
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5),
+        child: BlocListener<MapBloc, MapState>(
+          listener: (context, state) {
+            if (state.status == MapStatus.success) {
+              setState(() {
+                if (_selectedTab == 0) {
+                  // API already returns only food places via multi-query
+                  _foodList = List.from(state.attractions);
+                  // Sort by distance
+                  _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                } else if (_selectedTab == 1) {
+                  // Filter for experience related categories
+                  _experienceList = state.attractions.where((a) {
+                    final cat = (a.categoryName ?? '').toLowerCase();
+                    final name = (a.name).toLowerCase();
+                    return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || 
+                           cat.contains('experience') || cat.contains('landmark') || cat.contains('culture') ||
+                           cat.contains('temple') || cat.contains('art') || cat.contains('zoo') ||
+                           name.contains('temple') || name.contains('park') || name.contains('museum');
+                  }).toList();
+                  // Sort by rating then distance
+                  _experienceList.sort((a, b) {
+                    int ratingComp = b.rating.compareTo(a.rating);
+                    if (ratingComp != 0) return ratingComp;
+                    return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                  });
+                } else if (_selectedTab == 2) {
+                  // Filter for shopping related categories
+                  _shoppingList = state.attractions.where((a) {
+                    final cat = (a.categoryName ?? '').toLowerCase();
+                    return cat.contains('shop') || cat.contains('mall') || cat.contains('market') || cat.contains('store') || cat.contains('fashion');
+                  }).toList();
+                  // Sort by distance
+                  _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                }
+              });
+            }
+          },
+          child: Column(
+            children: [
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Row(
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
+                      child: const Text(
+                        'Discover',
+                        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5),
+                      ),
                     ),
-                  ),
-                  const Spacer(),
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: AppColors.surfaceVariant,
-                      border: Border.all(color: AppColors.border),
+                    const Spacer(),
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: AppColors.surfaceVariant,
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
                     ),
-                    child: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-            // Tab selector
-            Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: SizedBox(
-                height: 40,
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _tabs.length,
-                  itemBuilder: (context, index) {
-                    final isActive = _selectedTab == index;
-                    return GestureDetector(
-                      onTap: () => setState(() => _selectedTab = index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: const EdgeInsets.only(right: 10),
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          gradient: isActive ? AppColors.primaryGradient : null,
-                          color: isActive ? null : AppColors.surfaceVariant,
-                          border: Border.all(color: isActive ? Colors.transparent : AppColors.border),
-                        ),
-                        child: Center(
-                          child: Text(
-                            _tabs[index],
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                              color: isActive ? Colors.white : AppColors.textSecondary,
+              // Tab selector
+              Padding(
+                padding: const EdgeInsets.only(top: 20),
+                child: SizedBox(
+                  height: 40,
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _tabs.length,
+                    itemBuilder: (context, index) {
+                      final isActive = _selectedTab == index;
+                      return GestureDetector(
+                        onTap: () {
+                          final prevTab = _selectedTab;
+                          setState(() => _selectedTab = index);
+                          // Dispose camera when leaving AI Scan tab
+                          if (prevTab == 0 && index != 0) {
+                            _cameraController?.dispose();
+                            _cameraController = null;
+                            _isCameraReady = false;
+                          }
+                          // Init camera when entering AI Scan tab
+                          if (index == 0 && !_isCameraReady) {
+                            _initCamera();
+                          }
+                          _fetchForTab(index);
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 300),
+                          margin: const EdgeInsets.only(right: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 18),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            gradient: isActive ? AppColors.primaryGradient : null,
+                            color: isActive ? null : AppColors.surfaceVariant,
+                            border: Border.all(color: isActive ? Colors.transparent : AppColors.border),
+                          ),
+                          child: Center(
+                            child: Text(
+                              _tabs[index],
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                                color: isActive ? Colors.white : AppColors.textSecondary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // Content
+              Expanded(
+                child: BlocBuilder<MapBloc, MapState>(
+                  builder: (context, state) {
+                    final isLoading = _selectedTab > 0 && _selectedTab < 4 && state.status == MapStatus.loading;
+                    
+                    return Stack(
+                      children: [
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: _buildTabContent(),
+                        ),
+                        if (isLoading)
+                          Positioned.fill(
+                            child: Container(
+                              color: AppColors.background.withOpacity(0.3),
+                              child: const Center(child: CircularProgressIndicator()),
+                            ),
+                          ),
+                      ],
                     );
                   },
                 ),
               ),
-            ),
-
-            // Content
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: _buildTabContent(),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -119,13 +326,368 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   Widget _buildTabContent() {
     switch (_selectedTab) {
-      case 0: return _buildFoodTab();
-      case 1: return _buildExperiencesTab();
-      case 2: return _buildShoppingTab();
-      case 3: return _buildBudgetTab();
-      case 4: return _buildEmergencyTab();
-      default: return _buildFoodTab();
+      case 0: return _buildAIScanTab();
+      case 1: return _buildFoodTab();
+      case 2: return _buildExperiencesTab();
+      case 3: return _buildShoppingTab();
+      case 4: return _buildBudgetTab();
+      case 5: return _buildEmergencyTab();
+      default: return _buildAIScanTab();
     }
+  }
+
+  // ═══════════════════════════════════════
+  // AI SCAN TAB
+  // ═══════════════════════════════════════
+  Widget _buildAIScanTab() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Camera Preview with Scan Overlay
+        ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: SizedBox(
+            height: 220,
+            width: double.infinity,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Camera feed or placeholder
+                if (_isCameraReady && _cameraController != null)
+                  CameraPreview(_cameraController!)
+                else
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Colors.grey.shade900, Colors.black],
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.camera_alt_rounded, color: Colors.white24, size: 60),
+                    ),
+                  ),
+
+                // Dark overlay
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.7)],
+                    ),
+                  ),
+                ),
+
+                // Scan animation
+                if (_isScanning)
+                  Positioned.fill(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 60, height: 60,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'NEVA IS ANALYZING...',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                          ),
+                        ).animate(onPlay: (c) => c.repeat(reverse: true))
+                         .fade(begin: 0.5, end: 1, duration: 800.ms),
+                      ],
+                    ),
+                  ),
+
+                // Scan complete badge
+                if (_scanComplete && _scanResult != null)
+                  Positioned(
+                    top: 16, right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withOpacity(0.9),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                          SizedBox(width: 6),
+                          Text('IDENTIFIED', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                        ],
+                      ),
+                    ).animate().scale(duration: 400.ms, curve: Curves.elasticOut),
+                  ),
+
+                // Bottom label
+                Positioned(
+                  bottom: 16, left: 16,
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 8, height: 8,
+                        decoration: BoxDecoration(
+                          color: _isScanning ? Colors.amber : (_scanComplete ? Colors.green : AppColors.primary),
+                          shape: BoxShape.circle,
+                          boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        _isScanning ? 'Scanning...' : (_scanComplete ? 'Place Identified' : 'Ready to Scan'),
+                        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Rescan button
+                if (!_isScanning)
+                  Positioned(
+                    bottom: 12, right: 16,
+                    child: GestureDetector(
+                      onTap: _startAIScan,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.refresh_rounded, color: AppColors.primary, size: 16),
+                            const SizedBox(width: 6),
+                            Text('RESCAN', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0),
+
+        const SizedBox(height: 20),
+
+        // Error message
+        if (_scanError != null)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.red.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
+                const SizedBox(width: 12),
+                Expanded(child: Text(_scanError!, style: const TextStyle(color: Colors.red, fontSize: 13))),
+              ],
+            ),
+          ),
+
+        // Result Card
+        if (_scanComplete && _scanResult != null) ...[
+          _buildScanResultCard(),
+        ],
+
+        // Placeholder when idle
+        if (!_isScanning && !_scanComplete && _scanError == null)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 40),
+                const SizedBox(height: 12),
+                const Text(
+                  'Point your camera at any place',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Neva will identify it and tell you everything about it',
+                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildScanResultCard() {
+    final result = _scanResult!;
+    final name = result['name'] ?? 'Unknown Place';
+    final category = result['category'] ?? 'Place';
+    final description = result['description'] ?? '';
+    final funFact = result['fun_fact'] ?? '';
+    final tips = result['tips'] ?? '';
+    final confidence = (result['confidence'] ?? 0).toDouble();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Place name + category
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: AppColors.primaryGradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 8))],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      '${(confidence * 100).toInt()}%',
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  category.toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5),
+                ),
+              ),
+            ],
+          ),
+        ).animate().fadeIn(delay: 200.ms).slideX(begin: 0.1, end: 0),
+
+        const SizedBox(height: 16),
+
+        // Description
+        if (description.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.auto_stories_rounded, size: 18, color: AppColors.textSecondary),
+                    SizedBox(width: 8),
+                    Text('About', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  description,
+                  style: const TextStyle(fontSize: 14, height: 1.6, color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1, end: 0),
+
+        const SizedBox(height: 12),
+
+        // Fun Fact
+        if (funFact.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.amber.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.amber.withOpacity(0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('💡', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Fun Fact', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      const SizedBox(height: 4),
+                      Text(funFact, style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.1, end: 0),
+
+        const SizedBox(height: 12),
+
+        // Tips
+        if (tips.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.blue.withOpacity(0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('🎒', style: TextStyle(fontSize: 20)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Visitor Tip', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                      const SizedBox(height: 4),
+                      Text(tips, style: const TextStyle(fontSize: 13, height: 1.5, color: AppColors.textSecondary)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(delay: 800.ms).slideY(begin: 0.1, end: 0),
+
+        const SizedBox(height: 20),
+      ],
+    );
   }
 
   // ═══════════════════════════════════════
@@ -156,10 +718,16 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         // Restaurant list
         const Text('Top Picks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        _buildRestaurantCard('Ministry of Crab', '🦀', 4.8, 'Seafood · Fine Dining', 'LKR 3,500', '800 m', 0),
-        _buildRestaurantCard('Hoppers Corner', '🥘', 4.6, 'Local · Street Food', 'LKR 850', '200 m', 1),
-        _buildRestaurantCard('Tea House Garden', '🍵', 4.7, 'Café · Tea Experience', 'LKR 1,200', '600 m', 2),
-        _buildRestaurantCard('Colombo Café Lounge', '☕', 4.5, 'Café · Fusion', 'LKR 2,200', '350 m', 3),
+        if (_foodList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No real food places found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._foodList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildRestaurantCard(a, e.key);
+          }),
       ],
     );
   }
@@ -207,12 +775,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               },
             ),
 
-            // Food dots
-            _buildRadarDot(0.15, -0.2, '🍜', const Color(0xFFFF5252)),
-            _buildRadarDot(-0.25, 0.15, '🦀', const Color(0xFFFFAB40)),
-            _buildRadarDot(0.3, 0.28, '☕', const Color(0xFF8D6E63)),
-            _buildRadarDot(-0.1, -0.35, '🥘', const Color(0xFF66BB6A)),
-            _buildRadarDot(0.35, -0.05, '🍵', const Color(0xFF26C6DA)),
+            // Food dots (Real)
+            ..._foodList.take(5).toList().asMap().entries.map((e) {
+              final a = e.value;
+              // Generate pseudo-random coordinates for the radar based on attraction ID
+              final random = Random(a.id.hashCode);
+              final dx = random.nextDouble() * 0.8 - 0.4;
+              final dy = random.nextDouble() * 0.8 - 0.4;
+              return _buildRadarDot(dx, dy, a, AppColors.primary);
+            }),
 
             // Center dot
             Container(
@@ -243,20 +814,27 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     ).animate().fade().scale(begin: const Offset(0.8, 0.8));
   }
 
-  Widget _buildRadarDot(double dx, double dy, String emoji, Color color) {
+  Widget _buildRadarDot(double dx, double dy, AttractionEntity place, Color color) {
     return Positioned(
-      left: 110 + dx * 200 - 14,
-      top: 110 + dy * 200 - 14,
+      left: 110 + dx * 200 - 16,
+      top: 110 + dy * 200 - 16,
       child: Container(
-        width: 28,
-        height: 28,
+        width: 32,
+        height: 32,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
           color: color.withOpacity(0.2),
-          border: Border.all(color: color.withOpacity(0.5)),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.3), blurRadius: 8)],
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10)],
         ),
-        child: Center(child: Text(emoji, style: const TextStyle(fontSize: 12))),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: PlaceImageHelper.buildPlaceImage(
+            imagePath: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+            category: place.categoryName ?? 'Food',
+            name: place.name,
+          ),
+        ),
       )
           .animate(onPlay: (c) => c.repeat(reverse: true))
           .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 1500.ms),
@@ -297,108 +875,362 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildRestaurantCard(String name, String emoji, double rating, String type, String price, String dist, int index) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+  Widget _buildRestaurantCard(AttractionEntity a, int index) {
+    final dist = (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, a.latitude, a.longitude) / 1000).toStringAsFixed(1);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: a.id,
+          name: a.name,
+          category: a.categoryName ?? 'Restaurant',
+          rating: a.rating,
+          distance: '$dist km',
+          emoji: '🍽',
+          imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
+          latitude: a.latitude,
+          longitude: a.longitude,
+        )),
+      ),
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
       child: Row(
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 70,
+            height: 70,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: AppColors.primary.withOpacity(0.1),
+              color: AppColors.surfaceVariant,
             ),
-            child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: PlaceImageHelper.buildPlaceImage(
+                imagePath: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
+                category: a.categoryName ?? 'Food',
+                name: a.name,
+              ),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(a.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                 const SizedBox(height: 4),
-                Text(type, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                const SizedBox(height: 4),
+                Text(a.categoryName ?? 'Restaurant', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
+                    Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
                     const SizedBox(width: 3),
-                    Text('$rating', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                    const SizedBox(width: 10),
-                    Text(dist, style: TextStyle(fontSize: 11, color: AppColors.primary)),
-                    const SizedBox(width: 10),
-                    Text(price, style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    Text('${a.rating}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                    const SizedBox(width: 12),
+                    Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                    const SizedBox(width: 4),
+                    Text('$dist km', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
                   ],
                 ),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              gradient: AppColors.primaryGradient,
-            ),
-            child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
+          Column(
+            children: [
+              GestureDetector(
+                onTap: () async {
+                  await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
+                  setState(() {}); // Refresh UI
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: CacheService.isPlaceSaved(a.id) ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
+                  ),
+                  child: Icon(
+                    CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                    color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: AppColors.primaryGradient,
+                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+                ),
+                child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+              ),
+            ],
           ),
         ],
+      ),
       ),
     ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.05, end: 0);
   }
 
-  // ═══════════════════════════════════════
-  // EXPERIENCES TAB
-  // ═══════════════════════════════════════
   Widget _buildExperiencesTab() {
+    final featuredExperiences = _experienceList.take(5).toList();
+    final remainingExperiences = _experienceList.skip(5).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildExperienceCard('Village Cycling Tour', '🚲', 'Explore traditional Sri Lankan villages on a guided cycling adventure through paddy fields.', '3 hours', 'LKR 4,500', 4.8, 0),
-        _buildExperienceCard('Batik Workshop', '🎨', 'Learn the ancient art of batik from master craftsmen in a traditional workshop.', '2 hours', 'LKR 3,000', 4.6, 1),
-        _buildExperienceCard('Tea Plantation Walk', '🍃', 'Guided tour through lush tea estates with tasting sessions of premium Ceylon tea.', '4 hours', 'LKR 5,200', 4.9, 2),
-        _buildExperienceCard('Cooking Class', '👨‍🍳', 'Master Sri Lankan cuisine — hoppers, curries, and sambols — with a local chef.', '3 hours', 'LKR 3,800', 4.7, 3),
-        _buildExperienceCard('Sunset Boat Ride', '🚣', 'Scenic boat ride through mangroves and lagoons as the sun sets.', '2 hours', 'LKR 2,800', 4.5, 4),
+        // Featured Experiences (Horizontal Carousel like Homepage)
+        const Text('Featured Experiences', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 16),
+        if (featuredExperiences.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: Text('Searching for experiences...', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          SizedBox(
+            height: 220,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: featuredExperiences.length,
+              itemBuilder: (context, index) {
+                final p = featuredExperiences[index];
+                return _buildFeaturedExperienceCard(p, index);
+              },
+            ),
+          ),
+        
+        const SizedBox(height: 32),
+
+        // Interests/Categories
+        const Text('Browse by Interest', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _buildFoodCategory('🏛', 'Museums', const Color(0xFFEAF2FF)),
+            const SizedBox(width: 10),
+            _buildFoodCategory('🌳', 'Parks', const Color(0xFFEAFFAA)),
+            const SizedBox(width: 10),
+            _buildFoodCategory('🗿', 'Culture', const Color(0xFFF2EAFF)),
+          ],
+        ),
+        const SizedBox(height: 32),
+
+        // Curated List
+        const Text('Curated for You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (remainingExperiences.isEmpty && featuredExperiences.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No real experiences found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ...remainingExperiences.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildExperienceCard(a, e.key);
+          }),
       ],
     );
   }
 
-  Widget _buildExperienceCard(String title, String emoji, String desc, String duration, String price, double rating, int index) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(18),
-      glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildFeaturedExperienceCard(AttractionEntity place, int index) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: place.id,
+          name: place.name,
+          category: place.categoryName ?? 'Attraction',
+          rating: place.rating,
+          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+          emoji: '📍',
+          imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+          latitude: place.latitude,
+          longitude: place.longitude,
+        )),
+      ),
+      child: Container(
+        width: 260,
+        margin: const EdgeInsets.only(right: 16),
+      child: Stack(
         children: [
-          Row(
-            children: [
-              Text(emoji, style: const TextStyle(fontSize: 32)),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                    Row(
-                      children: [
-                        Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
-                        Text(' $rating', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                        const SizedBox(width: 10),
-                        Icon(Icons.schedule_rounded, size: 12, color: AppColors.textTertiary),
-                        Text(' $duration', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                      ],
-                    ),
+          // Background Image
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              image: DecorationImage(
+                image: _getImageProvider(
+                  place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                  place.categoryName ?? 'Attraction',
+                  place.name,
+                ),
+                fit: BoxFit.cover,
+              ),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8)),
+              ],
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.9),
+                    Colors.black.withOpacity(0.2),
+                    Colors.transparent,
                   ],
                 ),
               ),
-              Text(price, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.primary)),
-            ],
+            ),
           ),
-          const SizedBox(height: 10),
-          Text(desc, style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.5)),
+          
+          // Content
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: Colors.white.withOpacity(0.2),
+                  ),
+                  child: Text(
+                    place.categoryName?.toUpperCase() ?? 'EXPERIENCE',
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  place.name,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white, height: 1.2),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                    const SizedBox(width: 4),
+                    Text('${place.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                    const SizedBox(width: 12),
+                    Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                      style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ],
+      ),
+      ),
+    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
+  }
+
+  Widget _buildExperienceCard(AttractionEntity a, int index) {
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: a.id,
+          name: a.name,
+          category: a.categoryName ?? 'Attraction',
+          rating: a.rating,
+          distance: '${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+          emoji: '📍',
+          imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
+          latitude: a.latitude,
+          longitude: a.longitude,
+        )),
+      ),
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(12),
+      glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
+      child: Row(
+        children: [
+          // Thumbnail
+          Container(
+            width: 90,
+            height: 90,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              image: DecorationImage(
+                image: _getImageProvider(
+                  a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
+                  a.categoryName ?? 'Food',
+                  a.name,
+                ),
+                fit: BoxFit.cover,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          
+          // Details
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      a.categoryName?.toUpperCase() ?? 'ATTRACTION',
+                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
+                    ),
+                    GestureDetector(
+                      onTap: () async {
+                        await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
+                        setState(() {});
+                      },
+                      child: Icon(
+                        CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                        color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
+                        size: 20,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  a.name,
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                    Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    const SizedBox(width: 10),
+                    Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
+                    Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  a.description ?? 'Discover this unique location near you.',
+                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
       ),
     ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideY(begin: 0.05, end: 0);
   }
@@ -407,17 +1239,23 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   // SHOPPING TAB
   // ═══════════════════════════════════════
   Widget _buildShoppingTab() {
-    final markets = [
-      {'name': 'Pettah Market', 'emoji': '🏪', 'type': 'Traditional bazaar', 'dist': '1.2 km'},
-      {'name': 'Odel Department Store', 'emoji': '🛍', 'type': 'Designer fashion', 'dist': '800 m'},
-      {'name': 'Laksala Craft Centre', 'emoji': '🎭', 'type': 'Handicrafts & souvenirs', 'dist': '500 m'},
-      {'name': 'Floating Market', 'emoji': '🌊', 'type': 'Night market on water', 'dist': '1.8 km'},
-      {'name': 'Barefoot Gallery', 'emoji': '🧶', 'type': 'Textiles & art', 'dist': '600 m'},
-    ];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Quick categories for shopping
+        const Text('Explore Retail', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _buildFoodCategory('👕', 'Fashion', const Color(0xFFF2EAFF)),
+            const SizedBox(width: 10),
+            _buildFoodCategory('💻', 'Tech', const Color(0xFFEAF2FF)),
+            const SizedBox(width: 10),
+            _buildFoodCategory('🏺', 'Local', const Color(0xFFFFF8EA)),
+          ],
+        ),
+        const SizedBox(height: 28),
+
         // Map preview placeholder
         GlassCard(
           padding: EdgeInsets.zero,
@@ -453,55 +1291,407 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 24),
         const Text('Markets & Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        ...markets.asMap().entries.map((e) => _buildShopItem(e.value, e.key)),
+        if (_shoppingList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No real shops found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._shoppingList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildShopItem(a, e.key);
+          }),
       ],
     );
   }
 
-  Widget _buildShopItem(Map<String, String> shop, int index) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Text(shop['emoji']!, style: const TextStyle(fontSize: 28)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(shop['name']!, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                Text(shop['type']!, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-              ],
-            ),
-          ),
-          Text(shop['dist']!, style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
-        ],
+  Widget _buildShopItem(AttractionEntity shop, int index) {
+    final dist = (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, shop.latitude, shop.longitude) / 1000).toStringAsFixed(1);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: shop.id,
+          name: shop.name,
+          category: shop.categoryName ?? 'Shopping',
+          rating: shop.rating,
+          distance: '$dist km',
+          emoji: '🛍',
+          imageUrl: shop.photoUrls.isNotEmpty ? shop.photoUrls.first : null,
+          latitude: shop.latitude,
+          longitude: shop.longitude,
+        )),
       ),
-    ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0);
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            const Text('🛍', style: const TextStyle(fontSize: 28)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(shop.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text(shop.categoryName ?? 'Shopping', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                ],
+              ),
+            ),
+            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+    );
   }
 
   // ═══════════════════════════════════════
   // BUDGET TAB
   // ═══════════════════════════════════════
   Widget _buildBudgetTab() {
+    return BlocListener<BudgetBloc, BudgetState>(
+      listener: (context, state) {
+        if (state is BudgetError) {
+          if (state.message.contains('401') || state.message.contains('token')) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+              (route) => false,
+            );
+            return;
+          }
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else if (state is BudgetClosed) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Budget closed successfully! You can now start a new one.'),
+              backgroundColor: AppColors.secondary,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          // Refresh to show NoBudgetFound state
+          context.read<BudgetBloc>().add(FetchBudget());
+        }
+      },
+      child: BlocBuilder<BudgetBloc, BudgetState>(
+        buildWhen: (previous, current) => 
+            current is! BudgetHistoryLoaded && 
+            current is! BudgetDetailLoaded && 
+            current is! BudgetHistoryLoading && 
+            current is! BudgetDetailLoading,
+        builder: (context, state) {
+          if (state is BudgetLoading) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (state is BudgetLoaded) {
+            return _buildBudgetUI(state.budget);
+          } else if (state is BudgetClosed || state is NoBudgetFound) {
+            return _buildNoBudgetUI();
+          } else if (state is BudgetError) {
+            return _buildErrorUI(state.message);
+          }
+          return const Center(child: CircularProgressIndicator());
+        },
+      ),
+    );
+  }
+
+  Widget _buildNoBudgetUI() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 60),
+        Icon(Icons.account_balance_wallet_rounded, size: 80, color: AppColors.primary.withOpacity(0.3)),
+        const SizedBox(height: 24),
+        const Text(
+          'No Budget Set Yet',
+          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Setup a budget to track your spending and get AI suggestions for your trip.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 14, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 40),
+        SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: AppColors.primaryGradient,
+            ),
+            child: ElevatedButton(
+              onPressed: () => _showSetupBudgetModal(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.transparent,
+                shadowColor: Colors.transparent,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text('SETUP BUDGET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, letterSpacing: 1.2)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        TextButton.icon(
+          onPressed: () {
+            context.read<BudgetBloc>().add(FetchBudgetHistory());
+            _showHistoryModal();
+          },
+          icon: const Icon(Icons.history_rounded, size: 20, color: AppColors.secondary),
+          label: const Text('VIEW BUDGET HISTORY', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.w600, fontSize: 13)),
+        ),
+      ],
+    ).animate().fade().slideY(begin: 0.1, end: 0);
+  }
+
+  void _showHistoryModal() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Budget History', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            const SizedBox(height: 20),
+            Expanded(
+              child: BlocBuilder<BudgetBloc, BudgetState>(
+                buildWhen: (previous, current) => current is BudgetHistoryLoaded || current is BudgetHistoryLoading,
+                builder: (context, state) {
+                  if (state is BudgetHistoryLoaded) {
+                    if (state.budgets.isEmpty) {
+                      return const Center(child: Text('No past budgets', style: TextStyle(color: AppColors.textTertiary)));
+                    }
+                    return ListView.builder(
+                      itemCount: state.budgets.length,
+                      itemBuilder: (context, index) {
+                        final b = state.budgets[index];
+                        return InkWell(
+                          onTap: () {
+                            context.read<BudgetBloc>().add(FetchBudgetById(b.id));
+                            _showBudgetDetailModal(b.name);
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: GlassCard(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: b.isActive ? AppColors.primary.withOpacity(0.1) : AppColors.textTertiary.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    b.isActive ? Icons.account_balance_wallet_rounded : Icons.history_rounded,
+                                    color: b.isActive ? AppColors.primary : AppColors.textTertiary,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(b.name, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                                      Text(
+                                        '${DateFormat('MMM d').format(b.startDate)} - ${DateFormat('MMM d').format(b.endDate)}',
+                                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      '${b.currency} ${b.totalSpent.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: b.totalSpent > b.totalAmount ? AppColors.error : AppColors.textPrimary,
+                                      ),
+                                    ),
+                                    Text(
+                                      '/ ${b.totalAmount.toStringAsFixed(0)}',
+                                      style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  } else if (state is BudgetHistoryLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showBudgetDetailModal(String budgetName) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(24),
+        decoration: const BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textPrimary),
+                ),
+                Text(budgetName, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: BlocBuilder<BudgetBloc, BudgetState>(
+                buildWhen: (previous, current) => current is BudgetDetailLoaded || current is BudgetDetailLoading,
+                builder: (context, state) {
+                  if (state is BudgetDetailLoaded) {
+                    final budget = state.budget;
+                    if (budget.expenses.isEmpty) {
+                      return const Center(child: Text('No expenses recorded for this budget', style: TextStyle(color: AppColors.textTertiary)));
+                    }
+                    return Column(
+                      children: [
+                        _buildCategoryBreakdown(budget),
+                        const SizedBox(height: 20),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text('Expenses', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: budget.expenses.length,
+                            itemBuilder: (context, index) {
+                              final e = budget.expenses[index];
+                              return _buildTransaction(
+                                e.description ?? e.category,
+                                _getCategoryEmoji(e.category),
+                                '-${budget.currency} ${e.amount.toStringAsFixed(0)}',
+                                DateFormat('MMM d, hh:mm a').format(e.spentAt),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    );
+                  } else if (state is BudgetDetailLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return const SizedBox.shrink();
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetUI(budget_entity.Budget budget) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Today's budget overview
         GlassCard(
           padding: const EdgeInsets.all(20),
-          glowColor: AppColors.primary,
+          glowColor: budget.isOverBudget ? AppColors.error : AppColors.primary,
           child: Column(
             children: [
-              const Text('TODAY\'S SPENDING', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textTertiary, letterSpacing: 2)),
-              const SizedBox(height: 12),
-              ShaderMask(
-                shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-                child: const Text('LKR 8,450', style: TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(budget.name.toUpperCase(), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textTertiary, letterSpacing: 2)),
+                        const SizedBox(height: 4),
+                        Text(
+                          budget.isExpired ? 'EXPIRED' : '${budget.daysLeft} DAYS LEFT',
+                          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: budget.isExpired ? AppColors.error : AppColors.secondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          backgroundColor: AppColors.surface,
+                          title: const Text('Close Budget', style: TextStyle(color: Colors.white)),
+                          content: const Text('Are you sure you want to close this budget? You can start a new one after closing.', style: TextStyle(color: AppColors.textSecondary)),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+                            ElevatedButton(
+                              onPressed: () {
+                                context.read<BudgetBloc>().add(CloseBudgetEvent());
+                                Navigator.pop(context);
+                              },
+                              style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+                              child: const Text('CLOSE', style: TextStyle(color: Colors.white)),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary, size: 20),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text('of LKR 15,000 daily budget', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+              const SizedBox(height: 16),
+              ShaderMask(
+                shaderCallback: (b) => (budget.isOverBudget ? const LinearGradient(colors: [AppColors.error, AppColors.error]) : AppColors.primaryGradient).createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
+                child: Text(
+                  '${budget.currency} ${budget.spentAmount.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                ),
+              ),
+              if (budget.isOverBudget)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '+${budget.currency} ${budget.overAmount.toStringAsFixed(0)} OVER BUDGET',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.error),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Text('of ${budget.currency} ${budget.totalAmount.toStringAsFixed(0)} total budget', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
               const SizedBox(height: 16),
               // Progress bar
               ClipRRect(
@@ -510,12 +1700,14 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   children: [
                     Container(height: 8, color: AppColors.surfaceVariant),
                     FractionallySizedBox(
-                      widthFactor: 0.56,
+                      widthFactor: budget.spentPercentage.clamp(0.0, 1.0),
                       child: Container(
                         height: 8,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(6),
-                          gradient: AppColors.primaryGradient,
+                          gradient: budget.isOverBudget 
+                            ? const LinearGradient(colors: [AppColors.error, AppColors.error]) 
+                            : AppColors.primaryGradient,
                         ),
                       ),
                     ),
@@ -523,89 +1715,404 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 ),
               ),
               const SizedBox(height: 8),
-              Text('56% used', style: TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('${(budget.spentPercentage * 100).toStringAsFixed(0)}% used', style: TextStyle(fontSize: 11, color: budget.isOverBudget ? AppColors.error : AppColors.primary, fontWeight: FontWeight.w600)),
+                  InkWell(
+                    onTap: () {
+                      context.read<BudgetBloc>().add(FetchBudgetHistory());
+                      _showHistoryModal();
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(4.0),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.history_rounded, size: 14, color: AppColors.secondary),
+                          const SizedBox(width: 4),
+                          const Text('HISTORY', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.secondary, letterSpacing: 1)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ).animate().fade(),
         const SizedBox(height: 24),
 
-        const Text('By Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            TextButton.icon(
+              onPressed: () => _showAddExpenseModal(),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add Expense', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+            ),
+          ],
+        ),
         const SizedBox(height: 14),
-        _buildBudgetCategory('🍽', 'Food & Drinks', 'LKR 3,200', 0.38, AppColors.accent, 0),
-        _buildBudgetCategory('🚕', 'Transport', 'LKR 2,800', 0.33, AppColors.secondary, 1),
-        _buildBudgetCategory('🛍', 'Shopping', 'LKR 1,500', 0.18, AppColors.warning, 2),
-        _buildBudgetCategory('🎫', 'Activities', 'LKR 950', 0.11, AppColors.neonGreen, 3),
+        _buildCategoryBreakdown(budget),
 
         const SizedBox(height: 24),
         const Text('Recent Transactions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        _buildTransaction('Hoppers Corner', '🥘', '-LKR 850', '12:30 PM'),
-        _buildTransaction('Tuk-tuk ride', '🛺', '-LKR 400', '11:15 AM'),
-        _buildTransaction('Colombo Museum', '🏛', '-LKR 1,500', '09:45 AM'),
-        _buildTransaction('Morning tea', '☕', '-LKR 350', '08:00 AM'),
+        if (budget.expenses.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 20),
+            child: Center(child: Text('No transactions yet', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ...budget.expenses.take(10).map((e) => _buildTransaction(
+                e.description ?? e.category,
+                _getCategoryEmoji(e.category),
+                '-${budget.currency} ${e.amount.toStringAsFixed(0)}',
+                DateFormat('hh:mm a').format(e.spentAt),
+              )),
+        
+        const SizedBox(height: 30),
+        // AI Suggestion Box (Future placeholder)
+        _buildAISuggestionBox(budget),
       ],
     );
   }
 
-  Widget _buildBudgetCategory(String emoji, String name, String amount, double pct, Color color, int index) {
+  Widget _buildCategoryBreakdown(budget_entity.Budget budget) {
+    final categories = ['Food', 'Transport', 'Shopping', 'Activities', 'Other'];
+    final Map<String, double> totals = {};
+    for (var cat in categories) {
+      totals[cat] = budget.expenses
+          .where((e) => e.category == cat)
+          .fold(0.0, (sum, e) => sum + e.amount);
+    }
+
+    return Column(
+      children: [
+        _buildBudgetCategory('🍽', 'Food', '${budget.currency} ${totals['Food']!.toStringAsFixed(0)}', (totals['Food']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.accent, 0),
+        _buildBudgetCategory('🚕', 'Transport', '${budget.currency} ${totals['Transport']!.toStringAsFixed(0)}', (totals['Transport']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.secondary, 1),
+        _buildBudgetCategory('🛍', 'Shopping', '${budget.currency} ${totals['Shopping']!.toStringAsFixed(0)}', (totals['Shopping']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.warning, 2),
+        _buildBudgetCategory('🎫', 'Activities', '${budget.currency} ${totals['Activities']!.toStringAsFixed(0)}', (totals['Activities']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.neonGreen, 3),
+      ],
+    );
+  }
+
+  String _getCategoryEmoji(String category) {
+    switch (category) {
+      case 'Food': return '🍽';
+      case 'Transport': return '🚕';
+      case 'Shopping': return '🛍';
+      case 'Activities': return '🎫';
+      default: return '💰';
+    }
+  }
+
+  Widget _buildAISuggestionBox(budget_entity.Budget budget) {
     return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
+      glowColor: AppColors.secondary,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.auto_awesome, color: AppColors.secondary, size: 20),
+              const SizedBox(width: 8),
+              const Text('AI BUDGET ADVISOR', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.secondary, letterSpacing: 1.5)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Based on your spending, you are doing great! Try to limit food expenses to LKR 2,000 for the next 2 days to stay within budget.',
+            style: TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.5),
+          ),
+        ],
+      ),
+    ).animate().shimmer(delay: 2.seconds);
+  }
+
+  void _showSetupBudgetModal() {
+    final nameController = TextEditingController();
+    final amountController = TextEditingController();
+    final daysController = TextEditingController(text: '1');
+    final budgetBloc = context.read<BudgetBloc>();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BlocProvider.value(
+        value: budgetBloc,
+        child: StatefulBuilder(
+          builder: (context, setModalState) => Container(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Setup Budget', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                const SizedBox(height: 8),
+                const Text('Plan your journey by setting a total budget.', style: TextStyle(color: AppColors.textSecondary)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: nameController,
+                  style: const TextStyle(color: Colors.black, fontSize: 18),
+                  decoration: InputDecoration(
+                    labelText: 'Budget Name',
+                    labelStyle: const TextStyle(color: AppColors.textTertiary),
+                    prefixIcon: const Icon(Icons.edit_note_rounded, color: AppColors.primary),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.black, fontSize: 18),
+                  decoration: InputDecoration(
+                    labelText: 'Total Amount (LKR)',
+                    labelStyle: const TextStyle(color: AppColors.textTertiary),
+                    prefixIcon: const Icon(Icons.payments_rounded, color: AppColors.primary),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: daysController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.black),
+                  decoration: InputDecoration(
+                    labelText: 'Duration (Days)',
+                    labelStyle: const TextStyle(color: AppColors.textTertiary),
+                    prefixIcon: const Icon(Icons.calendar_today_rounded, color: AppColors.primary),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final name = nameController.text.isNotEmpty ? nameController.text : 'My Budget';
+                      final amount = double.tryParse(amountController.text) ?? 0;
+                      final days = int.tryParse(daysController.text) ?? 1;
+                      if (amount > 0) {
+                        budgetBloc.add(SetupBudgetEvent(
+                          name: name,
+                          totalAmount: amount,
+                          startDate: DateTime.now(),
+                          endDate: DateTime.now().add(Duration(days: days)),
+                        ));
+                        Navigator.pop(context);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('CONFIRM', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAddExpenseModal() {
+    final amountController = TextEditingController();
+    final descController = TextEditingController();
+    final budgetBloc = context.read<BudgetBloc>();
+    String selectedCategory = 'Food';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BlocProvider.value(
+        value: budgetBloc,
+        child: StatefulBuilder(
+          builder: (context, setModalState) => Container(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom, left: 24, right: 24, top: 24),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Add Expense', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                const SizedBox(height: 24),
+                TextField(
+                  controller: amountController,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(color: Colors.black, fontSize: 18),
+                  decoration: InputDecoration(
+                    labelText: 'Amount (LKR)',
+                    labelStyle: const TextStyle(color: AppColors.textTertiary),
+                    prefixIcon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.error)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: descController,
+                  style: const TextStyle(color: Colors.black),
+                  decoration: InputDecoration(
+                    labelText: 'Description (optional)',
+                    labelStyle: const TextStyle(color: AppColors.textTertiary),
+                    prefixIcon: const Icon(Icons.description_outlined, color: AppColors.textTertiary),
+                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
+                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.primary)),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text('Category', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (var cat in ['Food', 'Transport', 'Shopping', 'Activities', 'Other'])
+                      GestureDetector(
+                        onTap: () => setModalState(() => selectedCategory = cat),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: selectedCategory == cat ? AppColors.primary : AppColors.surfaceVariant,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: selectedCategory == cat ? Colors.transparent : AppColors.border),
+                          ),
+                          child: Text(cat, style: TextStyle(color: selectedCategory == cat ? Colors.white : AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final amount = double.tryParse(amountController.text) ?? 0;
+                      if (amount > 0) {
+                        budgetBloc.add(AddExpenseEvent(
+                          amount: amount,
+                          category: selectedCategory,
+                          description: descController.text.isEmpty ? null : descController.text,
+                        ));
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Expense of ${amount.toStringAsFixed(0)} LKR added successfully!'),
+                            backgroundColor: Colors.green,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        );
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: const Text('ADD EXPENSE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBudgetCategory(String emoji, String title, String amount, double progress, Color color, int index) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 24)),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: Text(emoji, style: const TextStyle(fontSize: 18)),
+          ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                    Text(amount, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13)),
+                  ],
+                ),
+                const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
-                  child: Stack(
-                    children: [
-                      Container(height: 4, color: AppColors.surfaceVariant),
-                      FractionallySizedBox(
-                        widthFactor: pct,
-                        child: Container(
-                          height: 4,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(4),
-                            color: color,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: AppColors.surfaceVariant,
+                    valueColor: AlwaysStoppedAnimation<Color>(color),
+                    minHeight: 4,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 14),
-          Text(amount, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
         ],
       ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index));
+    ).animate(delay: (index * 100).milliseconds).fade().slideX(begin: 0.05, end: 0);
   }
 
-  Widget _buildTransaction(String name, String emoji, String amount, String time) {
+  Widget _buildTransaction(String title, String emoji, String amount, String time) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 16),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
-          const SizedBox(width: 12),
+          Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12)),
+            child: Text(emoji, style: const TextStyle(fontSize: 20)),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                Text(time, style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                Text(time, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
               ],
             ),
           ),
-          Text(amount, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.error)),
+          Text(amount, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.error, fontSize: 14)),
         ],
       ),
     );
@@ -735,6 +2242,77 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           Text(sinhala, style: TextStyle(fontSize: 13, color: AppColors.primary)),
         ],
       ),
+    );
+  }
+  Widget _buildErrorUI(String message) {
+    bool isAuthError = message.contains('401') || message.contains('token');
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(height: 60),
+        Icon(
+          isAuthError ? Icons.lock_person_rounded : Icons.error_outline_rounded,
+          size: 80,
+          color: AppColors.error.withOpacity(0.3),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          isAuthError ? 'Authentication Required' : 'Something went wrong',
+          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Text(
+            isAuthError ? 'Please log in to your account to use the budget tracking feature.' : message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+          ),
+        ),
+        if (isAuthError)
+          const Center(child: CircularProgressIndicator())
+        else
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: () {
+                context.read<BudgetBloc>().add(FetchBudget());
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              ),
+              child: const Text(
+                'RETRY',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        const SizedBox(height: 20),
+        TextButton.icon(
+          onPressed: () {
+            context.read<BudgetBloc>().add(FetchBudgetHistory());
+            _showHistoryModal();
+          },
+          icon: const Icon(Icons.history_rounded, size: 18),
+          label: const Text('VIEW PAST BUDGETS'),
+          style: TextButton.styleFrom(foregroundColor: AppColors.textTertiary),
+        ),
+      ],
+    ).animate().fade().slideY(begin: 0.1, end: 0);
+  }
+
+  ImageProvider _getImageProvider(String? url, String category, String name) {
+    return PlaceImageHelper.getImageProvider(url, category, name);
+  }
+
+  Widget _buildImageWidget(String? url, String category, String name, {BoxFit fit = BoxFit.cover}) {
+    return PlaceImageHelper.buildPlaceImage(
+      imagePath: url, 
+      category: category, 
+      name: name,
+      fit: fit,
     );
   }
 }

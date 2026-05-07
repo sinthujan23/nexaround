@@ -13,8 +13,8 @@ class ApiClient {
   static Dio _createDio() {
     final dio = Dio(BaseOptions(
       baseUrl: ApiConstants.baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -26,6 +26,7 @@ class ApiClient {
       onRequest: (options, handler) async {
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString('access_token');
+        print('📡 API Request: ${options.method} ${options.path} - Token present: ${token != null}');
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }

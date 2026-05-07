@@ -1,37 +1,76 @@
-import 'dart:io';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/utils/place_image_helper.dart';
+import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
-class AttractionDetailPage extends StatelessWidget {
+class AttractionDetailPage extends StatefulWidget {
+  final String? id;
   final String name;
   final String category;
   final double rating;
   final String distance;
   final String emoji;
-  final String imageUrl;
+  final String? imageUrl;
+  final double? latitude;
+  final double? longitude;
 
   const AttractionDetailPage({
     super.key,
+    this.id,
     required this.name,
     required this.category,
     required this.rating,
     required this.distance,
     required this.emoji,
-    required this.imageUrl,
+    this.imageUrl,
+    this.latitude,
+    this.longitude,
   });
 
-  String _getImageForAttraction(String name) {
-    if (name.contains('Lotus')) return 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop';
-    if (name.contains('Sigiriya')) return 'https://images.unsplash.com/photo-1586713745281-229f3d9ba34c?q=80&w=1000&auto=format&fit=crop';
-    if (name.contains('Café')) return 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1000&auto=format&fit=crop';
-    return 'https://images.unsplash.com/photo-1563245372-f21724e3856d?q=80&w=1000&auto=format&fit=crop';
+  @override
+  State<AttractionDetailPage> createState() => _AttractionDetailPageState();
+}
+
+class _AttractionDetailPageState extends State<AttractionDetailPage> {
+  String get _placeId => widget.id ?? widget.name.hashCode.toString();
+
+  Future<void> _launchNavigation(BuildContext context) async {
+    if (widget.latitude == null || widget.longitude == null ||
+        (widget.latitude == 0.0 && widget.longitude == 0.0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('📍 Location coordinates not available for this place'),
+          backgroundColor: Colors.black87,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SmartTourismMapPage(
+          initialLat: widget.latitude!,
+          initialLng: widget.longitude!,
+          destinationName: widget.name,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isSaved = CacheService.isPlaceSaved(_placeId);
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
@@ -48,7 +87,7 @@ class AttractionDetailPage extends StatelessWidget {
                 margin: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.black.withOpacity(0.3),
                 ),
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
               ),
@@ -57,9 +96,11 @@ class AttractionDetailPage extends StatelessWidget {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  imageUrl.startsWith('assets/')
-                      ? Image.asset(imageUrl, fit: BoxFit.cover)
-                      : Image.network(imageUrl, fit: BoxFit.cover),
+                  PlaceImageHelper.buildPlaceImage(
+                    imagePath: widget.imageUrl,
+                    category: widget.category,
+                    name: widget.name,
+                  ),
                   // Gradient overlay
                   Container(
                     decoration: BoxDecoration(
@@ -96,14 +137,14 @@ class AttractionDetailPage extends StatelessWidget {
                           color: AppColors.actionTeal.withOpacity(0.1),
                         ),
                         child: Text(
-                          category.toUpperCase(),
+                          widget.category.toUpperCase(),
                           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.actionTeal, letterSpacing: 1),
                         ),
                       ),
                       const SizedBox(width: 10),
                       const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
                       const SizedBox(width: 4),
-                      Text('$rating', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                      Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
                       Text(' (2.3k reviews)', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                     ],
                   ).animate().fade(),
@@ -112,7 +153,7 @@ class AttractionDetailPage extends StatelessWidget {
 
                   // Name
                   Text(
-                    name,
+                    widget.name,
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1, height: 1.1),
                   ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0),
 
@@ -121,7 +162,7 @@ class AttractionDetailPage extends StatelessWidget {
                     children: [
                       const Icon(Icons.location_on_rounded, size: 14, color: AppColors.actionTeal),
                       const SizedBox(width: 4),
-                      Text(distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
+                      Text(widget.distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 16),
                       Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
                       const SizedBox(width: 4),
@@ -135,10 +176,12 @@ class AttractionDetailPage extends StatelessWidget {
                   Row(
                     children: [
                       _buildStatChip(Icons.attach_money_rounded, 'LKR 1,500', 'Entry Fee'),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       _buildStatChip(Icons.schedule_rounded, '3-4 hrs', 'Avg Visit'),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       _buildStatChip(Icons.people_rounded, 'Low', 'Crowd'),
+                      const SizedBox(width: 8),
+                      _buildSaveChip(isSaved),
                     ],
                   ).animate().fade(delay: 200.ms),
 
@@ -227,21 +270,24 @@ class AttractionDetailPage extends StatelessWidget {
           children: [
             // Navigate button
             Expanded(
-              child: Container(
-                height: 56,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18),
-                  color: Colors.black,
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 6))],
-                ),
-                child: const Center(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.navigation_rounded, color: Colors.white, size: 20),
-                      SizedBox(width: 8),
-                      Text('Navigate', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                    ],
+              child: GestureDetector(
+                onTap: () => _launchNavigation(context),
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: Colors.black,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 6))],
+                  ),
+                  child: const Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.map_rounded, color: Colors.white),
+                        SizedBox(width: 8),
+                        Text('View on Smart Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -280,6 +326,51 @@ class AttractionDetailPage extends StatelessWidget {
             const SizedBox(height: 2),
             Text(label, style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSaveChip(bool isSaved) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: () async {
+          final map = {
+            'id': _placeId,
+            'name': widget.name,
+            'category_name': widget.category,
+            'rating': widget.rating,
+            'photo_urls': [widget.imageUrl],
+            'latitude': widget.latitude ?? 0.0,
+            'longitude': widget.longitude ?? 0.0,
+            'created_at': DateTime.now().toIso8601String(),
+          };
+          await CacheService.toggleSavedPlace(map);
+          setState(() {});
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
+          decoration: BoxDecoration(
+            color: isSaved ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isSaved ? AppColors.primary.withOpacity(0.3) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                isSaved ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded, 
+                size: 18, 
+                color: isSaved ? AppColors.primary : AppColors.actionTeal
+              ),
+              const SizedBox(height: 8),
+              Text(isSaved ? 'Saved' : 'Save', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isSaved ? AppColors.primary : AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text('To Profile', style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
+            ],
+          ),
         ),
       ),
     );
