@@ -2,6 +2,7 @@ import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/error/failures.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexaround_app/features/auth/domain/entities/user.dart';
 import 'package:nexaround_app/features/auth/domain/repositories/auth_repository.dart';
@@ -96,6 +97,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
+    await CacheService.setLoggedIn(false);
   }
 
   @override
@@ -129,6 +131,6 @@ class AuthRepositoryImpl implements AuthRepository {
       }
       return ServerFailure(detail ?? 'Server error ($statusCode)');
     }
-    return const NetworkFailure('No internet connection');
+    return NetworkFailure('Could not reach server (${e.type.name}): ${e.message ?? 'No internet connection'}');
   }
 }

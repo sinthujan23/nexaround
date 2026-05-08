@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:geolocator/geolocator.dart' as geo;
-import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
-import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
@@ -23,8 +20,21 @@ class _AiChatPageState extends State<AiChatPage> {
   final List<_ChatMessage> _messages = [];
   bool _isTyping = false;
   bool _showSuggestions = true;
-  List<AttractionEntity> _nearbyAttractions = [];
   final GeminiService _geminiService = GeminiService();
+
+  static const String _nevaSystemPrompt = '''
+You are Neva, the intelligent female AI travel companion of the NexAround app. Your personality:
+
+- **Who you are**: A warm, witty, and deeply knowledgeable female travel companion. Think of yourself as the user\'s smartest, most well-travelled best friend.
+- **Tone**: Friendly, conversational, and encouraging. Use light humour when appropriate. Never robotic or formal.
+- **Expertise**: You are an expert in travel, local culture, food, history, hidden gems, safety tips, budgeting, and itinerary planning.
+- **How you respond**: Keep answers concise and engaging. Use emojis sparingly but naturally (1-2 max per message). Break up long info with short paragraphs.
+- **What you never do**: Never list nearby places unless the user explicitly asks. Never give generic, copy-paste travel blog answers. Always be specific and personalised.
+- **Your goal**: Make every traveller feel like they have a brilliant local friend guiding them, not a search engine.
+- **App context**: You are part of NexAround, a smart tourism app. You can help with place recommendations, travel tips, itinerary ideas, local food, cultural insights, safety advice, and budget guidance.
+
+Always stay in character as Neva. Never say you are an AI language model or mention Gemini/Google.
+''';
 
   final List<String> _quickPrompts = [
     '🌙 Safe night spots',
@@ -38,7 +48,7 @@ class _AiChatPageState extends State<AiChatPage> {
   void initState() {
     super.initState();
     _messages.add(_ChatMessage(
-      text: "Hey Alex! I'm Neva. I'm not just your guide—I'm your eyes and ears on the ground. \n\nWhere are we exploring today? I've got some secret spots pinned for you.",
+      text: "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
       isUser: false,
       timestamp: DateTime.now(),
     ));
@@ -47,23 +57,6 @@ class _AiChatPageState extends State<AiChatPage> {
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) _sendMessage(widget.initialPrompt!);
       });
-    }
-    _fetchNearby();
-  }
-
-  Future<void> _fetchNearby() async {
-    try {
-      final pos = await geo.Geolocator.getCurrentPosition();
-      final places = await GooglePlacesService.fetchNearbyPlaces(
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        radius: 2000,
-      );
-      if (mounted) {
-        setState(() => _nearbyAttractions = places);
-      }
-    } catch (e) {
-      debugPrint('Error fetching nearby in chat: $e');
     }
   }
 
@@ -79,12 +72,10 @@ class _AiChatPageState extends State<AiChatPage> {
     _scrollToBottom();
 
     try {
-      // Create context string from nearby attractions
-      final contextStr = _nearbyAttractions.isEmpty 
-          ? "The user is in Colombo, Sri Lanka." 
-          : "The user is in Colombo. Nearby attractions: ${_nearbyAttractions.take(5).map((e) => e.name).join(', ')}. Act as Neva, a spatial cognition partner.";
-
-      final response = await _geminiService.getResponse(text, context: contextStr);
+      final response = await _geminiService.getResponse(
+        text,
+        systemInstruction: _nevaSystemPrompt,
+      );
 
       if (mounted) {
         setState(() {
@@ -169,11 +160,6 @@ class _AiChatPageState extends State<AiChatPage> {
                 if (_showSuggestions) ...[
                   const SizedBox(height: 12),
                   _buildQuickSuggestions(),
-                ],
-                // Nearby Attractions Carousel
-                if (_nearbyAttractions.isNotEmpty) ...[
-                  const SizedBox(height: 16),
-                  _buildNearbyCarousel(),
                 ],
                 Padding(
                   padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom > 0 ? 12 : 110),
@@ -372,68 +358,6 @@ class _AiChatPageState extends State<AiChatPage> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildNearbyCarousel() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'NEARBY FOR CONTEXT',
-            style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.black38, letterSpacing: 1.2),
-          ),
-        ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            scrollDirection: Axis.horizontal,
-            itemCount: _nearbyAttractions.length,
-            itemBuilder: (context, index) {
-              return _buildNearbyItem(_nearbyAttractions[index]);
-            },
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNearbyItem(AttractionEntity place) {
-    return Container(
-      width: 140,
-      margin: const EdgeInsets.only(right: 12),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.03),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.black.withOpacity(0.05)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-            child: Image.network(
-              place.photoUrls.isNotEmpty ? place.photoUrls.first : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
-              height: 60,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Text(
-              place.name,
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
       ),
     );
   }

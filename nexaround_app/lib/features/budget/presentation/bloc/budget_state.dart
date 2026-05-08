@@ -16,11 +16,12 @@ class BudgetDetailLoading extends BudgetState {}
 
 class BudgetLoaded extends BudgetState {
   final Budget budget;
+  final bool isFromCache;
 
-  const BudgetLoaded(this.budget);
+  const BudgetLoaded(this.budget, {this.isFromCache = false});
 
   @override
-  List<Object?> get props => [budget];
+  List<Object?> get props => [budget, isFromCache];
 }
 
 class NoBudgetFound extends BudgetState {}

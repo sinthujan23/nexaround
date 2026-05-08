@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../data/repositories/budget_repository_impl.dart';
 import '../../domain/repositories/budget_repository.dart';
 import 'budget_event.dart';
 import 'budget_state.dart';
@@ -16,15 +17,29 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
   }
 
   Future<void> _onFetchBudget(FetchBudget event, Emitter<BudgetState> emit) async {
-    emit(BudgetLoading());
+    // Show cached data immediately if available
+    if (_repository is BudgetRepositoryImpl) {
+      final cached = await (_repository as BudgetRepositoryImpl).getCachedBudget();
+      if (cached != null) {
+        emit(BudgetLoaded(cached, isFromCache: true));
+      } else {
+        emit(BudgetLoading());
+      }
+    } else {
+      emit(BudgetLoading());
+    }
+
     try {
       final budget = await _repository.getMyBudget();
-      emit(BudgetLoaded(budget));
+      emit(BudgetLoaded(budget, isFromCache: false));
     } catch (e) {
       if (e.toString().contains('404')) {
         emit(NoBudgetFound());
       } else {
-        emit(BudgetError(e.toString()));
+        // Only emit error if we don't already have cached data showing
+        if (state is! BudgetLoaded) {
+          emit(BudgetError(e.toString()));
+        }
       }
     }
   }

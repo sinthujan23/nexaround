@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -8,6 +12,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -39,6 +44,155 @@ class AttractionDetailPage extends StatefulWidget {
 
 class _AttractionDetailPageState extends State<AttractionDetailPage> {
   String get _placeId => widget.id ?? widget.name.hashCode.toString();
+
+  // ── Google Places data ──
+  bool _isLoadingPlaces = true;
+  String? _openNowText;
+  String? _closingTime;
+  int? _totalReviews;
+  String? _priceLevel;
+  List<Map<String, dynamic>> _realReviews = [];
+  List<String> _weekdayHours = [];
+
+  // ── Gemini data ──
+  bool _isLoadingGemini = true;
+  String? _historyText;
+  String? _culturalTips;
+  String? _avgVisit;
+  String? _crowdLevel;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchPlacesDetails();
+    _fetchGeminiInfo();
+  }
+
+  Future<void> _fetchPlacesDetails() async {
+    try {
+      // Use place_id if it looks like a real Google place ID, else find by name+location
+      String? resolvedId = widget.id;
+      if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null) {
+        resolvedId = await _findPlaceId();
+      }
+      if (resolvedId == null) {
+        if (mounted) setState(() => _isLoadingPlaces = false);
+        return;
+      }
+
+      final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary';
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/place/details/json'
+        '?place_id=$resolvedId&fields=$fields'
+        '&key=${ApiConstants.googleMapsApiKey}',
+      );
+      final response = await http.get(url);
+      if (response.statusCode != 200) {
+        if (mounted) setState(() => _isLoadingPlaces = false);
+        return;
+      }
+      final data = jsonDecode(response.body)['result'] as Map<String, dynamic>?;
+      if (data == null) {
+        if (mounted) setState(() => _isLoadingPlaces = false);
+        return;
+      }
+
+      // Opening hours
+      final hours = data['opening_hours'] as Map<String, dynamic>?;
+      final openNow = hours?['open_now'] as bool?;
+      final weekday = (hours?['weekday_text'] as List?)?.cast<String>() ?? [];
+      String? closingTime;
+      if (openNow == true && weekday.isNotEmpty) {
+        final today = weekday[DateTime.now().weekday - 1];
+        final match = RegExp(r'–\s*(.+)$').firstMatch(today);
+        closingTime = match?.group(1)?.trim();
+      }
+
+      // Price level → human readable
+      final priceInt = data['price_level'] as int?;
+      final priceText = priceInt == null ? null
+          : priceInt == 0 ? 'Free'
+          : priceInt == 1 ? 'Inexpensive'
+          : priceInt == 2 ? 'Moderate'
+          : priceInt == 3 ? 'Expensive'
+          : 'Very Expensive';
+
+      // Reviews
+      final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
+      final reviews = rawReviews.take(3).map((r) => {
+        'author': r['author_name'] ?? 'Anonymous',
+        'rating': (r['rating'] as num?)?.toDouble() ?? 0.0,
+        'text': r['text'] ?? '',
+        'time': r['relative_time_description'] ?? '',
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _openNowText = openNow == null ? null : (openNow ? 'Open' : 'Closed');
+          _closingTime = closingTime;
+          _totalReviews = data['user_ratings_total'] as int?;
+          _priceLevel = priceText;
+          _realReviews = List<Map<String, dynamic>>.from(reviews);
+          _weekdayHours = weekday;
+          _isLoadingPlaces = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Places detail error: $e');
+      if (mounted) setState(() => _isLoadingPlaces = false);
+    }
+  }
+
+  Future<String?> _findPlaceId() async {
+    try {
+      final query = Uri.encodeComponent(widget.name);
+      String locationBias = '';
+      if (widget.latitude != null && widget.longitude != null) {
+        locationBias = '&locationbias=circle:5000@${widget.latitude},${widget.longitude}';
+      }
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/place/findplacefromtext/json'
+        '?input=$query&inputtype=textquery&fields=place_id$locationBias'
+        '&key=${ApiConstants.googleMapsApiKey}',
+      );
+      final response = await http.get(url);
+      final candidates = jsonDecode(response.body)['candidates'] as List?;
+      return candidates?.isNotEmpty == true ? candidates![0]['place_id'] as String? : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _fetchGeminiInfo() async {
+    try {
+      final locationHint = (widget.latitude != null && widget.longitude != null)
+          ? ' at coordinates (${widget.latitude}, ${widget.longitude})'
+          : '';
+      final prompt =
+          'For the place named "${widget.name}" (category: ${widget.category})$locationHint, '
+          'give me ONLY a JSON object (no markdown) with these fields: '
+          '{"history":"2-3 sentence history or description","cultural_tips":"bullet-point tips for visitors (use \\n• for each)","avg_visit":"estimated visit duration e.g. 1-2 hrs","crowd":"Low/Medium/High crowd level"}';
+
+      final raw = await GeminiService().getResponse(prompt);
+      String cleaned = raw.trim();
+      if (cleaned.contains('```')) {
+        cleaned = cleaned.replaceAll(RegExp(r'```json?\n?'), '').replaceAll(RegExp(r'\n?```'), '');
+      }
+      final info = jsonDecode(cleaned) as Map<String, dynamic>;
+      if (mounted) {
+        setState(() {
+          _historyText = info['history'] as String?;
+          _culturalTips = info['cultural_tips'] as String?;
+          _avgVisit = info['avg_visit'] as String?;
+          _crowdLevel = info['crowd'] as String?;
+          _isLoadingGemini = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Gemini detail error: $e');
+      if (mounted) setState(() => _isLoadingGemini = false);
+    }
+  }
 
   Future<void> _launchNavigation(BuildContext context) async {
     if (widget.latitude == null || widget.longitude == null ||
@@ -145,9 +299,14 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
                       const SizedBox(width: 4),
                       Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                      Text(' (2.3k reviews)', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                      Text(
+                        _totalReviews != null
+                            ? ' (${_totalReviews! >= 1000 ? '${(_totalReviews! / 1000).toStringAsFixed(1)}k' : _totalReviews} reviews)'
+                            : '',
+                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                      ),
                     ],
-                  ).animate().fade(),
+                  ),
 
                   const SizedBox(height: 16),
 
@@ -155,7 +314,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                   Text(
                     widget.name,
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1, height: 1.1),
-                  ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0),
+                  ),
 
                   const SizedBox(height: 12),
                   Row(
@@ -166,7 +325,15 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       const SizedBox(width: 16),
                       Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
                       const SizedBox(width: 4),
-                      const Text('Open · Closes 6 PM', style: TextStyle(fontSize: 13, color: Colors.green, fontWeight: FontWeight.w600)),
+                      if (_isLoadingPlaces)
+                        Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)))
+                      else if (_openNowText != null)
+                        Text(
+                          _openNowText == 'Open'
+                              ? 'Open${_closingTime != null ? ' · Closes $_closingTime' : ''}'
+                              : 'Closed',
+                          style: TextStyle(fontSize: 13, color: _openNowText == 'Open' ? Colors.green : Colors.red, fontWeight: FontWeight.w600),
+                        ),
                     ],
                   ),
 
@@ -175,83 +342,62 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                   // Quick stats row
                   Row(
                     children: [
-                      _buildStatChip(Icons.attach_money_rounded, 'LKR 1,500', 'Entry Fee'),
+                      _buildStatChip(Icons.attach_money_rounded, _isLoadingPlaces ? '...' : (_priceLevel ?? 'N/A'), 'Entry Fee'),
                       const SizedBox(width: 8),
-                      _buildStatChip(Icons.schedule_rounded, '3-4 hrs', 'Avg Visit'),
+                      _buildStatChip(Icons.schedule_rounded, _isLoadingGemini ? '...' : (_avgVisit ?? 'N/A'), 'Avg Visit'),
                       const SizedBox(width: 8),
-                      _buildStatChip(Icons.people_rounded, 'Low', 'Crowd'),
+                      _buildStatChip(Icons.people_rounded, _isLoadingGemini ? '...' : (_crowdLevel ?? 'N/A'), 'Crowd'),
                       const SizedBox(width: 8),
                       _buildSaveChip(isSaved),
                     ],
-                  ).animate().fade(delay: 200.ms),
+                  ),
 
                   const SizedBox(height: 28),
 
                   // History section
-                  _buildInfoSection(
-                    'History',
-                    Icons.history_edu_rounded,
-                    'This magnificent site dates back centuries, serving as a testament to the rich cultural heritage of Sri Lanka. Originally built as a royal fortress, it has witnessed the rise and fall of ancient kingdoms and stands today as a UNESCO World Heritage Site.',
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: _isLoadingGemini
+                        ? _buildSkeletonSection(key: const ValueKey('hist_skel'))
+                        : _historyText != null
+                            ? _buildInfoSection('History', Icons.history_edu_rounded, _historyText!, key: const ValueKey('hist_real'))
+                            : const SizedBox.shrink(key: ValueKey('hist_none')),
                   ),
+                  const SizedBox(height: 16),
 
-                  const SizedBox(height: 20),
-
-                  // Cultural Info
-                  _buildInfoSection(
-                    'Cultural Tips',
-                    Icons.info_outline_rounded,
-                    '• Dress modestly — cover shoulders and knees\n• Remove shoes before entering sacred areas\n• Photography may be restricted in certain zones\n• Guides available in English, Sinhala, and Tamil',
+                  // Cultural Tips
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: _isLoadingGemini
+                        ? _buildSkeletonSection(key: const ValueKey('tips_skel'))
+                        : _culturalTips != null
+                            ? _buildInfoSection('Cultural Tips', Icons.info_outline_rounded, _culturalTips!, key: const ValueKey('tips_real'))
+                            : const SizedBox.shrink(key: ValueKey('tips_none')),
                   ),
-
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
 
                   // Opening Hours
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Icon(Icons.schedule_rounded, size: 18, color: AppColors.textPrimary),
-                            const SizedBox(width: 10),
-                            const Text('Opening Hours', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _buildHourRow('Monday – Friday', '7:00 AM – 6:00 PM'),
-                        _buildHourRow('Saturday', '7:00 AM – 5:00 PM'),
-                        _buildHourRow('Sunday', '8:00 AM – 4:00 PM'),
-                      ],
-                    ),
-                  ).animate().fade(delay: 400.ms),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: _isLoadingPlaces
+                        ? _buildSkeletonSection(key: const ValueKey('hours_skel'))
+                        : _weekdayHours.isNotEmpty
+                            ? _buildOpeningHoursCard(key: const ValueKey('hours_real'))
+                            : const SizedBox.shrink(key: ValueKey('hours_none')),
+                  ),
+                  const SizedBox(height: 16),
 
-                  const SizedBox(height: 20),
+                  // Visitor Reviews
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: _isLoadingPlaces
+                        ? _buildSkeletonSection(key: const ValueKey('rev_skel'))
+                        : _realReviews.isNotEmpty
+                            ? _buildReviewsCard(key: const ValueKey('rev_real'))
+                            : const SizedBox.shrink(key: ValueKey('rev_none')),
+                  ),
 
-                  // User Ratings
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Visitor Reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                        const SizedBox(height: 14),
-                        _buildReview('Sarah M.', 5.0, 'Absolutely breathtaking! One of the most beautiful places I\'ve ever visited.', '2 days ago'),
-                        const Divider(color: AppColors.border, height: 24),
-                        _buildReview('James K.', 4.0, 'Great historical site. The climb is worth it for the views.', '1 week ago'),
-                      ],
-                    ),
-                  ).animate().fade(delay: 500.ms),
-
-                  const SizedBox(height: 120),
+                  const SizedBox(height: 32),
                 ],
               ),
             ),
@@ -294,18 +440,120 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
             ),
             const SizedBox(width: 12),
             // AR button
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: Colors.black.withOpacity(0.1)),
-                color: AppColors.surfaceVariant,
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => ArCameraPage(
+                    initialPlace: {
+                      'name': widget.name,
+                      'category': widget.category,
+                      'distance': widget.distance,
+                      'distanceM': 0.0,
+                      'rating': widget.rating,
+                      'latitude': widget.latitude,
+                      'longitude': widget.longitude,
+                    },
+                  ),
+                ),
               ),
-              child: const Icon(Icons.view_in_ar_rounded, color: Colors.black, size: 24),
+              child: Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.black.withOpacity(0.1)),
+                  color: AppColors.surfaceVariant,
+                ),
+                child: const Icon(Icons.view_in_ar_rounded, color: Colors.black, size: 24),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSkeletonSection({Key? key}) {
+    return Container(key: key,
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(height: 14, width: 120, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6))),
+          const SizedBox(height: 14),
+          Container(height: 10, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 8),
+          Container(height: 10, width: 220, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+          const SizedBox(height: 8),
+          Container(height: 10, width: 180, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOpeningHoursCard({Key? key}) {
+    return Container(key: key,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.schedule_rounded, size: 18, color: AppColors.textPrimary),
+              SizedBox(width: 10),
+              Text('Opening Hours', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ..._weekdayHours.map((h) {
+            final parts = h.split(': ');
+            final day = parts.isNotEmpty ? parts[0] : h;
+            final time = parts.length > 1 ? parts[1] : '';
+            return _buildHourRow(day, time);
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReviewsCard({Key? key}) {
+    return Container(key: key,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Visitor Reviews', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 14),
+          ..._realReviews.asMap().entries.map((e) {
+            final r = e.value;
+            return Column(
+              children: [
+                if (e.key > 0) const Divider(color: AppColors.border, height: 24),
+                _buildReview(
+                  r['author'] as String,
+                  r['rating'] as double,
+                  r['text'] as String,
+                  r['time'] as String,
+                ),
+              ],
+            );
+          }),
+        ],
       ),
     );
   }
@@ -376,8 +624,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
-  Widget _buildInfoSection(String title, IconData icon, String content) {
+  Widget _buildInfoSection(String title, IconData icon, String content, {Key? key}) {
     return Container(
+      key: key,
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -401,7 +650,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
           ),
         ],
       ),
-    ).animate().fade(delay: 300.ms);
+    );
   }
 
   Widget _buildHourRow(String day, String hours) {

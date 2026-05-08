@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
-import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
@@ -350,8 +350,9 @@ class ProfilePage extends StatelessWidget {
             ),
             child: TextButton.icon(
               onPressed: () {
+                context.read<AuthBloc>().add(const AuthLogoutRequested());
                 Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
                   (route) => false,
                 );
               },

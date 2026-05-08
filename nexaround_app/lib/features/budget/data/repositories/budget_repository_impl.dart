@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import '../models/budget_model.dart';
 import '../../domain/entities/budget.dart';
@@ -6,12 +8,34 @@ import '../../domain/repositories/budget_repository.dart';
 
 class BudgetRepositoryImpl implements BudgetRepository {
   final Dio _dio = ApiClient.instance;
+  static const String _budgetCacheKey = 'cached_budget';
+
+  Future<Budget?> getCachedBudget() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_budgetCacheKey);
+      if (raw == null) return null;
+      return BudgetModel.fromJson(jsonDecode(raw));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _cacheBudget(Budget budget) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final model = budget as BudgetModel;
+      await prefs.setString(_budgetCacheKey, jsonEncode(model.toJson()));
+    } catch (_) {}
+  }
 
   @override
   Future<Budget> getMyBudget() async {
     try {
       final response = await _dio.get('/api/v1/budget/');
-      return BudgetModel.fromJson(response.data);
+      final budget = BudgetModel.fromJson(response.data);
+      await _cacheBudget(budget);
+      return budget;
     } catch (e) {
       rethrow;
     }

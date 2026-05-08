@@ -10,11 +10,16 @@ class ApiClient {
     return _dio!;
   }
 
+  static void reset() {
+    _dio?.close(force: true);
+    _dio = null;
+  }
+
   static Dio _createDio() {
     final dio = Dio(BaseOptions(
       baseUrl: ApiConstants.baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(seconds: 20),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',

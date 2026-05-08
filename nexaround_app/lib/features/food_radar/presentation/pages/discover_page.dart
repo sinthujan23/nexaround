@@ -14,9 +14,6 @@ import 'package:nexaround_app/features/budget/domain/entities/budget.dart' as bu
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
-import 'package:camera/camera.dart';
-import 'package:nexaround_app/core/services/gemini_service.dart';
-import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
 
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
@@ -25,6 +22,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 
 class DiscoverPage extends StatefulWidget {
   const DiscoverPage({super.key});
@@ -43,15 +46,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   List<AttractionEntity> _experienceList = [];
   List<AttractionEntity> _shoppingList = [];
 
-  // AI Vision state
-  CameraController? _cameraController;
-  bool _isCameraReady = false;
-  bool _isScanning = false;
-  bool _scanComplete = false;
-  Map<String, dynamic>? _scanResult;
-  String? _scanError;
+  // Emergency tab state
+  List<Map<String, dynamic>> _nearbyHospitals = [];
+  Map<String, dynamic>? _emergencyInfo;
+  bool _isLoadingEmergency = false;
 
-  final List<String> _tabs = ['AI Scan', 'Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
+  final List<String> _tabs = ['Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
 
   @override
   void initState() {
@@ -65,7 +65,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       Position position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() => _currentPosition = position);
-      _fetchForTab(1); // Fetch food initially (tab index shifted by AI Scan)
+      _fetchForTab(0); // Fetch food initially
     } catch (e) {
       debugPrint('Error getting location: $e');
     }
@@ -73,18 +73,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   void _fetchForTab(int index) {
     if (_currentPosition == null) return;
-    
-    // Offset by 1 because AI Scan is now tab 0
-    String? category;
-    if (index == 1) category = 'Food & Drink';
-    if (index == 2) category = 'Attractions';
-    if (index == 3) category = 'Shopping';
 
-    if (index == 0) {
-      // AI Scan tab — trigger auto-capture
-      _startAIScan();
-      return;
-    }
+    String? category;
+    if (index == 0) category = 'Food & Drink';
+    if (index == 1) category = 'Attractions';
+    if (index == 2) category = 'Shopping';
 
     if (category != null) {
       context.read<MapBloc>().add(FetchNearbyAttractions(
@@ -95,76 +88,123 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     }
   }
 
-  Future<void> _initCamera() async {
+
+  static const String _emergencyCacheKey = 'cached_emergency_data';
+
+  Future<void> _loadEmergencyCache() async {
     try {
-      final cameras = await availableCameras();
-      if (cameras.isEmpty) return;
-      _cameraController = CameraController(
-        cameras.first,
-        ResolutionPreset.medium,
-        enableAudio: false,
-      );
-      await _cameraController!.initialize();
-      if (mounted) setState(() => _isCameraReady = true);
-      // Auto-scan on first load
-      Future.delayed(const Duration(milliseconds: 1500), () => _startAIScan());
-    } catch (e) {
-      debugPrint('Camera init error: \$e');
-    }
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_emergencyCacheKey);
+      if (raw == null || !mounted) return;
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final hospitals = (data['hospitals'] as List?)
+          ?.map((e) => Map<String, dynamic>.from(e as Map))
+          .toList() ?? [];
+      final info = data['info'] != null
+          ? Map<String, dynamic>.from(data['info'] as Map)
+          : null;
+      if (mounted) {
+        setState(() {
+          _nearbyHospitals = hospitals;
+          _emergencyInfo = info;
+        });
+      }
+    } catch (_) {}
   }
 
-  Future<void> _startAIScan() async {
-    if (!_isCameraReady || _cameraController == null || _isScanning) return;
-    if (_currentPosition == null) return;
+  Future<void> _saveEmergencyCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_emergencyCacheKey, jsonEncode({
+        'hospitals': _nearbyHospitals,
+        'info': _emergencyInfo,
+      }));
+    } catch (_) {}
+  }
 
-    setState(() {
-      _isScanning = true;
-      _scanComplete = false;
-      _scanResult = null;
-      _scanError = null;
-    });
+  Future<void> _fetchEmergencyData() async {
+    if (_currentPosition == null || _isLoadingEmergency) return;
+    // Load cache first for instant display
+    await _loadEmergencyCache();
+    setState(() => _isLoadingEmergency = true);
 
     try {
-      // Capture image silently
-      final xFile = await _cameraController!.takePicture();
-      final bytes = await xFile.readAsBytes();
-
-      // Send to Gemini Vision
-      final rawResponse = await GeminiService().identifyPlace(
-        imageBytes: bytes,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+      // Fetch nearby hospitals via Google Places API
+      final lat = _currentPosition!.latitude;
+      final lng = _currentPosition!.longitude;
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
+        '?location=$lat,$lng&radius=5000&type=hospital'
+        '&key=${ApiConstants.googleMapsApiKey}',
       );
-
-      // Parse JSON response (strip markdown if present)
-      String jsonStr = rawResponse.trim();
-      if (jsonStr.startsWith('```')) {
-        jsonStr = jsonStr.replaceAll(RegExp(r'^```json?\n?'), '').replaceAll(RegExp(r'\n?```\$'), '');
+      final response = await http.get(url);
+      final List<Map<String, dynamic>> hospitals = [];
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final results = data['results'] as List? ?? [];
+        for (final place in results.take(5)) {
+          final placeLocation = place['geometry']?['location'];
+          double? distKm;
+          if (placeLocation != null) {
+            final d = Geolocator.distanceBetween(
+              lat, lng,
+              (placeLocation['lat'] as num).toDouble(),
+              (placeLocation['lng'] as num).toDouble(),
+            );
+            distKm = d / 1000;
+          }
+          hospitals.add({
+            'name': place['name'] ?? 'Hospital',
+            'address': place['vicinity'] ?? '',
+            'dist': distKm != null ? '${distKm.toStringAsFixed(1)} km' : '',
+            'open': place['opening_hours']?['open_now'],
+            'placeId': place['place_id'] ?? '',
+            'lat': (placeLocation?['lat'] as num?)?.toDouble() ?? lat,
+            'lng': (placeLocation?['lng'] as num?)?.toDouble() ?? lng,
+          });
+        }
+        hospitals.sort((a, b) {
+          final da = double.tryParse((a['dist'] as String).replaceAll(' km', '')) ?? 999;
+          final db = double.tryParse((b['dist'] as String).replaceAll(' km', '')) ?? 999;
+          return da.compareTo(db);
+        });
       }
-      final result = jsonDecode(jsonStr) as Map<String, dynamic>;
+
+      // Fetch emergency numbers + phrases for this location via Gemini
+      final geminiPrompt =
+          'I am a traveller at GPS coordinates ($lat, $lng). '
+          'What country/city am I likely in? '
+          'Give me ONLY a JSON object with these fields (no markdown): '
+          '{ "country": "...", "city": "...", "emergency_numbers": [{"label":"Police","number":"..."},{"label":"Ambulance","number":"..."},{"label":"Fire","number":"..."},{"label":"Tourist Helpline","number":"..."}], '
+          '"phrases": [{"english":"Help!","local":"..."},{"english":"I need a doctor","local":"..."},{"english":"Where is the hospital?","local":"..."},{"english":"Call the police","local":"..."}] }';
+
+      final rawGemini = await GeminiService().getResponse(geminiPrompt);
+      Map<String, dynamic>? info;
+      try {
+        String json = rawGemini.trim();
+        if (json.contains('```')) {
+          json = json.replaceAll(RegExp(r'```json?\n?'), '').replaceAll(RegExp(r'\n?```'), '');
+        }
+        info = jsonDecode(json) as Map<String, dynamic>;
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
-          _scanResult = result;
-          _scanComplete = true;
-          _isScanning = false;
+          _nearbyHospitals = hospitals;
+          _emergencyInfo = info;
+          _isLoadingEmergency = false;
         });
+        _saveEmergencyCache();
       }
     } catch (e) {
-      debugPrint('AI Scan error: \$e');
-      if (mounted) {
-        setState(() {
-          _scanError = 'Could not identify this place. Try again!';
-          _isScanning = false;
-        });
-      }
+      debugPrint('Emergency fetch error: $e');
+      if (mounted) setState(() => _isLoadingEmergency = false);
     }
   }
 
   @override
   void dispose() {
     _radarController.dispose();
-    _cameraController?.dispose();
     super.dispose();
   }
 
@@ -252,19 +292,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       final isActive = _selectedTab == index;
                       return GestureDetector(
                         onTap: () {
-                          final prevTab = _selectedTab;
                           setState(() => _selectedTab = index);
-                          // Dispose camera when leaving AI Scan tab
-                          if (prevTab == 0 && index != 0) {
-                            _cameraController?.dispose();
-                            _cameraController = null;
-                            _isCameraReady = false;
-                          }
-                          // Init camera when entering AI Scan tab
-                          if (index == 0 && !_isCameraReady) {
-                            _initCamera();
-                          }
                           _fetchForTab(index);
+                          if (index == 4) _fetchEmergencyData();
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
@@ -297,7 +327,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               Expanded(
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
-                    final isLoading = _selectedTab > 0 && _selectedTab < 4 && state.status == MapStatus.loading;
+                    final isLoading = _selectedTab < 3 && state.status == MapStatus.loading;
                     
                     return Stack(
                       children: [
@@ -326,217 +356,56 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   Widget _buildTabContent() {
     switch (_selectedTab) {
-      case 0: return _buildAIScanTab();
-      case 1: return _buildFoodTab();
-      case 2: return _buildExperiencesTab();
-      case 3: return _buildShoppingTab();
-      case 4: return _buildBudgetTab();
-      case 5: return _buildEmergencyTab();
-      default: return _buildAIScanTab();
+      case 0: return _buildFoodTab();
+      case 1: return _buildExperiencesTab();
+      case 2: return _buildShoppingTab();
+      case 3: return _buildBudgetTab();
+      case 4: return _buildEmergencyTab();
+      default: return _buildFoodTab();
     }
   }
 
   // ═══════════════════════════════════════
-  // AI SCAN TAB
+  // FOOD TAB
   // ═══════════════════════════════════════
-  Widget _buildAIScanTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Camera Preview with Scan Overlay
-        ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: SizedBox(
-            height: 220,
-            width: double.infinity,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                // Camera feed or placeholder
-                if (_isCameraReady && _cameraController != null)
-                  CameraPreview(_cameraController!)
-                else
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [Colors.grey.shade900, Colors.black],
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.camera_alt_rounded, color: Colors.white24, size: 60),
-                    ),
-                  ),
-
-                // Dark overlay
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [Colors.black.withOpacity(0.2), Colors.black.withOpacity(0.7)],
-                    ),
-                  ),
-                ),
-
-                // Scan animation
-                if (_isScanning)
-                  Positioned.fill(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 60, height: 60,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            valueColor: AlwaysStoppedAnimation(AppColors.primary),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'NEVA IS ANALYZING...',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 2,
-                          ),
-                        ).animate(onPlay: (c) => c.repeat(reverse: true))
-                         .fade(begin: 0.5, end: 1, duration: 800.ms),
-                      ],
-                    ),
-                  ),
-
-                // Scan complete badge
-                if (_scanComplete && _scanResult != null)
-                  Positioned(
-                    top: 16, right: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.green.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
-                          SizedBox(width: 6),
-                          Text('IDENTIFIED', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
-                        ],
-                      ),
-                    ).animate().scale(duration: 400.ms, curve: Curves.elasticOut),
-                  ),
-
-                // Bottom label
-                Positioned(
-                  bottom: 16, left: 16,
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 8, height: 8,
-                        decoration: BoxDecoration(
-                          color: _isScanning ? Colors.amber : (_scanComplete ? Colors.green : AppColors.primary),
-                          shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        _isScanning ? 'Scanning...' : (_scanComplete ? 'Place Identified' : 'Ready to Scan'),
-                        style: const TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Rescan button
-                if (!_isScanning)
-                  Positioned(
-                    bottom: 12, right: 16,
-                    child: GestureDetector(
-                      onTap: _startAIScan,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppColors.primary.withOpacity(0.5)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.refresh_rounded, color: AppColors.primary, size: 16),
-                            const SizedBox(width: 6),
-                            Text('RESCAN', style: TextStyle(color: AppColors.primary, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.1, end: 0),
-
-        const SizedBox(height: 20),
-
-        // Error message
-        if (_scanError != null)
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.red.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.red.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.error_outline_rounded, color: Colors.red, size: 20),
-                const SizedBox(width: 12),
-                Expanded(child: Text(_scanError!, style: const TextStyle(color: Colors.red, fontSize: 13))),
-              ],
-            ),
-          ),
-
-        // Result Card
-        if (_scanComplete && _scanResult != null) ...[
-          _buildScanResultCard(),
-        ],
-
-        // Placeholder when idle
-        if (!_isScanning && !_scanComplete && _scanError == null)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceVariant,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Column(
-              children: [
-                Icon(Icons.auto_awesome_rounded, color: AppColors.primary, size: 40),
-                const SizedBox(height: 12),
-                const Text(
-                  'Point your camera at any place',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Neva will identify it and tell you everything about it',
-                  style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
+  Widget _buildFoodTab_PLACEHOLDER_DELETE_ME() {
+    return const SizedBox.shrink();
   }
 
-  Widget _buildScanResultCard() {
-    final result = _scanResult!;
+  Widget _buildScanResultCard_PLACEHOLDER_DELETE_ME() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_PLACEHOLDER_DELETE_ME_ORIGINAL() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_PLACEHOLDER_DELETE_ME_ORIGINAL_BODY() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_PLACEHOLDER_DELETE_ME_ORIGINAL_BODY_REAL() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_DEAD_CODE_DO_NOT_CALL() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_DEAD_CODE_BODY() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildFoodTab_DEAD_CODE_BODY_REAL() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildScanResultCard_UNUSED_DO_NOT_CALL() {
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildScanResultCard_UNUSED_DO_NOT_CALL_BODY() {
+    final Map<String, dynamic> result = {};
     final name = result['name'] ?? 'Unknown Place';
     final category = result['category'] ?? 'Place';
     final description = result['description'] ?? '';
@@ -1255,40 +1124,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           ],
         ),
         const SizedBox(height: 28),
-
-        // Map preview placeholder
-        GlassCard(
-          padding: EdgeInsets.zero,
-          child: Container(
-            height: 160,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.surfaceElevated, AppColors.primary.withOpacity(0.08)],
-              ),
-            ),
-            child: Stack(
-              children: [
-                Center(child: Icon(Icons.map_rounded, size: 48, color: AppColors.textMuted)),
-                Positioned(
-                  bottom: 16,
-                  left: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(10),
-                      gradient: AppColors.primaryGradient,
-                    ),
-                    child: const Text('View Full Map', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w700)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ).animate().fade(),
-        const SizedBox(height: 24),
         const Text('Markets & Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (_shoppingList.isEmpty)
@@ -1355,7 +1190,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         if (state is BudgetError) {
           if (state.message.contains('401') || state.message.contains('token')) {
             Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+              MaterialPageRoute(builder: (_) => const LoginPage()),
               (route) => false,
             );
             return;
@@ -1389,7 +1224,33 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           if (state is BudgetLoading) {
             return const Center(child: CircularProgressIndicator());
           } else if (state is BudgetLoaded) {
-            return _buildBudgetUI(state.budget);
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (state.isFromCache)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 12, height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('Refreshing...', style: TextStyle(fontSize: 12, color: AppColors.primary)),
+                      ],
+                    ),
+                  ),
+                Expanded(child: _buildBudgetUI(state.budget)),
+              ],
+            );
           } else if (state is BudgetClosed || state is NoBudgetFound) {
             return _buildNoBudgetUI();
           } else if (state is BudgetError) {
@@ -2122,13 +1983,25 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   // EMERGENCY TAB
   // ═══════════════════════════════════════
   Widget _buildEmergencyTab() {
+    final numbers = (_emergencyInfo?['emergency_numbers'] as List?)?.cast<Map>() ?? [];
+    final phrases = (_emergencyInfo?['phrases'] as List?)?.cast<Map>() ?? [];
+    final city = _emergencyInfo?['city'] as String?;
+    final country = _emergencyInfo?['country'] as String?;
+    final locationLabel = [city, country].where((s) => s != null && s.isNotEmpty).join(', ');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // SOS button
         Center(
           child: GestureDetector(
-            onTap: () {},
+            onTap: () async {
+              final firstNumber = numbers.isNotEmpty ? numbers[0]['number'] as String? : null;
+              if (firstNumber != null) {
+                final uri = Uri.parse('tel:${firstNumber.replaceAll(' ', '')}');
+                if (await canLaunchUrl(uri)) launchUrl(uri);
+              }
+            },
             child: Container(
               width: 140,
               height: 140,
@@ -2151,64 +2024,158 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 .scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 1.seconds),
           ),
         ).animate().fade(),
+
+        if (locationLabel.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.location_on_rounded, size: 14, color: AppColors.textTertiary),
+                const SizedBox(width: 4),
+                Text(locationLabel, style: const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+              ],
+            ),
+          ),
+        ],
+
         const SizedBox(height: 28),
 
-        const Text('Nearby Hospitals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        _buildEmergencyCard('National Hospital', '🏥', '1.2 km', '+94 11 269 1111', 0),
-        _buildEmergencyCard('Lanka Hospital', '🏥', '2.5 km', '+94 11 553 0000', 1),
-        _buildEmergencyCard('Nawaloka Hospital', '🏥', '1.8 km', '+94 11 254 4444', 2),
+        // Loading state — full spinner only when no cache, else subtle banner
+        if (_isLoadingEmergency && _nearbyHospitals.isEmpty && _emergencyInfo == null)
+          const Center(child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 32),
+            child: Column(
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 12),
+                Text('Fetching emergency info for your location...', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+              ],
+            ),
+          ))
+        else ...[
+          if (_isLoadingEmergency)
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 12, height: 12,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text('Updating location data...', style: TextStyle(fontSize: 12, color: AppColors.primary)),
+                ],
+              ),
+            ),
+          // Nearby Hospitals
+          const Text('Nearby Hospitals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 14),
+          if (_nearbyHospitals.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text('No hospitals found nearby.', style: TextStyle(color: AppColors.textTertiary)),
+            )
+          else
+            ...List.generate(_nearbyHospitals.length, (i) {
+              final h = _nearbyHospitals[i];
+              return _buildHospitalCard(h['name'], h['dist'], h['address'], h['lat'], h['lng'], i);
+            }),
 
-        const SizedBox(height: 24),
-        const Text('Emergency Numbers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        _buildEmergencyNumber('Police', '119', Icons.local_police_rounded),
-        _buildEmergencyNumber('Ambulance', '1990', Icons.medical_services_rounded),
-        _buildEmergencyNumber('Fire', '110', Icons.local_fire_department_rounded),
-        _buildEmergencyNumber('Tourist Police', '+94 11 242 1052', Icons.support_agent_rounded),
+          const SizedBox(height: 24),
 
-        const SizedBox(height: 24),
-        const Text('Emergency Phrases', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        _buildPhrase('Help!', 'උදව් කරන්න! (Udaw karanna!)'),
-        _buildPhrase('I need a doctor', 'මට වෛද්‍යවරයෙක් ඕනැ (Mata vaidyawarayek one)'),
-        _buildPhrase('Where is the hospital?', 'රෝහල කොහෙද? (Rohala koheda?)'),
-        _buildPhrase('Call the police', 'පොලීසියට කතා කරන්න (Polisiyata katha karanna)'),
+          // Emergency Numbers
+          const Text('Emergency Numbers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 14),
+          if (numbers.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text('Could not fetch emergency numbers.', style: TextStyle(color: AppColors.textTertiary)),
+            )
+          else
+            ...numbers.map((n) {
+              final label = n['label'] as String? ?? '';
+              final number = n['number'] as String? ?? '';
+              final icon = _emergencyIcon(label);
+              return _buildEmergencyNumber(label, number, icon);
+            }),
+
+          const SizedBox(height: 24),
+
+          // Emergency Phrases
+          const Text('Emergency Phrases', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          const SizedBox(height: 14),
+          if (phrases.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text('Could not fetch local phrases.', style: TextStyle(color: AppColors.textTertiary)),
+            )
+          else
+            ...phrases.map((p) => _buildPhrase(
+              p['english'] as String? ?? '',
+              p['local'] as String? ?? '',
+            )),
+        ],
       ],
     );
   }
 
-  Widget _buildEmergencyCard(String name, String emoji, String dist, String phone, int index) {
+  IconData _emergencyIcon(String label) {
+    final l = label.toLowerCase();
+    if (l.contains('police')) return Icons.local_police_rounded;
+    if (l.contains('ambulance') || l.contains('medical')) return Icons.medical_services_rounded;
+    if (l.contains('fire')) return Icons.local_fire_department_rounded;
+    if (l.contains('tourist') || l.contains('helpline')) return Icons.support_agent_rounded;
+    return Icons.phone_rounded;
+  }
+
+  Widget _buildHospitalCard(String name, String dist, String address, double lat, double lng, int index) {
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
       glowColor: AppColors.error,
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
+          const Text('🏥', style: TextStyle(fontSize: 28)),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                Text(dist, style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                if (dist.isNotEmpty)
+                  Text(dist, style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                if (address.isNotEmpty)
+                  Text(address, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis),
               ],
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: AppColors.error.withOpacity(0.15),
-              border: Border.all(color: AppColors.error.withOpacity(0.3)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.phone_rounded, color: AppColors.error, size: 14),
-                const SizedBox(width: 4),
-                Text('Call', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.error)),
-              ],
+          GestureDetector(
+            onTap: () async {
+              final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
+              if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.error.withOpacity(0.15),
+                border: Border.all(color: AppColors.error.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.directions_rounded, color: AppColors.error, size: 14),
+                  const SizedBox(width: 4),
+                  Text('Go', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.error)),
+                ],
+              ),
             ),
           ),
         ],
@@ -2217,20 +2184,36 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Widget _buildEmergencyNumber(String label, String number, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.error),
-          const SizedBox(width: 14),
-          Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
-          Text(number, style: TextStyle(fontSize: 14, color: AppColors.primary, fontWeight: FontWeight.w700)),
-        ],
+    return GestureDetector(
+      onTap: () async {
+        final uri = Uri.parse('tel:${number.replaceAll(' ', '')}');
+        if (await canLaunchUrl(uri)) launchUrl(uri);
+      },
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: AppColors.error),
+              const SizedBox(width: 14),
+              Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
+              Text(number, style: TextStyle(fontSize: 14, color: AppColors.primary, fontWeight: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Icon(Icons.phone_rounded, size: 16, color: AppColors.primary),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildPhrase(String english, String sinhala) {
+  Widget _buildPhrase(String english, String local) {
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -2239,7 +2222,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         children: [
           Text(english, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           const SizedBox(height: 4),
-          Text(sinhala, style: TextStyle(fontSize: 13, color: AppColors.primary)),
+          Text(local, style: TextStyle(fontSize: 13, color: AppColors.primary)),
         ],
       ),
     );

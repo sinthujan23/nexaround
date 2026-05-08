@@ -1,15 +1,5 @@
-import 'package:flutter/foundation.dart';
-
 class ApiConstants {
-  static String get baseUrl {
-    if (kIsWeb) {
-      final host = Uri.base.host;
-      if (host.isEmpty || host == 'localhost') return 'http://localhost:8000';
-      return 'http://$host:8000';
-    }
-    // For Native Mobile (APK/iOS), use the PC's current local IP
-    return 'http://192.168.1.195:8000';
-  }
+  static const String baseUrl = 'https://api.nexaround.com';
   static const String apiVersion = '/api/v1';
   static const String googleMapsApiKey = 'AIzaSyDV7xSXzCp8tt4BqrjvHqfRyexT9Dhk-jw';
   static const String geminiApiKey = 'AIzaSyC2y9dsp2ODG_eUy3OFpwonN8MH8TRE9oY';

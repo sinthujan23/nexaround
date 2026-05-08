@@ -19,7 +19,9 @@ import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'dart:async';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
 class LivingMapPage extends StatefulWidget {
   const LivingMapPage({super.key});
@@ -413,7 +415,10 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildAIPromptBar() {
-    return GlassCard(
+    final prompt = 'What\'s the local vibe and hidden gems around $_currentLocationName? Give me your best insider tips!';
+    return GestureDetector(
+      onTap: () => HomePage.homeKey.currentState?.switchToNeva(prompt),
+      child: GlassCard(
       padding: const EdgeInsets.all(16),
       glowColor: AppColors.primary,
       child: Row(
@@ -473,6 +478,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
         ],
       ),
+    ),
     ).animate().fade(delay: 300.ms).slideY(begin: 0.1, end: 0);
   }
 
@@ -929,16 +935,23 @@ class _LivingMapPageState extends State<LivingMapPage>
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: AppColors.secondaryGradient.scale(0.3),
-              ),
-              child: const Center(
-                child: Text('📍', style: TextStyle(fontSize: 24)),
-              ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: place.photoUrls.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: place.photoUrls.first,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        width: 52,
+                        height: 52,
+                        color: AppColors.surfaceVariant,
+                        child: const Icon(Icons.image_rounded, size: 20, color: AppColors.textMuted),
+                      ),
+                      errorWidget: (_, __, ___) => _buildEmojiThumbnail(place.categoryName),
+                    )
+                  : _buildEmojiThumbnail(place.categoryName),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -1156,7 +1169,22 @@ class _LivingMapPageState extends State<LivingMapPage>
                       border: Border.all(color: AppColors.secondary.withOpacity(0.4)),
                     ),
                     child: TextButton(
-                      onPressed: () {},
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ArCameraPage(
+                            initialPlace: {
+                              'name': place.name,
+                              'category': place.categoryName ?? 'Attraction',
+                              'distance': '${((place.distanceM ?? 0)).toStringAsFixed(0)} m',
+                              'distanceM': place.distanceM ?? 0,
+                              'rating': place.rating ?? 0.0,
+                              'latitude': place.latitude,
+                              'longitude': place.longitude,
+                            },
+                          ),
+                        ),
+                      ),
                       child: Text('Start AR', style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
                   ),
@@ -1171,6 +1199,37 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   ImageProvider _getImageProvider(String? url, String category, String name) {
     return PlaceImageHelper.getImageProvider(url, category, name);
+  }
+
+  Widget _buildEmojiThumbnail(String? category) {
+    final cat = (category ?? '').toLowerCase();
+    final String emoji;
+    if (cat.contains('food') || cat.contains('drink') || cat.contains('restaurant') || cat.contains('cafe')) {
+      emoji = '🍽';
+    } else if (cat.contains('shop') || cat.contains('mall') || cat.contains('market')) {
+      emoji = '🛍';
+    } else if (cat.contains('hotel') || cat.contains('accommodation')) {
+      emoji = '🏨';
+    } else if (cat.contains('park') || cat.contains('nature') || cat.contains('garden')) {
+      emoji = '🌿';
+    } else if (cat.contains('museum') || cat.contains('heritage') || cat.contains('historic')) {
+      emoji = '🏛';
+    } else if (cat.contains('beach') || cat.contains('coast') || cat.contains('sea')) {
+      emoji = '🏖';
+    } else if (cat.contains('temple') || cat.contains('religious') || cat.contains('church')) {
+      emoji = '⛩';
+    } else {
+      emoji = '📌';
+    }
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
+    );
   }
 }
 

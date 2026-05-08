@@ -44,10 +44,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
 
     if (CacheService.isFirstTime()) {
       context.go('/onboarding');
-    } else {
-      // Go to home - GoRouter's redirect logic will handle 
-      // sending them to /login if the session is invalid
+    } else if (CacheService.isLoggedIn()) {
       context.go('/home');
+    } else {
+      context.go('/login');
     }
   }
 

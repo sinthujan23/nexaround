@@ -12,18 +12,26 @@ class GeminiService {
   static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
 
   /// Text-only prompt
-  Future<String> getResponse(String prompt, {String? context}) async {
+  Future<String> getResponse(String prompt, {String? context, String? systemInstruction}) async {
     final url = Uri.parse('$_baseUrl/$_modelName:generateContent?key=${ApiConstants.geminiApiKey}');
-    
-    final body = jsonEncode({
+
+    final Map<String, dynamic> requestBody = {
       "contents": [
         {
           "parts": [
             {"text": context != null ? "Context: $context\n\nUser Question: $prompt" : prompt}
           ]
         }
-      ]
-    });
+      ],
+    };
+
+    if (systemInstruction != null) {
+      requestBody["system_instruction"] = {
+        "parts": [{"text": systemInstruction}]
+      };
+    }
+
+    final body = jsonEncode(requestBody);
 
     try {
       final response = await http.post(
