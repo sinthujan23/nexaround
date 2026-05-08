@@ -65,22 +65,30 @@ class GeminiService {
 
     final prompt = '''You are NexAround's AI travel assistant "Neva". Analyze this image taken at GPS coordinates ($latitude, $longitude).
 
+IMPORTANT CONTEXT:
+- This could be a local business, office, residential building, or everyday location
+- Focus on accuracy - if it's just an office or generic building, identify it as such
+- Don't invent famous landmarks if the image shows a regular building
+- Consider the GPS coordinates to verify your identification
+
 TASK:
-1. Identify the place, landmark, building, or scene in this image
-2. Provide a rich, engaging description
+1. Identify what's actually shown - be honest if it's a regular office/building
+2. If it's a specific named place, identify it accurately
+3. If it's a generic office/building, describe it truthfully
+4. Provide relevant information based on what's actually visible
 
 RESPOND IN THIS EXACT JSON FORMAT (no markdown, no code blocks):
 {
   "identified": true,
-  "name": "Place Name",
-  "category": "Temple/Restaurant/Park/Museum/Beach/Monument/Market/Hotel",
+  "name": "Actual Place Name or 'Office Building'/'Local Business'/'Residential Building'",
+  "category": "Office/Restaurant/Park/Museum/Beach/Monument/Market/Hotel/Local Business/Residential",
   "confidence": 0.85,
-  "description": "A rich 2-3 sentence description of the place, its history, significance, and what makes it special for tourists.",
-  "fun_fact": "One interesting fun fact about this place.",
-  "tips": "A practical tip for visitors."
+  "description": "Honest description of what this place actually is. If it's an office, say so. If it's a local shop, describe it. Don't exaggerate.",
+  "fun_fact": "Relevant fact if it's a notable place, or general observation about the building type.",
+  "tips": "Practical information relevant to this type of place."
 }
 
-If you cannot identify a specific place, set "identified" to false and provide your best guess based on the scene.''';
+If you cannot confidently identify the place, set "identified" to false and describe what you see (e.g., "Modern office building with glass facade").''';
 
     final body = jsonEncode({
       "contents": [
