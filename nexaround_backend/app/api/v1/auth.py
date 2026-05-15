@@ -1,5 +1,6 @@
 import uuid
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Form
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.services.auth_service import AuthService
@@ -49,6 +50,22 @@ async def apple_login(data: AppleLoginRequest, db: AsyncSession = Depends(get_db
         data.given_name,
         data.familyName,
     )
+
+
+@router.post("/apple/callback")
+async def apple_callback(
+    code: str = Form(...),
+    id_token: str = Form(...),
+    state: Optional[str] = Form(None),
+    user: Optional[str] = Form(None),
+):
+    """
+    Callback endpoint for Apple Sign-In on Android.
+    Redirects back to the app using a custom intent scheme.
+    """
+    # The intent scheme used by the sign_in_with_apple package
+    redirect_url = f"intent://callback?code={code}&id_token={id_token}#Intent;package=com.nexaround.nexaround_app;scheme=signinwithapple;end"
+    return RedirectResponse(url=redirect_url, status_code=303)
 
 
 @router.post("/refresh", response_model=TokenResponse)

@@ -8,6 +8,7 @@ class SocialAuthService {
 
   Future<GoogleSignInAccount?> signInWithGoogle() async {
     try {
+      await _googleSignIn.signOut();
       return await _googleSignIn.signIn();
     } catch (e) {
       rethrow;
@@ -21,6 +22,10 @@ class SocialAuthService {
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
+        webAuthenticationOptions: WebAuthenticationOptions(
+          clientId: 'com.nexaround.nexaround_app.service',
+          redirectUri: Uri.parse('https://api.nexaround.com/api/v1/auth/apple/callback'),
+        ),
       );
     } catch (e) {
       rethrow;
