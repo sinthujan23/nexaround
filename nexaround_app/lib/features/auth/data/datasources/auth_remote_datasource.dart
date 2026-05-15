@@ -38,6 +38,32 @@ class AuthRemoteDatasource {
     return AuthTokensModel.fromJson(response.data);
   }
 
+  Future<AuthTokensModel> googleLogin(String idToken) async {
+    final response = await _dio.post(
+      ApiConstants.googleLogin,
+      data: {'id_token': idToken},
+    );
+    return AuthTokensModel.fromJson(response.data);
+  }
+
+  Future<AuthTokensModel> appleLogin({
+    required String idToken,
+    required String authorizationCode,
+    String? givenName,
+    String? familyName,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.appleLogin,
+      data: {
+        'id_token': idToken,
+        'authorization_code': authorizationCode,
+        'given_name': givenName,
+        'family_name': familyName,
+      },
+    );
+    return AuthTokensModel.fromJson(response.data);
+  }
+
   Future<AuthTokensModel> refreshToken(String refreshToken) async {
     final response = await _dio.post(
       ApiConstants.refreshToken,

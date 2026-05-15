@@ -6,6 +6,8 @@ from app.services.auth_service import AuthService
 from app.schemas.user import (
     UserRegister,
     UserLogin,
+    GoogleLoginRequest,
+    AppleLoginRequest,
     TokenResponse,
     TokenRefreshRequest,
     UserResponse,
@@ -28,6 +30,25 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login with email and password."""
     service = AuthService(db)
     return await service.login(data.email, data.password)
+
+
+@router.post("/google", response_model=TokenResponse)
+async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Authenticate with Google ID Token."""
+    service = AuthService(db)
+    return await service.google_login(data.id_token)
+
+
+@router.post("/apple", response_model=TokenResponse)
+async def apple_login(data: AppleLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Authenticate with Apple ID Token."""
+    service = AuthService(db)
+    return await service.apple_login(
+        data.id_token,
+        data.authorization_code,
+        data.given_name,
+        data.familyName,
+    )
 
 
 @router.post("/refresh", response_model=TokenResponse)

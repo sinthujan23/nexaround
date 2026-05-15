@@ -121,13 +121,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   // ─── Step 1: Get user GPS, then fetch places & route ───
   Future<void> _getUserLocationThenInit() async {
     try {
-      final permission = await geo.Geolocator.checkPermission();
-      if (permission == geo.LocationPermission.denied) {
-        await geo.Geolocator.requestPermission();
-      }
-      final pos = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
-      );
+      // Permissions already granted by HomePage on app launch
+      final pos = await geo.Geolocator.getCurrentPosition();
       setState(() {
         _userLat = pos.latitude;
         _userLng = pos.longitude;

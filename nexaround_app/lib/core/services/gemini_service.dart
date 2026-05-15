@@ -12,7 +12,14 @@ class GeminiService {
   static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
 
   /// Text-only prompt
-  Future<String> getResponse(String prompt, {String? context, String? systemInstruction}) async {
+  Future<String> getResponse(
+    String prompt, {
+    String? context,
+    String? systemInstruction,
+    double? temperature,
+    int? maxOutputTokens,
+    String? responseMimeType,
+  }) async {
     final url = Uri.parse('$_baseUrl/$_modelName:generateContent?key=${ApiConstants.geminiApiKey}');
 
     final Map<String, dynamic> requestBody = {
@@ -30,6 +37,12 @@ class GeminiService {
         "parts": [{"text": systemInstruction}]
       };
     }
+
+    final Map<String, dynamic> generationConfig = {};
+    if (temperature != null) generationConfig["temperature"] = temperature;
+    if (maxOutputTokens != null) generationConfig["maxOutputTokens"] = maxOutputTokens;
+    if (responseMimeType != null) generationConfig["responseMimeType"] = responseMimeType;
+    if (generationConfig.isNotEmpty) requestBody["generationConfig"] = generationConfig;
 
     final body = jsonEncode(requestBody);
 

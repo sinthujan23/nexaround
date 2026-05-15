@@ -328,20 +328,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
                     final isLoading = _selectedTab < 3 && state.status == MapStatus.loading;
-                    
-                    return Stack(
+                    return Column(
                       children: [
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: _buildTabContent(),
-                        ),
                         if (isLoading)
-                          Positioned.fill(
-                            child: Container(
-                              color: AppColors.background.withOpacity(0.3),
-                              child: const Center(child: CircularProgressIndicator()),
-                            ),
+                          LinearProgressIndicator(
+                            minHeight: 2,
+                            backgroundColor: Colors.transparent,
+                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
                           ),
+                        Expanded(
+                          child: SingleChildScrollView(
+                            padding: const EdgeInsets.all(24),
+                            child: _buildTabContent(),
+                          ),
+                        ),
                       ],
                     );
                   },
@@ -745,7 +745,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Widget _buildRestaurantCard(AttractionEntity a, int index) {
-    final dist = (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, a.latitude, a.longitude) / 1000).toStringAsFixed(1);
+    final dist = _currentPosition != null
+        ? (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, a.latitude, a.longitude) / 1000).toStringAsFixed(1)
+        : ((a.distanceM ?? 0) / 1000).toStringAsFixed(1);
     
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -841,7 +843,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         ],
       ),
       ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.05, end: 0);
+    );
   }
 
   Widget _buildExperiencesTab() {
@@ -1003,7 +1005,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         ],
       ),
       ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
+    );
   }
 
   Widget _buildExperienceCard(AttractionEntity a, int index) {
@@ -1141,7 +1143,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Widget _buildShopItem(AttractionEntity shop, int index) {
-    final dist = (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, shop.latitude, shop.longitude) / 1000).toStringAsFixed(1);
+    final dist = _currentPosition != null
+        ? (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, shop.latitude, shop.longitude) / 1000).toStringAsFixed(1)
+        : ((shop.distanceM ?? 0) / 1000).toStringAsFixed(1);
     
     return GestureDetector(
       onTap: () => Navigator.push(

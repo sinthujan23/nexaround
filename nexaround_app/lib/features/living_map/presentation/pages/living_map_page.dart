@@ -20,6 +20,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 import 'dart:async';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
@@ -31,13 +32,14 @@ class LivingMapPage extends StatefulWidget {
 }
 
 class _LivingMapPageState extends State<LivingMapPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
   bool _showProximityAlert = false;
   String _selectedCategory = 'All';
   double? _userLatitude;
   double? _userLongitude;
   StreamSubscription<geo.Position>? _positionSubscription;
+  bool _isLocationServiceEnabled = true;
 
   // We'll use the state data instead of these dummy lists
 
@@ -46,28 +48,47 @@ class _LivingMapPageState extends State<LivingMapPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
+      duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+    _checkLocationAndInit();
+  }
 
-    // Initial data fetch
-    _fetchInitialData();
-    _startLocationTracking();
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pulseController.dispose();
+    _positionSubscription?.cancel();
+    super.dispose();
+  }
 
-    // Show proximity alert after a delay (simulated)
-    Future.delayed(const Duration(seconds: 4), () {
-      if (mounted) setState(() => _showProximityAlert = true);
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check location when app resumes (user may have enabled it in settings)
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationAndInit();
+    }
+  }
+
+  Future<void> _checkLocationAndInit() async {
+    // Permissions already granted by HomePage on app launch
+    // Just check if location service (GPS) is on
+    final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
+    
+    if (mounted) {
+      setState(() => _isLocationServiceEnabled = serviceEnabled);
+    }
+    
+    if (serviceEnabled && _positionSubscription == null) {
+      _fetchInitialData();
+      _startLocationTracking();
+    }
   }
 
   void _startLocationTracking() {
-    _positionSubscription = geo.Geolocator.getPositionStream(
-      locationSettings: const geo.LocationSettings(
-        accuracy: geo.LocationAccuracy.high,
-        distanceFilter: 100, // Update every 100 meters
-      ),
-    ).listen((position) async {
+    _positionSubscription = geo.Geolocator.getPositionStream().listen((position) async {
       final locationName = await GooglePlacesService.reverseGeocode(
         position.latitude,
         position.longitude,
@@ -84,28 +105,9 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   Future<void> _fetchInitialData() async {
     try {
-      bool serviceEnabled;
-      geo.LocationPermission permission;
-
-      // Test if location services are enabled.
-      serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        throw Exception('Location services are disabled.');
-      }
-
-      permission = await geo.Geolocator.checkPermission();
-      if (permission == geo.LocationPermission.denied) {
-        permission = await geo.Geolocator.requestPermission();
-        if (permission == geo.LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
-        }
-      }
-      
-      if (permission == geo.LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied.');
-      }
-
-      final position = await geo.Geolocator.getCurrentPosition();
+      // Permissions already granted by HomePage
+      final position = await PermissionService.getSafePosition();
+      if (position == null) return;
       
       // Reverse geocode to get human readable address
       final locationName = await GooglePlacesService.reverseGeocode(
@@ -144,13 +146,6 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   @override
-  void dispose() {
-    _pulseController.dispose();
-    _positionSubscription?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return BlocBuilder<MapBloc, MapState>(
       builder: (context, state) {
@@ -158,6 +153,44 @@ class _LivingMapPageState extends State<LivingMapPage>
           backgroundColor: AppColors.background,
           body: Stack(
             children: [
+              // Location disabled warning banner
+              if (!_isLocationServiceEnabled)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: SafeArea(
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.warning.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_off, color: AppColors.warning, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Location is off. Enable location for nearby attractions.',
+                              style: TextStyle(color: AppColors.warning, fontSize: 13),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => geo.Geolocator.openLocationSettings(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.warning,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                            ),
+                            child: const Text('ENABLE', style: TextStyle(fontWeight: FontWeight.w700)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               // Layer 2: Content
               CustomScrollView(
                 physics: const BouncingScrollPhysics(),
@@ -165,6 +198,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   // Header
                   SliverAppBar(
                     floating: true,
+                    automaticallyImplyLeading: false,
                     backgroundColor: Colors.transparent,
                     elevation: 0,
                     toolbarHeight: 80,

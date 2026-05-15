@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "501648798743",
+    "project_id": "nexaround-fb321",
+    "storage_bucket": "nexaround-fb321.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:501648798743:android:4641d7b5b8bc3fb68ad852",
+        "android_client_info": {
+          "package_name": "com.nexaround.nexaround_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWoZZFEFnvKGRUnwbRe38onXlg3NEHNOA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

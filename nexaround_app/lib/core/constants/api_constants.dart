@@ -7,6 +7,8 @@ class ApiConstants {
   // Auth endpoints
   static const String register = '$apiVersion/auth/register';
   static const String login = '$apiVersion/auth/login';
+  static const String googleLogin = '$apiVersion/auth/google';
+  static const String appleLogin = '$apiVersion/auth/apple';
   static const String refreshToken = '$apiVersion/auth/refresh';
   static const String me = '$apiVersion/auth/me';
   static const String updatePreferences = '$apiVersion/auth/me/preferences';

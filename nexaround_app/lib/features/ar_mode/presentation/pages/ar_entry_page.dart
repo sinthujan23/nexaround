@@ -10,6 +10,7 @@ import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_view.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ArEntryPage extends StatefulWidget {
   const ArEntryPage({super.key});
@@ -22,7 +23,8 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
   late AnimationController _orbitController;
   late AnimationController _pulseController;
   late AnimationController _scanlineController;
-  bool _permissionsReady = false;
+  bool _locationReady = false;
+  bool _cameraReady = false;
   bool _checkingPermissions = true;
 
   @override
@@ -35,25 +37,17 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
   }
 
   Future<void> _checkPermissions() async {
-    try {
-      final locationPermission = await Geolocator.checkPermission();
-      final locationGranted = locationPermission == LocationPermission.whileInUse || 
-                              locationPermission == LocationPermission.always;
-      if (mounted) {
-        setState(() {
-          _permissionsReady = locationGranted;
-          _checkingPermissions = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _checkingPermissions = false);
+    // Permissions already granted by HomePage on app launch
+    if (mounted) {
+      setState(() {
+        _locationReady = true;
+        _cameraReady = true;
+        _checkingPermissions = false;
+      });
     }
   }
 
-  Future<void> _requestPermissions() async {
-    await Geolocator.requestPermission();
-    _checkPermissions();
-  }
+  bool get _allPermissionsReady => _locationReady && _cameraReady;
 
   void _enterAR() {
     context.read<ArBloc>().add(ArSessionStarted());
@@ -309,7 +303,7 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
         width: double.infinity,
         height: 64,
         child: ElevatedButton(
-          onPressed: _permissionsReady ? _enterAR : _requestPermissions,
+          onPressed: _allPermissionsReady ? _enterAR : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
@@ -320,10 +314,10 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(_permissionsReady ? Icons.explore_rounded : Icons.lock_open_rounded, size: 20),
+              Icon(_allPermissionsReady ? Icons.explore_rounded : Icons.lock_open_rounded, size: 20),
               const SizedBox(width: 12),
               Text(
-                _permissionsReady ? 'ENTER AR WORLD' : 'GRANT PERMISSIONS',
+                _allPermissionsReady ? 'ENTER AR WORLD' : 'GRANT PERMISSIONS',
                 style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, fontSize: 13),
               ),
             ],
@@ -338,9 +332,9 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _buildPermissionDot('Camera', true),
+        _buildPermissionDot('Camera', _cameraReady),
         const SizedBox(width: 20),
-        _buildPermissionDot('Location', _permissionsReady),
+        _buildPermissionDot('Location', _locationReady),
         const SizedBox(width: 20),
         _buildPermissionDot('Compass', true),
       ],

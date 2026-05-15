@@ -22,6 +22,7 @@ class GooglePlacesService {
     'Shopping': 'shopping_mall',
     'Experiences': 'amusement_park',
     'Transport': 'transit_station',
+    'Medical': 'hospital',
   };
 
   /// Reverse-geocode lat/lng to a human-readable location name

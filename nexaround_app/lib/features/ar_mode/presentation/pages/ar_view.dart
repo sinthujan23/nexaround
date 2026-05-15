@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
 import 'package:nexaround_app/core/network/geocoding_service.dart';
@@ -27,6 +28,7 @@ class ArView extends StatefulWidget {
 
 class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   StreamSubscription<Position>? _positionStream;
+  StreamSubscription<CompassEvent>? _compassStream;
   CameraController? _cameraController;
   late ObjectDetector _objectDetector;
   bool _cameraInitialized = false;
@@ -34,6 +36,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   bool _isProcessing = false;
   List<DetectedObject> _detectedObjects = [];
   String _currentAddress = 'Locating...';
+  double _currentHeading = 0.0;
   
   // Mapping Mode Controllers
   final TextEditingController _placeNameController = TextEditingController();
@@ -71,6 +74,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     if (!kIsWeb) {
       _initCamera();
       _startLocationTracking();
+      _startCompassTracking();
     }
   }
 
@@ -85,12 +89,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
 
   Future<void> _initCamera() async {
     try {
-      var status = await Permission.camera.request();
-      if (!status.isGranted) {
-        setState(() => _cameraError = true);
-        return;
-      }
-
+      // Camera permission already granted by HomePage on app launch
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         setState(() => _cameraError = true);
@@ -121,6 +120,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _compassStream?.cancel();
     _cameraController?.dispose();
     _objectDetector.close();
     _pulseController.dispose();
@@ -187,12 +187,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   }
 
   Future<void> _startLocationTracking() async {
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-    }
-    if (permission == LocationPermission.deniedForever) return;
-
+    // Location permission already granted by HomePage on app launch
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -203,10 +198,31 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
         context.read<ArBloc>().add(ArUpdateLocation(
           latitude: position.latitude,
           longitude: position.longitude,
-          heading: position.heading,
+          heading: _currentHeading,
         ));
-        _detectAttractionInView(position.heading);
+        _detectAttractionInView(_currentHeading);
       }
+    });
+  }
+
+  void _startCompassTracking() {
+    final compass = FlutterCompass.events;
+    if (compass == null) return;
+    _compassStream = compass.listen((event) {
+      final heading = event.heading;
+      if (heading == null || !mounted) return;
+
+      // Skip tiny jitters to avoid spamming the bloc
+      if ((heading - _currentHeading).abs() < 1.5) return;
+
+      _currentHeading = heading;
+      final state = context.read<ArBloc>().state;
+      context.read<ArBloc>().add(ArUpdateLocation(
+        latitude: state.currentLatitude,
+        longitude: state.currentLongitude,
+        heading: heading,
+      ));
+      _detectAttractionInView(heading);
     });
   }
 

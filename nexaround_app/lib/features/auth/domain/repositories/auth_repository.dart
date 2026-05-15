@@ -15,6 +15,15 @@ abstract class AuthRepository {
     required String password,
   });
 
+  Future<Either<Failure, AuthTokens>> googleLogin(String idToken);
+
+  Future<Either<Failure, AuthTokens>> appleLogin({
+    required String idToken,
+    required String authorizationCode,
+    String? givenName,
+    String? familyName,
+  });
+
   Future<Either<Failure, AuthTokens>> refreshToken(String refreshToken);
 
   Future<Either<Failure, UserEntity>> getCurrentUser();

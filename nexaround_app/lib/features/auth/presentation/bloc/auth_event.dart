@@ -48,3 +48,11 @@ class UpdateUserPreferences extends AuthEvent {
   @override
   List<Object?> get props => [preferences];
 }
+
+class AuthGoogleLoginRequested extends AuthEvent {
+  const AuthGoogleLoginRequested();
+}
+
+class AuthAppleLoginRequested extends AuthEvent {
+  const AuthAppleLoginRequested();
+}

@@ -51,9 +51,11 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _handleSocialLogin(String provider) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$provider login coming soon')),
-    );
+    if (provider == 'google') {
+      context.read<AuthBloc>().add(const AuthGoogleLoginRequested());
+    } else if (provider == 'apple') {
+      context.read<AuthBloc>().add(const AuthAppleLoginRequested());
+    }
   }
 
   @override

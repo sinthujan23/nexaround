@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/living_map_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
@@ -10,6 +11,9 @@ import 'package:nexaround_app/features/food_radar/presentation/pages/discover_pa
 import 'package:nexaround_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:geolocator/geolocator.dart' as geo;
+import 'package:nexaround_app/core/services/permission_service.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -27,9 +31,40 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => HomePageState();
 }
 
-class HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class HomePageState extends State<HomePage> with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   String? _pendingPrompt;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Direct check and redirect on launch
+    _checkLocationService();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkLocationService();
+    }
+  }
+
+  /// Check if location service (GPS) is on; if off, redirect to system settings immediately
+  /// This follows the direct redirect method used by popular apps to avoid UI-related crashes
+  Future<void> _checkLocationService() async {
+    final enabled = await PermissionService.isLocationServiceEnabled();
+    if (!enabled && mounted) {
+      debugPrint('📍 Location disabled. Redirecting to system settings...');
+      await PermissionService.openLocationSettings();
+    }
+  }
+
 
   void switchToNeva(String? prompt) {
     setState(() {
@@ -80,27 +115,24 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   Widget _buildBottomNav() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 20, left: 20, right: 20),
-      height: 76,
+      margin: const EdgeInsets.only(bottom: 20, left: 16, right: 16),
+      height: 72,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(26),
+        boxShadow: AppShadows.lg,
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(28),
+        borderRadius: BorderRadius.circular(26),
         child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+          filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.95),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: AppColors.glassBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+              color: Colors.white.withOpacity(0.92),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(color: AppColors.glassBorder, width: 0.6),
             ),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -125,11 +157,23 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
       behavior: HitTestBehavior.opaque,
       onTap: () => setState(() => _selectedIndex = index),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        duration: AppDurations.normal,
+        curve: AppCurves.standard,
+        padding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           gradient: isActive ? AppColors.primaryGradient : null,
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: AppColors.primary.withOpacity(0.18),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                    spreadRadius: -4,
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -155,20 +199,27 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     size: 20,
                     color: isActive ? Colors.white : AppColors.textTertiary,
                   ),
-            if (isActive) ...[
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.fade,
-                softWrap: false,
-              ),
-            ],
+            AnimatedSize(
+              duration: AppDurations.normal,
+              curve: AppCurves.standard,
+              child: isActive
+                  ? Padding(
+                      padding: const EdgeInsets.only(left: 6),
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                          color: Colors.white,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.fade,
+                        softWrap: false,
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
           ],
         ),
       ),

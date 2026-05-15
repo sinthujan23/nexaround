@@ -55,6 +55,42 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, AuthTokens>> googleLogin(String idToken) async {
+    try {
+      final result = await _remoteDatasource.googleLogin(idToken);
+      await _saveTokens(result.accessToken, result.refreshToken);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, AuthTokens>> appleLogin({
+    required String idToken,
+    required String authorizationCode,
+    String? givenName,
+    String? familyName,
+  }) async {
+    try {
+      final result = await _remoteDatasource.appleLogin(
+        idToken: idToken,
+        authorizationCode: authorizationCode,
+        givenName: givenName,
+        familyName: familyName,
+      );
+      await _saveTokens(result.accessToken, result.refreshToken);
+      return Right(result);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<Either<Failure, AuthTokens>> refreshToken(String refreshToken) async {
     try {
       final result = await _remoteDatasource.refreshToken(refreshToken);

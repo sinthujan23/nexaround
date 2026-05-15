@@ -90,23 +90,11 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   bool get _isDarkStyle => _currentStyle == MapStyle.dark;
 
   Future<void> _determinePosition() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    // Permissions already granted by HomePage on app launch
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return;
-    }
-
-    if (permission == LocationPermission.deniedForever) return;
-
-    final position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    final position = await Geolocator.getCurrentPosition();
     
     if (!mounted) return;
 

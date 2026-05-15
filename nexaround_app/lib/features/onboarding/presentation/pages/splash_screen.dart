@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/onboarding_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -9,6 +10,7 @@ import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 
 class AnimatedSplashScreen extends StatefulWidget {
   const AnimatedSplashScreen({super.key});
@@ -39,6 +41,9 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
   }
 
   void _navigateToNext() async {
+    // Request permissions at the very start
+    await PermissionService.requestAllPermissions();
+    
     await Future.delayed(const Duration(milliseconds: 3500));
     if (!mounted) return;
 
@@ -157,22 +162,24 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
 
   Widget _buildLogo() {
     return Container(
-      width: 140,
-      height: 140,
+      width: 144,
+      height: 144,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.glassBorder),
-        gradient: RadialGradient(
+        border: Border.all(color: AppColors.glassBorder, width: 0.8),
+        gradient: const RadialGradient(
           colors: [
-            AppColors.surfaceVariant,
             AppColors.surface,
+            AppColors.surfaceVariant,
           ],
+          stops: [0.4, 1.0],
         ),
         boxShadow: [
+          ...AppShadows.md,
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.05),
-            blurRadius: 30,
-            spreadRadius: 5,
+            color: AppColors.primary.withOpacity(0.06),
+            blurRadius: 36,
+            spreadRadius: 4,
           ),
         ],
       ),
@@ -199,9 +206,10 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
             'NexAround',
             style: TextStyle(
               color: Colors.white,
-              fontSize: 42,
+              fontSize: 40,
               fontWeight: FontWeight.w300,
-              letterSpacing: 10,
+              letterSpacing: 8,
+              height: 1.0,
             ),
           ),
         )
@@ -224,13 +232,13 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
           ),
         ).animate().scaleX(delay: 1000.ms, begin: 0, end: 1, duration: 600.ms),
         const SizedBox(height: 16),
-        Text(
+        const Text(
           'AI TOURISM COMPANION',
           style: TextStyle(
             color: AppColors.textTertiary,
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: FontWeight.w600,
-            letterSpacing: 5,
+            letterSpacing: 4.5,
           ),
         ).animate().fade(delay: 1400.ms).slideY(begin: 0.5, end: 0),
       ],
@@ -258,12 +266,12 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
                 color: AppColors.primary.withOpacity(0.3),
               ),
           const SizedBox(height: 12),
-          Text(
+          const Text(
             'INITIALIZING AI',
             style: TextStyle(
               color: AppColors.textMuted,
               fontSize: 9,
-              letterSpacing: 3,
+              letterSpacing: 2.8,
               fontWeight: FontWeight.w600,
             ),
           ).animate().fade(delay: 2.seconds),

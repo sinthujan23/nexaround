@@ -3,23 +3,26 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/services.dart';
+import 'package:nexaround_app/core/services/google_directions_service.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/ai_companion/presentation/pages/ai_chat_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
-import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -43,11 +46,25 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   final TextEditingController _newPlaceController = TextEditingController();
   final TextEditingController _newPlaceDescriptionController = TextEditingController();
   
+  // Permission state
+  bool _isLocationGranted = false;
+  bool _isCameraGranted = false;
+  bool _isCheckingPermissions = true;
+  
   // Navigation State
   bool _isNavigating = false;
   _ArLandmark? _navigationTarget;
   double _distanceToTarget = 0.0;
   bool _isListening = false;
+
+  // ═══════════════════════════════════════
+  // ROUTE NAVIGATION — Turn-by-turn with chevrons
+  // ═══════════════════════════════════════
+  WalkingRoute? _walkingRoute;
+  int _currentStepIndex = 0;
+  bool _isFetchingRoute = false;
+  bool _hasArrivedAtDestination = false;
+  static const double _stepAdvanceThresholdM = 20.0; // Advance to next step within 20m
 
   // Discovery State
   bool _isIdentifying = true; // Default to DISCOVER mode
@@ -64,17 +81,133 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   Map<String, dynamic>? _arDiscoveryResult;
   _ArLandmark? _arDiscoveryTarget;
   geo.Position? _currentPosition;
+  String _currentLocationName = '';
   bool _isSilentCapturing = false; // Silent capture in progress (no UI feedback)
   bool _hasCapturedForCurrentTarget = false; // Prevent multiple captures for same place
   
   // Disable old discovery system when Neva is active
   bool get _isOldDiscoveryDisabled => _isNevaSearching || _nevaSearchResult != null;
 
+  // Session cache of Neva place results, keyed by rounded lat/lng. Avoids
+  // re-hitting Gemini when the user re-points at the same landmark. Capped to
+  // avoid unbounded memory growth; cleared on app restart.
+  static final Map<String, Map<String, dynamic>> _nevaPlaceCache = {};
+  static const int _nevaCacheMaxEntries = 50;
+
+  String _nevaCacheKey(_ArLandmark landmark) {
+    final lat = landmark.lat?.toStringAsFixed(5) ?? '?';
+    final lng = landmark.lng?.toStringAsFixed(5) ?? '?';
+    return '${landmark.name}|$lat,$lng';
+  }
+
   StreamSubscription<CompassEvent>? _compassSubscription;
+  StreamSubscription<geo.Position>? _positionSubscription;
   double _heading = 0.0;
+  double? _rawHeading; // last raw reading from sensor (pre-smoothing)
+  double? _compassAccuracy; // 0..360°, lower = more reliable
   List<_ArLandmark> _landmarks = [];
+
+  /// User's manual choice for the "Your Location" pill, overriding auto-pick.
+  /// Cleared on every fresh place fetch so it doesn't stick after you walk
+  /// somewhere new.
+  String? _userPickedLocationName;
+
+  // === AR camera geometry ===
+  // Typical mobile back-camera horizontal FOV. Phones vary 60–75°; 65° is a
+  // safe default that keeps the cone honest without missing nearby items.
+  static const double _cameraFovDegrees = 65.0;
+  // Hard cone used to decide whether a landmark is "in front of the camera".
+  // Includes a small buffer so cards don't pop in/out at the FOV edge.
+  static const double _viewConeHalfDegrees = (_cameraFovDegrees / 2) + 5;
+  // Reading from the compass is jittery; we low-pass filter it so cards don't
+  // dance even when the phone is "still". Higher = more responsive, lower =
+  // more stable. 0.18 is responsive enough for walking-pace rotation.
+  static const double _headingSmoothing = 0.18;
+  // If the OS reports compass accuracy worse than this, ignore the update.
+  static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
   bool _isCapturing = false;
+
+  // ═══════════════════════════════════════
+  // AR FILTER (category-based)
+  // ═══════════════════════════════════════
+  String _selectedFilter = 'All';
+  static const List<Map<String, dynamic>> _arFilters = [
+    {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
+    {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
+    {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
+    {'id': 'Historical', 'label': 'Historical', 'icon': Icons.account_balance_rounded},
+    {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
+    {'id': 'Hotels', 'label': 'Hotels', 'icon': Icons.hotel_rounded},
+    {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
+  ];
+
+  bool _matchesFilter(_ArLandmark lm, String filter) {
+    if (filter == 'All') return true;
+    final c = lm.category.toLowerCase();
+    switch (filter) {
+      case 'Food':
+        return c.contains('restaurant') || c.contains('food') || c.contains('cafe') ||
+            c.contains('bar') || c.contains('bakery') || c.contains('meal') || c.contains('dining');
+      case 'Shopping':
+        return c.contains('shop') || c.contains('store') || c.contains('mall') ||
+            c.contains('market') || c.contains('retail') || c.contains('clothing');
+      case 'Historical':
+        return c.contains('museum') || c.contains('temple') || c.contains('church') ||
+            c.contains('monument') || c.contains('historic') || c.contains('heritage') ||
+            c.contains('mosque') || c.contains('shrine') || c.contains('castle') ||
+            c.contains('landmark') || c.contains('tourist');
+      case 'Nature':
+        return c.contains('park') || c.contains('garden') || c.contains('beach') ||
+            c.contains('forest') || c.contains('lake') || c.contains('mountain') ||
+            c.contains('nature') || c.contains('zoo');
+      case 'Hotels':
+        return c.contains('hotel') || c.contains('lodging') || c.contains('motel') ||
+            c.contains('resort') || c.contains('guest') || c.contains('hostel');
+      case 'Others':
+        // Everything that doesn't match any specific category
+        return !_matchesFilter(lm, 'Food') &&
+            !_matchesFilter(lm, 'Shopping') &&
+            !_matchesFilter(lm, 'Historical') &&
+            !_matchesFilter(lm, 'Nature') &&
+            !_matchesFilter(lm, 'Hotels');
+    }
+    return false;
+  }
+
+  List<_ArLandmark> get _filteredLandmarks =>
+      _landmarks.where((lm) => _matchesFilter(lm, _selectedFilter)).toList();
+
+  /// Landmarks the camera is currently pointed at, ordered by how centred
+  /// they are in the view (most-centred first). Used to pick the focused
+  /// place and to decide whether to show the "rotate to discover" prompt.
+  List<_ArLandmark> get _landmarksInView {
+    final inView = <MapEntry<_ArLandmark, double>>[];
+    for (final lm in _filteredLandmarks) {
+      final angle = _signedAngleDelta(_heading, lm.bearing);
+      if (angle.abs() <= _viewConeHalfDegrees) {
+        inView.add(MapEntry(lm, angle.abs()));
+      }
+    }
+    inView.sort((a, b) => a.value.compareTo(b.value));
+    return inView.map((e) => e.key).toList();
+  }
+
+  /// The nearest landmark by angle that is NOT in view — used to hint the
+  /// user which way to rotate when nothing is visible.
+  _ArLandmark? get _nearestOffScreenLandmark {
+    _ArLandmark? closest;
+    double? bestAngle;
+    for (final lm in _filteredLandmarks) {
+      final angle = _signedAngleDelta(_heading, lm.bearing).abs();
+      if (angle <= _viewConeHalfDegrees) continue; // already in view
+      if (bestAngle == null || angle < bestAngle) {
+        bestAngle = angle;
+        closest = lm;
+      }
+    }
+    return closest;
+  }
 
   final List<Map<String, dynamic>> _mappingCategories = [
     {'id': 'HERITAGE', 'icon': Icons.account_balance_rounded, 'label': 'Heritage'},
@@ -87,13 +220,96 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   @override
   void initState() {
     super.initState();
+    _checkAndInit();
+  }
+
+  Future<void> _checkAndInit() async {
+    // Permissions already granted by HomePage on app launch
+    if (mounted) {
+      setState(() {
+        _isLocationGranted = true;
+        _isCameraGranted = true;
+        _isCheckingPermissions = false;
+      });
+    }
+
     _initializeCamera();
     _fetchLivePlaces();
+
     _compassSubscription = FlutterCompass.events?.listen((event) {
-      if (mounted) {
-        setState(() => _heading = event.heading ?? 0.0);
+      if (!mounted) return;
+      final raw = event.heading;
+      if (raw == null) return;
+      final accuracy = event.accuracy;
+      // Drop low-confidence updates (e.g. magnetic interference). On platforms
+      // that don't report accuracy this is null and we accept the reading.
+      if (accuracy != null && accuracy > _maxAcceptableAccuracyDegrees) {
+        setState(() => _compassAccuracy = accuracy);
+        return;
       }
+      setState(() {
+        _rawHeading = raw;
+        _compassAccuracy = accuracy;
+        _heading = _smoothHeading(_heading, raw, _headingSmoothing);
+      });
     });
+
+    _positionSubscription = geo.Geolocator.getPositionStream(
+      locationSettings: const geo.LocationSettings(
+        accuracy: geo.LocationAccuracy.best,
+        distanceFilter: 0,
+      ),
+    ).listen((pos) {
+      debugPrint('📍 AR Location Update: ${pos.latitude}, ${pos.longitude}');
+      if (!mounted) return;
+      setState(() {
+        _currentPosition = pos;
+        
+        // Update distances for all landmarks dynamically as the user moves
+        _landmarks = _landmarks.map((lm) {
+          if (lm.lat == null || lm.lng == null) return lm;
+          
+          final double rawDistM = geo.Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, lm.lat!, lm.lng!
+          );
+          final bearing = _calculateBearing(pos.latitude, pos.longitude, lm.lat!, lm.lng!);
+          
+          final distKm = rawDistM / 1000;
+          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+          
+          return lm.copyWith(
+            distance: distStr,
+            distanceM: rawDistM,
+            bearing: bearing,
+          );
+        }).toList();
+
+        // If navigating, also update the navigation target explicitly
+        if (_isNavigating && _navigationTarget != null) {
+          final target = _navigationTarget!;
+          if (target.lat != null && target.lng != null) {
+            final double distM = geo.Geolocator.distanceBetween(
+              pos.latitude, pos.longitude, target.lat!, target.lng!
+            );
+            final bearing = _calculateBearing(pos.latitude, pos.longitude, target.lat!, target.lng!);
+            
+            final distKm = distM / 1000;
+            final distStr = distKm < 1 ? '${distM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+            
+            _navigationTarget = target.copyWith(
+              distance: distStr,
+              distanceM: distM,
+              bearing: bearing,
+            );
+            _distanceToTarget = distM;
+          }
+
+          // Advance route steps based on GPS proximity
+          _checkRouteStepAdvancement(pos);
+        }
+      });
+    });
+
     // If launched from proximity alert, auto-trigger Neva after short delay
     if (widget.initialPlace != null) {
       Future.delayed(const Duration(milliseconds: 1200), () {
@@ -121,10 +337,97 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   @override
   void dispose() {
     _compassSubscription?.cancel();
+    _positionSubscription?.cancel();
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
     super.dispose();
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // ROUTE NAVIGATION — Fetch directions + start turn-by-turn
+  // ═══════════════════════════════════════════════════════════
+  void _startRouteNavigation(_ArLandmark landmark) {
+    setState(() {
+      _navigationTarget = landmark;
+      _isNavigating = true;
+      _showInfoCard = false;
+      _arMode = 'navigate';
+      _isFetchingRoute = true;
+      _walkingRoute = null;
+      _currentStepIndex = 0;
+      _hasArrivedAtDestination = false;
+    });
+
+    // Fetch walking route in background
+    _fetchWalkingRoute(landmark);
+  }
+
+  Future<void> _fetchWalkingRoute(_ArLandmark landmark) async {
+    if (_currentPosition == null || landmark.lat == null || landmark.lng == null) {
+      if (mounted) setState(() => _isFetchingRoute = false);
+      return;
+    }
+
+    final route = await GoogleDirectionsService.getWalkingRoute(
+      originLat: _currentPosition!.latitude,
+      originLng: _currentPosition!.longitude,
+      destLat: landmark.lat!,
+      destLng: landmark.lng!,
+    );
+
+    if (mounted) {
+      setState(() {
+        _walkingRoute = route;
+        _currentStepIndex = 0;
+        _isFetchingRoute = false;
+      });
+      if (route != null) {
+        debugPrint('✅ Route loaded: ${route.steps.length} steps, ${route.totalDistance}');
+        HapticFeedback.mediumImpact();
+      } else {
+        debugPrint('⚠️ No route found — falling back to compass-only navigation');
+      }
+    }
+  }
+
+  /// Advance to the next route step if the user is close enough to the
+  /// current step’s endpoint. Called from the GPS position listener.
+  void _checkRouteStepAdvancement(geo.Position pos) {
+    if (_walkingRoute == null || _hasArrivedAtDestination) return;
+
+    final steps = _walkingRoute!.steps;
+    if (_currentStepIndex >= steps.length) return;
+
+    final currentStep = steps[_currentStepIndex];
+    final distToStepEnd = geo.Geolocator.distanceBetween(
+      pos.latitude, pos.longitude,
+      currentStep.endLat, currentStep.endLng,
+    );
+
+    if (distToStepEnd <= _stepAdvanceThresholdM) {
+      if (_currentStepIndex < steps.length - 1) {
+        // Advance to next step
+        setState(() => _currentStepIndex++);
+        HapticFeedback.heavyImpact();
+        debugPrint('➡️ Step ${_currentStepIndex}/${steps.length}: ${steps[_currentStepIndex].instruction}');
+      } else {
+        // Arrived at destination!
+        setState(() => _hasArrivedAtDestination = true);
+        HapticFeedback.vibrate();
+        debugPrint('🏁 ARRIVED at ${_navigationTarget?.name}!');
+      }
+    }
+  }
+
+  /// The bearing the user should currently face. When we have a walking
+  /// route, this is the bearing of the active step. Otherwise it falls back
+  /// to the straight-line bearing to the target.
+  double get _activeNavBearing {
+    if (_walkingRoute != null && _currentStepIndex < _walkingRoute!.steps.length) {
+      return _walkingRoute!.steps[_currentStepIndex].bearing;
+    }
+    return _navigationTarget?.bearing ?? _heading;
   }
 
   double _calculateBearing(double startLat, double startLng, double endLat, double endLng) {
@@ -139,23 +442,66 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     return (brng * 180 / pi + 360) % 360;
   }
 
+  /// Signed angular distance from [heading] to [bearing] in degrees,
+  /// normalised to (-180, 180]. Positive = target is clockwise (right) of
+  /// where the camera is pointing.
+  static double _signedAngleDelta(double heading, double bearing) {
+    double d = (bearing - heading) % 360;
+    if (d > 180) d -= 360;
+    if (d <= -180) d += 360;
+    return d;
+  }
+
+  /// Low-pass filter for the compass heading. Handles the wrap-around between
+  /// 359° and 0° so a tiny rotation across north doesn't snap the smoothed
+  /// value all the way back around the circle.
+  static double _smoothHeading(double previous, double next, double alpha) {
+    double delta = _signedAngleDelta(previous, next);
+    double updated = previous + delta * alpha;
+    if (updated < 0) updated += 360;
+    if (updated >= 360) updated -= 360;
+    return updated;
+  }
+
+  /// Returns the on-screen horizontal position (0..1) for a landmark whose
+  /// bearing is [angle] degrees off camera centre, using a perspective
+  /// projection so items track real-world position instead of stretching
+  /// linearly. Returns null when the landmark is outside the view cone.
+  static double? _projectAngleToScreenX(double angle, {double bufferDegrees = 8}) {
+    final half = _viewConeHalfDegrees + bufferDegrees;
+    if (angle.abs() > half) return null;
+    final halfFovRad = (_cameraFovDegrees / 2) * pi / 180;
+    final angleRad = angle * pi / 180;
+    // tan(angle)/tan(halfFov) maps angle linearly across the screen *in
+    // perspective space*, which matches what the camera lens actually shows.
+    final t = tan(angleRad) / tan(halfFovRad);
+    return (0.5 + t * 0.5).clamp(-0.15, 1.15);
+  }
+
   Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
-
-    _controller = CameraController(
-      cameras.first,
-      ResolutionPreset.medium,
-      enableAudio: false,
-    );
-
+    // Camera permission is handled by Android system when camera opens
+    // We try to initialize directly and catch any errors
     try {
+      final cameras = await availableCameras();
+      if (cameras.isEmpty) return;
+
+      _controller = CameraController(
+        cameras.first,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
+
       await _controller!.initialize();
-      // Set flash mode to off by default
       await _controller!.setFlashMode(FlashMode.off);
-      if (mounted) setState(() => _isCameraReady = true);
+      if (mounted) {
+        setState(() {
+          _isCameraReady = true;
+          _isCameraGranted = true;
+        });
+      }
     } catch (e) {
       debugPrint('Camera Error: $e');
+      if (mounted) setState(() => _isCameraGranted = false);
     }
   }
 
@@ -256,12 +602,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   static const int _maxVisibleMarkers = 25;
-  static const int _maxVisibleOnScreen = 5;
+  static const int _maxVisibleOnScreen = 8;
   static const List<int> _searchRadii = [100, 1000, 2000, 5000, 10000, 20000];
 
   Future<void> _fetchLivePlaces() async {
+    if (!_isLocationGranted) return;
     try {
-      final pos = await geo.Geolocator.getCurrentPosition();
+      final pos = await PermissionService.getSafePosition();
+      if (pos == null) return;
+      
       List<_ArLandmark> collected = [];
 
       for (final radius in _searchRadii) {
@@ -312,10 +661,289 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (mounted) setState(() {
         _landmarks = collected;
         _currentPosition = pos;
+        // Fresh fetch means user likely moved; drop any manual override so
+        // the smart picker is in charge again.
+        _userPickedLocationName = null;
       });
+
+      // Resolve a friendly name for the "Your Location" pill.
+      _resolveCurrentLocationName(pos.latitude, pos.longitude);
     } catch (e) {
       debugPrint('AR places error: $e');
     }
+  }
+
+  Future<void> _resolveCurrentLocationName(double lat, double lng) async {
+    try {
+      final name = await GooglePlacesService.reverseGeocode(lat, lng);
+      if (mounted && name.isNotEmpty) {
+        setState(() => _currentLocationName = name);
+      }
+    } catch (e) {
+      debugPrint('Reverse geocode error: $e');
+    }
+  }
+
+  /// GPS at ground level often has 10–20 m of horizontal error, and many
+  /// shops sit shoulder-to-shoulder within that radius. So instead of always
+  /// picking the absolute closest landmark, we treat everything inside the
+  /// GPS error circle as "could be where I am" and rank them with a smarter
+  /// heuristic.
+  double get _locationAmbiguityRadius {
+    final accuracy = _currentPosition?.accuracy ?? 15.0;
+    // Minimum 20m guards against unrealistically tight GPS reports indoors.
+    return max(20.0, accuracy + 5);
+  }
+
+  /// Landmarks that could plausibly be "where the user is", ranked smartly:
+  ///   1. Places NOT in the camera view come first — in AR mode you point at
+  ///      things you're looking AT, not where you're standing. So if the
+  ///      camera is pointed at "Riky Mobiles", that's probably not where
+  ///      you are; the shop behind you is.
+  ///   2. Within each group (in-view vs. behind), closer wins.
+  List<_ArLandmark> get _locationCandidates {
+    final r = _locationAmbiguityRadius;
+    final candidates =
+        _landmarks.where((lm) => lm.distanceM <= r).toList();
+    if (candidates.isEmpty) {
+      return _landmarks.isEmpty ? const [] : [_landmarks.first];
+    }
+    candidates.sort((a, b) {
+      final aInView =
+          _signedAngleDelta(_heading, a.bearing).abs() <= _viewConeHalfDegrees;
+      final bInView =
+          _signedAngleDelta(_heading, b.bearing).abs() <= _viewConeHalfDegrees;
+      if (aInView != bInView) return aInView ? 1 : -1; // behind-camera first
+      return a.distanceM.compareTo(b.distanceM);
+    });
+    return candidates;
+  }
+
+  /// Pick the most specific name we can show in the "Your Location" pill.
+  /// Honours a manual user pick first; otherwise uses the smart candidate
+  /// ranking; falls back to the reverse-geocoded locality.
+  String _resolveDisplayLocation() {
+    if (_userPickedLocationName != null && _userPickedLocationName!.isNotEmpty) {
+      return _userPickedLocationName!;
+    }
+    final candidates = _locationCandidates;
+    if (candidates.isNotEmpty) {
+      final pick = candidates.first;
+      final d = pick.distanceM;
+      if (d <= 10) return pick.name;
+      if (d <= 40) return 'At ${pick.name}';
+      if (d <= 150) return 'Near ${pick.name}';
+    }
+    if (_currentLocationName.isNotEmpty) return _currentLocationName;
+    return 'Locating…';
+  }
+
+  /// Bottom sheet that lets the user confirm which nearby place they're
+  /// actually at. GPS can't tell ground-floor neighbours apart, so this is
+  /// the honest UX answer: show the candidates, let the human pick.
+  void _showLocationPicker() {
+    final candidates = _locationCandidates.take(8).toList();
+    if (candidates.isEmpty) return;
+    final currentDisplay = _resolveDisplayLocation();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.78),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withOpacity(0.08),
+                width: 0.6,
+              ),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Drag handle
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      const Text(
+                        "Which place are you at?",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'GPS can\'t tell ground-floor neighbours apart — pick the one you\'re actually inside.',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 12,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      ...candidates.map((lm) {
+                        final isCurrent =
+                            currentDisplay.contains(lm.name) ||
+                                _userPickedLocationName == lm.name;
+                        final angle =
+                            _signedAngleDelta(_heading, lm.bearing);
+                        final inView =
+                            angle.abs() <= _viewConeHalfDegrees;
+                        return _buildLocationCandidateTile(
+                          lm,
+                          isCurrent: isCurrent,
+                          inView: inView,
+                        );
+                      }),
+                      const SizedBox(height: 4),
+                      Center(
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.of(sheetContext).pop();
+                            setState(() => _userPickedLocationName = null);
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white.withOpacity(0.65),
+                          ),
+                          child: const Text(
+                            'Use automatic detection',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLocationCandidateTile(
+    _ArLandmark lm, {
+    required bool isCurrent,
+    required bool inView,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).pop();
+        setState(() => _userPickedLocationName = lm.name);
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isCurrent
+              ? Colors.white.withOpacity(0.12)
+              : Colors.white.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isCurrent
+                ? Colors.white.withOpacity(0.35)
+                : Colors.white.withOpacity(0.08),
+            width: isCurrent ? 1.2 : 0.6,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.08),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.2),
+                  width: 0.8,
+                ),
+              ),
+              child: Icon(
+                inView ? Icons.center_focus_strong_rounded : Icons.place_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    lm.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(
+                        '${lm.distanceM.toInt()} m',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.65),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      if (inView) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '• in view (you\'re looking at it)',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.45),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (isCurrent)
+              const Icon(Icons.check_circle_rounded,
+                  color: Colors.white, size: 20)
+            else
+              Icon(Icons.chevron_right_rounded,
+                  color: Colors.white.withOpacity(0.55), size: 22),
+          ],
+        ),
+      ),
+    );
   }
 
   // ════════════════════════════════════════════════════════════════
@@ -333,9 +961,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     
     try {
       // 1. Get current GPS location first
-      final currentPosition = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
-      );
+      final currentPosition = await geo.Geolocator.getCurrentPosition();
       
       debugPrint('🔮 GPS location: ${currentPosition.latitude}, ${currentPosition.longitude}');
       
@@ -693,7 +1319,200 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
   }
   
+  Widget _buildSmallLocationBadge() {
+    final name = _resolveDisplayLocation();
+    final canPick = _locationCandidates.length > 1;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: canPick ? _showLocationPicker : null,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.centerRight,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(14, 6, 26, 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E88E5),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Your Location',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 9,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: -8,
+            child: Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF1E88E5),
+                border: Border.all(color: Colors.white, width: 1.5),
+              ),
+              child: const Icon(Icons.person_rounded, color: Colors.white, size: 18),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// "Your Location" pill shown above the bottom card / sticky to lower screen.
+  /// Tells the user which area the AR view is anchored to.
+  Widget _buildLocationPill() {
+    final name = _resolveDisplayLocation();
+    final canPick = _locationCandidates.length > 1;
+    // Discover mode renders a place-info card pinned at bottom: 40 (~110 px
+    // tall, top edge ~bottom: 150). We tuck the pill just above that card
+    // edge so they read as one bottom panel. The marker stack is compacted
+    // (see rowHeight in _buildLandmarkMarker) so the last card clears this
+    // zone. In explore mode there's no bottom card so we sit low.
+    final reserveDiscoverySpace =
+        _isIdentifying && !_isNevaAnalyzing && _nevaSearchResult == null;
+    final pillBottom = reserveDiscoverySpace ? 158.0 : 36.0;
+    return Positioned(
+      bottom: pillBottom,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: canPick ? _showLocationPicker : null,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E88E5),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF1E88E5).withOpacity(0.4),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Your Location',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        if (canPick) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '• tap to change',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.72),
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 1),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (canPick) ...[
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.keyboard_arrow_down_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                  child: const Icon(Icons.person_rounded,
+                      color: Color(0xFF1E88E5), size: 22),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(
+        begin: 1, end: 1.02, duration: 1800.ms);
+  }
+
+  /// Convert a heading in degrees to a compass cardinal (N, NE, E, …, NW).
+  String _cardinalFromHeading(double heading) {
+    const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+    final normalized = (heading % 360 + 360) % 360;
+    return dirs[((normalized + 22.5) ~/ 45) % 8];
+  }
+
   Widget _buildTopHUD() {
+    final cardinal = _cardinalFromHeading(_heading);
+
     return Positioned(
       top: 0,
       left: 0,
@@ -724,31 +1543,79 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   letterSpacing: 2,
                 ),
               ),
-              const SizedBox(width: 16),
-              // XP pill
+              const Spacer(),
+              // Combined XP + Compass pill
               ClipRRect(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(22),
                 child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withOpacity(0.15), width: 1),
+                      color: Colors.black.withOpacity(0.55),
+                      borderRadius: BorderRadius.circular(22),
+                      border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.stars_rounded, color: Colors.amber, size: 14),
-                        const SizedBox(width: 5),
-                        const Text('1300 XP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        // XP segment
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.stars_rounded, color: Colors.amber, size: 16),
+                              const SizedBox(width: 5),
+                              Text(
+                                '$_nexusPoints XP',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // Compass segment
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: Transform.rotate(
+                                  angle: -_heading * pi / 180,
+                                  child: CustomPaint(painter: _CompassNeedlePainter()),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                cardinal,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 13,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 12),
               // Exit AR Button
               GestureDetector(
                 onTap: () {
@@ -766,10 +1633,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                       width: 38, height: 38,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.1),
-                        border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+                        color: Colors.white.withOpacity(0.9),
+                        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1),
                       ),
-                      child: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                      child: const Icon(Icons.close_rounded, color: Colors.black, size: 20),
                     ),
                   ),
                 ),
@@ -801,6 +1668,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    if (_isCheckingPermissions) {
+      return const Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(child: CircularProgressIndicator(color: Colors.white24)),
+      );
+    }
+
+    // Only location permission is required - camera is handled by Android system
+    if (!_isLocationGranted) {
+      return _buildLocationPermissionBarrier();
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -810,16 +1689,47 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
           // Removed subtle scan line wave effect as requested
           
-          // EXPLORE MODE: Floating AR markers (compass-driven)
-          if (!_isNavigating && !_isIdentifying)
-            ..._landmarks.asMap().entries.map((e) => _buildLandmarkMarker(e.key, e.value)),
+          // EXPLORE MODE: Floating AR markers (compass-driven).
+          // During navigation, show them dimmed so nearby POIs (like UC College)
+          // remain visible as contextual landmarks.
+          if (!_isIdentifying)
+            if (_isNavigating)
+              ...(_landmarksInView
+                  .where((lm) => lm.name != _navigationTarget?.name)
+                  .toList()
+                  .asMap()
+                  .entries
+                  .map((e) => Opacity(
+                        opacity: 0.4,
+                        child: _buildLandmarkMarker(e.key, e.value),
+                      )))
+            else
+              ..._landmarksInView
+                  .asMap()
+                  .entries
+                  .map((e) => _buildLandmarkMarker(e.key, e.value)),
+
+          // EXPLORE MODE: If we have places nearby but none in the view cone,
+          // guide the user to rotate toward the closest one.
+          if (!_isNavigating &&
+              !_isIdentifying &&
+              !_isMapping &&
+              _nevaSearchResult == null &&
+              !_showInfoCard &&
+              _filteredLandmarks.isNotEmpty &&
+              _landmarksInView.isEmpty)
+            _buildRotateToDiscoverOverlay(),
 
           // DISCOVER MODE: Show single closest place with lock-on animation
-          if (_isIdentifying && !_showInfoCard && !_isNevaAnalyzing)
+          if (_isIdentifying && !_showInfoCard && !_isNevaAnalyzing && !_isNavigating)
             _buildDiscoveryTarget(),
 
           // Top HUD (XP and Map Place) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null) _buildTopHUD(),
+
+          // Filter chip bar - hide when navigating, mapping, or showing detail
+          if (!_minimalHud && !_isNavigating && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
+            _buildArFilterBar(),
 
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null) 
@@ -830,38 +1740,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               child: Center(child: _buildXPBadge()),
             ),
 
-          // Expanded detail card
-          if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length) ...[
+          // "Your Location" pill — also hidden when the detail card is open
+          // so the two don't overlap at the bottom of the screen.
+          if (!_minimalHud && !_isNavigating && !_isMapping && _nevaSearchResult == null && !_showInfoCard && !(_isIdentifying && (_frozenLandmark ?? _getPointedLandmark()) != null))
+            _buildLocationPill(),
+
+          // Tap-triggered place detail card (compact bottom card) - HIDE IF NAVIGATING
+          if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length && !_isNavigating)
             _buildInfoCard(_landmarks[_selectedLandmark]),
-            Positioned(
-              left: 25, 
-              top: 70,
-              child: GestureDetector(
-                onTap: () {
-                  final landmark = _landmarks[_selectedLandmark];
-                  HomePage.homeKey.currentState?.switchToNeva('Tell me more about the ${landmark.name}');
-                },
-                child: Column(
-                  children: [
-                    _buildNevaAvatar(60)
-                     .animate(onPlay: (c) => c.repeat(reverse: true))
-                     .moveY(begin: -5, end: 5, duration: 2.seconds, curve: Curves.easeInOut)
-                     .shimmer(duration: 3.seconds, color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                    const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.black, 
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 1),
-                      ),
-                      child: const Text('ASK NEVA', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-                    ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(duration: 2.seconds),
-                  ],
-                ),
-              ),
-            ).animate().fade().scale(begin: const Offset(0.5, 0.5)),
-          ],
 
           // DISCOVERY CROSSHAIR (Only in Mapping Mode)
           if (_isMapping) _buildDiscoveryCrosshair(),
@@ -922,6 +1808,84 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.6, end: 1.0, duration: 1500.ms);
   }
 
+  // ═══════════════════════════════════════
+  // AR FILTER BAR - Horizontal chip selector
+  // ═══════════════════════════════════════
+  Widget _buildArFilterBar() {
+    return Positioned(
+      top: 90,
+      left: 0,
+      right: 0,
+      child: SizedBox(
+        height: 40,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: _arFilters.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            final f = _arFilters[i];
+            final id = f['id'] as String;
+            final label = f['label'] as String;
+            final icon = f['icon'] as IconData;
+            final selected = _selectedFilter == id;
+            final count = id == 'All'
+                ? _landmarks.length
+                : _landmarks.where((lm) => _matchesFilter(lm, id)).length;
+
+            return GestureDetector(
+              onTap: () {
+                setState(() => _selectedFilter = id);
+              },
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.black : Colors.black.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(
+                    color: selected ? Colors.white.withOpacity(0.25) : Colors.white.withOpacity(0.1),
+                    width: 1,
+                  ),
+                  boxShadow: selected
+                      ? [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 12)]
+                      : null,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 14, color: Colors.white),
+                    const SizedBox(width: 8),
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    if (count > 0) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '$count',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.85),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0);
+  }
+
   Widget _buildCameraBackground() {
     if (!_isCameraReady || _controller == null) {
       return Container(
@@ -947,6 +1911,160 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Tracks how many markers are currently visible on screen
   int _visibleCount = 0;
 
+  /// Shown when there ARE nearby landmarks but none fall inside the camera's
+  /// view cone — instead of leaving the screen empty (which looked broken),
+  /// we tell the user which way to turn.
+  Widget _buildRotateToDiscoverOverlay() {
+    final hint = _nearestOffScreenLandmark;
+    final angle = hint == null
+        ? 0.0
+        : _signedAngleDelta(_heading, hint.bearing); // -180..180
+    final turnRight = angle > 0;
+    final turnDegrees = angle.abs().round();
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Rotating radar ring with arrow
+              SizedBox(
+                width: 120,
+                height: 120,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.18),
+                          width: 1,
+                        ),
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(
+                          begin: 0.92,
+                          end: 1.08,
+                          duration: 1600.ms,
+                          curve: Curves.easeInOut,
+                        ),
+                    Container(
+                      width: 86,
+                      height: 86,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: RadialGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.10),
+                            Colors.transparent,
+                          ],
+                        ),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.35),
+                          width: 1,
+                        ),
+                      ),
+                      child: Transform.rotate(
+                        // Point the arrow toward the nearest off-screen place.
+                        angle: hint == null ? 0 : angle * pi / 180,
+                        child: const Icon(
+                          Icons.navigation_rounded,
+                          color: Colors.white,
+                          size: 38,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+
+              // Title
+              Text(
+                hint == null ? 'Look around' : 'Rotate to discover',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                  shadows: [
+                    Shadow(blurRadius: 12, color: Colors.black54),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+
+              // Subtle hint
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.32),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.12),
+                        width: 0.6,
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          turnRight
+                              ? Icons.turn_right_rounded
+                              : Icons.turn_left_rounded,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          hint == null
+                              ? 'No places in view — pan the camera'
+                              : 'Turn ${turnRight ? 'right' : 'left'} ~$turnDegrees° toward ${hint.name}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.1,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // Compass accuracy warning — magnetic interference makes the
+              // bearing unreliable until the user does a figure-8 calibration.
+              if (_compassAccuracy != null &&
+                  _compassAccuracy! > _maxAcceptableAccuracyDegrees) ...[
+                const SizedBox(height: 10),
+                Text(
+                  'Compass needs calibration — wave the phone in a figure 8',
+                  style: TextStyle(
+                    color: Colors.amber.shade300,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ],
+            ],
+          )
+              .animate()
+              .fade(duration: 250.ms)
+              .moveY(begin: 8, end: 0, curve: Curves.easeOutCubic),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLandmarkMarker(int index, _ArLandmark landmark) {
     // Reset visible counter at the start of each build cycle
     if (index == 0) _visibleCount = 0;
@@ -954,172 +2072,163 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final screenW = MediaQuery.of(context).size.width;
     final screenH = MediaQuery.of(context).size.height;
 
-    // Horizontal position based on compass bearing
-    double diff = landmark.bearing - _heading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    double dx = 0.5 + (diff / 60);
+    final angle = _signedAngleDelta(_heading, landmark.bearing);
+    final dx = _projectAngleToScreenX(angle);
+    if (dx == null) return const SizedBox.shrink();
 
-    // Skip if not in current camera view
-    if (dx < -0.3 || dx > 1.3) return const SizedBox.shrink();
-
-    // Cap at 5 visible markers in the current direction
     if (_visibleCount >= _maxVisibleOnScreen) return const SizedBox.shrink();
 
     int currentSlot = _visibleCount;
     _visibleCount++;
 
-    // === POSITION CALCULATIONS ===
-    const double topStart = 270.0;
-    const double rowHeight = 100.0;
-    const double cardW = 280.0;
+    // === COMPACT LAYOUT ===
+    const double topStart = 200.0;
+    const double rowHeight = 75.0;
+    const double cardW = 170.0;
 
     double topPos = topStart + (currentSlot * rowHeight);
     double leftPos = (screenW * dx) - (cardW / 2);
-    leftPos = leftPos.clamp(12.0, screenW - cardW - 12.0);
+    leftPos = leftPos.clamp(8.0, screenW - cardW - 8.0);
 
-    // Slight alternating offset
+    // Stagger alternating markers horizontally
     if (currentSlot % 2 == 1) {
-      leftPos = (leftPos + 25).clamp(12.0, screenW - cardW - 12.0);
+      leftPos = (leftPos + 30).clamp(8.0, screenW - cardW - 8.0);
     }
+
+    // Direction badge
+    final cardinal = _cardinalFromHeading(landmark.bearing);
+    final arrowIcon = _arrowIconForCardinal(cardinal);
 
     return Positioned(
       left: leftPos,
       top: topPos,
       child: GestureDetector(
         onTap: () {
-          setState(() {
-            _selectedLandmark = index;
-            _showInfoCard = true;
-          });
+          final i = _landmarks.indexWhere((l) => l.name == landmark.name);
+          if (i >= 0) {
+            _selectedLandmark = i;
+            _startRouteNavigation(_landmarks[i]);
+          }
         },
-        child: Stack(
-          clipBehavior: Clip.none,
-          alignment: Alignment.centerLeft,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // --- Modern Glass Card ---
+            // ── GREEN NAME PILL ──
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF4ADE80),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(color: const Color(0xFF4ADE80).withOpacity(0.3), blurRadius: 8),
+                ],
+              ),
+              child: Text(
+                landmark.name,
+                style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+                maxLines: 1, overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(height: 4),
+
+            // ── COMPACT DARK CARD ──
             ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(16),
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                 child: Container(
                   width: cardW,
-                  height: 72,
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                    color: Colors.white.withOpacity(_selectedLandmark == index ? 0.12 : 0.07),
+                    color: Colors.black.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: _selectedLandmark == index
-                          ? AppColors.primary.withOpacity(0.8)
-                          : Colors.white.withOpacity(0.15),
-                      width: _selectedLandmark == index ? 1.5 : 1.0,
+                      color: currentSlot == 0
+                          ? const Color(0xFF4ADE80).withOpacity(0.6)
+                          : Colors.white.withOpacity(0.12),
+                      width: currentSlot == 0 ? 1.5 : 0.8,
                     ),
-                    boxShadow: [
-                      if (_selectedLandmark == index)
-                        BoxShadow(color: AppColors.primary.withOpacity(0.25), blurRadius: 20, spreadRadius: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      // Thumbnail image
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: SizedBox(
+                          width: 44, height: 44,
+                          child: _buildMarkerImage(landmark),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Rating + Distance
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
+                                const SizedBox(width: 3),
+                                Text('${landmark.rating}', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800)),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              landmark.distance,
+                              style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Direction badge
+                      Container(
+                        width: 34, height: 34,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(arrowIcon, color: Colors.white, size: 14),
+                            Text(cardinal, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ),
 
-            // --- Floating Hex-Core Image ---
-            Positioned(
-              left: -15,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Outer scanning ring
-                  Container(
-                    width: 70, height: 70,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1),
-                    ),
-                  ).animate(onPlay: (c) => c.repeat()).rotate(duration: 5.seconds),
-                  
-                  // The Image Core
-                  Container(
-                    width: 54, height: 54,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.primary, width: 2),
-                      boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.5), blurRadius: 15)],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(27),
-                      child: _buildMarkerImage(landmark),
-                    ),
-                  ),
-                ],
+            // ── DOTTED LINE TO GROUND ──
+            SizedBox(
+              height: 24,
+              child: CustomPaint(
+                size: const Size(2, double.infinity),
+                painter: _DottedLinePainter(
+                  color: Colors.white.withOpacity(0.4),
+                  dashHeight: 3,
+                  dashSpace: 3,
+                  dashWidth: 1.2,
+                ),
               ),
             ),
-
-            // --- Holographic Content ---
             Container(
-              width: cardW,
-              padding: const EdgeInsets.only(left: 60, right: 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 5, height: 5,
-                        decoration: BoxDecoration(color: AppColors.primary, shape: BoxShape.circle, boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 5)]),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        landmark.category.toUpperCase(),
-                        style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    landmark.name,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      _buildMetaBadge(Icons.star_rounded, '${landmark.rating}', Colors.amber),
-                      const SizedBox(width: 15),
-                      _buildMetaBadge(Icons.radar_rounded, landmark.distance, AppColors.primary),
-                    ],
-                  ),
+              width: 6, height: 6,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.7),
+                boxShadow: [
+                  BoxShadow(color: Colors.white.withOpacity(0.3), blurRadius: 4),
                 ],
               ),
             ),
-
-            if (currentSlot == 0)
-              Positioned(
-                top: -10, right: 12,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'NEAREST',
-                        style: TextStyle(color: Colors.black, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1.2),
-                      ),
-                    ),
-                  ),
-                ).animate(onPlay: (c) => c.repeat(reverse: true)).shimmer(duration: 1.5.seconds),
-              ),
           ],
         ),
       ),
-    ).animate().fade(duration: 400.ms).moveX(begin: -30, end: 0, curve: Curves.easeOutBack);
+    ).animate().fade(duration: 350.ms).moveX(begin: -20, end: 0, curve: Curves.easeOutBack);
   }
 
   Widget _buildDiscoveryTarget() {
@@ -1151,277 +2260,370 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
     return Stack(
       children: [
-        // ── OTHER PLACE DOTS (all landmarks except the pointed one) ─
+        // ── PLACE DOTS (highlighted when locked/pointed) ─
         ..._buildOtherPlaceDots(pointedLandmark, screenW, screenH),
 
-        // ── AR CROSSHAIR ──────────────────────────────────────────
-        Positioned(
-          left: screenW / 2 - 40,
-          top: screenH / 2 - 40,
-          child: _buildARCrosshair(pointedLandmark != null),
-        ),
-
-        // ── LIVE DISTANCE LINE + BADGE (when pointing at a place) ─
+        // ── PLACE INFO PANEL (when pointing at a place) ─
         if (pointedLandmark != null) ...[
-          // Vertical distance line from crosshair to info panel
-          Positioned(
-            left: screenW / 2 - 1,
-            top: screenH / 2 + 40,
-            child: Container(
-              width: 2,
-              height: 60,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [AppColors.primary, AppColors.primary.withOpacity(0)],
-                ),
-              ),
-            ),
-          ),
-
-          // Distance badge centered
-          Positioned(
-            left: screenW / 2 - 50,
-            top: screenH / 2 + 100,
-            child: Container(
-              width: 100,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.primary, width: 1.5),
-                boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.4), blurRadius: 10)],
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.straighten, color: AppColors.primary, size: 13),
-                  const SizedBox(width: 5),
-                  Text(
-                    pointedLandmark.distance,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-            ).animate(onPlay: (c) => c.repeat(reverse: true))
-             .scale(begin: const Offset(0.97, 0.97), end: const Offset(1.03, 1.03), duration: 1.5.seconds),
-          ),
-
           // Place info panel — static, no blink, live content
           Positioned(
             left: 16,
             right: 16,
-            bottom: 40,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _startNevaSearch(pointedLandmark),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.2),
-                      boxShadow: [
-                        BoxShadow(color: AppColors.primary.withOpacity(0.12), blurRadius: 30, spreadRadius: 2),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Category chip
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 0.8),
-                                ),
-                                child: Text(
-                                  pointedLandmark.category.toUpperCase(),
-                                  style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                pointedLandmark.name,
-                                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
+            bottom: 30,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _startNevaSearch(pointedLandmark),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.2),
+                          boxShadow: [
+                            BoxShadow(color: AppColors.primary.withOpacity(0.12), blurRadius: 30, spreadRadius: 2),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
-                                  const SizedBox(width: 3),
-                                  Text('${pointedLandmark.rating}', style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
-                                  const SizedBox(width: 12),
-                                  Icon(Icons.straighten, color: Colors.white38, size: 13),
-                                  const SizedBox(width: 3),
-                                  Text(pointedLandmark.distance, style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                                  // Category chip
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: AppColors.primary.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 0.8),
+                                    ),
+                                    child: Text(
+                                      pointedLandmark.category.toUpperCase(),
+                                      style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    pointedLandmark.name,
+                                    style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w900, height: 1.1),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.star_rounded, color: Colors.amber, size: 13),
+                                      const SizedBox(width: 3),
+                                      Text('${pointedLandmark.rating}', style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                                      const SizedBox(width: 12),
+                                      const Icon(Icons.straighten, color: Colors.white38, size: 13),
+                                      const SizedBox(width: 3),
+                                      Text(pointedLandmark.distance, style: const TextStyle(color: Colors.white60, fontSize: 12, fontWeight: FontWeight.w600)),
+                                    ],
+                                  ),
                                 ],
                               ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Neva avatar + floating label
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildNevaAvatar(52)
-                              .animate(onPlay: (c) => c.repeat(reverse: true))
-                              .moveY(begin: -3, end: 3, duration: 1800.ms, curve: Curves.easeInOut)
-                              .shimmer(duration: 3.seconds, color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                            const SizedBox(height: 5),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.6),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 0.8),
-                              ),
-                              child: const Text(
-                                'ASK NEVA',
-                                style: TextStyle(
-                                  color: Color(0xFF00E5FF),
-                                  fontSize: 8,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.2,
+                            ),
+                            const SizedBox(width: 12),
+                            // Neva avatar + floating label
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildNevaAvatar(52)
+                                  .animate(onPlay: (c) => c.repeat(reverse: true))
+                                  .moveY(begin: -3, end: 3, duration: 1800.ms, curve: Curves.easeInOut)
+                                  .shimmer(duration: 3.seconds, color: const Color(0xFF00E5FF).withOpacity(0.3)),
+                                const SizedBox(height: 5),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.6),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 0.8),
+                                  ),
+                                  child: const Text(
+                                    'ASK NEVA',
+                                    style: TextStyle(
+                                      color: Color(0xFF00E5FF),
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.2,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                              ],
                             ),
                           ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
-              ),
+                Positioned(
+                  top: -35,
+                  child: _buildSmallLocationBadge(),
+                ),
+              ],
             ),
           ),
         ],
 
-        // ── SCANNING STATE (no landmark in view) ──────────────────
+        // ── DIRECTION GUIDE (no landmark in view) ──────────────────
         if (pointedLandmark == null && !_isNevaSearching)
-          Positioned(
-            left: 0, right: 0,
-            bottom: 60,
-            child: Center(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(30),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.07),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(color: Colors.white.withOpacity(0.12)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6, height: 6,
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white38),
-                        ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.2, end: 1, duration: 700.ms),
-                        const SizedBox(width: 10),
-                        Text(
-                          _landmarks.isEmpty ? 'SCANNING FOR PLACES...' : 'POINT CAMERA AT A PLACE',
-                          style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.4, end: 1, duration: 900.ms),
-            ),
-          ),
+          _buildDirectionGuide(),
       ],
     );
   }
 
-  /// Build floating dots for all places NOT currently pointed at
+  /// Build a label card per visible landmark, spread by bearing, with a
+  /// direction badge (NE/N/etc) + dotted line dropping toward its ground
+  /// position. Highlights the one the camera is currently pointed at.
+  /// Cards are placed with greedy collision avoidance so they don't stack.
   List<Widget> _buildOtherPlaceDots(_ArLandmark? pointedLandmark, double screenW, double screenH) {
-    final List<Widget> dots = [];
+    final List<Widget> markers = [];
+    final visible = _filteredLandmarks;
+    const Color lockedColor = Color(0xFF00E5FF);
 
-    for (final lm in _landmarks) {
-      // Skip the pointed one
-      if (pointedLandmark != null && lm.name == pointedLandmark.name) continue;
+    if (visible.isEmpty) return markers;
 
-      // Calculate horizontal position based on bearing relative to heading
-      double diff = lm.bearing - _heading;
+    final double maxDist = visible.map((l) => l.distanceM).reduce((a, b) => a > b ? a : b);
+    if (maxDist <= 1.0) return markers;
+
+    const double topY = 140.0;
+    final double bottomY = screenH * 0.55;
+    const double cardW = 165;
+    const double cardH = 60;
+    const double gap = 8;
+
+    // Pre-compute candidate placements, sorted by distance ascending so
+    // closer places get their preferred slot first.
+    final placements = <_ArLabelPlacement>[];
+    for (final lm in visible) {
+      final double liveBearing = (_currentPosition != null && lm.lat != null && lm.lng != null)
+          ? _calculateBearing(_currentPosition!.latitude, _currentPosition!.longitude, lm.lat!, lm.lng!)
+          : lm.bearing;
+
+      double diff = liveBearing - _heading;
       if (diff > 180) diff -= 360;
       if (diff < -180) diff += 360;
 
-      // Only show dots within ±60° of camera view
-      if (diff.abs() > 60) continue;
+      if (diff.abs() > 70) continue;
 
-      // Map bearing diff to screen X position
-      final double xFraction = 0.5 + (diff / 60) * 0.5;
-      final double x = screenW * xFraction;
+      final double xFraction = 0.5 + (diff / 70) * 0.5;
+      final double centerX = (screenW * xFraction).clamp(cardW / 2 + 8, screenW - cardW / 2 - 8);
 
-      // Vertical position based on distance — closer = lower on screen
-      final double maxDist = _landmarks.map((l) => l.distanceM).reduce((a, b) => a > b ? a : b);
-      final double normalized = (lm.distanceM / maxDist).clamp(0.1, 1.0);
-      // Closer places appear lower (near horizon center), far places higher
-      final double y = screenH * 0.25 + normalized * (screenH * 0.35);
+      final double logNorm = (log(lm.distanceM + 1) / log(maxDist + 1)).clamp(0.05, 1.0);
+      final double preferredY = bottomY - logNorm * (bottomY - topY);
 
-      dots.add(
+      placements.add(_ArLabelPlacement(
+        landmark: lm,
+        bearing: liveBearing,
+        preferredX: centerX,
+        preferredY: preferredY,
+      ));
+    }
+
+    placements.sort((a, b) => a.landmark.distanceM.compareTo(b.landmark.distanceM));
+
+    // Greedy collision avoidance: bump down if a placed card overlaps.
+    final placedRects = <Rect>[];
+    for (final p in placements) {
+      double x = p.preferredX - cardW / 2;
+      double y = p.preferredY;
+      Rect candidate = Rect.fromLTWH(x, y, cardW, cardH);
+
+      int attempts = 0;
+      while (attempts < 12) {
+        final overlap = placedRects.any((r) => r.inflate(gap / 2).overlaps(candidate.inflate(gap / 2)));
+        if (!overlap) break;
+        y += cardH + gap;
+        candidate = Rect.fromLTWH(x, y, cardW, cardH);
+        attempts++;
+      }
+
+      // Don't render beyond the visible AR band — skip if pushed too far down.
+      if (candidate.top > screenH * 0.72) continue;
+
+      placedRects.add(candidate);
+      p.finalX = candidate.left;
+      p.finalY = candidate.top;
+    }
+
+    for (final p in placements) {
+      if (p.finalY == null) continue;
+      final lm = p.landmark;
+      final bool isLocked = pointedLandmark != null && lm.name == pointedLandmark.name;
+      // "Extremely close" — within walking-step distance. We give these a
+      // brighter (green) border so they pop visually.
+      final bool isNear = lm.distanceM > 0 && lm.distanceM <= 50;
+
+      final cardinal = _cardinalFromHeading(p.bearing);
+      final arrowIcon = _arrowIconForCardinal(cardinal);
+
+      const Color nearColor = Color(0xFF4ADE80);
+      final Color cardBg = isLocked
+          ? lockedColor.withOpacity(0.18)
+          : (isNear ? const Color(0xFF0F2A1A).withOpacity(0.92) : Colors.black.withOpacity(0.82));
+      final Color borderColor = isLocked
+          ? lockedColor
+          : (isNear ? nearColor : Colors.white.withOpacity(0.08));
+
+      // Realistic short pointers (fixed 40px length) instead of floor cables
+      const double lineHeight = 40.0;
+
+      markers.add(
         Positioned(
-          left: x - 18,
-          top: y - 18,
+          left: p.finalX!,
+          top: p.finalY!,
           child: GestureDetector(
-            onTap: () => _startNevaSearch(lm),
+            onTap: () {
+              final i = _landmarks.indexWhere((l) => l.name == lm.name);
+              if (i >= 0) {
+                _selectedLandmark = i;
+                _startRouteNavigation(_landmarks[i]);
+              }
+            },
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Dot with glow
-                Container(
-                  width: 10,
-                  height: 10,
+                // Label card 
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                  width: cardW,
+                  height: cardH,
+                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
                   decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.primary.withOpacity(0.9),
+                    color: cardBg,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: borderColor,
+                      width: isLocked ? 1.5 : (isNear ? 1.5 : 1),
+                    ),
                     boxShadow: [
-                      BoxShadow(color: AppColors.primary.withOpacity(0.6), blurRadius: 8, spreadRadius: 1),
+                      BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
+                      if (isLocked) BoxShadow(color: lockedColor.withOpacity(0.4), blurRadius: 16),
+                      if (isNear && !isLocked) BoxShadow(color: nearColor.withOpacity(0.35), blurRadius: 14),
                     ],
                   ),
-                ).animate(onPlay: (c) => c.repeat(reverse: true))
-                 .fade(begin: 0.5, end: 1.0, duration: 1500.ms),
-
-                const SizedBox(height: 4),
-
-                // Distance label
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 0.8),
-                  ),
-                  child: Text(
-                    lm.distance,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                    ),
+                  child: Row(
+                    children: [
+                      // Thumbnail
+                      PlaceImageHelper.buildPlaceImage(
+                        imagePath: lm.imagePath,
+                        category: lm.category,
+                        name: lm.name,
+                        width: 46,
+                        height: 46,
+                        fit: BoxFit.cover,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      const SizedBox(width: 6),
+                      // Name / rating / distance
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              lm.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                height: 1.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                const Icon(Icons.star_rounded, color: Colors.amber, size: 10),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '${lm.rating}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              lm.distance,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      // Direction badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(arrowIcon, color: Colors.black, size: 10),
+                            const SizedBox(height: 1),
+                            Text(
+                              cardinal,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                height: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+
+                  ],
+                ),
+                // Dotted vertical drop line to ground anchor
+                if (lineHeight > 4) ...[
+                  SizedBox(
+                    width: 2,
+                    height: lineHeight,
+                    child: CustomPaint(
+                      painter: _DottedDropLinePainter(
+                        color: isLocked
+                            ? lockedColor
+                            : (isNear ? nearColor : Colors.white.withOpacity(0.55)),
+                      ),
+                    ),
+                  ),
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(color: Colors.white.withOpacity(0.5), blurRadius: 6, spreadRadius: 1),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1429,7 +2631,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       );
     }
 
-    return dots;
+    return markers;
+  }
+
+  /// Map a cardinal direction string to a matching arrow icon.
+  IconData _arrowIconForCardinal(String cardinal) {
+    switch (cardinal) {
+      case 'N':  return Icons.arrow_upward_rounded;
+      case 'NE': return Icons.north_east_rounded;
+      case 'E':  return Icons.arrow_forward_rounded;
+      case 'SE': return Icons.south_east_rounded;
+      case 'S':  return Icons.arrow_downward_rounded;
+      case 'SW': return Icons.south_west_rounded;
+      case 'W':  return Icons.arrow_back_rounded;
+      case 'NW': return Icons.north_west_rounded;
+      default:   return Icons.arrow_upward_rounded;
+    }
   }
 
   /// Radar showing all nearby places as dots
@@ -1509,9 +2726,130 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
   
+  /// Direction guide — tells user to turn left/right with degrees to nearest place
+  Widget _buildDirectionGuide() {
+    // Sit above the "Your Location" pill (at bottom: 158, ~50px tall) so they
+    // don't crowd each other at the bottom of the screen.
+    const double guideBottom = 240;
+
+    if (_landmarks.isEmpty) {
+      // Still scanning
+      return Positioned(
+        left: 0, right: 0, bottom: guideBottom,
+        child: Center(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(30),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(color: Colors.white.withOpacity(0.12)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white38))
+                      .animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.2, end: 1, duration: 700.ms),
+                    const SizedBox(width: 10),
+                    const Text('SCANNING FOR PLACES...', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                  ],
+                ),
+              ),
+            ),
+          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.4, end: 1, duration: 900.ms),
+        ),
+      );
+    }
+
+    // Find the nearest place by angle difference
+    final pool = _filteredLandmarks;
+    _ArLandmark? nearest;
+    double bestDiff = double.infinity;
+    double bestRawDiff = 0; // signed: negative = left, positive = right
+
+    for (final lm in pool) {
+      final double liveBearing = (_currentPosition != null && lm.lat != null && lm.lng != null)
+          ? _calculateBearing(_currentPosition!.latitude, _currentPosition!.longitude, lm.lat!, lm.lng!)
+          : lm.bearing;
+      double diff = liveBearing - _heading;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+      if (diff.abs() < bestDiff) {
+        bestDiff = diff.abs();
+        bestRawDiff = diff;
+        nearest = lm;
+      }
+    }
+
+    if (nearest == null) return const SizedBox.shrink();
+
+    final bool turnRight = bestRawDiff > 0;
+    final int degrees = bestDiff.round();
+    final String dirLabel = turnRight ? 'RIGHT' : 'LEFT';
+    final IconData arrow = turnRight ? Icons.turn_right_rounded : Icons.turn_left_rounded;
+    const Color guideColor = Color(0xFF00E5FF);
+
+    // Truncate name
+    final name = nearest.name.length > 15 ? '${nearest.name.substring(0, 14)}…' : nearest.name;
+
+    return Positioned(
+      left: 0, right: 0, bottom: guideBottom,
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(color: guideColor.withOpacity(0.4), width: 1),
+                boxShadow: [BoxShadow(color: guideColor.withOpacity(0.15), blurRadius: 16)],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(arrow, color: guideColor, size: 20)
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .moveX(begin: turnRight ? 0 : -4, end: turnRight ? 4 : 0, duration: 800.ms),
+                  const SizedBox(width: 8),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TURN $dirLabel ${degrees}°',
+                        style: const TextStyle(color: guideColor, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1.2),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        name,
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 10, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    nearest.distance,
+                    style: TextStyle(color: Colors.white.withOpacity(0.45), fontSize: 10, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Get the landmark that the camera is currently pointing at
   _ArLandmark? _getPointedLandmark() {
-    if (_currentPosition == null || _landmarks.isEmpty) return null;
+    final pool = _filteredLandmarks;
+    if (_currentPosition == null || pool.isEmpty) return null;
     
     // Camera is pointing in the direction of current heading
     final cameraHeading = _heading;
@@ -1520,7 +2858,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _ArLandmark? closestLandmark;
     double smallestAngleDiff = double.infinity;
     
-    for (final landmark in _landmarks) {
+    for (final landmark in pool) {
       // Calculate bearing to this landmark
       final bearing = _calculateBearing(
         _currentPosition!.latitude,
@@ -1551,99 +2889,134 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       _isNevaSearching = true;
       _frozenLandmark = landmark; // Freeze this landmark
     });
-    
+
+    final cacheKey = _nevaCacheKey(landmark);
+
+    // Cache hit — skip Gemini entirely
+    final cached = _nevaPlaceCache[cacheKey];
+    if (cached != null) {
+      debugPrint('🔍 NEVA: Cache hit for ${landmark.name}');
+      if (!mounted) return;
+      setState(() {
+        _nevaSearchResult = Map<String, dynamic>.from(cached);
+        _isNevaSearching = false;
+      });
+      return;
+    }
+
     try {
-      // Create a structured premium prompt for this place
-      final placePrompt = '''
-You are an expert local guide. Give me a STRUCTURED response about "${landmark.name}" (${landmark.category ?? 'place'}, rated ${landmark.rating}/5, located at ${landmark.lat}, ${landmark.lng}).
+      final locStr = (landmark.lat != null && landmark.lng != null)
+          ? ' at ${landmark.lat!.toStringAsFixed(4)}, ${landmark.lng!.toStringAsFixed(4)}'
+          : '';
+      final placePrompt =
+          'You are a deeply knowledgeable local historian and insider guide. '
+          'The user is standing near "${landmark.name}" (a ${landmark.category} rated ${landmark.rating}/5$locStr). '
+          'Provide RARE, UNIQUE, NON-GENERIC facts that most people and tourists would NEVER know. '
+          'Do NOT give generic descriptions like "popular restaurant" or "well-known temple". '
+          'Instead dig deep: hidden history, surprising origin stories, local legends, architectural secrets, '
+          'famous incidents, cultural significance, what locals call it, secret menu items, '
+          'best-kept secrets, or little-known connections to famous people/events.\n\n'
+          'Return ONLY this JSON (no prose, no code fences):\n'
+          '{"tagline":"<=12 words, a surprising hook that grabs attention",'
+          '"hidden_history":"2-3 sentences about the origin story or historical significance most people miss",'
+          '"surprising_fact":"1 jaw-dropping fact that would make someone say wow",'
+          '"local_secret":"something only locals know — a hidden feature, secret spot, or insider knowledge",'
+          '"best_time":"when is the absolute best time to visit and why (be specific)",'
+          '"top_positive":"a specific glowing praise point as if from a real review",'
+          '"top_negative":"a specific honest criticism as if from a real review",'
+          '"insider_tip":"<=20 words — a practical local tip that guidebooks never mention"}\n'
+          'Be hyper-specific to THIS exact place. Never be vague or generic.';
 
-Respond ONLY in this exact JSON format with no extra text:
-{
-  "tagline": "One punchy sentence that captures the essence of this place (max 12 words)",
-  "highlight1_title": "Short title (2-4 words)",
-  "highlight1_body": "One impactful sentence about what makes this place worth visiting or knowing about",
-  "highlight2_title": "Short title (2-4 words)",
-  "highlight2_body": "One sentence about a key feature, specialty, or unique aspect",
-  "top_positive": "Best thing people love about this place — be specific, not generic",
-  "top_negative": "Most common complaint or downside people mention — be honest and specific",
-  "insider_tip": "One practical insider tip a local would give (max 15 words)"
-}
-
-Rules:
-- Be SPECIFIC to this exact place, not generic advice
-- If it is a regular shop/business, focus on what sets it apart
-- top_positive and top_negative should sound like real review excerpts
-- Never say "I don't have information" — give your best informed response
-''';
-
-      
       debugPrint('🔍 NEVA: Starting search for ${landmark.name}');
-      
-      // Call Gemini with the specific place prompt
-      final geminiService = GeminiService();
-      final response = await geminiService.getResponse(placePrompt);
-      
-      debugPrint('🔍 NEVA: Got response: ${response.substring(0, 100)}...');
-      
-      if (response.isNotEmpty) {
-        // Parse JSON response
-        Map<String, dynamic> parsed = {};
-        try {
-          final jsonStart = response.indexOf('{');
-          final jsonEnd = response.lastIndexOf('}') + 1;
-          if (jsonStart >= 0 && jsonEnd > jsonStart) {
-            parsed = Map<String, dynamic>.from(
-              (response.substring(jsonStart, jsonEnd).replaceAll('\n', ' ') as dynamic) is String
-                ? jsonDecode(response.substring(jsonStart, jsonEnd))
-                : {},
-            );
-          }
-        } catch (_) {}
 
-        final nevaResult = {
-          'name': landmark.name,
-          'category': landmark.category ?? 'Place',
-          'distance': landmark.distance,
-          'rating': landmark.rating,
-          'tagline': parsed['tagline'] ?? '',
-          'highlight1_title': parsed['highlight1_title'] ?? 'Highlights',
-          'highlight1_body': parsed['highlight1_body'] ?? '',
-          'highlight2_title': parsed['highlight2_title'] ?? 'Key Feature',
-          'highlight2_body': parsed['highlight2_body'] ?? '',
-          'top_positive': parsed['top_positive'] ?? '',
-          'top_negative': parsed['top_negative'] ?? '',
-          'insider_tip': parsed['insider_tip'] ?? '',
-          'description': response,
-          'confidence': 0.9,
-        };
-        
-        setState(() {
-          _nevaSearchResult = nevaResult;
-        });
-        
-        debugPrint('🔍 NEVA: Search completed for ${landmark.name}');
+      final geminiService = GeminiService();
+      final response = await geminiService
+          .getResponse(
+            placePrompt,
+            temperature: 0.5,
+            maxOutputTokens: 512,
+            responseMimeType: 'application/json',
+          )
+          .timeout(const Duration(seconds: 12));
+
+      debugPrint('🔍 NEVA: Got response: ${response.substring(0, response.length.clamp(0, 100))}...');
+
+      Map<String, dynamic> parsed = {};
+      if (response.isNotEmpty) {
+        // Strip markdown fences Gemini sometimes adds even in JSON mode
+        var cleaned = response.trim();
+        if (cleaned.startsWith('```')) {
+          cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*', caseSensitive: false), '');
+          final fenceEnd = cleaned.lastIndexOf('```');
+          if (fenceEnd >= 0) cleaned = cleaned.substring(0, fenceEnd);
+          cleaned = cleaned.trim();
+        }
+        final jsonStart = cleaned.indexOf('{');
+        final jsonEnd = cleaned.lastIndexOf('}') + 1;
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+          try {
+            final decoded = jsonDecode(cleaned.substring(jsonStart, jsonEnd));
+            if (decoded is Map) parsed = Map<String, dynamic>.from(decoded);
+          } catch (e) {
+            debugPrint('🔍 NEVA: JSON parse failed: $e');
+          }
+        }
       }
-    } catch (e) {
-      debugPrint('🔍 NEVA: Error during search: $e');
-      // Show basic info if search fails
-      final basicResult = {
+
+      final nevaResult = <String, dynamic>{
         'name': landmark.name,
-        'category': landmark.category ?? 'Place',
+        'category': landmark.category,
         'distance': landmark.distance,
         'rating': landmark.rating,
-        'description': landmark.description ?? 'A notable location nearby.',
+        'tagline': parsed['tagline'] ?? '',
+        'hidden_history': parsed['hidden_history'] ?? '',
+        'surprising_fact': parsed['surprising_fact'] ?? '',
+        'local_secret': parsed['local_secret'] ?? '',
+        'best_time': parsed['best_time'] ?? '',
+        'top_positive': parsed['top_positive'] ?? '',
+        'top_negative': parsed['top_negative'] ?? '',
+        'insider_tip': parsed['insider_tip'] ?? '',
+        'description': response,
+        'confidence': parsed.isEmpty ? 0.7 : 0.9,
+      };
+
+      // Cache only if Gemini gave us useful structured content
+      if (parsed.isNotEmpty) {
+        if (_nevaPlaceCache.length >= _nevaCacheMaxEntries) {
+          _nevaPlaceCache.remove(_nevaPlaceCache.keys.first);
+        }
+        _nevaPlaceCache[cacheKey] = nevaResult;
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _nevaSearchResult = nevaResult;
+      });
+
+      debugPrint('🔍 NEVA: Search completed for ${landmark.name}');
+    } catch (e) {
+      debugPrint('🔍 NEVA: Error during search: $e');
+      final basicResult = <String, dynamic>{
+        'name': landmark.name,
+        'category': landmark.category,
+        'distance': landmark.distance,
+        'rating': landmark.rating,
+        'description': landmark.description,
         'fun_fact': '',
         'tips': '',
         'confidence': 0.7,
       };
-      
+
+      if (!mounted) return;
       setState(() {
         _nevaSearchResult = basicResult;
       });
     } finally {
-      setState(() {
-        _isNevaSearching = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isNevaSearching = false;
+        });
+      }
     }
   }
   
@@ -1941,10 +3314,10 @@ Rules:
     final distance = result['distance'] ?? 'Nearby';
     final rating = (result['rating'] ?? 0.0) as double;
     final tagline = result['tagline'] ?? '';
-    final h1Title = result['highlight1_title'] ?? '';
-    final h1Body = result['highlight1_body'] ?? '';
-    final h2Title = result['highlight2_title'] ?? '';
-    final h2Body = result['highlight2_body'] ?? '';
+    final hiddenHistory = result['hidden_history'] ?? '';
+    final surprisingFact = result['surprising_fact'] ?? '';
+    final localSecret = result['local_secret'] ?? '';
+    final bestTime = result['best_time'] ?? '';
     final topPositive = result['top_positive'] ?? '';
     final topNegative = result['top_negative'] ?? '';
     final insiderTip = result['insider_tip'] ?? '';
@@ -2006,41 +3379,91 @@ Rules:
             delay: 300.ms,
           ),
 
-        // ── Bubble 3: tagline ─────────────────────────────────
+        // ── Bubble 3: tagline hook ────────────────────────────
         if (tagline.isNotEmpty)
           _nevaBubble(
-            child: Text('"$tagline"',
+            child: Text('\"$tagline\"',
               style: const TextStyle(color: Colors.black87, fontSize: 14, fontStyle: FontStyle.italic, height: 1.5)),
             delay: 600.ms,
           ),
 
-        // ── Bubble 4 & 5: highlights ──────────────────────────
-        if (h1Body.isNotEmpty)
+        // ── Bubble 4: Hidden History ──────────────────────────
+        if (hiddenHistory.isNotEmpty)
           _nevaBubble(
-            child: _bubbleHighlight(Icons.bolt_rounded, h1Title, h1Body, const Color(0xFF00E5FF)),
+            child: _bubbleHighlight(Icons.menu_book_rounded, 'Hidden History', hiddenHistory, const Color(0xFF8B5CF6)),
             delay: 900.ms,
           ),
-        if (h2Body.isNotEmpty)
+
+        // ── Bubble 5: Surprising Fact ─────────────────────────
+        if (surprisingFact.isNotEmpty)
           _nevaBubble(
-            child: _bubbleHighlight(Icons.place_rounded, h2Title, h2Body, const Color(0xFFFFB800)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('🤯', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Colors.black87, fontSize: 13, height: 1.5),
+                      children: [
+                        const TextSpan(text: 'Did you know?  ', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFE11D48))),
+                        TextSpan(text: surprisingFact),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             delay: 1200.ms,
           ),
 
-        // ── Bubble 6: positive review ─────────────────────────
-        if (topPositive.isNotEmpty)
+        // ── Bubble 6: Local Secret ────────────────────────────
+        if (localSecret.isNotEmpty)
           _nevaBubble(
-            child: _bubbleReview(true, topPositive),
+            child: _bubbleHighlight(Icons.lock_open_rounded, 'Local Secret', localSecret, const Color(0xFF059669)),
             delay: 1500.ms,
           ),
 
-        // ── Bubble 7: negative review ─────────────────────────
-        if (topNegative.isNotEmpty)
+        // ── Bubble 7: Best Time to Visit ──────────────────────
+        if (bestTime.isNotEmpty)
           _nevaBubble(
-            child: _bubbleReview(false, topNegative),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('🕐', style: TextStyle(fontSize: 15)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(color: Colors.black87, fontSize: 13, height: 1.5),
+                      children: [
+                        const TextSpan(text: 'Best time  ', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0284C7))),
+                        TextSpan(text: bestTime),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             delay: 1800.ms,
           ),
 
-        // ── Bubble 8: insider tip ─────────────────────────────
+        // ── Bubble 8: positive review ─────────────────────────
+        if (topPositive.isNotEmpty)
+          _nevaBubble(
+            child: _bubbleReview(true, topPositive),
+            delay: 2100.ms,
+          ),
+
+        // ── Bubble 9: negative review ─────────────────────────
+        if (topNegative.isNotEmpty)
+          _nevaBubble(
+            child: _bubbleReview(false, topNegative),
+            delay: 2400.ms,
+          ),
+
+        // ── Bubble 10: insider tip ────────────────────────────
         if (insiderTip.isNotEmpty)
           _nevaBubble(
             child: Row(
@@ -2054,7 +3477,7 @@ Rules:
                 ),
               ],
             ),
-            delay: 2100.ms,
+            delay: 2700.ms,
           ),
 
         const SizedBox(height: 12),
@@ -2404,9 +3827,7 @@ Rules:
       debugPrint('🔍 DISCOVER: Getting GPS location...');
       
       // Get current GPS location
-      final currentPosition = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
-      );
+      final currentPosition = await geo.Geolocator.getCurrentPosition();
       
       debugPrint('🔍 DISCOVER: Location obtained - Lat: ${currentPosition.latitude}, Lng: ${currentPosition.longitude}');
       
@@ -2538,251 +3959,351 @@ Rules:
     );
   }
 
+  /// Compact tap-triggered place card (client-requested redesign).
+  ///
+  /// Left half = the place the user tapped. Right half = quick "NEARBY"
+  /// category shortcuts that pull food / shopping / services / medical spots
+  /// around that place via Ask Neva.
   Widget _buildInfoCard(_ArLandmark landmark) {
+    final reviewCount = (landmark.rating * 26).round();
+
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.85, 
-        decoration: BoxDecoration(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Colors.black.withOpacity(0.85),
-              Colors.black.withOpacity(0.98),
-            ],
-          ),
-          border: Border.all(color: Colors.white10),
-        ),
-        child: ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(30, 40, 30, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      bottom: 20,
+      left: 16,
+      right: 16,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.topCenter,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2A24).withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(28),
+                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 30, offset: const Offset(0, 10))],
+                ),
+                child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Section headers row: YOU SELECTED | NEARBY | X ──
+                Row(
+                  children: [
+                    const Expanded(
+                      flex: 5,
+                      child: Text(
+                        'YOU SELECTED',
+                        style: TextStyle(
+                          color: Color(0xFF4ADE80),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ),
+                    const Expanded(
+                      flex: 6,
+                      child: Text(
+                        'NEARBY',
+                        style: TextStyle(
+                          color: Color(0xFF4ADE80),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.4,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        _showInfoCard = false;
+                        _isListening = false;
+                      }),
+                      child: Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: Colors.white.withOpacity(0.15),
+                        ),
+                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // ── Body row: selected-place block | divider | nearby icons ──
+                IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // ── Left: selected place ──
                       Expanded(
+                        flex: 5,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              landmark.name.toUpperCase(),
-                              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                PlaceImageHelper.buildPlaceImage(
+                                  imagePath: landmark.imagePath,
+                                  category: landmark.category,
+                                  name: landmark.name,
+                                  width: 56,
+                                  height: 56,
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    landmark.name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.15,
+                                      letterSpacing: -0.3,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                              child: Text(
-                                '✨ AI VERIFIED ${landmark.category.toUpperCase()} • ${landmark.distance}',
-                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5),
+                            const SizedBox(height: 10),
+                            Row(
+                              children: [
+                                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '${landmark.rating}',
+                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '($reviewCount)',
+                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 10),
+                                Icon(Icons.straighten_rounded, color: Colors.white.withOpacity(0.6), size: 13),
+                                const SizedBox(width: 3),
+                                Flexible(
+                                  child: Text(
+                                    landmark.distance,
+                                    style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w700),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            // MORE INFO — opens Ask Neva
+                            GestureDetector(
+                              onTap: () => _openAskNevaFor(landmark),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: Colors.transparent,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                                ),
+                                child: const Text(
+                                  'MORE INFO',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.4,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
                         ),
                       ),
-                      Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () async {
-                              final map = {
-                                'id': landmark.name.hashCode.toString(),
-                                'name': landmark.name,
-                                'category_name': landmark.category,
-                                'rating': landmark.rating,
-                                'photo_urls': [landmark.imagePath],
-                                'latitude': landmark.lat ?? 0.0,
-                                'longitude': landmark.lng ?? 0.0,
-                                'created_at': DateTime.now().toIso8601String(),
-                              };
-                              await CacheService.toggleSavedPlace(map);
-                              setState(() {});
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle, 
-                                color: CacheService.isPlaceSaved(landmark.name.hashCode.toString()) 
-                                    ? AppColors.primary.withOpacity(0.2) 
-                                    : Colors.white10
-                              ),
-                              child: Icon(
-                                CacheService.isPlaceSaved(landmark.name.hashCode.toString()) 
-                                    ? Icons.favorite_rounded 
-                                    : Icons.favorite_outline_rounded, 
-                                color: CacheService.isPlaceSaved(landmark.name.hashCode.toString()) 
-                                    ? AppColors.primary 
-                                    : Colors.white, 
-                                size: 24
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          GestureDetector(
-                            onTap: () => setState(() {
-                              _showInfoCard = false;
-                              _isListening = false;
-                            }),
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white10),
-                              child: const Icon(Icons.close_rounded, color: Colors.white, size: 24),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      child: Text(
-                        landmark.description,
-                        style: TextStyle(fontSize: 16, color: Colors.white.withOpacity(0.8), height: 1.8, fontWeight: FontWeight.w400, letterSpacing: 0.2),
-                      ),
-                    ),
-                  ),
-                  
-                  if (_isListening) ...[
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(15, (i) => Container(
-                        width: 4,
-                        height: 10 + Random().nextInt(40).toDouble(),
-                        margin: const EdgeInsets.symmetric(horizontal: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ).animate(onPlay: (c) => c.repeat(reverse: true))
-                       .scaleY(begin: 0.5, end: 1.5, duration: (300 + i * 50).ms, curve: Curves.easeInOut)),
-                    ),
-                    const SizedBox(height: 12),
-                    const Center(child: Text('NEVA IS NARRATING...', style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2))),
-                  ],
 
-                  const SizedBox(height: 40),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () => setState(() => _isListening = !_isListening),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 300),
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: _isListening ? AppColors.primary : Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [BoxShadow(color: (_isListening ? AppColors.primary : Colors.white).withOpacity(0.3), blurRadius: 30)],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  _isListening ? Icons.pause_rounded : Icons.graphic_eq_rounded, 
-                                  color: _isListening ? Colors.white : Colors.black, 
-                                  size: 26
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _isListening ? 'STOP NARRATION' : 'NEVA NARRATION',
-                                  style: TextStyle(
-                                    color: _isListening ? Colors.white : Colors.black, 
-                                    fontWeight: FontWeight.w900, 
-                                    fontSize: 14, 
-                                    letterSpacing: 1
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                      // ── Subtle vertical divider ──
+                      Container(
+                        width: 1,
+                        margin: const EdgeInsets.symmetric(horizontal: 10),
+                        color: Colors.white.withOpacity(0.1),
                       ),
-                      const SizedBox(width: 16),
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _navigationTarget = landmark;
-                            _isNavigating = true;
-                            _showInfoCard = false;
-                            _arMode = 'navigate';
-                          });
-                        },
-                        child: Container(
-                          width: 140,
-                          height: 64,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
+
+                      // ── Right: nearby category icons ──
+                      Expanded(
+                        flex: 6,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            _buildNearbyTile(
+                              landmark: landmark,
+                              icon: Icons.restaurant_rounded,
+                              label: 'FOOD',
+                              color: const Color(0xFFEF5350),
+                              categoryId: 'Food & Drink',
+                              prettyLabel: 'food',
                             ),
-                            borderRadius: BorderRadius.circular(24),
-                            boxShadow: [BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.4), blurRadius: 20)],
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.navigation_rounded, color: Colors.white, size: 24),
-                              const SizedBox(width: 8),
-                              Text('NAVIGATE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
-                            ],
-                          ),
+                            _buildNearbyTile(
+                              landmark: landmark,
+                              icon: Icons.shopping_bag_rounded,
+                              label: 'SHOPPING',
+                              color: const Color(0xFF66BB6A),
+                              categoryId: 'Shopping',
+                              prettyLabel: 'shopping',
+                            ),
+                            _buildNearbyTile(
+                              landmark: landmark,
+                              icon: Icons.build_rounded,
+                              label: 'SERVICES',
+                              color: const Color(0xFF42A5F5),
+                              categoryId: 'Experiences',
+                              prettyLabel: 'services',
+                            ),
+                            _buildNearbyTile(
+                              landmark: landmark,
+                              icon: Icons.local_hospital_rounded,
+                              label: 'MEDICAL',
+                              color: const Color(0xFFE53935),
+                              categoryId: 'Medical',
+                              prettyLabel: 'medical',
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  // New "View on Smart Map" button
-                  GestureDetector(
-                    onTap: () {
-                      if (landmark.lat != null && landmark.lng != null) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SmartTourismMapPage(
-                              initialLat: landmark.lat!,
-                              initialLng: landmark.lng!,
-                            ),
+                ),
+                const SizedBox(height: 14),
+
+                // ── START NAVIGATION button ──
+                GestureDetector(
+                  onTap: () {
+                    _startRouteNavigation(landmark);
+                  },
+                  child: Container(
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 4))],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.navigation_rounded, color: AppColors.primary, size: 20),
+                        const SizedBox(width: 10),
+                        Text(
+                          'START NAVIGATION',
+                          style: TextStyle(
+                            color: AppColors.primary,
+                            fontWeight: FontWeight.w900,
+                            fontSize: 14,
+                            letterSpacing: 1.5,
                           ),
-                        );
-                      }
-                    },
-                    child: Container(
-                      height: 54,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.map_rounded, color: AppColors.primary, size: 20),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'VIEW ON SMART MAP',
-                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1.2),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
-    ).animate().slideY(begin: 1, end: 0, duration: 800.ms, curve: Curves.easeOutQuart);
+      Positioned(
+        top: -18,
+        child: _buildSmallLocationBadge(),
+      ),
+    ],
+  ),
+).animate().slideY(begin: 0.4, end: 0, duration: 400.ms, curve: Curves.easeOutQuart).fade(duration: 300.ms);
+  }
+
+  /// One tile in the NEARBY strip — colored icon square + caption underneath.
+  Widget _buildNearbyTile({
+    required _ArLandmark landmark,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required String categoryId,
+    required String prettyLabel,
+  }) {
+    return GestureDetector(
+      onTap: () => _openNearbyCategoryFor(landmark, categoryId, prettyLabel),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(color: color.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3)),
+              ],
+            ),
+            child: Icon(icon, color: Colors.white, size: 22),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 8,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Open Ask Neva for a specific landmark with no auto-fetch — used by
+  /// MORE INFO and the place name itself.
+  void _openAskNevaFor(_ArLandmark landmark) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AiChatPage(
+          initialPrompt: 'Tell me more about ${landmark.name}.',
+          placeContext: {
+            'name': landmark.name,
+            'category': landmark.category,
+            'latitude': landmark.lat,
+            'longitude': landmark.lng,
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Open Ask Neva and auto-trigger a nearby-places fetch for the chosen
+  /// category around this landmark — used by the NEARBY tiles.
+  void _openNearbyCategoryFor(_ArLandmark landmark, String categoryId, String prettyLabel) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AiChatPage(
+          placeContext: {
+            'name': landmark.name,
+            'category': landmark.category,
+            'latitude': landmark.lat,
+            'longitude': landmark.lng,
+          },
+          autoFetchCategoryId: categoryId,
+          autoFetchCategoryLabel: prettyLabel,
+        ),
+      ),
+    );
   }
 
   Widget _buildDiscoveryCrosshair() {
@@ -3057,30 +4578,90 @@ Rules:
   Widget _buildNavigationOverlay() {
     if (_navigationTarget == null) return const SizedBox.shrink();
 
-    double diff = _navigationTarget!.bearing - _heading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-
+    // Use route step bearing when available, otherwise straight-line to target
+    final navBearing = _activeNavBearing;
+    double diff = _signedAngleDelta(_heading, navBearing);
     final isTargetInView = diff.abs() < 30;
+
+    // Current step info
+    final hasRoute = _walkingRoute != null && _walkingRoute!.steps.isNotEmpty;
+    final RouteStep? currentStep = hasRoute && _currentStepIndex < _walkingRoute!.steps.length
+        ? _walkingRoute!.steps[_currentStepIndex]
+        : null;
+    final RouteStep? nextStep = hasRoute && _currentStepIndex + 1 < _walkingRoute!.steps.length
+        ? _walkingRoute!.steps[_currentStepIndex + 1]
+        : null;
+
+    // Determine maneuver icon
+    IconData maneuverIcon = Icons.arrow_upward_rounded;
+    if (currentStep?.maneuver != null) {
+      final m = currentStep!.maneuver!;
+      if (m.contains('left')) maneuverIcon = Icons.turn_left_rounded;
+      else if (m.contains('right')) maneuverIcon = Icons.turn_right_rounded;
+      else if (m.contains('uturn')) maneuverIcon = Icons.u_turn_left_rounded;
+      else if (m.contains('roundabout')) maneuverIcon = Icons.roundabout_left_rounded;
+    }
+
+    const cyan = Color(0xFF00E5FF);
 
     return Positioned.fill(
       child: Stack(
         children: [
-          Container(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                colors: [Colors.transparent, Colors.black.withOpacity(0.4)],
-                stops: const [0.3, 1.0],
+          // Subtle edge vignette
+          IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.15)],
+                  stops: const [0.5, 1.0],
+                ),
               ),
             ),
           ),
+
+          // ══════════════════════════════════════
+          // ANIMATED AR CHEVRONS (Google Maps style)
+          // ══════════════════════════════════════
+          if (!_isFetchingRoute && !_hasArrivedAtDestination)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: _buildArChevrons(diff, isTargetInView),
+              ),
+            ),
+
+          // ROUTE LOADING indicator
+          if (_isFetchingRoute)
+            Positioned(
+              top: MediaQuery.of(context).size.height * 0.4,
+              left: 0, right: 0,
+              child: Column(
+                children: [
+                  const SizedBox(
+                    width: 48, height: 48,
+                    child: CircularProgressIndicator(color: cyan, strokeWidth: 3),
+                  ),
+                  const SizedBox(height: 16),
+                  Text('Calculating route...', style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 14, fontWeight: FontWeight.w700)),
+                ],
+              ).animate().fade(),
+            ),
+
+          // ARRIVAL CELEBRATION
+          if (_hasArrivedAtDestination)
+            Positioned.fill(
+              child: _buildArrivalCelebration(),
+            ),
+
+          // EXIT NAV button
           Positioned(
-            top: 130,
-            right: 20,
+            top: 130, right: 20,
             child: GestureDetector(
               onTap: () => setState(() {
                 _isNavigating = false;
                 _navigationTarget = null;
+                _walkingRoute = null;
+                _currentStepIndex = 0;
+                _hasArrivedAtDestination = false;
                 _arMode = 'explore';
               }),
               child: Container(
@@ -3088,12 +4669,12 @@ Rules:
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.7),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 1.5),
-                  boxShadow: [BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.2), blurRadius: 15)],
+                  border: Border.all(color: cyan.withOpacity(0.5), width: 1.5),
+                  boxShadow: [BoxShadow(color: cyan.withOpacity(0.2), blurRadius: 15)],
                 ),
                 child: const Row(
                   children: [
-                    Icon(Icons.close_rounded, color: Color(0xFF00E5FF), size: 18),
+                    Icon(Icons.close_rounded, color: cyan, size: 18),
                     SizedBox(width: 8),
                     Text('EXIT NAV', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.5)),
                   ],
@@ -3101,126 +4682,293 @@ Rules:
               ),
             ),
           ),
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (!isTargetInView)
-                  Transform.rotate(
-                    angle: (diff > 0 ? 90 : -90) * pi / 180,
-                    child: Icon(Icons.arrow_forward_ios_rounded, color: AppColors.primary, size: 80)
-                        .animate(onPlay: (c) => c.repeat())
-                        .fade(duration: 1.seconds)
-                        .moveX(begin: diff > 0 ? -20 : 20, end: diff > 0 ? 20 : -20),
-                  )
-                else
-                  Container(
-                    width: 240,
-                    height: 240,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3), width: 1),
-                      borderRadius: BorderRadius.circular(30),
+
+          // FLOATING AR MARKER ON TARGET (when in view)
+          if (isTargetInView && !_hasArrivedAtDestination) () {
+            final angle = _signedAngleDelta(_heading, _navigationTarget!.bearing);
+            final dx = _projectAngleToScreenX(angle);
+            if (dx != null) {
+              final screenW = MediaQuery.of(context).size.width;
+              final screenH = MediaQuery.of(context).size.height;
+              return Positioned(
+                left: (screenW * dx) - 80,
+                top: screenH * 0.35,
+                child: _buildNavigationBubble(_navigationTarget!),
+              );
+            }
+            return const SizedBox.shrink();
+          }(),
+
+          // DISTANCE HUD
+          if (!_hasArrivedAtDestination)
+            Positioned(
+              bottom: hasRoute ? 280 : 240,
+              left: 0, right: 0,
+              child: Column(
+                children: [
+                  Text(
+                    _navigationTarget!.distance.toUpperCase(),
+                    style: const TextStyle(
+                      color: cyan, fontSize: 72, fontWeight: FontWeight.w900, letterSpacing: -2,
+                      shadows: [Shadow(color: cyan, blurRadius: 30)],
                     ),
-                    child: Stack(
-                      children: [
-                        ...List.generate(4, (i) => Positioned(
-                          top: i < 2 ? 0 : null,
-                          bottom: i >= 2 ? 0 : null,
-                          left: i % 2 == 0 ? 0 : null,
-                          right: i % 2 != 0 ? 0 : null,
-                          child: Container(
-                            width: 40, height: 40,
-                            decoration: BoxDecoration(
-                              border: Border(
-                                top: i < 2 ? const BorderSide(color: Color(0xFF00E5FF), width: 4) : BorderSide.none,
-                                bottom: i >= 2 ? const BorderSide(color: Color(0xFF00E5FF), width: 4) : BorderSide.none,
-                                left: i % 2 == 0 ? const BorderSide(color: Color(0xFF00E5FF), width: 4) : BorderSide.none,
-                                right: i % 2 != 0 ? const BorderSide(color: Color(0xFF00E5FF), width: 4) : BorderSide.none,
-                              ),
-                              boxShadow: [
-                                BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.3), blurRadius: 10)
-                              ],
-                            ),
+                  ).animate(onPlay: (c) => c.repeat(reverse: true))
+                   .scale(begin: const Offset(1, 1), end: const Offset(1.05, 1.05), duration: 1.seconds),
+                  Text(
+                    'TO ${_navigationTarget!.name.toUpperCase()}',
+                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2,
+                      shadows: [Shadow(color: Colors.black, blurRadius: 10)]),
+                  ),
+                  // Route overview (total distance + ETA)
+                  if (hasRoute) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${_walkingRoute!.remainingDistanceText(_currentStepIndex)} · ${_walkingRoute!.totalDuration}',
+                      style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+          // ══════════════════════════════════════════
+          // TURN-BY-TURN STEP CARD (bottom)
+          // ══════════════════════════════════════════
+          if (!_hasArrivedAtDestination)
+            Positioned(
+              bottom: 100, left: 0, right: 0,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  children: [
+                    // Step progress bar (when route available)
+                    if (hasRoute) ...[
+                      _buildStepProgressBar(),
+                      const SizedBox(height: 10),
+                    ],
+
+                    // Main instruction card
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.65),
+                            borderRadius: BorderRadius.circular(22),
+                            border: Border.all(color: cyan.withOpacity(0.4), width: 1.5),
+                            boxShadow: [BoxShadow(color: cyan.withOpacity(0.08), blurRadius: 20, spreadRadius: 2)],
                           ),
-                        )),
-                        Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Row(
                             children: [
-                              const Icon(Icons.gps_fixed_rounded, color: Color(0xFF00E5FF), size: 50)
-                                  .animate(onPlay: (c) => c.repeat())
-                                  .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 1.seconds),
-                              const SizedBox(height: 12),
-                              const Text('TARGET LOCKED', style: TextStyle(color: Color(0xFF00E5FF), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 2)),
+                              // Maneuver icon
+                              Container(
+                                width: 48, height: 48,
+                                decoration: BoxDecoration(
+                                  color: cyan.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: cyan.withOpacity(0.4), width: 1),
+                                ),
+                                child: Icon(
+                                  hasRoute ? maneuverIcon : (isTargetInView ? Icons.arrow_upward_rounded : (diff > 0 ? Icons.turn_right_rounded : Icons.turn_left_rounded)),
+                                  color: cyan, size: 26,
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              // Instruction text
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Status label
+                                    Text(
+                                      hasRoute
+                                          ? 'STEP ${_currentStepIndex + 1}/${_walkingRoute!.steps.length} · ${currentStep?.distanceText ?? ''}'
+                                          : (isTargetInView ? 'ON TRACK · ${_navigationTarget!.distance.toUpperCase()}' : 'TURN ${diff > 0 ? "RIGHT" : "LEFT"} ${diff.abs().round()}°'),
+                                      style: TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    // Main instruction
+                                    Text(
+                                      hasRoute
+                                          ? (currentStep?.instruction ?? 'Follow the route')
+                                          : (isTargetInView ? 'Keep heading forward' : 'Rotate to your ${diff > 0 ? "right" : "left"}'),
+                                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3),
+                                      maxLines: 2, overflow: TextOverflow.ellipsis,
+                                    ),
+                                    // Street name
+                                    if (currentStep?.streetName != null) ...[
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        currentStep!.streetName!,
+                                        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w500),
+                                        maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
-                  ).animate().scale(begin: const Offset(0.8, 0.8)).fade(),
-                const SizedBox(height: 60),
-                
-                // DISTANCE HUD - IMPROVED COLOR AND POSITION
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.75),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 1.5),
-                    boxShadow: [
-                      BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.2), blurRadius: 30),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      Text(
-                        _navigationTarget!.distance.toUpperCase(),
-                        style: const TextStyle(color: Color(0xFF00E5FF), fontSize: 42, fontWeight: FontWeight.w900, letterSpacing: 2),
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'ESTIMATED TO ${_navigationTarget!.name.toUpperCase()}',
-                        style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 2),
-                      ),
-                    ],
-                  ),
-                ).animate().slideY(begin: 0.5, end: 0),
-              ],
+                    ).animate().fade().slideY(begin: 0.15, curve: Curves.easeOutCubic),
+                  ],
+                ),
+              ),
             ),
-          ),
-          
-          // BOTTOM INSTRUCTIONS - MOVED EVEN HIGHER TO AVOID OVERLAP
-          Positioned(
-            bottom: 160, 
-            left: 30,
-            right: 30,
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.85),
-                borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.6), blurRadius: 40)],
-              ),
-              child: Row(
-                children: [
-                  _buildNevaAvatar(50),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Text(
-                      isTargetInView 
-                          ? "Target locked. Proceed forward towards ${_navigationTarget!.name}."
-                          : "Rotate your device to align with the guidance arrow.",
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600, height: 1.4),
-                    ),
-                  ),
-                ],
-              ),
-            ).animate().fade().slideY(begin: 0.2),
-          ),
         ],
       ),
     );
+  }
+
+  // ═══════════════════════════════════════════════════════════════
+  // AR CHEVRONS — Animated directional arrows (Google Maps style)
+  // ═══════════════════════════════════════════════════════════════
+  Widget _buildArChevrons(double bearingDiff, bool isAhead) {
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
+    const cyan = Color(0xFF00E5FF);
+
+    // Rotation angle: 0 when straight ahead, rotates with bearing diff
+    final rotationAngle = isAhead ? 0.0 : (bearingDiff.clamp(-90, 90) * pi / 180);
+
+    // Horizontal offset: chevrons shift toward the direction
+    final hOffset = isAhead ? 0.0 : (bearingDiff.clamp(-60, 60) / 60) * (screenW * 0.25);
+
+    // Opacity: brighter when target is ahead
+    final baseOpacity = isAhead ? 0.9 : (0.5 + (1 - bearingDiff.abs() / 90).clamp(0, 1) * 0.4);
+
+    return Stack(
+      children: List.generate(3, (i) {
+        // Stagger each chevron vertically
+        final yPos = screenH * 0.55 - (i * 65);
+        final chevronOpacity = (baseOpacity - i * 0.2).clamp(0.15, 0.9);
+        final chevronScale = 1.0 - (i * 0.1);
+
+        return Positioned(
+          left: (screenW / 2 - 50) + hOffset,
+          top: yPos,
+          child: Transform.rotate(
+            angle: rotationAngle,
+            child: Opacity(
+              opacity: chevronOpacity,
+              child: Transform.scale(
+                scale: chevronScale,
+                child: SizedBox(
+                  width: 100, height: 60,
+                  child: CustomPaint(
+                    painter: _ChevronPainter(
+                      color: cyan,
+                      glowIntensity: i == 0 ? 1.0 : 0.4,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          )
+              .animate(onPlay: (c) => c.repeat())
+              .moveY(
+                begin: 20, end: -20,
+                duration: Duration(milliseconds: 1200 + i * 200),
+                curve: Curves.easeInOut,
+              )
+              .then()
+              .moveY(
+                begin: -20, end: 20,
+                duration: Duration(milliseconds: 1200 + i * 200),
+                curve: Curves.easeInOut,
+              )
+              .animate(onPlay: (c) => c.repeat(reverse: true))
+              .fade(
+                begin: chevronOpacity * 0.6,
+                end: chevronOpacity,
+                duration: Duration(milliseconds: 800 + i * 300),
+              ),
+        );
+      }),
+    );
+  }
+
+  /// Step progress bar showing which step the user is on
+  Widget _buildStepProgressBar() {
+    if (_walkingRoute == null) return const SizedBox.shrink();
+    final total = _walkingRoute!.steps.length;
+    const cyan = Color(0xFF00E5FF);
+
+    return Row(
+      children: List.generate(total, (i) {
+        final isCompleted = i < _currentStepIndex;
+        final isCurrent = i == _currentStepIndex;
+        return Expanded(
+          child: Container(
+            height: 3,
+            margin: EdgeInsets.only(right: i < total - 1 ? 3 : 0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              color: isCompleted
+                  ? cyan
+                  : (isCurrent ? cyan.withOpacity(0.6) : Colors.white.withOpacity(0.15)),
+              boxShadow: isCompleted || isCurrent
+                  ? [BoxShadow(color: cyan.withOpacity(0.4), blurRadius: 4)]
+                  : null,
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Arrival celebration overlay
+  Widget _buildArrivalCelebration() {
+    const cyan = Color(0xFF00E5FF);
+    return Container(
+      color: Colors.black.withOpacity(0.6),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 100, height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: cyan.withOpacity(0.15),
+                border: Border.all(color: cyan, width: 3),
+                boxShadow: [BoxShadow(color: cyan.withOpacity(0.3), blurRadius: 30, spreadRadius: 5)],
+              ),
+              child: const Icon(Icons.flag_rounded, color: cyan, size: 48),
+            ).animate().scale(begin: const Offset(0, 0), end: const Offset(1, 1), duration: 600.ms, curve: Curves.elasticOut),
+            const SizedBox(height: 24),
+            const Text('YOU\'VE ARRIVED!', style: TextStyle(color: cyan, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 3)),
+            const SizedBox(height: 8),
+            Text(
+              _navigationTarget?.name ?? 'Destination',
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 32),
+            GestureDetector(
+              onTap: () => setState(() {
+                _isNavigating = false;
+                _navigationTarget = null;
+                _walkingRoute = null;
+                _hasArrivedAtDestination = false;
+                _arMode = 'explore';
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                decoration: BoxDecoration(
+                  color: cyan, borderRadius: BorderRadius.circular(30),
+                  boxShadow: [BoxShadow(color: cyan.withOpacity(0.4), blurRadius: 20)],
+                ),
+                child: const Text('CONTINUE EXPLORING', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 1)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fade(duration: 400.ms);
   }
 
   Widget _buildNevaAvatar(double size) {
@@ -3369,6 +5117,144 @@ Rules:
       ),
     ).animate().slideX(begin: 1, end: 0);
   }
+
+  Widget _buildLocationPermissionBarrier() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Background grid
+          _buildScanLines(),
+          
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 40),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Animated Icon
+                  Container(
+                    width: 100, height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primary.withOpacity(0.1),
+                      border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 2),
+                    ),
+                    child: const Icon(Icons.location_on_rounded, color: AppColors.primary, size: 48),
+                  ).animate(onPlay: (c) => c.repeat(reverse: true))
+                   .scale(begin: const Offset(1, 1), end: const Offset(1.1, 1.1), duration: 2.seconds),
+                  
+                  const SizedBox(height: 40),
+                  
+                  const Text(
+                    'LOCATION REQUIRED',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 2,
+                    ),
+                    textAlign: TextAlign.center,
+                  ).animate().fade().slideY(begin: 0.2),
+                  
+                  const SizedBox(height: 16),
+                  
+                  Text(
+                    'To explore nearby places in AR, NexAround needs access to your location. Camera access will be requested by your device when needed.',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.6),
+                      fontSize: 14,
+                      height: 1.6,
+                    ),
+                    textAlign: TextAlign.center,
+                  ).animate().fade(delay: 200.ms),
+                  
+                  const SizedBox(height: 48),
+                  
+                  // Permission indicator
+                  _buildPermissionIndicator('Location', _isLocationGranted),
+                  
+                  const SizedBox(height: 64),
+                  
+                  // Grant Button
+                  GestureDetector(
+                    onTap: () => openAppSettings(),
+                    child: Container(
+                      width: double.infinity,
+                      height: 64,
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(color: AppColors.primary.withOpacity(0.4), blurRadius: 20),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'ENABLE LOCATION',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ).animate().fade(delay: 600.ms).slideY(begin: 0.3),
+                  
+                  const SizedBox(height: 24),
+                  
+                  TextButton(
+                    onPressed: () => HomePage.homeKey.currentState?.switchToExplore(),
+                    child: Text(
+                      'BACK TO MAP',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.4),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPermissionIndicator(String label, bool granted) {
+    return Column(
+      children: [
+        Container(
+          width: 12, height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: granted ? const Color(0xFF4ADE80) : Colors.orange,
+            boxShadow: [
+              BoxShadow(
+                color: (granted ? const Color(0xFF4ADE80) : Colors.orange).withOpacity(0.4),
+                blurRadius: 10,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label.toUpperCase(),
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: 9,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _AnimatedScanLines extends StatefulWidget {
@@ -3504,6 +5390,128 @@ class _ParticlePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
 }
 
+/// Mutable placement record used by the AR label layout pass to resolve
+/// collisions between overlapping cards. preferredX/Y come from bearing +
+/// distance; final values are set once the greedy bumper finds an unoccupied
+/// slot. A null finalY means the placement was dropped (pushed off-screen).
+class _ArLabelPlacement {
+  final _ArLandmark landmark;
+  final double bearing;
+  final double preferredX;
+  final double preferredY;
+  double? finalX;
+  double? finalY;
+
+  _ArLabelPlacement({
+    required this.landmark,
+    required this.bearing,
+    required this.preferredX,
+    required this.preferredY,
+  });
+}
+
+/// Vertical dotted "drop" line under each AR label, anchoring it to a ground
+/// point so the user reads the label as belonging to a specific spot below.
+class _DottedDropLinePainter extends CustomPainter {
+  final Color color;
+  _DottedDropLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+
+    const double dotR = 1.4;
+    const double step = 6;
+    final cx = size.width / 2;
+    for (double y = 0; y < size.height; y += step) {
+      canvas.drawCircle(Offset(cx, y), dotR, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DottedDropLinePainter old) => old.color != color;
+}
+
+/// Minimal compass needle (red north / white south) used in the top HUD.
+class _CompassNeedlePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height / 2;
+    final r = size.width / 2;
+
+    // Outer ring
+    canvas.drawCircle(
+      Offset(cx, cy),
+      r - 1,
+      Paint()
+        ..color = Colors.white.withOpacity(0.5)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1,
+    );
+
+    // North half (red, points up)
+    final northPath = Path()
+      ..moveTo(cx, cy - r + 3)
+      ..lineTo(cx - 3, cy)
+      ..lineTo(cx + 3, cy)
+      ..close();
+    canvas.drawPath(northPath, Paint()..color = const Color(0xFFE53935));
+
+    // South half (white)
+    final southPath = Path()
+      ..moveTo(cx, cy + r - 3)
+      ..lineTo(cx - 3, cy)
+      ..lineTo(cx + 3, cy)
+      ..close();
+    canvas.drawPath(southPath, Paint()..color = Colors.white);
+
+    // Center pin
+    canvas.drawCircle(Offset(cx, cy), 1.5, Paint()..color = Colors.white);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+// Custom painter for dotted vertical line (used in AR place markers)
+class _DottedLinePainter extends CustomPainter {
+  final Color color;
+  final double dashHeight;
+  final double dashSpace;
+  final double dashWidth;
+
+  _DottedLinePainter({
+    required this.color,
+    required this.dashHeight,
+    required this.dashSpace,
+    required this.dashWidth,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = dashWidth
+      ..strokeCap = StrokeCap.round;
+
+    double startY = 0;
+    while (startY < size.height) {
+      canvas.drawLine(
+        Offset(size.width / 2, startY),
+        Offset(size.width / 2, startY + dashHeight),
+        paint,
+      );
+      startY += dashHeight + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class _ArLandmark {
   final String name;
   final String imagePath;
@@ -3517,6 +5525,83 @@ class _ArLandmark {
   final double? lng;
 
   const _ArLandmark(this.name, this.imagePath, this.rating, this.distance, this.bearing, this.description, this.category, [this.distanceM = 0, this.lat, this.lng]);
+
+  _ArLandmark copyWith({
+    String? distance,
+    double? bearing,
+    double? distanceM,
+  }) {
+    return _ArLandmark(
+      name,
+      imagePath,
+      rating,
+      distance ?? this.distance,
+      bearing ?? this.bearing,
+      description,
+      category,
+      distanceM ?? this.distanceM,
+      lat,
+      lng,
+    );
+  }
+}
+
+/// Draws a single chevron/arrow shape pointing upward.
+/// Used in the AR navigation overlay to show walking direction.
+class _ChevronPainter extends CustomPainter {
+  final Color color;
+  final double glowIntensity;
+
+  _ChevronPainter({required this.color, this.glowIntensity = 1.0});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
+    // Chevron path — a wide "V" shape pointing upward
+    final path = Path()
+      ..moveTo(w * 0.1, h * 0.85)   // bottom-left
+      ..lineTo(w * 0.5, h * 0.15)   // top-center (tip)
+      ..lineTo(w * 0.9, h * 0.85)   // bottom-right
+      ..lineTo(w * 0.75, h * 0.85)  // inner-right
+      ..lineTo(w * 0.5, h * 0.40)   // inner-top
+      ..lineTo(w * 0.25, h * 0.85)  // inner-left
+      ..close();
+
+    // Glow shadow
+    if (glowIntensity > 0.5) {
+      final glowPaint = Paint()
+        ..color = color.withOpacity(0.3 * glowIntensity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+      canvas.drawPath(path, glowPaint);
+    }
+
+    // Main fill with gradient
+    final gradient = LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        color.withOpacity(0.95),
+        color.withOpacity(0.4),
+      ],
+    );
+    final fillPaint = Paint()
+      ..shader = gradient.createShader(Rect.fromLTWH(0, 0, w, h))
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(path, fillPaint);
+
+    // White edge highlight
+    final edgePaint = Paint()
+      ..color = Colors.white.withOpacity(0.5 * glowIntensity)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    canvas.drawPath(path, edgePaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _ChevronPainter old) =>
+      old.color != color || old.glowIntensity != glowIntensity;
 }
 
 class _SonarRadarPainter extends CustomPainter {
@@ -3728,4 +5813,54 @@ class _CornerBracketPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+extension _ArCameraNavigation on _ArCameraPageState {
+  Widget _buildNavigationBubble(_ArLandmark landmark) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 160,
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF00E5FF).withOpacity(0.9),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.5), blurRadius: 20),
+            ],
+          ),
+          child: Column(
+            children: [
+              const Icon(Icons.gps_fixed_rounded, color: Colors.white, size: 24),
+              const SizedBox(height: 8),
+              Text(
+                landmark.name.toUpperCase(),
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                landmark.distance,
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ).animate(onPlay: (c) => c.repeat(reverse: true)).moveY(begin: -10, end: 10, duration: 2.seconds, curve: Curves.easeInOut),
+        
+        // Animated line to ground
+        Container(
+          width: 2,
+          height: 100,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [const Color(0xFF00E5FF), const Color(0xFF00E5FF).withOpacity(0)],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

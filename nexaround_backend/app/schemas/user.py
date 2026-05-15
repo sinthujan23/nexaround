@@ -18,6 +18,18 @@ class UserLogin(BaseModel):
     password: str
 
 
+class GoogleLoginRequest(BaseModel):
+    id_token: str
+
+
+class AppleLoginRequest(BaseModel):
+    id_token: str
+    authorization_code: str
+    given_name: Optional[str] = None
+    familyName: Optional[str] = None
+
+
+
 class UserPreferencesUpdate(BaseModel):
     interests: Optional[list[str]] = None
     travel_style: Optional[str] = None  # adventure, relaxed, cultural, foodie

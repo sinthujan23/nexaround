@@ -5,10 +5,31 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
-  const AiChatPage({super.key, this.initialPrompt});
+
+  /// Optional context about a place the user is currently asking about.
+  /// Expected keys: name, category, latitude, longitude.
+  /// When provided, the chip bar shows Food / Shopping / Services buttons
+  /// that fetch nearby venues around this place.
+  final Map<String, dynamic>? placeContext;
+
+  /// If set, the chat page auto-runs a nearby-places fetch for this category
+  /// the moment it opens — used when the user taps a NEARBY tile in the AR
+  /// detail card and lands here pre-filtered.
+  final String? autoFetchCategoryId;
+  final String? autoFetchCategoryLabel;
+
+  const AiChatPage({
+    super.key,
+    this.initialPrompt,
+    this.placeContext,
+    this.autoFetchCategoryId,
+    this.autoFetchCategoryLabel,
+  });
 
   @override
   State<AiChatPage> createState() => _AiChatPageState();
@@ -20,7 +41,20 @@ class _AiChatPageState extends State<AiChatPage> {
   final List<_ChatMessage> _messages = [];
   bool _isTyping = false;
   bool _showSuggestions = true;
+  bool _isFetchingPlaces = false;
+  String? _activeCategoryChip;
   final GeminiService _geminiService = GeminiService();
+
+  static const List<Map<String, dynamic>> _nearbyCategories = [
+    {'id': 'Food & Drink', 'label': 'Food', 'icon': Icons.restaurant_rounded},
+    {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
+    {'id': 'Experiences', 'label': 'Services', 'icon': Icons.miscellaneous_services_rounded},
+  ];
+
+  bool get _hasPlaceContext {
+    final ctx = widget.placeContext;
+    return ctx != null && ctx['latitude'] != null && ctx['longitude'] != null;
+  }
 
   static const String _nevaSystemPrompt = '''
 You are Neva, the intelligent female AI travel companion of the NexAround app. Your personality:
@@ -57,6 +91,81 @@ Always stay in character as Neva. Never say you are an AI language model or ment
       Future.delayed(const Duration(milliseconds: 600), () {
         if (mounted) _sendMessage(widget.initialPrompt!);
       });
+    }
+
+    // If launched from an AR "NEARBY" tile, auto-run the matching fetch so the
+    // user sees results immediately rather than having to tap a chip.
+    if (widget.autoFetchCategoryId != null && _hasPlaceContext) {
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        _fetchNearbyForCategory(
+          widget.autoFetchCategoryId!,
+          widget.autoFetchCategoryLabel ?? widget.autoFetchCategoryId!,
+        );
+      });
+    }
+  }
+
+  Future<void> _fetchNearbyForCategory(String categoryId, String label) async {
+    final ctx = widget.placeContext;
+    if (ctx == null) return;
+    final lat = ctx['latitude'];
+    final lng = ctx['longitude'];
+    if (lat is! num || lng is! num) return;
+
+    final anchorName = (ctx['name'] as String?) ?? 'this place';
+
+    setState(() {
+      _activeCategoryChip = categoryId;
+      _isFetchingPlaces = true;
+      _showSuggestions = false;
+      _messages.add(_ChatMessage(
+        text: 'Show me $label near $anchorName',
+        isUser: true,
+        timestamp: DateTime.now(),
+      ));
+    });
+    _scrollToBottom();
+
+    try {
+      final results = await GooglePlacesService.fetchNearbyPlaces(
+        latitude: lat.toDouble(),
+        longitude: lng.toDouble(),
+        categoryName: categoryId,
+        radius: 2000,
+      );
+
+      final top = results.take(6).toList();
+      final intro = top.isEmpty
+          ? "I couldn't find any $label spots within 2km of $anchorName right now."
+          : 'Here are the closest $label spots near $anchorName:';
+
+      if (mounted) {
+        setState(() {
+          _isFetchingPlaces = false;
+          _messages.add(_ChatMessage(
+            text: intro,
+            isUser: false,
+            timestamp: DateTime.now(),
+            places: top.isEmpty ? null : top,
+            placesCategoryLabel: label,
+          ));
+        });
+        _scrollToBottom();
+      }
+    } catch (e) {
+      debugPrint('Nearby fetch error: $e');
+      if (mounted) {
+        setState(() {
+          _isFetchingPlaces = false;
+          _messages.add(_ChatMessage(
+            text: "I had trouble pulling $label spots near $anchorName. Try again in a moment.",
+            isUser: false,
+            timestamp: DateTime.now(),
+          ));
+        });
+        _scrollToBottom();
+      }
     }
   }
 
@@ -157,6 +266,10 @@ Always stay in character as Neva. Never say you are an AI language model or ment
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (_hasPlaceContext) ...[
+                  const SizedBox(height: 12),
+                  _buildNearbyChips(),
+                ],
                 if (_showSuggestions) ...[
                   const SizedBox(height: 12),
                   _buildQuickSuggestions(),
@@ -270,27 +383,36 @@ Always stay in character as Neva. Never say you are an AI language model or ment
             const SizedBox(width: 10),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isUser ? Colors.black : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(20),
-                  topRight: const Radius.circular(20),
-                  bottomLeft: Radius.circular(isUser ? 20 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 20),
+            child: Column(
+              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: isUser ? Colors.black : Colors.white,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(20),
+                      topRight: const Radius.circular(20),
+                      bottomLeft: Radius.circular(isUser ? 20 : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : 20),
+                    ),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
+                    border: !isUser ? Border.all(color: Colors.black.withOpacity(0.03)) : null,
+                  ),
+                  child: Text(
+                    message.text,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isUser ? Colors.white : Colors.black87,
+                      height: 1.5,
+                    ),
+                  ),
                 ),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
-                border: !isUser ? Border.all(color: Colors.black.withOpacity(0.03)) : null,
-              ),
-              child: Text(
-                message.text,
-                style: TextStyle(
-                  fontSize: 15,
-                  color: isUser ? Colors.white : Colors.black87,
-                  height: 1.5,
-                ),
-              ),
+                if (message.places != null && message.places!.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _buildPlacesList(message.places!),
+                ],
+              ],
             ),
           ),
           if (isUser) ...[
@@ -330,6 +452,162 @@ Always stay in character as Neva. Never say you are an AI language model or ment
         ),
       ],
     ).animate().fade();
+  }
+
+  Widget _buildPlacesList(List<AttractionEntity> places) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: places.map((p) {
+        final distM = p.distanceM;
+        final distLabel = distM == null
+            ? ''
+            : (distM < 1000 ? '${distM.round()} m' : '${(distM / 1000).toStringAsFixed(1)} km');
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.black.withOpacity(0.05)),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  color: Colors.black.withOpacity(0.05),
+                  child: p.photoUrls.isNotEmpty
+                      ? Image.network(
+                          p.photoUrls.first,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Icon(Icons.place_rounded, color: Colors.black38, size: 22),
+                        )
+                      : const Icon(Icons.place_rounded, color: Colors.black38, size: 22),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      p.name,
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
+                        const SizedBox(width: 2),
+                        Text(
+                          p.rating.toStringAsFixed(1),
+                          style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w700),
+                        ),
+                        if (distLabel.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Icon(Icons.straighten_rounded, color: Colors.black38, size: 11),
+                          const SizedBox(width: 2),
+                          Text(
+                            distLabel,
+                            style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildNearbyChips() {
+    final placeName = (widget.placeContext?['name'] as String?) ?? 'here';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'NEAR $placeName'.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              color: Colors.black54,
+              letterSpacing: 1.2,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 6),
+        SizedBox(
+          height: 40,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            itemCount: _nearbyCategories.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final cat = _nearbyCategories[index];
+              final id = cat['id'] as String;
+              final label = cat['label'] as String;
+              final icon = cat['icon'] as IconData;
+              final isActive = _activeCategoryChip == id && _isFetchingPlaces;
+
+              return GestureDetector(
+                onTap: _isFetchingPlaces ? null : () => _fetchNearbyForCategory(id, label),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: isActive
+                        ? [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12)]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isActive)
+                        const SizedBox(
+                          width: 12,
+                          height: 12,
+                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                        )
+                      else
+                        Icon(icon, color: Colors.white, size: 13),
+                      const SizedBox(width: 8),
+                      Text(
+                        label.toUpperCase(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildQuickSuggestions() {
@@ -410,6 +688,14 @@ class _ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final List<AttractionEntity>? places;
+  final String? placesCategoryLabel;
 
-  _ChatMessage({required this.text, required this.isUser, required this.timestamp});
+  _ChatMessage({
+    required this.text,
+    required this.isUser,
+    required this.timestamp,
+    this.places,
+    this.placesCategoryLabel,
+  });
 }
