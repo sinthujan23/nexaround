@@ -119,10 +119,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Hard cone used to decide whether a landmark is "in front of the camera".
   // Includes a small buffer so cards don't pop in/out at the FOV edge.
   static const double _viewConeHalfDegrees = (_cameraFovDegrees / 2) + 5;
-  // Reading from the compass is jittery; we low-pass filter it so cards don't
+  // reading from the sensor is jittery; we low-pass filter it so cards don't
   // dance even when the phone is "still". Higher = more responsive, lower =
-  // more stable. 0.18 is responsive enough for walking-pace rotation.
-  static const double _headingSmoothing = 0.18;
+  // more stable. 0.05 is stable and prevents jumping.
+  static const double _headingSmoothing = 0.05;
   // If the OS reports compass accuracy worse than this, ignore the update.
   static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
@@ -139,38 +139,68 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Historical', 'label': 'Historical', 'icon': Icons.account_balance_rounded},
     {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
     {'id': 'Hotels', 'label': 'Hotels', 'icon': Icons.hotel_rounded},
+    {'id': 'Medical', 'label': 'Medical', 'icon': Icons.medical_services_rounded},
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
   bool _matchesFilter(_ArLandmark lm, String filter) {
     if (filter == 'All') return true;
     final c = lm.category.toLowerCase();
+    final nameLower = lm.name.toLowerCase();
+    final tagsLower = lm.tags.map((t) => t.toLowerCase()).toList();
+
+    bool isNature() {
+      final natureKeywords = [
+        'park', 'garden', 'beach', 'forest', 'lake', 'mountain', 'nature', 'zoo', 
+        'reserve', 'river', 'waterfall', 'sea', 'ocean', 'natural_feature', 
+        'campground', 'beach_resort', 'outdoor'
+      ];
+      
+      // Check in category name
+      if (natureKeywords.any((keyword) => c.contains(keyword))) return true;
+      
+      // Check in place name (beaches, parks etc)
+      if (natureKeywords.any((keyword) => nameLower.contains(keyword))) return true;
+      
+      // Check in Google Place tags/types
+      if (tagsLower.any((tag) => natureKeywords.any((keyword) => tag.contains(keyword)))) return true;
+      
+      return false;
+    }
+
     switch (filter) {
       case 'Food':
         return c.contains('restaurant') || c.contains('food') || c.contains('cafe') ||
-            c.contains('bar') || c.contains('bakery') || c.contains('meal') || c.contains('dining');
+            c.contains('bar') || c.contains('bakery') || c.contains('meal') || c.contains('dining') ||
+            tagsLower.any((tag) => tag.contains('restaurant') || tag.contains('food') || tag.contains('cafe') || tag.contains('bar') || tag.contains('bakery') || tag.contains('meal') || tag.contains('dining'));
       case 'Shopping':
         return c.contains('shop') || c.contains('store') || c.contains('mall') ||
-            c.contains('market') || c.contains('retail') || c.contains('clothing');
+            c.contains('market') || c.contains('retail') || c.contains('clothing') ||
+            tagsLower.any((tag) => tag.contains('shopping') || tag.contains('store') || tag.contains('mall') || tag.contains('clothing') || tag.contains('supermarket'));
       case 'Historical':
         return c.contains('museum') || c.contains('temple') || c.contains('church') ||
             c.contains('monument') || c.contains('historic') || c.contains('heritage') ||
             c.contains('mosque') || c.contains('shrine') || c.contains('castle') ||
-            c.contains('landmark') || c.contains('tourist');
+            c.contains('landmark') || c.contains('tourist') ||
+            tagsLower.any((tag) => tag.contains('museum') || tag.contains('place_of_worship') || tag.contains('church') || tag.contains('hindu_temple') || tag.contains('mosque') || tag.contains('synagogue') || tag.contains('monument'));
       case 'Nature':
-        return c.contains('park') || c.contains('garden') || c.contains('beach') ||
-            c.contains('forest') || c.contains('lake') || c.contains('mountain') ||
-            c.contains('nature') || c.contains('zoo');
+        return isNature();
       case 'Hotels':
         return c.contains('hotel') || c.contains('lodging') || c.contains('motel') ||
-            c.contains('resort') || c.contains('guest') || c.contains('hostel');
+            c.contains('resort') || c.contains('guest') || c.contains('hostel') ||
+            tagsLower.any((tag) => tag.contains('lodging') || tag.contains('hotel') || tag.contains('resort') || tag.contains('motel') || tag.contains('hostel') || tag.contains('campground'));
+      case 'Medical':
+        return c.contains('medical') || c.contains('hospital') || c.contains('pharmacy') ||
+            c.contains('doctor') || c.contains('clinic') || c.contains('dentist') ||
+            c.contains('care') || c.contains('health') ||
+            tagsLower.any((tag) => tag.contains('medical') || tag.contains('hospital') || tag.contains('pharmacy') || tag.contains('doctor') || tag.contains('clinic') || tag.contains('dentist') || tag.contains('health'));
       case 'Others':
-        // Everything that doesn't match any specific category
         return !_matchesFilter(lm, 'Food') &&
             !_matchesFilter(lm, 'Shopping') &&
             !_matchesFilter(lm, 'Historical') &&
             !_matchesFilter(lm, 'Nature') &&
-            !_matchesFilter(lm, 'Hotels');
+            !_matchesFilter(lm, 'Hotels') &&
+            !_matchesFilter(lm, 'Medical');
     }
     return false;
   }
@@ -601,7 +631,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
-  static const int _maxVisibleMarkers = 25;
+  static const int _maxVisibleMarkers = 60;
   static const int _maxVisibleOnScreen = 8;
   static const List<int> _searchRadii = [100, 1000, 2000, 5000, 10000, 20000];
 
@@ -635,20 +665,65 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           
           collected.add(_ArLandmark(
             p.name,
-            p.photoUrls.isNotEmpty ? p.photoUrls.first : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+            p.photoUrls.isNotEmpty 
+                ? p.photoUrls.first 
+                : (p.categoryName == 'Nature' 
+                    ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop' 
+                    : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop'),
             p.rating,
             distStr,
             bearing,
-            'A remarkable location nearby!',
+            p.description ?? 'A remarkable location nearby!',
             p.categoryName?.toUpperCase() ?? 'ATTRACTION',
             rawDistM,
             p.latitude,
             p.longitude,
+            p.tags,
           ));
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
         if (collected.length >= _maxVisibleMarkers) break;
+      }
+
+      // Dedicated Beach Query up to 50km to make sure beaches are always shown far away
+      try {
+        debugPrint('🏖 AR: Querying Beaches up to 50km specifically...');
+        final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          radius: 50000,
+          categoryName: 'Beach',
+        );
+
+        for (final p in beachPlaces) {
+          if (collected.any((l) => l.name == p.name)) continue;
+
+          final rawDistM = (p.distanceM ?? 0).toDouble();
+          final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
+          final distKm = rawDistM / 1000;
+          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+
+          // Nature default stunning beach photo
+          final defaultPhoto = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop';
+          final photoUrl = p.photoUrls.isNotEmpty ? p.photoUrls.first : defaultPhoto;
+
+          collected.add(_ArLandmark(
+            p.name,
+            photoUrl,
+            p.rating,
+            distStr,
+            bearing,
+            p.description ?? 'A beautiful sandy beach.',
+            'NATURE',
+            rawDistM,
+            p.latitude,
+            p.longitude,
+            p.tags,
+          ));
+        }
+      } catch (e) {
+        debugPrint('AR dedicated Beach fetch failed: $e');
       }
 
       // Sort by distance (closest first)
@@ -1727,8 +1802,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           // Top HUD (XP and Map Place) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null) _buildTopHUD(),
 
-          // Filter chip bar - hide when navigating, mapping, or showing detail
-          if (!_minimalHud && !_isNavigating && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
+          // Filter chip bar - hide when mapping or showing detail (can be shown while navigating)
+          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildArFilterBar(),
 
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
@@ -1745,8 +1820,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (!_minimalHud && !_isNavigating && !_isMapping && _nevaSearchResult == null && !_showInfoCard && !(_isIdentifying && (_frozenLandmark ?? _getPointedLandmark()) != null))
             _buildLocationPill(),
 
-          // Tap-triggered place detail card (compact bottom card) - HIDE IF NAVIGATING
-          if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length && !_isNavigating)
+          // Tap-triggered place detail card (compact bottom card) - Consolidated Explore & Navigation Page!
+          if (_isNavigating && _navigationTarget != null)
+            _buildInfoCard(_navigationTarget!)
+          else if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length)
             _buildInfoCard(_landmarks[_selectedLandmark]),
 
           // DISCOVERY CROSSHAIR (Only in Mapping Mode)
@@ -2106,21 +2183,26 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         onTap: () {
           final i = _landmarks.indexWhere((l) => l.name == landmark.name);
           if (i >= 0) {
-            _selectedLandmark = i;
-            _startRouteNavigation(_landmarks[i]);
+            setState(() {
+              _selectedLandmark = i;
+              _showInfoCard = true;
+            });
           }
         },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── GREEN NAME PILL ──
+            // ── COMPACT NAME PILL (BLUE FOR EXACT DIRECTION, GREEN FOR OTHERS) ──
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFF4ADE80),
+                color: currentSlot == 0 ? const Color(0xFF00E5FF) : const Color(0xFF4ADE80),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
-                  BoxShadow(color: const Color(0xFF4ADE80).withOpacity(0.3), blurRadius: 8),
+                  BoxShadow(
+                    color: (currentSlot == 0 ? const Color(0xFF00E5FF) : const Color(0xFF4ADE80)).withOpacity(0.35), 
+                    blurRadius: 8,
+                  ),
                 ],
               ),
               child: Text(
@@ -2144,7 +2226,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
                       color: currentSlot == 0
-                          ? const Color(0xFF4ADE80).withOpacity(0.6)
+                          ? const Color(0xFF00E5FF).withOpacity(0.8)
                           : Colors.white.withOpacity(0.12),
                       width: currentSlot == 0 ? 1.5 : 0.8,
                     ),
@@ -2487,8 +2569,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             onTap: () {
               final i = _landmarks.indexWhere((l) => l.name == lm.name);
               if (i >= 0) {
-                _selectedLandmark = i;
-                _startRouteNavigation(_landmarks[i]);
+                setState(() {
+                  _selectedLandmark = i;
+                  _showInfoCard = true;
+                });
               }
             },
             child: Column(
@@ -3982,248 +4066,404 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               child: Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF1F2A24).withOpacity(0.9),
+                  color: const Color(0xFF070B14).withOpacity(0.92), // Futuristic deep space blue-black
                   borderRadius: BorderRadius.circular(28),
-                  border: Border.all(color: Colors.white.withOpacity(0.08), width: 1),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 30, offset: const Offset(0, 10))],
-                ),
-                child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Section headers row: YOU SELECTED | NEARBY | X ──
-                Row(
-                  children: [
-                    const Expanded(
-                      flex: 5,
-                      child: Text(
-                        'YOU SELECTED',
-                        style: TextStyle(
-                          color: Color(0xFF4ADE80),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                    ),
-                    const Expanded(
-                      flex: 6,
-                      child: Text(
-                        'NEARBY',
-                        style: TextStyle(
-                          color: Color(0xFF4ADE80),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.4,
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () => setState(() {
-                        _showInfoCard = false;
-                        _isListening = false;
-                      }),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withOpacity(0.15),
-                        ),
-                        child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
-                      ),
-                    ),
+                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.25), width: 1.2), // Glowing neon blue border
+                  boxShadow: [
+                    BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.15), blurRadius: 24, offset: const Offset(0, 10)),
                   ],
                 ),
-                const SizedBox(height: 10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // ── Section headers row: YOU SELECTED | NEARBY | X ──
+                    Row(
+                      children: [
+                        const Expanded(
+                          flex: 4, // Aligned with the body flex ratio
+                          child: Text(
+                            'YOU SELECTED',
+                            style: TextStyle(
+                              color: Color(0xFF00E5FF), // Brighter neon blue
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                        ),
+                        const Expanded(
+                          flex: 7, // Aligned with the body flex ratio
+                          child: Text(
+                            'NEARBY',
+                            style: TextStyle(
+                              color: Color(0xFF00E5FF), // Brighter neon blue
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.4,
+                            ),
+                          ),
+                        ),
+                        if (!_isNavigating)
+                          GestureDetector(
+                            onTap: () => setState(() {
+                              _showInfoCard = false;
+                              _isListening = false;
+                            }),
+                            child: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white.withOpacity(0.15),
+                              ),
+                              child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
 
-                // ── Body row: selected-place block | divider | nearby icons ──
-                IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // ── Left: selected place ──
-                      Expanded(
-                        flex: 5,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
+                    // ── Body row: selected-place block | divider | nearby icons ──
+                    IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ── Left: selected place (flex 4 for extra space on the right) ──
+                          Expanded(
+                            flex: 4,
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                PlaceImageHelper.buildPlaceImage(
-                                  imagePath: landmark.imagePath,
-                                  category: landmark.category,
-                                  name: landmark.name,
-                                  width: 56,
-                                  height: 56,
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    landmark.name,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w900,
-                                      height: 1.15,
-                                      letterSpacing: -0.3,
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    PlaceImageHelper.buildPlaceImage(
+                                      imagePath: landmark.imagePath,
+                                      category: landmark.category,
+                                      name: landmark.name,
+                                      width: 56,
+                                      height: 56,
+                                      borderRadius: BorderRadius.circular(14),
                                     ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        landmark.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 17,
+                                          fontWeight: FontWeight.w900,
+                                          height: 1.15,
+                                          letterSpacing: -0.3,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${landmark.rating}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '($reviewCount)',
+                                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Icon(Icons.straighten_rounded, color: Colors.white.withOpacity(0.6), size: 13),
+                                    const SizedBox(width: 3),
+                                    Flexible(
+                                      child: Text(
+                                        landmark.distance,
+                                        style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w700),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                // MORE INFO — opens Ask Neva
+                                GestureDetector(
+                                  onTap: () => _openAskNevaFor(landmark),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                    decoration: BoxDecoration(
+                                      color: Colors.transparent,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                                    ),
+                                    child: const Text(
+                                      'MORE INFO',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.4,
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            Row(
+                          ),
+
+                          // ── Subtle vertical divider (reduced horizontal margins) ──
+                          Container(
+                            width: 1,
+                            margin: const EdgeInsets.symmetric(horizontal: 6),
+                            color: Colors.white.withOpacity(0.1),
+                          ),
+
+                          // ── Right: nearby category icons (flex 7 + spacious horizontal layouts) ──
+                          Expanded(
+                            flex: 7,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-                                const SizedBox(width: 3),
-                                Text(
-                                  '${landmark.rating}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                _buildNearbyTile(
+                                  landmark: landmark,
+                                  icon: Icons.restaurant_rounded,
+                                  label: 'FOOD',
+                                  color: const Color(0xFFEF5350),
+                                  categoryId: 'Food & Drink',
+                                  prettyLabel: 'food',
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '($reviewCount)',
-                                  style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                _buildNearbyTile(
+                                  landmark: landmark,
+                                  icon: Icons.shopping_bag_rounded,
+                                  label: 'SHOP',
+                                  color: const Color(0xFF66BB6A),
+                                  categoryId: 'Shopping',
+                                  prettyLabel: 'shopping',
                                 ),
-                                const SizedBox(width: 10),
-                                Icon(Icons.straighten_rounded, color: Colors.white.withOpacity(0.6), size: 13),
-                                const SizedBox(width: 3),
-                                Flexible(
-                                  child: Text(
-                                    landmark.distance,
-                                    style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w700),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                _buildNearbyTile(
+                                  landmark: landmark,
+                                  icon: Icons.account_balance_rounded,
+                                  label: 'HISTORY',
+                                  color: const Color(0xFF42A5F5),
+                                  categoryId: 'Attractions',
+                                  prettyLabel: 'historical',
+                                ),
+                                _buildNearbyTile(
+                                  landmark: landmark,
+                                  icon: Icons.hotel_rounded,
+                                  label: 'HOTELS',
+                                  color: const Color(0xFFAB47BC),
+                                  categoryId: 'Hotels',
+                                  prettyLabel: 'hotels',
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            // MORE INFO — opens Ask Neva
-                            GestureDetector(
-                              onTap: () => _openAskNevaFor(landmark),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    if (_isNavigating) ...[
+                      // Step progress bar (when route available)
+                      if (_walkingRoute != null && _walkingRoute!.steps.isNotEmpty) ...[
+                        _buildStepProgressBar(),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // Dynamic navigation guidance row + EXIT button
+                      () {
+                        final hasRoute = _walkingRoute != null && _walkingRoute!.steps.isNotEmpty;
+                        final RouteStep? currentStep = hasRoute && _currentStepIndex < _walkingRoute!.steps.length
+                            ? _walkingRoute!.steps[_currentStepIndex]
+                            : null;
+
+                        // Determine maneuver icon based on turn direction
+                        IconData maneuverIcon = Icons.arrow_upward_rounded;
+                        double diff = 0.0;
+                        if (_navigationTarget != null) {
+                          final navBearing = _activeNavBearing;
+                          diff = _signedAngleDelta(_heading, navBearing);
+                        }
+                        if (currentStep?.maneuver != null) {
+                          final m = currentStep!.maneuver!;
+                          if (m.contains('left')) maneuverIcon = Icons.turn_left_rounded;
+                          else if (m.contains('right')) maneuverIcon = Icons.turn_right_rounded;
+                          else if (m.contains('uturn')) maneuverIcon = Icons.u_turn_left_rounded;
+                          else if (m.contains('roundabout')) maneuverIcon = Icons.roundabout_left_rounded;
+                        }
+
+                        return Row(
+                          children: [
+                            // Turn-by-Turn Instruction Card (flex: 8)
+                            Expanded(
+                              flex: 8,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                height: 52,
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.transparent,
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                                  color: const Color(0xFF00E5FF).withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.4), width: 1.5),
+                                  boxShadow: [
+                                    BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.05), blurRadius: 10),
+                                  ],
                                 ),
-                                child: const Text(
-                                  'MORE INFO',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.4,
+                                child: Row(
+                                  children: [
+                                    // Maneuver Icon box
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00E5FF).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.4), width: 1),
+                                      ),
+                                      child: Icon(
+                                        hasRoute ? maneuverIcon : (diff.abs() < 30 ? Icons.arrow_upward_rounded : (diff > 0 ? Icons.turn_right_rounded : Icons.turn_left_rounded)),
+                                        color: const Color(0xFF00E5FF),
+                                        size: 20,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    // Instruction details
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            hasRoute
+                                                ? 'STEP ${_currentStepIndex + 1}/${_walkingRoute!.steps.length}'
+                                                : 'HEADING TARGET',
+                                            style: const TextStyle(
+                                              color: Color(0xFF00E5FF),
+                                              fontSize: 8.5,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 1.2,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            hasRoute
+                                                ? (currentStep?.instruction ?? 'Follow route')
+                                                : (diff.abs() < 30 ? 'Keep heading forward' : 'Rotate to your ${diff > 0 ? "right" : "left"}'),
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              height: 1.2,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            // Crimson-Red glowing EXIT button (flex: 3)
+                            Expanded(
+                              flex: 3,
+                              child: GestureDetector(
+                                onTap: () => setState(() {
+                                  _isNavigating = false;
+                                  _navigationTarget = null;
+                                  _walkingRoute = null;
+                                  _currentStepIndex = 0;
+                                  _hasArrivedAtDestination = false;
+                                  _arMode = 'explore';
+                                }),
+                                child: Container(
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFFFF5252), Color(0xFFFF1744)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(16),
+                                    boxShadow: [
+                                      BoxShadow(color: const Color(0xFFFF5252).withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 3)),
+                                    ],
+                                  ),
+                                  child: const Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'EXIT',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 11,
+                                          letterSpacing: 1.2,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
                             ),
                           ],
-                        ),
-                      ),
-
-                      // ── Subtle vertical divider ──
-                      Container(
-                        width: 1,
-                        margin: const EdgeInsets.symmetric(horizontal: 10),
-                        color: Colors.white.withOpacity(0.1),
-                      ),
-
-                      // ── Right: nearby category icons ──
-                      Expanded(
-                        flex: 6,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            _buildNearbyTile(
-                              landmark: landmark,
-                              icon: Icons.restaurant_rounded,
-                              label: 'FOOD',
-                              color: const Color(0xFFEF5350),
-                              categoryId: 'Food & Drink',
-                              prettyLabel: 'food',
+                        );
+                      }(),
+                    ] else ...[
+                      // ── START NAVIGATION button ──
+                      GestureDetector(
+                        onTap: () {
+                          _startRouteNavigation(landmark);
+                        },
+                        child: Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
                             ),
-                            _buildNearbyTile(
-                              landmark: landmark,
-                              icon: Icons.shopping_bag_rounded,
-                              label: 'SHOPPING',
-                              color: const Color(0xFF66BB6A),
-                              categoryId: 'Shopping',
-                              prettyLabel: 'shopping',
-                            ),
-                            _buildNearbyTile(
-                              landmark: landmark,
-                              icon: Icons.build_rounded,
-                              label: 'SERVICES',
-                              color: const Color(0xFF42A5F5),
-                              categoryId: 'Experiences',
-                              prettyLabel: 'services',
-                            ),
-                            _buildNearbyTile(
-                              landmark: landmark,
-                              icon: Icons.local_hospital_rounded,
-                              label: 'MEDICAL',
-                              color: const Color(0xFFE53935),
-                              categoryId: 'Medical',
-                              prettyLabel: 'medical',
-                            ),
-                          ],
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.3), blurRadius: 16, offset: const Offset(0, 4)),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.navigation_rounded, color: Colors.black, size: 20),
+                              SizedBox(width: 10),
+                              Text(
+                                'START NAVIGATION',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 14),
-
-                // ── START NAVIGATION button ──
-                GestureDetector(
-                  onTap: () {
-                    _startRouteNavigation(landmark);
-                  },
-                  child: Container(
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.25), blurRadius: 16, offset: const Offset(0, 4))],
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.navigation_rounded, color: AppColors.primary, size: 20),
-                        const SizedBox(width: 10),
-                        Text(
-                          'START NAVIGATION',
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 14,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          Positioned(
+            top: -34, // Raised vertically from -18 to -34 to fully avoid overlapping headers inside the card
+            child: _buildSmallLocationBadge(),
+          ),
+        ],
       ),
-      Positioned(
-        top: -18,
-        child: _buildSmallLocationBadge(),
-      ),
-    ],
-  ),
-).animate().slideY(begin: 0.4, end: 0, duration: 400.ms, curve: Curves.easeOutQuart).fade(duration: 300.ms);
+    ).animate().slideY(begin: 0.4, end: 0, duration: 400.ms, curve: Curves.easeOutQuart).fade(duration: 300.ms);
   }
 
   /// One tile in the NEARBY strip — colored icon square + caption underneath.
@@ -4241,25 +4481,25 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 40, // More compact sizing to prevent overlaps and overflows
+            height: 40,
             decoration: BoxDecoration(
               color: color,
               borderRadius: BorderRadius.circular(12),
               boxShadow: [
-                BoxShadow(color: color.withOpacity(0.35), blurRadius: 10, offset: const Offset(0, 3)),
+                BoxShadow(color: color.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 2)),
               ],
             ),
-            child: Icon(icon, color: Colors.white, size: 22),
+            child: Icon(icon, color: Colors.white, size: 20), // Balanced icon size
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             label,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 8,
+              fontSize: 7.5, // Reduced font size for tight space alignment
               fontWeight: FontWeight.w900,
-              letterSpacing: 1,
+              letterSpacing: 0.5, // Reduced letter spacing to save horizontal pixels
             ),
           ),
         ],
@@ -4652,37 +4892,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               child: _buildArrivalCelebration(),
             ),
 
-          // EXIT NAV button
-          Positioned(
-            top: 130, right: 20,
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _isNavigating = false;
-                _navigationTarget = null;
-                _walkingRoute = null;
-                _currentStepIndex = 0;
-                _hasArrivedAtDestination = false;
-                _arMode = 'explore';
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: cyan.withOpacity(0.5), width: 1.5),
-                  boxShadow: [BoxShadow(color: cyan.withOpacity(0.2), blurRadius: 15)],
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.close_rounded, color: cyan, size: 18),
-                    SizedBox(width: 8),
-                    Text('EXIT NAV', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 1.5)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
           // FLOATING AR MARKER ON TARGET (when in view)
           if (isTargetInView && !_hasArrivedAtDestination) () {
             final angle = _signedAngleDelta(_heading, _navigationTarget!.bearing);
@@ -4699,10 +4908,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             return const SizedBox.shrink();
           }(),
 
-          // DISTANCE HUD
+          // DISTANCE HUD (Elevated to 310 to fit perfectly above the bottom merged card)
           if (!_hasArrivedAtDestination)
             Positioned(
-              bottom: hasRoute ? 280 : 240,
+              bottom: 310,
               left: 0, right: 0,
               child: Column(
                 children: [
@@ -4719,103 +4928,51 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2,
                       shadows: [Shadow(color: Colors.black, blurRadius: 10)]),
                   ),
+                  const SizedBox(height: 8),
+                  // Premium "TRAVELING..." Neon Pill with spinning progress ring
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: cyan.withOpacity(0.4), width: 1.2),
+                      boxShadow: [
+                        BoxShadow(color: cyan.withOpacity(0.15), blurRadius: 12),
+                      ],
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 8,
+                          height: 8,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: cyan,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'TRAVELING...',
+                          style: TextStyle(
+                            color: cyan,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   // Route overview (total distance + ETA)
                   if (hasRoute) ...[
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 10),
                     Text(
                       '${_walkingRoute!.remainingDistanceText(_currentStepIndex)} · ${_walkingRoute!.totalDuration}',
                       style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ],
-              ),
-            ),
-
-          // ══════════════════════════════════════════
-          // TURN-BY-TURN STEP CARD (bottom)
-          // ══════════════════════════════════════════
-          if (!_hasArrivedAtDestination)
-            Positioned(
-              bottom: 100, left: 0, right: 0,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  children: [
-                    // Step progress bar (when route available)
-                    if (hasRoute) ...[
-                      _buildStepProgressBar(),
-                      const SizedBox(height: 10),
-                    ],
-
-                    // Main instruction card
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.65),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(color: cyan.withOpacity(0.4), width: 1.5),
-                            boxShadow: [BoxShadow(color: cyan.withOpacity(0.08), blurRadius: 20, spreadRadius: 2)],
-                          ),
-                          child: Row(
-                            children: [
-                              // Maneuver icon
-                              Container(
-                                width: 48, height: 48,
-                                decoration: BoxDecoration(
-                                  color: cyan.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: cyan.withOpacity(0.4), width: 1),
-                                ),
-                                child: Icon(
-                                  hasRoute ? maneuverIcon : (isTargetInView ? Icons.arrow_upward_rounded : (diff > 0 ? Icons.turn_right_rounded : Icons.turn_left_rounded)),
-                                  color: cyan, size: 26,
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              // Instruction text
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // Status label
-                                    Text(
-                                      hasRoute
-                                          ? 'STEP ${_currentStepIndex + 1}/${_walkingRoute!.steps.length} · ${currentStep?.distanceText ?? ''}'
-                                          : (isTargetInView ? 'ON TRACK · ${_navigationTarget!.distance.toUpperCase()}' : 'TURN ${diff > 0 ? "RIGHT" : "LEFT"} ${diff.abs().round()}°'),
-                                      style: TextStyle(color: cyan, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    // Main instruction
-                                    Text(
-                                      hasRoute
-                                          ? (currentStep?.instruction ?? 'Follow the route')
-                                          : (isTargetInView ? 'Keep heading forward' : 'Rotate to your ${diff > 0 ? "right" : "left"}'),
-                                      style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3),
-                                      maxLines: 2, overflow: TextOverflow.ellipsis,
-                                    ),
-                                    // Street name
-                                    if (currentStep?.streetName != null) ...[
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        currentStep!.streetName!,
-                                        style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w500),
-                                        maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ).animate().fade().slideY(begin: 0.15, curve: Curves.easeOutCubic),
-                  ],
-                ),
               ),
             ),
         ],
@@ -5523,8 +5680,9 @@ class _ArLandmark {
   final double distanceM;
   final double? lat;
   final double? lng;
+  final List<String> tags;
 
-  const _ArLandmark(this.name, this.imagePath, this.rating, this.distance, this.bearing, this.description, this.category, [this.distanceM = 0, this.lat, this.lng]);
+  const _ArLandmark(this.name, this.imagePath, this.rating, this.distance, this.bearing, this.description, this.category, [this.distanceM = 0, this.lat, this.lng, this.tags = const []]);
 
   _ArLandmark copyWith({
     String? distance,
@@ -5542,6 +5700,7 @@ class _ArLandmark {
       distanceM ?? this.distanceM,
       lat,
       lng,
+      tags,
     );
   }
 }

@@ -166,26 +166,35 @@ class ProfilePage extends StatelessWidget {
         const SizedBox(height: 12),
         // Level badge
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            gradient: AppColors.secondaryGradient,
+            gradient: AppColors.achievementGradient,
             boxShadow: [
-              BoxShadow(color: AppColors.secondary.withOpacity(0.3), blurRadius: 12),
+              BoxShadow(
+                color: AppColors.warning.withOpacity(0.4),
+                blurRadius: 15,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.diamond_rounded, color: Colors.white, size: 14),
+              Icon(Icons.diamond_rounded, color: Colors.black, size: 14),
               SizedBox(width: 6),
               Text(
                 'Explorer Level 1',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: 0.5),
+                style: TextStyle(
+                  fontSize: 12, 
+                  fontWeight: FontWeight.w800, 
+                  color: Colors.black, 
+                  letterSpacing: 0.8,
+                ),
               ),
             ],
           ),
-        ).animate().fade(delay: 400.ms).scale(begin: const Offset(0.9, 0.9)),
+        ).animate().fade(delay: 400.ms).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack),
       ],
     );
   }

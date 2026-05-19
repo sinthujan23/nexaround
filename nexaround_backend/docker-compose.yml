@@ -11,8 +11,11 @@ services:
       - DATABASE_URL=postgresql+asyncpg://nexaround:nexaround@db:5432/nexaround
       - REDIS_URL=redis://redis:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     volumes:
       - ./app:/app
+      # Persist proxied place photos across container restarts.
+      - photo_cache:/app/static/photo_cache
     depends_on:
       - db
       - redis
@@ -35,3 +38,4 @@ services:
 
 volumes:
   pgdata:
+  photo_cache:

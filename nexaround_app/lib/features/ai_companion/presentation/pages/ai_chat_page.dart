@@ -223,6 +223,9 @@ Always stay in character as Neva. Never say you are an AI language model or ment
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    
     return Scaffold(
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: false,
@@ -275,10 +278,17 @@ Always stay in character as Neva. Never say you are an AI language model or ment
                   _buildQuickSuggestions(),
                 ],
                 Padding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom > 0 ? 12 : 110),
+                  padding: EdgeInsets.fromLTRB(
+                    16, 
+                    12, 
+                    16, 
+                    bottomInset > 0 
+                        ? 12 
+                        : (bottomPadding > 0 ? bottomPadding + 8 : 16), // Clean safe-area responsive padding instead of a hardcoded 110px gap
+                  ),
                   child: _buildInputBar(),
                 ),
-                SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+                SizedBox(height: bottomInset),
               ],
             ),
           ),
@@ -328,36 +338,53 @@ Always stay in character as Neva. Never say you are an AI language model or ment
   }
 
   Widget _buildHeader() {
+    final topPadding = MediaQuery.of(context).padding.top;
+    
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 24),
+      padding: EdgeInsets.fromLTRB(16, topPadding > 0 ? topPadding + 10 : 24, 16, 16),
       decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
+        border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
       ),
       child: Row(
         children: [
-          _buildNevaAvatar(56),
-          const SizedBox(width: 16),
+          if (Navigator.canPop(context)) ...[
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          _buildNevaAvatar(48),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'NEVA',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: 2),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: 2),
                 ),
                 Text(
                   'SPATIAL COGNITION PARTNER',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black54, letterSpacing: 1),
+                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.black54, letterSpacing: 1),
                 ),
               ],
             ),
           ),
           Container(
-            width: 44,
-            height: 44,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.black12)),
-            child: const Icon(Icons.emergency_rounded, color: Colors.black),
+            child: const Icon(Icons.emergency_rounded, color: Colors.black, size: 20),
           ),
         ],
       ),

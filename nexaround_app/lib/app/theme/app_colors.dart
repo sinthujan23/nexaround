@@ -55,6 +55,24 @@ class AppColors {
     ],
   );
 
+  static const LinearGradient achievementGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFFFB300), // Amber
+      Color(0xFFFFD54F), // Light Gold
+    ],
+  );
+
+  static const LinearGradient silverGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFFBDBDBD),
+      Color(0xFFE0E0E0),
+    ],
+  );
+
   static const LinearGradient surfaceGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,

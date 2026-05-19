@@ -7,6 +7,7 @@ from app.api.v1.itineraries import router as itineraries_router
 from app.api.v1.reviews import router as reviews_router
 from app.api.v1.ar import router as ar_router
 from app.api.v1.budget import router as budget_router
+from app.api.v1.places import router as places_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -17,4 +18,5 @@ api_router.include_router(chat_router)
 api_router.include_router(itineraries_router)
 api_router.include_router(reviews_router)
 api_router.include_router(budget_router)
+api_router.include_router(places_router)
 api_router.include_router(ar_router, prefix="/ar", tags=["AR"])

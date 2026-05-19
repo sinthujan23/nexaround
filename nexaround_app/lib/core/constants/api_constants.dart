@@ -1,7 +1,7 @@
 class ApiConstants {
   static const String baseUrl = 'https://api.nexaround.com';
   static const String apiVersion = '/api/v1';
-  static const String googleMapsApiKey = 'AIzaSyDV7xSXzCp8tt4BqrjvHqfRyexT9Dhk-jw';
+  static const String googleMapsApiKey = 'AIzaSyAxGlCCI4yoOn3umPPyX1VypSzL2Sutz9U';
   static const String geminiApiKey = 'AIzaSyC2y9dsp2ODG_eUy3OFpwonN8MH8TRE9oY';
   
   // Auth endpoints
@@ -20,6 +20,12 @@ class ApiConstants {
   
   // Navigation endpoints
   static const String directions = '$apiVersion/navigation/directions';
+
+  // Places (server-side Google passthrough with shared Redis cache)
+  // Toggle to false to fall back to direct Google calls if the backend is down.
+  static const bool useBackendPlaces = true;
+  static const String placesNearby = '$apiVersion/places/nearby';
+  static const String placePhoto = '$apiVersion/places/photo';
   
   // Itinerary endpoints
   static const String itineraries = '$apiVersion/itineraries';
