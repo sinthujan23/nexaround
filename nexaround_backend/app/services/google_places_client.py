@@ -51,41 +51,50 @@ async def nearby_search(
     category: Optional[str],
     radius: int,
 ) -> list[dict]:
-    """Call Google Nearby Search. Returns the raw places list (unfiltered)."""
+    """Call Google Nearby Search (New). Returns the raw places list (unfiltered)."""
+    # Cap radius between 1 and 50000 meters for the new Places API
+    eff_radius = float(min(max(radius, 1), 50000))
+
+    included_types = []
     if category == "Food & Drink":
-        google_type = "restaurant"
-        eff_radius = min(radius, 10000)
+        included_types = ["restaurant"]
     elif category == "Beach":
-        google_type = None
-        eff_radius = max(radius, 50000)
-    else:
-        google_type = CATEGORY_TYPE_MAP.get(category or "", "point_of_interest")
-        eff_radius = radius
+        included_types = ["beach"]
+    elif category and category in CATEGORY_TYPE_MAP:
+        included_types = [CATEGORY_TYPE_MAP[category]]
 
     async with async_session() as db:
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key", settings.GOOGLE_API_KEY)
 
-    params = {
-        "location": f"{latitude},{longitude}",
-        "radius": eff_radius,
-        "key": google_maps_key,
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": google_maps_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types"
     }
-    if category == "Beach":
-        params["keyword"] = "beach"
-    if google_type:
-        params["type"] = google_type
-        params["rankby"] = "prominence"
+
+    body = {
+        "maxResultCount": 20,
+        "locationRestriction": {
+            "circle": {
+                "center": {
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "radius": eff_radius
+            }
+        }
+    }
+
+    if included_types:
+        body["includedTypes"] = included_types
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(f"{_BASE}/place/nearbysearch/json", params=params)
+        resp = await client.post("https://places.googleapis.com/v1/places:searchNearby", json=body, headers=headers)
         resp.raise_for_status()
         data = resp.json()
 
-    if data.get("status") not in ("OK", "ZERO_RESULTS"):
-        # Log but don't crash; treat as empty.
-        return []
-    return data.get("results", [])
+    return data.get("places", [])
 
 
 def filter_food(places: list[dict]) -> list[dict]:
@@ -93,7 +102,7 @@ def filter_food(places: list[dict]) -> list[dict]:
     out: list[dict] = []
     seen: set[str] = set()
     for p in places:
-        pid = p.get("place_id")
+        pid = p.get("id") or p.get("place_id")
         if not pid or pid in seen:
             continue
         types = set(p.get("types") or [])
@@ -110,42 +119,36 @@ def to_place_dict(
     category_name: Optional[str],
     photo_url_builder,
 ) -> dict:
-    """Convert a raw Google place into the dict that matches PlaceResponse."""
+    """Convert a raw Google place (New API format) into the dict that matches PlaceResponse."""
     from datetime import datetime, timezone
 
-    loc = place.get("geometry", {}).get("location") or {}
-    plat = float(loc.get("lat", 0.0))
-    plng = float(loc.get("lng", 0.0))
+    loc = place.get("location") or {}
+    plat = float(loc.get("latitude", 0.0))
+    plng = float(loc.get("longitude", 0.0))
 
-    photos = place.get("photos") or []
-    photo_urls: list[str] = []
-    if photos:
-        ref = photos[0].get("photo_reference")
-        if ref:
-            photo_urls = [photo_url_builder(ref)]
-
+    display_name = place.get("displayName", {}).get("text") or "Unknown"
     types = list(place.get("types") or [])
     resolved_category = category_name or _resolve_category_from_types(types)
 
     return {
-        "id": place.get("place_id") or "",
-        "name": place.get("name") or "Unknown",
-        "description": place.get("vicinity") or "",
+        "id": place.get("id") or "",
+        "name": display_name,
+        "description": "",
         "latitude": plat,
         "longitude": plng,
         "category_id": None,
         "category_name": resolved_category,
-        "address": place.get("vicinity") or "",
+        "address": "",
         "opening_hours": {},
         "entry_fee": 0.0,
         "currency": "USD",
-        "rating": float(place.get("rating") or 0.0),
-        "review_count": int(place.get("user_ratings_total") or 0),
-        "photo_urls": photo_urls,
+        "rating": 0.0,
+        "review_count": 0,
+        "photo_urls": [],
         "tags": types,
         "geofence_radius_m": 100,
         "distance_m": _haversine_m(origin_lat, origin_lng, plat, plng),
-        "is_active": (place.get("business_status") or "OPERATIONAL") == "OPERATIONAL",
+        "is_active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 

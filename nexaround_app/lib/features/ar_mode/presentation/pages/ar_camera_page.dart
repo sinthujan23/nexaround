@@ -287,7 +287,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _positionSubscription = geo.Geolocator.getPositionStream(
       locationSettings: const geo.LocationSettings(
         accuracy: geo.LocationAccuracy.best,
-        distanceFilter: 0,
+        distanceFilter: 2,
       ),
     ).listen((pos) {
       debugPrint('📍 AR Location Update: ${pos.latitude}, ${pos.longitude}');

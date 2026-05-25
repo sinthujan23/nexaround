@@ -88,7 +88,12 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   void _startLocationTracking() {
-    _positionSubscription = geo.Geolocator.getPositionStream().listen((position) async {
+    _positionSubscription = geo.Geolocator.getPositionStream(
+      locationSettings: const geo.LocationSettings(
+        accuracy: geo.LocationAccuracy.high,
+        distanceFilter: 300,
+      ),
+    ).listen((position) async {
       final locationName = await GooglePlacesService.reverseGeocode(
         position.latitude,
         position.longitude,
