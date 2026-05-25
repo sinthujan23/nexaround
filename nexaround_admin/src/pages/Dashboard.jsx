@@ -45,7 +45,8 @@ export default function Dashboard() {
     pending_approvals_count,
     monthly_revenue,
     growth_data,
-    recent_activity
+    recent_activity,
+    api_usage
   } = data;
 
   const dummy_growth_data = [120, 180, 250, 310, 450, 600, 850, 1200, 1500, 1900, 2400, 3100];
@@ -142,11 +143,7 @@ export default function Dashboard() {
           <span className="badge badge-green">Live Tracking</span>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-          {[
-            { name: 'Google Maps API', total: '12,450', color: '#4285F4', data: [1200, 1500, 1800, 2200, 1900, 1600, 2250] },
-            { name: 'Mapbox API', total: '8,320', color: '#4264fb', data: [800, 1100, 1300, 1400, 1200, 1000, 1520] },
-            { name: 'Gemini API', total: '3,105', color: '#8e24aa', data: [200, 350, 400, 600, 500, 450, 605] }
-          ].map(api => {
+          {(api_usage || []).map(api => {
             const maxVal = Math.max(...api.data, 1);
             return (
               <div key={api.name} style={{ background: 'var(--bg-dark)', padding: '16px', borderRadius: '12px', border: '1px solid var(--border)' }}>

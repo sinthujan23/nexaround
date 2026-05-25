@@ -8,6 +8,8 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 /// Mapbox public access token for Directions API
 const String _mapboxToken =
@@ -172,16 +174,19 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     }
   }
 
-  // ─── Fetch driving route from Mapbox Directions API ───
+  // ─── Fetch driving route from Mapbox Directions API via backend proxy ───
   Future<void> _fetchRoute() async {
     if (_userLat == null || _userLng == null) return;
     try {
-      final url =
-          'https://api.mapbox.com/directions/v5/mapbox/driving/'
-          '$_userLng,$_userLat;$_destLng,$_destLat'
-          '?geometries=geojson&overview=full&access_token=$_mapboxToken';
+      final path = '${ApiConstants.mapboxProxy}/$_userLng,$_userLat;$_destLng,$_destLat';
 
-      final response = await Dio().get(url);
+      final response = await ApiClient.instance.get(
+        path,
+        queryParameters: {
+          'geometries': 'geojson',
+          'overview': 'full',
+        },
+      );
       final data = response.data;
 
       if (data['routes'] != null && (data['routes'] as List).isNotEmpty) {

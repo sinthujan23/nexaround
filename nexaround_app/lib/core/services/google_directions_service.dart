@@ -1,7 +1,7 @@
 import 'dart:math' as math;
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 
 // ═══════════════════════════════════════════════════════════════════
 // Google Directions Service — Walking Route for AR Navigation
@@ -96,11 +96,6 @@ class WalkingRoute {
 }
 
 class GoogleDirectionsService {
-  static final Dio _dio = Dio();
-  static const String _baseUrl =
-      'https://maps.googleapis.com/maps/api/directions/json';
-  static const String _apiKey = ApiConstants.googleMapsApiKey;
-
   /// Fetch a walking route between two points.
   /// Returns null on failure (API error, no route found, etc.).
   static Future<WalkingRoute?> getWalkingRoute({
@@ -112,13 +107,12 @@ class GoogleDirectionsService {
     try {
       debugPrint('🗺️ Fetching walking route: ($originLat,$originLng) → ($destLat,$destLng)');
 
-      final response = await _dio.get(
-        _baseUrl,
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/directions/json',
         queryParameters: {
           'origin': '$originLat,$originLng',
           'destination': '$destLat,$destLng',
           'mode': 'walking',
-          'key': _apiKey,
         },
       );
 

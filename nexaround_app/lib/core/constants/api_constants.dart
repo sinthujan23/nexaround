@@ -1,8 +1,13 @@
 class ApiConstants {
   static const String baseUrl = 'https://api.nexaround.com';
   static const String apiVersion = '/api/v1';
-  static const String googleMapsApiKey = 'AIzaSyAxGlCCI4yoOn3umPPyX1VypSzL2Sutz9U';
-  static const String geminiApiKey = 'AIzaSyC2y9dsp2ODG_eUy3OFpwonN8MH8TRE9oY';
+  static String googleMapsApiKey = '';
+  static String geminiApiKey = '';
+  
+  // Secure proxy endpoints
+  static const String geminiProxy = '$apiVersion/proxy/gemini/generate';
+  static const String mapboxProxy = '$apiVersion/proxy/mapbox/directions';
+  static const String googleMapsProxy = '$apiVersion/proxy/google-maps';
   
   // Auth endpoints
   static const String register = '$apiVersion/auth/register';
@@ -25,7 +30,7 @@ class ApiConstants {
   static const String itineraries = '$apiVersion/itineraries';
   
   // Mapbox Configuration
-  static const String mapboxAccessToken = 'YOUR_MAPBOX_ACCESS_TOKEN_HERE';
+  static String mapboxAccessToken = '';
   
   // Mapbox Tile Style URLs (for flutter_map)
   static String mapboxStyleUrl(String styleId) =>

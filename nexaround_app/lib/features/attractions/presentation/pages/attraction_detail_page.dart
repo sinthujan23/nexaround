@@ -1,8 +1,7 @@
-import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
@@ -81,17 +80,18 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       }
 
       final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary';
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/details/json'
-        '?place_id=$resolvedId&fields=$fields'
-        '&key=${ApiConstants.googleMapsApiKey}',
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/details/json',
+        queryParameters: {
+          'place_id': resolvedId,
+          'fields': fields,
+        },
       );
-      final response = await http.get(url);
       if (response.statusCode != 200) {
         if (mounted) setState(() => _isLoadingPlaces = false);
         return;
       }
-      final data = jsonDecode(response.body)['result'] as Map<String, dynamic>?;
+      final data = response.data['result'] as Map<String, dynamic>?;
       if (data == null) {
         if (mounted) setState(() => _isLoadingPlaces = false);
         return;
@@ -145,18 +145,19 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
   Future<String?> _findPlaceId() async {
     try {
-      final query = Uri.encodeComponent(widget.name);
-      String locationBias = '';
+      final queryParams = {
+        'input': widget.name,
+        'inputtype': 'textquery',
+        'fields': 'place_id',
+      };
       if (widget.latitude != null && widget.longitude != null) {
-        locationBias = '&locationbias=circle:5000@${widget.latitude},${widget.longitude}';
+        queryParams['locationbias'] = 'circle:5000@${widget.latitude},${widget.longitude}';
       }
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/findplacefromtext/json'
-        '?input=$query&inputtype=textquery&fields=place_id$locationBias'
-        '&key=${ApiConstants.googleMapsApiKey}',
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
+        queryParameters: queryParams,
       );
-      final response = await http.get(url);
-      final candidates = jsonDecode(response.body)['candidates'] as List?;
+      final candidates = response.data['candidates'] as List?;
       return candidates?.isNotEmpty == true ? candidates![0]['place_id'] as String? : null;
     } catch (_) {
       return null;

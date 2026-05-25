@@ -5,5 +5,6 @@ from app.models.review import Review
 from app.models.itinerary import Itinerary
 from app.models.media import Media
 from app.models.budget import Budget, Expense
+from app.models.system_setting import SystemSetting, ApiRequestLog
 
-__all__ = ["User", "Attraction", "Category", "Review", "Itinerary", "Media", "Budget", "Expense"]
+__all__ = ["User", "Attraction", "Category", "Review", "Itinerary", "Media", "Budget", "Expense", "SystemSetting", "ApiRequestLog"]

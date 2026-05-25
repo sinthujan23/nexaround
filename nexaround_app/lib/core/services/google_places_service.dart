@@ -1,19 +1,15 @@
 import 'dart:convert';
 import 'dart:math' as math;
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 
 /// Service to fetch real place data from Google Maps Places API
-/// and reverse-geocode current location.
+/// and reverse-geocode current location via backend proxy.
 class GooglePlacesService {
-  static final Dio _dio = Dio();
-  static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
-  static const String _apiKey = ApiConstants.googleMapsApiKey;
-
   // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
     'Attractions': 'tourist_attraction',
@@ -28,12 +24,10 @@ class GooglePlacesService {
   /// Reverse-geocode lat/lng to a human-readable location name
   static Future<String> reverseGeocode(double lat, double lng) async {
     try {
-      final response = await _dio.get(
-        '$_baseUrl/geocode/json',
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/geocode/json',
         queryParameters: {
           'latlng': '$lat,$lng',
-          'key': _apiKey,
-          // Removed result_type to get EVERYTHING including specific premises/neighborhoods
         },
       );
 
@@ -41,23 +35,17 @@ class GooglePlacesService {
         print('❌ Google Reverse Geocode API Error: ${response.data['error_message'] ?? response.data['status']}');
         print('Full Response Body: ${response.data}');
       } else {
-        print('✅ Google Reverse Geocode Success: ${response.data['status']}');
+        print('Base API Reverse Geocode Success: ${response.data['status']}');
       }
 
       final results = response.data['results'] as List;
       if (results.isNotEmpty) {
-        String? sublocality;
-        String? neighborhood;
-        String? locality;
-        String? city;
-
-        // 1. UBER/PICKME STYLE SEARCH: Look for Neighborhood or Sublocality first
+        // Look for Neighborhood or Sublocality first (high specificity)
         for (var result in results) {
           final components = result['address_components'] as List;
           for (final comp in components) {
             final types = (comp['types'] as List).cast<String>();
             
-            // Priority Types for high-specificity (Like Uber/PickMe)
             if (types.contains('neighborhood') || 
                 types.contains('sublocality_level_1') ||
                 types.contains('sublocality') ||
@@ -66,14 +54,14 @@ class GooglePlacesService {
               
               final name = comp['long_name'];
               if (name != null && name.isNotEmpty) {
-                print('🚀 PICKME STYLE LOCATION: $name');
+                print('🚀 SPECIFIC LOCALITY: $name');
                 return name;
               }
             }
           }
         }
 
-        // 2. TOWN/CITY SEARCH: If neighborhood is missing, look for Locality
+        // Town/city search
         for (var result in results) {
           final components = result['address_components'] as List;
           for (final comp in components) {
@@ -88,7 +76,6 @@ class GooglePlacesService {
           }
         }
 
-        // 3. FINAL FALLBACK: Street Name or District
         final fallback = results[0]['formatted_address']?.split(',')[0];
         if (fallback != null && fallback.isNotEmpty) return fallback;
         
@@ -102,14 +89,12 @@ class GooglePlacesService {
   }
 
   /// Fetch nearby places from Google Places API (Nearby Search)
-  /// For Food & Drink: uses intelligent multi-query to capture ALL food spots
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
     required double longitude,
     String? categoryName,
     int radius = 5000,
   }) async {
-    // Round to 3 decimal places for reasonable cache hits (~110m accuracy)
     final cacheKey = 'places_${latitude.toStringAsFixed(3)}_${longitude.toStringAsFixed(3)}_${categoryName ?? "all"}_rad$radius';
     
     // Check Cache
@@ -124,7 +109,6 @@ class GooglePlacesService {
           timestamp = decodedJson['timestamp'] ?? 0;
           decodedList = decodedJson['data'] ?? [];
         } else if (decodedJson is List) {
-          // Backward compatibility for old cache format
           decodedList = decodedJson;
         } else {
           throw const FormatException('Unknown cache format');
@@ -134,12 +118,10 @@ class GooglePlacesService {
         debugPrint('🚀 [CACHE] Instant Places Load: ${cachedModels.length} items');
         
         final now = DateTime.now().millisecondsSinceEpoch;
-        // Only refresh if cache is older than 12 hours (43,200,000 milliseconds)
+        // Only refresh if cache is older than 12 hours
         if (now - timestamp > 43200000) {
-          debugPrint('♻️ Cache expired or old format. Triggering background refresh.');
+          debugPrint('♻️ Cache expired. Triggering background refresh.');
           _refreshPlacesInBackground(latitude, longitude, categoryName, radius, cacheKey);
-        } else {
-          debugPrint('🚀 [CACHE] Cache is fresh (age < 12h), skipping API request');
         }
         return cachedModels;
       } catch (e) {
@@ -152,7 +134,7 @@ class GooglePlacesService {
 
   static void _refreshPlacesInBackground(double lat, double lng, String? cat, int rad, String key) async {
     try {
-      final fresh = await _performFetchNearby(lat, lng, cat, rad, key);
+      await _performFetchNearby(lat, lng, cat, rad, key);
       debugPrint('♻️ [CACHE] Background Places Refresh Complete');
     } catch (e) {
       debugPrint('[CACHE] Refresh failed: $e');
@@ -167,31 +149,22 @@ class GooglePlacesService {
     String cacheKey,
   ) async {
     try {
-      // ═══════════════════════════════════════
-      // INTELLIGENT FOOD DISCOVERY ENGINE
-      // Fire multiple parallel queries to capture every food spot
-      // ═══════════════════════════════════════
+      // Food & Drink Discovery Engine (parallel queries)
       if (categoryName == 'Food & Drink') {
-        const int foodRadius = 10000; // 10km strict limit
+        const int foodRadius = 10000;
         final foodTypes = ['restaurant'];
         
-        // Fire all 3 queries in parallel for speed
-        final futures = foodTypes.map((type) => _dio.get(
-          '$_baseUrl/place/nearbysearch/json',
+        final futures = foodTypes.map((type) => ApiClient.instance.get(
+          '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
           queryParameters: {
             'location': '$latitude,$longitude',
             'radius': foodRadius,
             'type': type,
-            'key': _apiKey,
           },
         ));
         
         final responses = await Future.wait(futures);
-        
-        // Merge all results and deduplicate by place_id
         final Map<String, dynamic> uniquePlaces = {};
-        
-        // Strict food types that Google assigns to genuine food places
         const foodTypeWhitelist = {
           'restaurant', 'cafe', 'food', 'bakery', 'bar',
           'meal_takeaway', 'meal_delivery',
@@ -204,7 +177,6 @@ class GooglePlacesService {
               final id = place['place_id'] ?? '';
               if (id.isEmpty || uniquePlaces.containsKey(id)) continue;
               
-              // STRICT VALIDATION: Only accept if Google types contain a food type
               final types = (place['types'] as List?)?.cast<String>() ?? [];
               final isFood = types.any((t) => foodTypeWhitelist.contains(t));
               
@@ -215,17 +187,14 @@ class GooglePlacesService {
           }
         }
         
-        print('🍽 Intelligent Food Discovery: ${uniquePlaces.length} verified food spots found');
+        print('🍽 Food Discovery: ${uniquePlaces.length} food spots found');
         
-        // Convert to models, calculate distance, sort by proximity
         final models = uniquePlaces.values.map((place) => _placeToModel(
           place, latitude, longitude, categoryName,
         )).toList();
         
-        // Sort by distance (nearest first)
         models.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
         
-        // Cache the result (as JSON strings of models)
         CacheService.saveUserData(
           cacheKey, 
           json.encode({
@@ -237,20 +206,16 @@ class GooglePlacesService {
         return models;
       }
 
-      // ═══════════════════════════════════════
-      // INTELLIGENT BEACH DISCOVERY ENGINE
-      // Fire query for keyword beach up to 50km
-      // ═══════════════════════════════════════
+      // Beach Discovery Engine
       if (categoryName == 'Beach') {
         final int beachRadius = radius > 20000 ? radius : 50000;
         
-        final response = await _dio.get(
-          '$_baseUrl/place/nearbysearch/json',
+        final response = await ApiClient.instance.get(
+          '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
           queryParameters: {
             'location': '$latitude,$longitude',
             'radius': beachRadius,
             'keyword': 'beach',
-            'key': _apiKey,
           },
         );
         
@@ -264,7 +229,7 @@ class GooglePlacesService {
           }
         }
         
-        print('🏖 Intelligent Beach Discovery: ${uniquePlaces.length} beaches found');
+        print('🏖 Beach Discovery: ${uniquePlaces.length} beaches found');
         
         final models = uniquePlaces.values.map((place) => _placeToModel(
           place, latitude, longitude, 'Nature',
@@ -282,9 +247,7 @@ class GooglePlacesService {
         return models;
       }
 
-      // ═══════════════════════════════════════
-      // STANDARD QUERY FOR OTHER CATEGORIES
-      // ═══════════════════════════════════════
+      // Standard query
       String type = 'point_of_interest';
       if (categoryName != null && categoryTypeMap.containsKey(categoryName)) {
         type = categoryTypeMap[categoryName]!;
@@ -293,7 +256,6 @@ class GooglePlacesService {
       final Map<String, dynamic> queryParams = {
         'location': '$latitude,$longitude',
         'radius': radius,
-        'key': _apiKey,
         'rankby': 'prominence',
       };
 
@@ -303,15 +265,15 @@ class GooglePlacesService {
         queryParams['type'] = type;
       }
 
-      final response = await _dio.get(
-        '$_baseUrl/place/nearbysearch/json',
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
         queryParameters: queryParams,
       );
 
       if (response.data['status'] != 'OK' && response.data['status'] != 'ZERO_RESULTS') {
-        print('❌ Google Places API Error: ${response.data['error_message'] ?? response.data['status']}');
+        print('❌ Google Places Proxy Error: ${response.data['error_message'] ?? response.data['status']}');
       } else {
-        print('✅ Google Places Success: ${response.data['status']} (${(response.data['results'] as List).length} results)');
+        print('✅ Google Places Proxy Success: ${response.data['status']} (${(response.data['results'] as List).length} results)');
       }
 
       final results = response.data['results'] as List;
@@ -319,7 +281,6 @@ class GooglePlacesService {
         place, latitude, longitude, categoryName,
       )).toList();
 
-      // Cache the result
       CacheService.saveUserData(
         cacheKey, 
         json.encode({
@@ -349,8 +310,9 @@ class GooglePlacesService {
     List<String> photoUrls = [];
     if (photos != null && photos.isNotEmpty) {
       final photoRef = photos[0]['photo_reference'];
+      // Use Backend Photo Proxy URL (keeps API Key secure)
       photoUrls = [
-        '$_baseUrl/place/photo?maxwidth=800&photo_reference=$photoRef&key=$_apiKey'
+        '${ApiConstants.baseUrl}${ApiConstants.googleMapsProxy}/place/photo?maxwidth=800&photo_reference=$photoRef'
       ];
     }
 

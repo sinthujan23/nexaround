@@ -26,6 +26,7 @@ import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
@@ -129,18 +130,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     setState(() => _isLoadingEmergency = true);
 
     try {
-      // Fetch nearby hospitals via Google Places API
+      // Fetch nearby hospitals via Google Places API proxy
       final lat = _currentPosition!.latitude;
       final lng = _currentPosition!.longitude;
-      final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/place/nearbysearch/json'
-        '?location=$lat,$lng&radius=5000&type=hospital'
-        '&key=${ApiConstants.googleMapsApiKey}',
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
+        queryParameters: {
+          'location': '$lat,$lng',
+          'radius': 5000,
+          'type': 'hospital',
+        },
       );
-      final response = await http.get(url);
       final List<Map<String, dynamic>> hospitals = [];
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
+        final data = response.data;
         final results = data['results'] as List? ?? [];
         for (final place in results.take(5)) {
           final placeLocation = place['geometry']?['location'];

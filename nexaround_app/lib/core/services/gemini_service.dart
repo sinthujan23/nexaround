@@ -1,15 +1,13 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 
 class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
   factory GeminiService() => _instance;
   GeminiService._internal();
-
-  static const String _modelName = 'gemini-2.5-flash';
-  static const String _baseUrl = 'https://generativelanguage.googleapis.com/v1beta/models';
 
   /// Text-only prompt
   Future<String> getResponse(
@@ -20,7 +18,7 @@ class GeminiService {
     int? maxOutputTokens,
     String? responseMimeType,
   }) async {
-    final url = Uri.parse('$_baseUrl/$_modelName:generateContent?key=${ApiConstants.geminiApiKey}');
+    final path = ApiConstants.geminiProxy;
 
     final Map<String, dynamic> requestBody = {
       "contents": [
@@ -44,32 +42,26 @@ class GeminiService {
     if (responseMimeType != null) generationConfig["responseMimeType"] = responseMimeType;
     if (generationConfig.isNotEmpty) requestBody["generationConfig"] = generationConfig;
 
-    final body = jsonEncode(requestBody);
-
     try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': ApiConstants.geminiApiKey,
-        },
-        body: body,
+      final response = await ApiClient.instance.post(
+        path,
+        data: requestBody,
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['candidates'] != null && data['candidates'].isNotEmpty) {
+        final data = response.data;
+        if (data != null && data['candidates'] != null && data['candidates'].isNotEmpty) {
           final text = data['candidates'][0]['content']['parts'][0]['text'];
           print('✅ Gemini Response: $text');
           return text;
         }
         return "No response text found.";
       } else {
-        print('❌ Gemini API Error: ${response.statusCode} - ${response.body}');
+        print('❌ Gemini Proxy API Error: ${response.statusCode} - ${response.data}');
         return "I'm having a bit of trouble connecting to my central processing. Status: ${response.statusCode}";
       }
     } catch (e) {
-      print('❌ Gemini Exception: $e');
+      print('❌ Gemini Proxy Exception: $e');
       return "An unexpected error occurred while talking to Neva: $e";
     }
   }
@@ -80,8 +72,7 @@ class GeminiService {
     required double latitude,
     required double longitude,
   }) async {
-    final url = Uri.parse('$_baseUrl/$_modelName:generateContent?key=${ApiConstants.geminiApiKey}');
-
+    final path = ApiConstants.geminiProxy;
     final base64Image = base64Encode(imageBytes);
 
     final prompt = '''You are NexAround's AI travel assistant "Neva". Analyze this image taken at GPS coordinates ($latitude, $longitude).
@@ -111,7 +102,7 @@ RESPOND IN THIS EXACT JSON FORMAT (no markdown, no code blocks):
 
 If you cannot confidently identify the place, set "identified" to false and describe what you see (e.g., "Modern office building with glass facade").''';
 
-    final body = jsonEncode({
+    final requestBody = {
       "contents": [
         {
           "parts": [
@@ -129,32 +120,28 @@ If you cannot confidently identify the place, set "identified" to false and desc
         "temperature": 0.4,
         "maxOutputTokens": 1024,
       }
-    });
+    };
 
     try {
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': ApiConstants.geminiApiKey,
-        },
-        body: body,
+      final response = await ApiClient.instance.post(
+        path,
+        data: requestBody,
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['candidates'] != null && data['candidates'].isNotEmpty) {
+        final data = response.data;
+        if (data != null && data['candidates'] != null && data['candidates'].isNotEmpty) {
           final text = data['candidates'][0]['content']['parts'][0]['text'];
-          print('✅ Gemini Vision Response: $text');
+          print('✅ Gemini Proxy Vision Response: $text');
           return text;
         }
         return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "Could not process the image.", "fun_fact": "", "tips": ""}';
       } else {
-        print('❌ Gemini Vision Error: ${response.statusCode} - ${response.body}');
+        print('❌ Gemini Proxy Vision Error: ${response.statusCode} - ${response.data}');
         return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "API error: ${response.statusCode}", "fun_fact": "", "tips": ""}';
       }
     } catch (e) {
-      print('❌ Gemini Vision Exception: $e');
+      print('❌ Gemini Proxy Vision Exception: $e');
       return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "Error: $e", "fun_fact": "", "tips": ""}';
     }
   }

@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,10 +9,12 @@ from sqlalchemy import select, func, desc
 from app.core.database import get_db
 from app.services.user_service import UserService
 from app.services.attraction_service import AttractionService
+from app.services.settings_service import SettingsService
 from app.schemas.user import UserResponse
 from app.schemas.attraction import AttractionResponse, AttractionListResponse, AttractionCreate
 from app.models.user import User
 from app.models.attraction import Attraction
+from app.models.system_setting import ApiRequestLog
 
 router = APIRouter(prefix="/admin", tags=["Admin REST API"])
 
@@ -30,6 +32,12 @@ class AdminLoginRequest(BaseModel):
 class AdminLoginResponse(BaseModel):
     token: str
 
+class ApiUsageStats(BaseModel):
+    name: str
+    total: str
+    color: str
+    data: List[int]
+
 class AdminDashboardStats(BaseModel):
     explorers_count: int
     attractions_count: int
@@ -37,11 +45,28 @@ class AdminDashboardStats(BaseModel):
     monthly_revenue: float
     growth_data: List[int]
     recent_activity: List[dict]
+    api_usage: List[ApiUsageStats]
 
 class AnnouncementRequest(BaseModel):
     title: str
     message: str
     target_plan: str
+
+class SettingsResponse(BaseModel):
+    platform_name: str
+    contact_email: str
+    google_maps_api_key: str
+    mapbox_access_token: str
+    gemini_api_key: str
+    default_geofence_radius: str
+
+class SettingsUpdateRequest(BaseModel):
+    platform_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    google_maps_api_key: Optional[str] = None
+    mapbox_access_token: Optional[str] = None
+    gemini_api_key: Optional[str] = None
+    default_geofence_radius: Optional[str] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -139,13 +164,64 @@ async def get_dashboard_stats(
     activity_items.sort(key=lambda x: x["timestamp"], reverse=True)
     recent_activity = activity_items[:6]  # Top 6 latest activities
 
+    # 7. Real API usage stats
+    today = date.today()
+    days = [today - timedelta(days=i) for i in range(6, -1, -1)]
+
+    api_chart_data = {}
+    for api in ["google_maps", "mapbox", "gemini"]:
+        # get total
+        total_stmt = select(func.count(ApiRequestLog.id)).where(ApiRequestLog.api_name == api)
+        total_res = await db.execute(total_stmt)
+        total_count = total_res.scalar_one_or_none() or 0
+
+        # get daily data
+        daily_counts = []
+        for d in days:
+            start_dt = datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc)
+            end_dt = datetime.combine(d, datetime.max.time(), tzinfo=timezone.utc)
+            daily_stmt = select(func.count(ApiRequestLog.id)).where(
+                ApiRequestLog.api_name == api,
+                ApiRequestLog.timestamp >= start_dt,
+                ApiRequestLog.timestamp <= end_dt
+            )
+            daily_res = await db.execute(daily_stmt)
+            daily_counts.append(daily_res.scalar_one_or_none() or 0)
+
+        api_chart_data[api] = {
+            "total": total_count,
+            "data": daily_counts
+        }
+
+    api_usage = [
+        ApiUsageStats(
+            name="Google Maps API",
+            total=f"{api_chart_data['google_maps']['total']:,}",
+            color="#4285F4",
+            data=api_chart_data['google_maps']['data']
+        ),
+        ApiUsageStats(
+            name="Mapbox API",
+            total=f"{api_chart_data['mapbox']['total']:,}",
+            color="#4264fb",
+            data=api_chart_data['mapbox']['data']
+        ),
+        ApiUsageStats(
+            name="Gemini API",
+            total=f"{api_chart_data['gemini']['total']:,}",
+            color="#8e24aa",
+            data=api_chart_data['gemini']['data']
+        )
+    ]
+
     return AdminDashboardStats(
         explorers_count=explorers_count,
         attractions_count=attractions_count,
         pending_approvals_count=pending_approvals_count,
         monthly_revenue=monthly_revenue,
         growth_data=growth_data,
-        recent_activity=recent_activity
+        recent_activity=recent_activity,
+        api_usage=api_usage
     )
 
 
@@ -320,3 +396,51 @@ async def post_system_announcement(
         "status": "success",
         "message": f"Announcement successfully broadcast to all '{data.target_plan}' subscribers."
     }
+
+
+@router.get("/settings", response_model=SettingsResponse)
+async def get_admin_settings(
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Retrieve current platform settings and API keys."""
+    service = SettingsService(db)
+    return SettingsResponse(
+        platform_name=await service.get_setting("platform_name", "NexARound"),
+        contact_email=await service.get_setting("contact_email", "support@nexaround.com"),
+        google_maps_api_key=await service.get_setting("google_maps_api_key", ""),
+        mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
+        gemini_api_key=await service.get_setting("gemini_api_key", ""),
+        default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
+    )
+
+
+@router.put("/settings", response_model=SettingsResponse)
+async def update_admin_settings(
+    data: SettingsUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Update platform settings and API keys."""
+    service = SettingsService(db)
+    if data.platform_name is not None:
+        await service.set_setting("platform_name", data.platform_name, "Platform display name")
+    if data.contact_email is not None:
+        await service.set_setting("contact_email", data.contact_email, "Support contact email")
+    if data.google_maps_api_key is not None:
+        await service.set_setting("google_maps_api_key", data.google_maps_api_key, "Google Maps API Key")
+    if data.mapbox_access_token is not None:
+        await service.set_setting("mapbox_access_token", data.mapbox_access_token, "Mapbox Public Access Token")
+    if data.gemini_api_key is not None:
+        await service.set_setting("gemini_api_key", data.gemini_api_key, "Gemini Generative AI Key")
+    if data.default_geofence_radius is not None:
+        await service.set_setting("default_geofence_radius", data.default_geofence_radius, "Default Geofence Radius in meters")
+        
+    return SettingsResponse(
+        platform_name=await service.get_setting("platform_name", "NexARound"),
+        contact_email=await service.get_setting("contact_email", "support@nexaround.com"),
+        google_maps_api_key=await service.get_setting("google_maps_api_key", ""),
+        mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
+        gemini_api_key=await service.get_setting("gemini_api_key", ""),
+        default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
+    )
