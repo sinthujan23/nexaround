@@ -32,11 +32,6 @@ jobs:
           flutter pub get
           flutter precache --ios
 
-      - name: Install CocoaPods
-        working-directory: nexaround_app/ios
-        run: |
-          pod install
-
       - name: Install Apple Certificate and Provisioning Profile
         if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
         run: |
