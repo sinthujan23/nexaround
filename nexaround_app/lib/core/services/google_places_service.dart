@@ -88,279 +88,35 @@ class GooglePlacesService {
     }
   }
 
-  /// Fetch nearby places from Google Places API (Nearby Search)
+  /// Fetch nearby places from backend cached Places API
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
     required double longitude,
     String? categoryName,
     int radius = 5000,
   }) async {
-    final cacheKey = 'places_${latitude.toStringAsFixed(3)}_${longitude.toStringAsFixed(3)}_${categoryName ?? "all"}_rad$radius';
-    
-    // Check Cache
-    final cachedData = CacheService.getUserData(cacheKey);
-    if (cachedData != null) {
-      try {
-        final decodedJson = json.decode(cachedData);
-        List<dynamic> decodedList;
-        int timestamp = 0;
-        
-        if (decodedJson is Map<String, dynamic>) {
-          timestamp = decodedJson['timestamp'] ?? 0;
-          decodedList = decodedJson['data'] ?? [];
-        } else if (decodedJson is List) {
-          decodedList = decodedJson;
-        } else {
-          throw const FormatException('Unknown cache format');
-        }
-
-        final cachedModels = decodedList.map((p) => AttractionModel.fromJson(p)).toList();
-        debugPrint('🚀 [CACHE] Instant Places Load: ${cachedModels.length} items');
-        
-        final now = DateTime.now().millisecondsSinceEpoch;
-        // Only refresh if cache is older than 12 hours
-        if (now - timestamp > 43200000) {
-          debugPrint('♻️ Cache expired. Triggering background refresh.');
-          _refreshPlacesInBackground(latitude, longitude, categoryName, radius, cacheKey);
-        }
-        return cachedModels;
-      } catch (e) {
-        debugPrint('[CACHE] Places Error: $e');
-      }
-    }
-
-    return _performFetchNearby(latitude, longitude, categoryName, radius, cacheKey);
-  }
-
-  static void _refreshPlacesInBackground(double lat, double lng, String? cat, int rad, String key) async {
     try {
-      await _performFetchNearby(lat, lng, cat, rad, key);
-      debugPrint('♻️ [CACHE] Background Places Refresh Complete');
-    } catch (e) {
-      debugPrint('[CACHE] Refresh failed: $e');
-    }
-  }
-
-  static Future<List<AttractionEntity>> _performFetchNearby(
-    double latitude,
-    double longitude,
-    String? categoryName,
-    int radius,
-    String cacheKey,
-  ) async {
-    try {
-      // Food & Drink Discovery Engine (parallel queries)
-      if (categoryName == 'Food & Drink') {
-        const int foodRadius = 10000;
-        final foodTypes = ['restaurant'];
-        
-        final futures = foodTypes.map((type) => ApiClient.instance.get(
-          '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
-          queryParameters: {
-            'location': '$latitude,$longitude',
-            'radius': foodRadius,
-            'type': type,
-          },
-        ));
-        
-        final responses = await Future.wait(futures);
-        final Map<String, dynamic> uniquePlaces = {};
-        const foodTypeWhitelist = {
-          'restaurant', 'cafe', 'food', 'bakery', 'bar',
-          'meal_takeaway', 'meal_delivery',
-        };
-        
-        for (final response in responses) {
-          if (response.data['status'] == 'OK') {
-            final results = response.data['results'] as List;
-            for (final place in results) {
-              final id = place['place_id'] ?? '';
-              if (id.isEmpty || uniquePlaces.containsKey(id)) continue;
-              
-              final types = (place['types'] as List?)?.cast<String>() ?? [];
-              final isFood = types.any((t) => foodTypeWhitelist.contains(t));
-              
-              if (isFood) {
-                uniquePlaces[id] = place;
-              }
-            }
-          }
-        }
-        
-        print('🍽 Food Discovery: ${uniquePlaces.length} food spots found');
-        
-        final models = uniquePlaces.values.map((place) => _placeToModel(
-          place, latitude, longitude, categoryName,
-        )).toList();
-        
-        models.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-        
-        CacheService.saveUserData(
-          cacheKey, 
-          json.encode({
-            'timestamp': DateTime.now().millisecondsSinceEpoch,
-            'data': models.map((m) => (m as AttractionModel).toJson()).toList(),
-          }),
-        );
-        
-        return models;
-      }
-
-      // Beach Discovery Engine
-      if (categoryName == 'Beach') {
-        final int beachRadius = radius > 20000 ? radius : 50000;
-        
-        final response = await ApiClient.instance.get(
-          '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
-          queryParameters: {
-            'location': '$latitude,$longitude',
-            'radius': beachRadius,
-            'keyword': 'beach',
-          },
-        );
-        
-        final Map<String, dynamic> uniquePlaces = {};
-        if (response.data['status'] == 'OK') {
-          final results = response.data['results'] as List;
-          for (final place in results) {
-            final id = place['place_id'] ?? '';
-            if (id.isEmpty) continue;
-            uniquePlaces[id] = place;
-          }
-        }
-        
-        print('🏖 Beach Discovery: ${uniquePlaces.length} beaches found');
-        
-        final models = uniquePlaces.values.map((place) => _placeToModel(
-          place, latitude, longitude, 'Nature',
-        )).toList();
-        
-        models.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-        
-        CacheService.saveUserData(
-          cacheKey, 
-          json.encode({
-            'timestamp': DateTime.now().millisecondsSinceEpoch,
-            'data': models.map((m) => (m as AttractionModel).toJson()).toList(),
-          }),
-        );
-        return models;
-      }
-
-      // Standard query
-      String type = 'point_of_interest';
-      if (categoryName != null && categoryTypeMap.containsKey(categoryName)) {
-        type = categoryTypeMap[categoryName]!;
-      }
-
-      final Map<String, dynamic> queryParams = {
-        'location': '$latitude,$longitude',
-        'radius': radius,
-        'rankby': 'prominence',
-      };
-
-      if (categoryName == 'Medical') {
-        queryParams['keyword'] = 'medical hospital pharmacy clinic doctor';
-      } else {
-        queryParams['type'] = type;
-      }
-
       final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
-        queryParameters: queryParams,
+        '/places/nearby',
+        queryParameters: {
+          'lat': latitude,
+          'lng': longitude,
+          'category': categoryName,
+          'radius': radius,
+        },
       );
 
-      if (response.data['status'] != 'OK' && response.data['status'] != 'ZERO_RESULTS') {
-        print('❌ Google Places Proxy Error: ${response.data['error_message'] ?? response.data['status']}');
-      } else {
-        print('✅ Google Places Proxy Success: ${response.data['status']} (${(response.data['results'] as List).length} results)');
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List<dynamic> placesList = data['places'] as List? ?? [];
+        final models = placesList.map((p) => AttractionModel.fromJson(p)).toList();
+        print('✅ Places fetched from backend: ${models.length} items (Source: ${data['source']})');
+        return models;
       }
-
-      final results = response.data['results'] as List;
-      final models = results.take(40).map((place) => _placeToModel(
-        place, latitude, longitude, categoryName,
-      )).toList();
-
-      CacheService.saveUserData(
-        cacheKey, 
-        json.encode({
-          'timestamp': DateTime.now().millisecondsSinceEpoch,
-          'data': models.map((m) => m.toJson()).toList(),
-        }),
-      );
-      
-      return models;
+      return [];
     } catch (e) {
-      debugPrint('Google Places API error: $e');
+      debugPrint('Error fetching nearby places from backend: $e');
       return [];
     }
   }
-
-  /// Convert a raw Google Places JSON result into an AttractionModel
-  static AttractionModel _placeToModel(
-    dynamic place, double originLat, double originLng, String? categoryName,
-  ) {
-    final location = place['geometry']['location'];
-    final double placeLat = (location['lat'] as num).toDouble();
-    final double placeLng = (location['lng'] as num).toDouble();
-    
-    final distanceM = _calculateDistance(originLat, originLng, placeLat, placeLng);
-
-    final photos = place['photos'] as List?;
-    List<String> photoUrls = [];
-    if (photos != null && photos.isNotEmpty) {
-      final photoRef = photos[0]['photo_reference'];
-      // Use Backend Photo Proxy URL (keeps API Key secure)
-      photoUrls = [
-        '${ApiConstants.baseUrl}${ApiConstants.googleMapsProxy}/place/photo?maxwidth=800&photo_reference=$photoRef'
-      ];
-    }
-
-    final types = (place['types'] as List?)?.cast<String>() ?? [];
-    String resolvedCategory = categoryName ?? _resolveCategoryFromTypes(types);
-
-    return AttractionModel(
-      id: place['place_id'] ?? '',
-      name: place['name'] ?? 'Unknown',
-      description: place['vicinity'] ?? '',
-      latitude: placeLat,
-      longitude: placeLng,
-      categoryName: resolvedCategory,
-      address: place['vicinity'] ?? '',
-      rating: (place['rating'] as num?)?.toDouble() ?? 0.0,
-      reviewCount: place['user_ratings_total'] as int? ?? 0,
-      photoUrls: photoUrls,
-      tags: types,
-      distanceM: distanceM,
-      isActive: (place['business_status'] ?? 'OPERATIONAL') == 'OPERATIONAL',
-      createdAt: DateTime.now(),
-    );
-  }
-
-  /// Get the human-readable category from Google types
-  static String _resolveCategoryFromTypes(List<String> types) {
-    if (types.contains('lodging')) return 'Hotels';
-    if (types.contains('restaurant') || types.contains('food') || types.contains('cafe') || types.contains('bar')) return 'Food & Drink';
-    if (types.contains('park') || types.contains('campground') || types.contains('natural_feature')) return 'Nature';
-    if (types.contains('tourist_attraction') || types.contains('museum')) return 'Attractions';
-    if (types.contains('shopping_mall') || types.contains('store')) return 'Shopping';
-    return 'Attractions';
-  }
-
-  /// Haversine distance in meters
-  static double _calculateDistance(
-    double lat1, double lon1, double lat2, double lon2,
-  ) {
-    const double earthRadius = 6371000; // meters
-    final double dLat = _toRadians(lat2 - lat1);
-    final double dLon = _toRadians(lon2 - lon1);
-    final double a =
-        math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) *
-        math.sin(dLon / 2) * math.sin(dLon / 2);
-    final double c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
-    return earthRadius * c;
-  }
-
-  static double _toRadians(double deg) => deg * math.pi / 180;
 }
