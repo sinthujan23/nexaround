@@ -17,14 +17,16 @@ class PlaceImageHelper {
   }) {
     Widget imageWidget;
 
-    String? resolvedPath = imagePath;
-    if (resolvedPath != null && resolvedPath.startsWith('/')) {
-      resolvedPath = '${ApiConstants.baseUrl}$resolvedPath';
+    String? resolvedUrl = imagePath;
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
+      if (resolvedUrl.startsWith('/')) {
+        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
+      }
     }
 
-    if (resolvedPath != null && resolvedPath.isNotEmpty && resolvedPath != 'null' && resolvedPath.startsWith('http')) {
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
       imageWidget = CachedNetworkImage(
-        imageUrl: resolvedPath,
+        imageUrl: resolvedUrl,
         fit: fit,
         width: width,
         height: height,
@@ -55,12 +57,14 @@ class PlaceImageHelper {
 
   /// Gets an [ImageProvider] for a place. Useful for Map markers or decorations.
   static ImageProvider getImageProvider(String? imagePath, String category, String name) {
-    String? resolvedPath = imagePath;
-    if (resolvedPath != null && resolvedPath.startsWith('/')) {
-      resolvedPath = '${ApiConstants.baseUrl}$resolvedPath';
+    String? resolvedUrl = imagePath;
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
+      if (resolvedUrl.startsWith('/')) {
+        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
+      }
     }
-    if (resolvedPath != null && resolvedPath.isNotEmpty && resolvedPath != 'null' && resolvedPath.startsWith('http')) {
-      return CachedNetworkImageProvider(resolvedPath);
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
+      return CachedNetworkImageProvider(resolvedUrl);
     }
     return AssetImage(getAssetPath(category, name));
   }
