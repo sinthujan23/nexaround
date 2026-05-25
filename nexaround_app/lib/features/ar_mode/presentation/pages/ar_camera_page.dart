@@ -392,10 +392,38 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     super.dispose();
   }
 
+  void _exitRouteNavigation() async {
+    if (_arCoreController != null) {
+      _arCoreController = null;
+    }
+
+    setState(() {
+      _isNavigating = false;
+      _navigationTarget = null;
+      _walkingRoute = null;
+      _currentStepIndex = 0;
+      _hasArrivedAtDestination = false;
+      _arMode = 'explore';
+    });
+
+    // Give ARCore view a moment to unmount and release native camera lock
+    await Future.delayed(const Duration(milliseconds: 100));
+    await _initializeCamera();
+  }
+
   // ═══════════════════════════════════════════════════════════
   // ROUTE NAVIGATION — Fetch directions + start turn-by-turn
   // ═══════════════════════════════════════════════════════════
-  void _startRouteNavigation(_ArLandmark landmark) {
+  void _startRouteNavigation(_ArLandmark landmark) async {
+    // Release standard camera to avoid camera lock conflicts with ARCore
+    if (_controller != null) {
+      await _controller!.dispose();
+      _controller = null;
+      setState(() {
+        _isCameraReady = false;
+      });
+    }
+
     setState(() {
       _navigationTarget = landmark;
       _isNavigating = true;
@@ -2009,7 +2037,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   Widget _buildCameraBackground() {
-    if (defaultTargetPlatform == TargetPlatform.android) {
+    if (defaultTargetPlatform == TargetPlatform.android && _isNavigating) {
       return ArCoreView(
         onArCoreViewCreated: _onArCoreViewCreated,
         enableTapRecognizer: true,
@@ -4505,14 +4533,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                             Expanded(
                               flex: 3,
                               child: GestureDetector(
-                                onTap: () => setState(() {
-                                  _isNavigating = false;
-                                  _navigationTarget = null;
-                                  _walkingRoute = null;
-                                  _currentStepIndex = 0;
-                                  _hasArrivedAtDestination = false;
-                                  _arMode = 'explore';
-                                }),
+                                onTap: _exitRouteNavigation,
                                 child: Container(
                                   height: 52,
                                   decoration: BoxDecoration(
@@ -5200,13 +5221,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             ),
             const SizedBox(height: 32),
             GestureDetector(
-              onTap: () => setState(() {
-                _isNavigating = false;
-                _navigationTarget = null;
-                _walkingRoute = null;
-                _hasArrivedAtDestination = false;
-                _arMode = 'explore';
-              }),
+              onTap: _exitRouteNavigation,
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                 decoration: BoxDecoration(
