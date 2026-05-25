@@ -9,14 +9,7 @@
     <application
         android:label="nexaround_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:extractNativeLibs="true">
-        
-        <!-- Disable Impeller to fix black screen in ARCore -->
-        <meta-data
-            android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="false" />
-            
+        android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -52,9 +45,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <meta-data
-            android:name="com.google.ar.core"
-            android:value="optional" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

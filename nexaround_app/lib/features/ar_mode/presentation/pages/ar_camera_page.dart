@@ -23,9 +23,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
-import 'package:arcore_flutter_plus/arcore_flutter_plus.dart';
-import 'package:vector_math/vector_math_64.dart' as vector;
-import 'package:flutter/foundation.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -37,8 +34,6 @@ class ArCameraPage extends StatefulWidget {
 
 class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMixin {
   CameraController? _controller;
-  ArCoreController? _arCoreController;
-  double? _initialHeading;
   bool _isCameraReady = false;
   bool _initialPlaceTriggered = false;
   bool _showInfoCard = false;
@@ -286,10 +281,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         _rawHeading = raw;
         _compassAccuracy = accuracy;
         _heading = _smoothHeading(_heading, raw, _headingSmoothing);
-        if (_initialHeading == null && _heading != 0.0) {
-          _initialHeading = _heading;
-          _updateArCoreAnchors();
-        }
       });
     });
 
@@ -352,7 +343,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
           // Advance route steps based on GPS proximity
           _checkRouteStepAdvancement(pos);
-          _updateArCoreAnchors();
         }
       });
     });
@@ -386,44 +376,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _compassSubscription?.cancel();
     _positionSubscription?.cancel();
     _controller?.dispose();
-    _arCoreController?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
     super.dispose();
   }
 
-  void _exitRouteNavigation() async {
-    if (_arCoreController != null) {
-      _arCoreController = null;
-    }
-
-    setState(() {
-      _isNavigating = false;
-      _navigationTarget = null;
-      _walkingRoute = null;
-      _currentStepIndex = 0;
-      _hasArrivedAtDestination = false;
-      _arMode = 'explore';
-    });
-
-    // Give ARCore view a moment to unmount and release native camera lock
-    await Future.delayed(const Duration(milliseconds: 100));
-    await _initializeCamera();
-  }
-
   // ═══════════════════════════════════════════════════════════
   // ROUTE NAVIGATION — Fetch directions + start turn-by-turn
   // ═══════════════════════════════════════════════════════════
-  void _startRouteNavigation(_ArLandmark landmark) async {
-    // Release standard camera to avoid camera lock conflicts with ARCore
-    if (_controller != null) {
-      await _controller!.dispose();
-      _controller = null;
-      setState(() {
-        _isCameraReady = false;
-      });
-    }
-
+  void _startRouteNavigation(_ArLandmark landmark) {
     setState(() {
       _navigationTarget = landmark;
       _isNavigating = true;
@@ -433,9 +394,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       _walkingRoute = null;
       _currentStepIndex = 0;
       _hasArrivedAtDestination = false;
-      _initialHeading = _heading != 0.0 ? _heading : null;
     });
-    _updateArCoreAnchors();
 
     // Fetch walking route in background
     _fetchWalkingRoute(landmark);
@@ -460,7 +419,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         _currentStepIndex = 0;
         _isFetchingRoute = false;
       });
-      _updateArCoreAnchors();
       if (route != null) {
         debugPrint('✅ Route loaded: ${route.steps.length} steps, ${route.totalDistance}');
         HapticFeedback.mediumImpact();
@@ -492,13 +450,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (!isLastStep) {
         // Advance to next step
         setState(() => _currentStepIndex++);
-        _updateArCoreAnchors();
         HapticFeedback.heavyImpact();
         debugPrint('➡️ Step ${_currentStepIndex}/${steps.length}: ${steps[_currentStepIndex].instruction}');
       } else {
         // Arrived at destination!
         setState(() => _hasArrivedAtDestination = true);
-        _updateArCoreAnchors();
         HapticFeedback.vibrate();
         debugPrint('🏁 ARRIVED at ${_navigationTarget?.name}!');
       }
@@ -2037,14 +1993,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   Widget _buildCameraBackground() {
-    if (defaultTargetPlatform == TargetPlatform.android && _isNavigating) {
-      return ArCoreView(
-        onArCoreViewCreated: _onArCoreViewCreated,
-        enableTapRecognizer: true,
-        enablePlaneRenderer: true,
-      );
-    }
-
     if (!_isCameraReady || _controller == null) {
       return Container(
         color: Colors.black,
@@ -2064,83 +2012,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         ),
       ),
     );
-  }
-
-  void _onArCoreViewCreated(ArCoreController controller) {
-    _arCoreController = controller;
-    if (_heading != 0.0) {
-      _initialHeading = _heading;
-    }
-    _updateArCoreAnchors();
-  }
-
-  void _updateArCoreAnchors() {
-    final controller = _arCoreController;
-    if (controller == null) return;
-
-    try {
-      controller.removeNode(nodeName: "target_anchor");
-      controller.removeNode(nodeName: "chevron_1");
-      controller.removeNode(nodeName: "chevron_2");
-    } catch (_) {}
-
-    if (!_isNavigating || _navigationTarget == null) return;
-
-    final target = _navigationTarget!;
-    if (target.lat == null || target.lng == null) return;
-
-    final startHeading = _initialHeading ?? _heading;
-    if (startHeading == 0.0) return;
-    
-    // Calculate relative bearing to target
-    final targetAngle = _signedAngleDelta(startHeading, target.bearing);
-    final targetTheta = targetAngle * pi / 180;
-    
-    // Position target node: x = left/right, y = up/down, z = front/back
-    final targetPos = vector.Vector3(
-      8.0 * sin(targetTheta),
-      -0.5,
-      -8.0 * cos(targetTheta),
-    );
-
-    final targetMaterial = ArCoreMaterial(color: const Color(0xFF00E5FF));
-    final targetSphere = ArCoreSphere(materials: [targetMaterial], radius: 0.25);
-    final targetNode = ArCoreNode(
-      name: "target_anchor",
-      shape: targetSphere,
-      position: targetPos,
-    );
-    controller.addArCoreNode(targetNode);
-
-    // Chevron 1 at 3 meters
-    final routeAngle = _signedAngleDelta(startHeading, _activeNavBearing);
-    final routeTheta = routeAngle * pi / 180;
-    
-    final chevron1Pos = vector.Vector3(
-      3.0 * sin(routeTheta),
-      -0.7,
-      -3.0 * cos(routeTheta),
-    );
-    final chevronMaterial = ArCoreMaterial(color: const Color(0xFF00E5FF).withOpacity(0.8));
-    final chevronShape = ArCoreCylinder(materials: [chevronMaterial], radius: 0.1, height: 0.15);
-    final chevron1Node = ArCoreNode(
-      name: "chevron_1",
-      shape: chevronShape,
-      position: chevron1Pos,
-    );
-    controller.addArCoreNode(chevron1Node);
-
-    // Chevron 2 at 5.5 meters
-    final chevron2Node = ArCoreNode(
-      name: "chevron_2",
-      shape: chevronShape,
-      position: vector.Vector3(
-        5.5 * sin(routeTheta),
-        -0.6,
-        -5.5 * cos(routeTheta),
-      ),
-    );
-    controller.addArCoreNode(chevron2Node);
   }
 
   // Tracks how many markers are currently visible on screen
@@ -4533,7 +4404,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                             Expanded(
                               flex: 3,
                               child: GestureDetector(
-                                onTap: _exitRouteNavigation,
+                                onTap: () => setState(() {
+                                  _isNavigating = false;
+                                  _navigationTarget = null;
+                                  _walkingRoute = null;
+                                  _currentStepIndex = 0;
+                                  _hasArrivedAtDestination = false;
+                                  _arMode = 'explore';
+                                }),
                                 child: Container(
                                   height: 52,
                                   decoration: BoxDecoration(
@@ -5221,7 +5099,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             ),
             const SizedBox(height: 32),
             GestureDetector(
-              onTap: _exitRouteNavigation,
+              onTap: () => setState(() {
+                _isNavigating = false;
+                _navigationTarget = null;
+                _walkingRoute = null;
+                _hasArrivedAtDestination = false;
+                _arMode = 'explore';
+              }),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                 decoration: BoxDecoration(
