@@ -11,10 +11,6 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 
-/// Mapbox public access token for Directions API
-const String _mapboxToken =
-    'pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ';
-
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
   final double initialLng;

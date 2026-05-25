@@ -10,7 +10,7 @@ import 'dart:math' as math;
 class MapboxGeocodingService {
   static final Dio _dio = Dio();
   static const String _baseUrl = 'https://api.mapbox.com/geocoding/v5/mapbox.places';
-  static const String _accessToken = 'pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ';
+  static String get _accessToken => ApiConstants.mapboxAccessToken;
 
   /// Reverse-geocode lat/lng to a human-readable location name
   static Future<String> reverseGeocode(double lat, double lng) async {
