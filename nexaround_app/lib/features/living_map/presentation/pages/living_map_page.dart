@@ -341,50 +341,56 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildHeader() {
-    return Row(
-      children: [
-        Flexible(
-          child: GlassCard(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            borderRadius: BorderRadius.circular(100),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppColors.primaryGradient,
-                    boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+    return SizedBox(
+      height: 48,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Flexible(
+            child: GlassCard(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              borderRadius: BorderRadius.circular(100),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.primaryGradient,
+                      boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+                    ),
+                    child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
                   ),
-                  child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
-                ),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'EXPLORING',
-                        style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
-                      ),
-                      Text(
-                        _currentLocationName,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'EXPLORING',
+                          style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
+                        ),
+                        Text(
+                          _currentLocationName,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
-        const Spacer(),
-        _buildGlassCircle(Icons.notifications_none_rounded),
-      ],
+          const Spacer(),
+          _buildGlassCircle(Icons.notifications_none_rounded),
+        ],
+      ),
     );
   }
 

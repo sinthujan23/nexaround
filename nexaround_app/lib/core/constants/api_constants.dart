@@ -20,12 +20,6 @@ class ApiConstants {
   
   // Navigation endpoints
   static const String directions = '$apiVersion/navigation/directions';
-
-  // Places (server-side Google passthrough with shared Redis cache)
-  // Toggle to false to fall back to direct Google calls if the backend is down.
-  static const bool useBackendPlaces = true;
-  static const String placesNearby = '$apiVersion/places/nearby';
-  static const String placePhoto = '$apiVersion/places/photo';
   
   // Itinerary endpoints
   static const String itineraries = '$apiVersion/itineraries';

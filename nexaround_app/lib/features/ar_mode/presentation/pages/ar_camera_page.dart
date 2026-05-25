@@ -332,6 +332,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               bearing: bearing,
             );
             _distanceToTarget = distM;
+
+            // Straight-line arrival fallback: if within 2m, trigger arrival
+            if (distM <= 2.0 && !_hasArrivedAtDestination) {
+              setState(() => _hasArrivedAtDestination = true);
+              HapticFeedback.vibrate();
+              debugPrint('🏁 ARRIVED at ${_navigationTarget?.name} (straight-line within 2m)!');
+            }
           }
 
           // Advance route steps based on GPS proximity
@@ -435,8 +442,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       currentStep.endLat, currentStep.endLng,
     );
 
-    if (distToStepEnd <= _stepAdvanceThresholdM) {
-      if (_currentStepIndex < steps.length - 1) {
+    final isLastStep = _currentStepIndex == steps.length - 1;
+    // Standard steps advance at 15m, final step (arrival) triggers strictly at 2m
+    final threshold = isLastStep ? 2.0 : 15.0;
+
+    if (distToStepEnd <= threshold) {
+      if (!isLastStep) {
         // Advance to next step
         setState(() => _currentStepIndex++);
         HapticFeedback.heavyImpact();
@@ -633,7 +644,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   static const int _maxVisibleMarkers = 60;
   static const int _maxVisibleOnScreen = 8;
-  static const List<int> _searchRadii = [100, 1000, 2000, 5000, 10000, 20000];
+  static const List<int> _searchRadii = [100, 200, 500, 1000, 5000];
 
   Future<void> _fetchLivePlaces() async {
     if (!_isLocationGranted) return;
@@ -683,16 +694,19 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
-        if (collected.length >= _maxVisibleMarkers) break;
+        if (collected.length >= 10) {
+          debugPrint('📍 AR: Found ${collected.length} places (>= 10). Breaking search loop early to save API cost.');
+          break;
+        }
       }
 
-      // Dedicated Beach Query up to 50km to make sure beaches are always shown far away
+      // Dedicated Beach Query up to 25km to make sure beaches are always shown far away
       try {
-        debugPrint('🏖 AR: Querying Beaches up to 50km specifically...');
+        debugPrint('🏖 AR: Querying Beaches up to 25km specifically...');
         final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
           latitude: pos.latitude,
           longitude: pos.longitude,
-          radius: 50000,
+          radius: 25000,
           categoryName: 'Beach',
         );
 
@@ -700,6 +714,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (collected.any((l) => l.name == p.name)) continue;
 
           final rawDistM = (p.distanceM ?? 0).toDouble();
+          if (rawDistM > 25000) continue; // Limit beaches to a maximum of 25km
           final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
           final distKm = rawDistM / 1000;
           final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
@@ -726,12 +741,26 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         debugPrint('AR dedicated Beach fetch failed: $e');
       }
 
-      // Sort by distance (closest first)
-      collected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+      // Separate beaches and non-beaches to ensure beaches are never truncated
+      final beaches = collected.where((l) => 
+        l.category == 'NATURE' || 
+        l.name.toLowerCase().contains('beach') || 
+        l.tags.contains('beach')
+      ).toList();
       
-      if (collected.length > _maxVisibleMarkers) {
-        collected = collected.sublist(0, _maxVisibleMarkers);
-      }
+      final nonBeaches = collected.where((l) => !beaches.any((b) => b.name == l.name)).toList();
+      
+      // Sort non-beaches by distance and truncate
+      nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+      
+      final maxNonBeaches = _maxVisibleMarkers - beaches.length;
+      final truncatedNonBeaches = nonBeaches.take(maxNonBeaches > 40 ? maxNonBeaches : 40).toList();
+      
+      // Combine them and sort the final list by distance
+      final finalCollected = [...truncatedNonBeaches, ...beaches];
+      finalCollected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+      
+      collected = finalCollected;
 
       if (mounted) setState(() {
         _landmarks = collected;
@@ -4908,10 +4937,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             return const SizedBox.shrink();
           }(),
 
-          // DISTANCE HUD (Elevated to 310 to fit perfectly above the bottom merged card)
+          // DISTANCE HUD (Elevated to fit perfectly above the bottom merged card)
           if (!_hasArrivedAtDestination)
             Positioned(
-              bottom: 310,
+              bottom: _isNavigating ? 360 : 310,
               left: 0, right: 0,
               child: Column(
                 children: [
@@ -4927,42 +4956,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     'TO ${_navigationTarget!.name.toUpperCase()}',
                     style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 2,
                       shadows: [Shadow(color: Colors.black, blurRadius: 10)]),
-                  ),
-                  const SizedBox(height: 8),
-                  // Premium "TRAVELING..." Neon Pill with spinning progress ring
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: cyan.withOpacity(0.4), width: 1.2),
-                      boxShadow: [
-                        BoxShadow(color: cyan.withOpacity(0.15), blurRadius: 12),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 8,
-                          height: 8,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.5,
-                            color: cyan,
-                          ),
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          'TRAVELING...',
-                          style: TextStyle(
-                            color: cyan,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w900,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                   // Route overview (total distance + ETA)
                   if (hasRoute) ...[

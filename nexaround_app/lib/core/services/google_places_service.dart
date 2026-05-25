@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
-import 'package:nexaround_app/core/services/mapbox_geocoding_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 
@@ -14,11 +13,6 @@ class GooglePlacesService {
   static final Dio _dio = Dio();
   static const String _baseUrl = 'https://maps.googleapis.com/maps/api';
   static const String _apiKey = ApiConstants.googleMapsApiKey;
-
-  /// Stale-while-revalidate window. A cache hit younger than this returns
-  /// immediately and does NOT trigger a background refresh — that's what
-  /// keeps the bill flat.
-  static const Duration _cacheFreshness = Duration(hours: 24);
 
   // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
@@ -31,11 +25,80 @@ class GooglePlacesService {
     'Medical': 'hospital',
   };
 
-  /// Reverse-geocode lat/lng to a human-readable location name.
-  /// Delegates to Mapbox (100k/mo free) instead of Google Geocoding ($5/1k)
-  /// to keep cost down. Signature preserved so existing callers don't change.
-  static Future<String> reverseGeocode(double lat, double lng) {
-    return MapboxGeocodingService.reverseGeocode(lat, lng);
+  /// Reverse-geocode lat/lng to a human-readable location name
+  static Future<String> reverseGeocode(double lat, double lng) async {
+    try {
+      final response = await _dio.get(
+        '$_baseUrl/geocode/json',
+        queryParameters: {
+          'latlng': '$lat,$lng',
+          'key': _apiKey,
+          // Removed result_type to get EVERYTHING including specific premises/neighborhoods
+        },
+      );
+
+      if (response.data['status'] != 'OK' && response.data['status'] != 'ZERO_RESULTS') {
+        print('❌ Google Reverse Geocode API Error: ${response.data['error_message'] ?? response.data['status']}');
+        print('Full Response Body: ${response.data}');
+      } else {
+        print('✅ Google Reverse Geocode Success: ${response.data['status']}');
+      }
+
+      final results = response.data['results'] as List;
+      if (results.isNotEmpty) {
+        String? sublocality;
+        String? neighborhood;
+        String? locality;
+        String? city;
+
+        // 1. UBER/PICKME STYLE SEARCH: Look for Neighborhood or Sublocality first
+        for (var result in results) {
+          final components = result['address_components'] as List;
+          for (final comp in components) {
+            final types = (comp['types'] as List).cast<String>();
+            
+            // Priority Types for high-specificity (Like Uber/PickMe)
+            if (types.contains('neighborhood') || 
+                types.contains('sublocality_level_1') ||
+                types.contains('sublocality') ||
+                types.contains('premise') ||
+                types.contains('point_of_interest')) {
+              
+              final name = comp['long_name'];
+              if (name != null && name.isNotEmpty) {
+                print('🚀 PICKME STYLE LOCATION: $name');
+                return name;
+              }
+            }
+          }
+        }
+
+        // 2. TOWN/CITY SEARCH: If neighborhood is missing, look for Locality
+        for (var result in results) {
+          final components = result['address_components'] as List;
+          for (final comp in components) {
+            final types = (comp['types'] as List).cast<String>();
+            if (types.contains('locality') || types.contains('administrative_area_level_3')) {
+              final name = comp['long_name'];
+              if (name != null && name.isNotEmpty) {
+                print('📍 TOWN FOUND: $name');
+                return name;
+              }
+            }
+          }
+        }
+
+        // 3. FINAL FALLBACK: Street Name or District
+        final fallback = results[0]['formatted_address']?.split(',')[0];
+        if (fallback != null && fallback.isNotEmpty) return fallback;
+        
+        return 'Nearby';
+      }
+      return 'Nearby';
+    } catch (e) {
+      debugPrint('Reverse geocode error: $e');
+      return 'Nearby';
+    }
   }
 
   /// Fetch nearby places from Google Places API (Nearby Search)
@@ -48,25 +111,35 @@ class GooglePlacesService {
   }) async {
     // Round to 3 decimal places for reasonable cache hits (~110m accuracy)
     final cacheKey = 'places_${latitude.toStringAsFixed(3)}_${longitude.toStringAsFixed(3)}_${categoryName ?? "all"}_rad$radius';
-    final tsKey = '${cacheKey}_ts';
-
+    
+    // Check Cache
     final cachedData = CacheService.getUserData(cacheKey);
     if (cachedData != null) {
       try {
-        final List<dynamic> decoded = json.decode(cachedData);
-        final cachedModels = decoded.map((p) => AttractionModel.fromJson(p)).toList();
+        final decodedJson = json.decode(cachedData);
+        List<dynamic> decodedList;
+        int timestamp = 0;
+        
+        if (decodedJson is Map<String, dynamic>) {
+          timestamp = decodedJson['timestamp'] ?? 0;
+          decodedList = decodedJson['data'] ?? [];
+        } else if (decodedJson is List) {
+          // Backward compatibility for old cache format
+          decodedList = decodedJson;
+        } else {
+          throw const FormatException('Unknown cache format');
+        }
 
-        final tsStr = CacheService.getUserData(tsKey);
-        final ts = int.tryParse(tsStr ?? '') ?? 0;
-        final age = DateTime.now().millisecondsSinceEpoch - ts;
-        final isFresh = age < _cacheFreshness.inMilliseconds;
-
-        debugPrint('🚀 [CACHE] Places hit: ${cachedModels.length} items (${isFresh ? "fresh" : "stale"})');
-
-        // Only fire a paid refresh if the cache is past its freshness window.
-        // Fresh hits are free — that's the whole point.
-        if (!isFresh) {
-          _refreshPlacesInBackground(latitude, longitude, categoryName, radius, cacheKey, tsKey);
+        final cachedModels = decodedList.map((p) => AttractionModel.fromJson(p)).toList();
+        debugPrint('🚀 [CACHE] Instant Places Load: ${cachedModels.length} items');
+        
+        final now = DateTime.now().millisecondsSinceEpoch;
+        // Only refresh if cache is older than 12 hours (43,200,000 milliseconds)
+        if (now - timestamp > 43200000) {
+          debugPrint('♻️ Cache expired or old format. Triggering background refresh.');
+          _refreshPlacesInBackground(latitude, longitude, categoryName, radius, cacheKey);
+        } else {
+          debugPrint('🚀 [CACHE] Cache is fresh (age < 12h), skipping API request');
         }
         return cachedModels;
       } catch (e) {
@@ -74,12 +147,12 @@ class GooglePlacesService {
       }
     }
 
-    return _performFetchNearby(latitude, longitude, categoryName, radius, cacheKey, tsKey);
+    return _performFetchNearby(latitude, longitude, categoryName, radius, cacheKey);
   }
 
-  static void _refreshPlacesInBackground(double lat, double lng, String? cat, int rad, String key, String tsKey) async {
+  static void _refreshPlacesInBackground(double lat, double lng, String? cat, int rad, String key) async {
     try {
-      await _performFetchNearby(lat, lng, cat, rad, key, tsKey);
+      final fresh = await _performFetchNearby(lat, lng, cat, rad, key);
       debugPrint('♻️ [CACHE] Background Places Refresh Complete');
     } catch (e) {
       debugPrint('[CACHE] Refresh failed: $e');
@@ -92,84 +165,75 @@ class GooglePlacesService {
     String? categoryName,
     int radius,
     String cacheKey,
-    String tsKey,
   ) async {
-    // Backend path — shared Redis cache across all users in the same ~500m
-    // tile. Direct-Google path below is the rollback fallback.
-    if (ApiConstants.useBackendPlaces) {
-      try {
-        final models = await _fetchFromBackend(
-          latitude: latitude,
-          longitude: longitude,
-          categoryName: categoryName,
-          radius: radius,
-        );
-        CacheService.saveUserData(
-          cacheKey,
-          json.encode(models.map((m) => (m as AttractionModel).toJson()).toList()),
-        );
-        CacheService.saveUserData(tsKey, DateTime.now().millisecondsSinceEpoch.toString());
-        return models;
-      } catch (e) {
-        debugPrint('[BACKEND] Places fetch failed, falling back to direct Google: $e');
-        // Fall through to direct-Google path.
-      }
-    }
-
     try {
       // ═══════════════════════════════════════
-      // FOOD DISCOVERY — single Nearby Search.
-      // Previously fanned out to restaurant + cafe + meal_takeaway in parallel,
-      // which tripled the bill per Food tab open. Google's 'restaurant' type
-      // already includes most cafes/takeaways, and the type-whitelist below
-      // catches the rest from the broader result set.
+      // INTELLIGENT FOOD DISCOVERY ENGINE
+      // Fire multiple parallel queries to capture every food spot
       // ═══════════════════════════════════════
       if (categoryName == 'Food & Drink') {
         const int foodRadius = 10000; // 10km strict limit
-
-        final response = await _dio.get(
+        final foodTypes = ['restaurant'];
+        
+        // Fire all 3 queries in parallel for speed
+        final futures = foodTypes.map((type) => _dio.get(
           '$_baseUrl/place/nearbysearch/json',
           queryParameters: {
             'location': '$latitude,$longitude',
             'radius': foodRadius,
-            'type': 'restaurant',
+            'type': type,
             'key': _apiKey,
           },
-        );
-
+        ));
+        
+        final responses = await Future.wait(futures);
+        
+        // Merge all results and deduplicate by place_id
+        final Map<String, dynamic> uniquePlaces = {};
+        
         // Strict food types that Google assigns to genuine food places
         const foodTypeWhitelist = {
           'restaurant', 'cafe', 'food', 'bakery', 'bar',
           'meal_takeaway', 'meal_delivery',
         };
-
-        final Map<String, dynamic> uniquePlaces = {};
-        if (response.data['status'] == 'OK') {
-          final results = response.data['results'] as List;
-          for (final place in results) {
-            final id = place['place_id'] ?? '';
-            if (id.isEmpty || uniquePlaces.containsKey(id)) continue;
-
-            final types = (place['types'] as List?)?.cast<String>() ?? [];
-            final isFood = types.any((t) => foodTypeWhitelist.contains(t));
-
-            if (isFood) {
-              uniquePlaces[id] = place;
+        
+        for (final response in responses) {
+          if (response.data['status'] == 'OK') {
+            final results = response.data['results'] as List;
+            for (final place in results) {
+              final id = place['place_id'] ?? '';
+              if (id.isEmpty || uniquePlaces.containsKey(id)) continue;
+              
+              // STRICT VALIDATION: Only accept if Google types contain a food type
+              final types = (place['types'] as List?)?.cast<String>() ?? [];
+              final isFood = types.any((t) => foodTypeWhitelist.contains(t));
+              
+              if (isFood) {
+                uniquePlaces[id] = place;
+              }
             }
           }
         }
-
-        print('🍽 Food Discovery: ${uniquePlaces.length} verified food spots found');
-
+        
+        print('🍽 Intelligent Food Discovery: ${uniquePlaces.length} verified food spots found');
+        
+        // Convert to models, calculate distance, sort by proximity
         final models = uniquePlaces.values.map((place) => _placeToModel(
           place, latitude, longitude, categoryName,
         )).toList();
-
+        
+        // Sort by distance (nearest first)
         models.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-        CacheService.saveUserData(cacheKey, json.encode(models.map((m) => (m as AttractionModel).toJson()).toList()));
-        CacheService.saveUserData(tsKey, DateTime.now().millisecondsSinceEpoch.toString());
-
+        
+        // Cache the result (as JSON strings of models)
+        CacheService.saveUserData(
+          cacheKey, 
+          json.encode({
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'data': models.map((m) => (m as AttractionModel).toJson()).toList(),
+          }),
+        );
+        
         return models;
       }
 
@@ -208,8 +272,13 @@ class GooglePlacesService {
         
         models.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
         
-        CacheService.saveUserData(cacheKey, json.encode(models.map((m) => (m as AttractionModel).toJson()).toList()));
-        CacheService.saveUserData(tsKey, DateTime.now().millisecondsSinceEpoch.toString());
+        CacheService.saveUserData(
+          cacheKey, 
+          json.encode({
+            'timestamp': DateTime.now().millisecondsSinceEpoch,
+            'data': models.map((m) => (m as AttractionModel).toJson()).toList(),
+          }),
+        );
         return models;
       }
 
@@ -221,15 +290,22 @@ class GooglePlacesService {
         type = categoryTypeMap[categoryName]!;
       }
 
+      final Map<String, dynamic> queryParams = {
+        'location': '$latitude,$longitude',
+        'radius': radius,
+        'key': _apiKey,
+        'rankby': 'prominence',
+      };
+
+      if (categoryName == 'Medical') {
+        queryParams['keyword'] = 'medical hospital pharmacy clinic doctor';
+      } else {
+        queryParams['type'] = type;
+      }
+
       final response = await _dio.get(
         '$_baseUrl/place/nearbysearch/json',
-        queryParameters: {
-          'location': '$latitude,$longitude',
-          'radius': radius,
-          'type': type,
-          'key': _apiKey,
-          'rankby': 'prominence',
-        },
+        queryParameters: queryParams,
       );
 
       if (response.data['status'] != 'OK' && response.data['status'] != 'ZERO_RESULTS') {
@@ -244,9 +320,14 @@ class GooglePlacesService {
       )).toList();
 
       // Cache the result
-      CacheService.saveUserData(cacheKey, json.encode(models.map((m) => m.toJson()).toList()));
-      CacheService.saveUserData(tsKey, DateTime.now().millisecondsSinceEpoch.toString());
-
+      CacheService.saveUserData(
+        cacheKey, 
+        json.encode({
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+          'data': models.map((m) => m.toJson()).toList(),
+        }),
+      );
+      
       return models;
     } catch (e) {
       debugPrint('Google Places API error: $e');
@@ -320,41 +401,4 @@ class GooglePlacesService {
   }
 
   static double _toRadians(double deg) => deg * math.pi / 180;
-
-  /// Hit the backend places endpoint. Backend handles Google calls + Redis
-  /// caching, so identical requests from different users in the same tile
-  /// share a single Google call for 7 days.
-  ///
-  /// Photo URLs in the response are backend-proxied (relative paths) — we
-  /// expand them to absolute URLs here so CachedNetworkImage can load them.
-  static Future<List<AttractionEntity>> _fetchFromBackend({
-    required double latitude,
-    required double longitude,
-    String? categoryName,
-    required int radius,
-  }) async {
-    final response = await _dio.get(
-      '${ApiConstants.baseUrl}${ApiConstants.placesNearby}',
-      queryParameters: {
-        'lat': latitude,
-        'lng': longitude,
-        if (categoryName != null) 'category': categoryName,
-        'radius': radius,
-      },
-    );
-
-    final places = (response.data['places'] as List? ?? []);
-    final source = response.data['source'] ?? 'google';
-    debugPrint('🛰 [BACKEND] Places ${places.length} from $source');
-
-    return places.map<AttractionEntity>((p) {
-      final map = Map<String, dynamic>.from(p as Map);
-      // Rewrite relative photo URLs to absolute so the image widget can fetch them.
-      final photos = (map['photo_urls'] as List?)?.cast<String>() ?? const [];
-      map['photo_urls'] = photos
-          .map((u) => u.startsWith('http') ? u : '${ApiConstants.baseUrl}$u')
-          .toList();
-      return AttractionModel.fromJson(map);
-    }).toList();
-  }
 }
