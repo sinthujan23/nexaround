@@ -1,3 +1,7 @@
+# The helper script location
+flutter_ios_podfile_setup = File.join(File.dirname(File.expand_path(__FILE__)), 'Flutter', 'podhelper.rb')
+require flutter_ios_podfile_setup
+
 platform :ios, '14.0'
 
 # CocoaPods analytics sends anonymous usage data to shared servers.
