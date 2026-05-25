@@ -1,6 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { apiGet, apiPut } from '../api';
 
+const EyeIcon = ({ size = 20, ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const EyeOffIcon = ({ size = 20, ...props }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    {...props}
+  >
+    <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+    <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+    <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+    <line x1="2" y1="2" x2="22" y2="22" />
+  </svg>
+);
+
 export default function Settings() {
   const [platformName, setPlatformName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
@@ -8,6 +46,10 @@ export default function Settings() {
   const [mapboxAccessToken, setMapboxAccessToken] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('');
+
+  const [showGoogleKey, setShowGoogleKey] = useState(false);
+  const [showMapboxToken, setShowMapboxToken] = useState(false);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -111,36 +153,111 @@ export default function Settings() {
           </p>
           <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Google Maps API Key</label>
-            <input
-              type="password"
-              className="form-input"
-              value={googleMapsApiKey}
-              onChange={(e) => setGoogleMapsApiKey(e.target.value)}
-              placeholder="Google Maps Secret API Key"
-              required
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                value={googleMapsApiKey}
+                onChange={(e) => setGoogleMapsApiKey(e.target.value)}
+                placeholder="Google Maps Secret API Key"
+                autoComplete="off"
+                required
+                style={{
+                  paddingRight: '46px',
+                  WebkitTextSecurity: showGoogleKey ? 'none' : 'disc',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowGoogleKey(!showGoogleKey)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                }}
+              >
+                {showGoogleKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+              </button>
+            </div>
           </div>
           <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Mapbox Access Token</label>
-            <input
-              type="password"
-              className="form-input"
-              value={mapboxAccessToken}
-              onChange={(e) => setMapboxAccessToken(e.target.value)}
-              placeholder="Mapbox API Access Token"
-              required
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                value={mapboxAccessToken}
+                onChange={(e) => setMapboxAccessToken(e.target.value)}
+                placeholder="Mapbox API Access Token"
+                autoComplete="off"
+                required
+                style={{
+                  paddingRight: '46px',
+                  WebkitTextSecurity: showMapboxToken ? 'none' : 'disc',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowMapboxToken(!showMapboxToken)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                }}
+              >
+                {showMapboxToken ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+              </button>
+            </div>
           </div>
           <div className="form-group" style={{ marginBottom: '16px' }}>
             <label className="form-label">Gemini API Key</label>
-            <input
-              type="password"
-              className="form-input"
-              value={geminiApiKey}
-              onChange={(e) => setGeminiApiKey(e.target.value)}
-              placeholder="Google Gemini API Key"
-              required
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                value={geminiApiKey}
+                onChange={(e) => setGeminiApiKey(e.target.value)}
+                placeholder="Google Gemini API Key"
+                autoComplete="off"
+                required
+                style={{
+                  paddingRight: '46px',
+                  WebkitTextSecurity: showGeminiKey ? 'none' : 'disc',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowGeminiKey(!showGeminiKey)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                }}
+              >
+                {showGeminiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+              </button>
+            </div>
           </div>
           <div className="form-group">
             <label className="form-label">Default Geofence Radius (meters)</label>

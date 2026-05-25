@@ -1,0 +1,30 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.pytest_cache/
+**/.venv/
+**/venv/
+**/.env
+
+# Databases
+**/*.db
+**/*.sqlite
+
+# IDEs
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Node modules
+node_modules/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
