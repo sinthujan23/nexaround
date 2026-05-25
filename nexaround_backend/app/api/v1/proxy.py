@@ -119,3 +119,50 @@ async def proxy_google_maps(
                 return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+
+
+@router.get("/proxy/geoapify/reverse")
+async def proxy_geoapify_reverse(
+    lat: float,
+    lng: float,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Reverse-geocode lat/lng via Geoapify and return a human-readable location name."""
+    settings = SettingsService(db)
+    api_key = await settings.get_setting("geoapify_api_key")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Geoapify API Key not configured")
+
+    await settings.log_api_request("geoapify", "/v1/geocode/reverse", current_user.id)
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        try:
+            resp = await client.get(
+                "https://api.geoapify.com/v1/geocode/reverse",
+                params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json"}
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            results = data.get("results", [])
+            if not results:
+                return {"location_name": "Nearby"}
+
+            props = results[0]
+            # Pick the most specific available name in order of preference
+            name = (
+                props.get("suburb")
+                or props.get("quarter")
+                or props.get("neighbourhood")
+                or props.get("city_district")
+                or props.get("city")
+                or props.get("county")
+                or props.get("state")
+                or props.get("country")
+                or "Nearby"
+            )
+            return {"location_name": name}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Geoapify proxy error: {str(e)}")
+

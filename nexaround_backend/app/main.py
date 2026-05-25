@@ -52,6 +52,14 @@ async def startup():
                 "Gemini Generative AI API Key for Chat and Vision Details"
             )
 
+        geoapify_key = await service.get_setting("geoapify_api_key")
+        if not geoapify_key:
+            await service.set_setting(
+                "geoapify_api_key",
+                "",
+                "Geoapify Geocoding API Key for Reverse Geocoding"
+            )
+
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

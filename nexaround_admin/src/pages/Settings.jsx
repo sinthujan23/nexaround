@@ -45,11 +45,13 @@ export default function Settings() {
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState('');
   const [mapboxAccessToken, setMapboxAccessToken] = useState('');
   const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [geoapifyApiKey, setGeoapifyApiKey] = useState('');
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('');
 
   const [showGoogleKey, setShowGoogleKey] = useState(false);
   const [showMapboxToken, setShowMapboxToken] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showGeoapifyKey, setShowGeoapifyKey] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,6 +72,7 @@ export default function Settings() {
       setGoogleMapsApiKey(res.google_maps_api_key || '');
       setMapboxAccessToken(res.mapbox_access_token || '');
       setGeminiApiKey(res.gemini_api_key || '');
+      setGeoapifyApiKey(res.geoapify_api_key || '');
       setDefaultGeofenceRadius(res.default_geofence_radius || '100');
     } catch (err) {
       setError(err.message || 'Failed to load system settings.');
@@ -90,6 +93,7 @@ export default function Settings() {
         google_maps_api_key: googleMapsApiKey,
         mapbox_access_token: mapboxAccessToken,
         gemini_api_key: geminiApiKey,
+        geoapify_api_key: geoapifyApiKey,
         default_geofence_radius: String(defaultGeofenceRadius),
       });
       setSuccess(true);
@@ -256,6 +260,34 @@ export default function Settings() {
                 }}
               >
                 {showGeminiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+              </button>
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label">Geoapify API Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Reverse Geocoding</span></label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                value={geoapifyApiKey}
+                onChange={(e) => setGeoapifyApiKey(e.target.value)}
+                placeholder="Geoapify API Key"
+                autoComplete="off"
+                style={{
+                  paddingRight: '46px',
+                  WebkitTextSecurity: showGeoapifyKey ? 'none' : 'disc',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowGeoapifyKey(!showGeoapifyKey)}
+                style={{
+                  position: 'absolute', right: '12px', background: 'none',
+                  border: 'none', cursor: 'pointer', color: 'var(--text-secondary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px',
+                }}
+              >
+                {showGeoapifyKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
               </button>
             </div>
           </div>

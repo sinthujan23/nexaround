@@ -21,67 +21,18 @@ class GooglePlacesService {
     'Medical': 'hospital',
   };
 
-  /// Reverse-geocode lat/lng to a human-readable location name
+  /// Reverse-geocode lat/lng to a human-readable location name via Geoapify
   static Future<String> reverseGeocode(double lat, double lng) async {
     try {
       final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/geocode/json',
+        '${ApiConstants.apiVersion}/proxy/geoapify/reverse',
         queryParameters: {
-          'latlng': '$lat,$lng',
+          'lat': lat,
+          'lng': lng,
         },
       );
-
-      if (response.data['status'] != 'OK' && response.data['status'] != 'ZERO_RESULTS') {
-        print('❌ Google Reverse Geocode API Error: ${response.data['error_message'] ?? response.data['status']}');
-        print('Full Response Body: ${response.data}');
-      } else {
-        print('Base API Reverse Geocode Success: ${response.data['status']}');
-      }
-
-      final results = response.data['results'] as List;
-      if (results.isNotEmpty) {
-        // Look for Neighborhood or Sublocality first (high specificity)
-        for (var result in results) {
-          final components = result['address_components'] as List;
-          for (final comp in components) {
-            final types = (comp['types'] as List).cast<String>();
-            
-            if (types.contains('neighborhood') || 
-                types.contains('sublocality_level_1') ||
-                types.contains('sublocality') ||
-                types.contains('premise') ||
-                types.contains('point_of_interest')) {
-              
-              final name = comp['long_name'];
-              if (name != null && name.isNotEmpty) {
-                print('🚀 SPECIFIC LOCALITY: $name');
-                return name;
-              }
-            }
-          }
-        }
-
-        // Town/city search
-        for (var result in results) {
-          final components = result['address_components'] as List;
-          for (final comp in components) {
-            final types = (comp['types'] as List).cast<String>();
-            if (types.contains('locality') || types.contains('administrative_area_level_3')) {
-              final name = comp['long_name'];
-              if (name != null && name.isNotEmpty) {
-                print('📍 TOWN FOUND: $name');
-                return name;
-              }
-            }
-          }
-        }
-
-        final fallback = results[0]['formatted_address']?.split(',')[0];
-        if (fallback != null && fallback.isNotEmpty) return fallback;
-        
-        return 'Nearby';
-      }
-      return 'Nearby';
+      final name = response.data['location_name'] as String?;
+      return (name != null && name.isNotEmpty) ? name : 'Nearby';
     } catch (e) {
       debugPrint('Reverse geocode error: $e');
       return 'Nearby';

@@ -38,6 +38,15 @@ class ApiUsageStats(BaseModel):
     color: str
     data: List[int]
 
+class ApiBreakdownItem(BaseModel):
+    endpoint: str
+    count: int
+
+class ApiBreakdownResponse(BaseModel):
+    api_name: str
+    total: int
+    endpoints: List[ApiBreakdownItem]
+
 class AdminDashboardStats(BaseModel):
     explorers_count: int
     attractions_count: int
@@ -58,6 +67,7 @@ class SettingsResponse(BaseModel):
     google_maps_api_key: str
     mapbox_access_token: str
     gemini_api_key: str
+    geoapify_api_key: str
     default_geofence_radius: str
 
 class SettingsUpdateRequest(BaseModel):
@@ -66,6 +76,7 @@ class SettingsUpdateRequest(BaseModel):
     google_maps_api_key: Optional[str] = None
     mapbox_access_token: Optional[str] = None
     gemini_api_key: Optional[str] = None
+    geoapify_api_key: Optional[str] = None
     default_geofence_radius: Optional[str] = None
 
 
@@ -169,7 +180,7 @@ async def get_dashboard_stats(
     days = [today - timedelta(days=i) for i in range(6, -1, -1)]
 
     api_chart_data = {}
-    for api in ["google_maps", "mapbox", "gemini"]:
+    for api in ["google_maps", "mapbox", "gemini", "geoapify"]:
         # get total
         total_stmt = select(func.count(ApiRequestLog.id)).where(ApiRequestLog.api_name == api)
         total_res = await db.execute(total_stmt)
@@ -211,7 +222,13 @@ async def get_dashboard_stats(
             total=f"{api_chart_data['gemini']['total']:,}",
             color="#8e24aa",
             data=api_chart_data['gemini']['data']
-        )
+        ),
+        ApiUsageStats(
+            name="Geoapify API",
+            total=f"{api_chart_data['geoapify']['total']:,}",
+            color="#00897b",
+            data=api_chart_data['geoapify']['data']
+        ),
     ]
 
     return AdminDashboardStats(
@@ -223,6 +240,33 @@ async def get_dashboard_stats(
         recent_activity=recent_activity,
         api_usage=api_usage
     )
+
+
+@router.get("/api-breakdown/{api_name}", response_model=ApiBreakdownResponse)
+async def get_api_breakdown(
+    api_name: str,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Return a per-endpoint breakdown of request counts for a given API name."""
+    # Total count for this api
+    total_stmt = select(func.count(ApiRequestLog.id)).where(ApiRequestLog.api_name == api_name)
+    total_res = await db.execute(total_stmt)
+    total = total_res.scalar_one_or_none() or 0
+
+    # Group by endpoint
+    breakdown_stmt = (
+        select(ApiRequestLog.endpoint, func.count(ApiRequestLog.id).label("cnt"))
+        .where(ApiRequestLog.api_name == api_name)
+        .group_by(ApiRequestLog.endpoint)
+        .order_by(func.count(ApiRequestLog.id).desc())
+    )
+    breakdown_res = await db.execute(breakdown_stmt)
+    rows = breakdown_res.all()
+
+    endpoints = [ApiBreakdownItem(endpoint=row.endpoint, count=row.cnt) for row in rows]
+
+    return ApiBreakdownResponse(api_name=api_name, total=total, endpoints=endpoints)
 
 
 @router.get("/users")
@@ -411,6 +455,7 @@ async def get_admin_settings(
         google_maps_api_key=await service.get_setting("google_maps_api_key", ""),
         mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
+        geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
     )
 
@@ -433,14 +478,17 @@ async def update_admin_settings(
         await service.set_setting("mapbox_access_token", data.mapbox_access_token, "Mapbox Public Access Token")
     if data.gemini_api_key is not None:
         await service.set_setting("gemini_api_key", data.gemini_api_key, "Gemini Generative AI Key")
+    if data.geoapify_api_key is not None:
+        await service.set_setting("geoapify_api_key", data.geoapify_api_key, "Geoapify Geocoding API Key")
     if data.default_geofence_radius is not None:
         await service.set_setting("default_geofence_radius", data.default_geofence_radius, "Default Geofence Radius in meters")
-        
+
     return SettingsResponse(
         platform_name=await service.get_setting("platform_name", "NexARound"),
         contact_email=await service.get_setting("contact_email", "support@nexaround.com"),
         google_maps_api_key=await service.get_setting("google_maps_api_key", ""),
         mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
+        geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
     )
