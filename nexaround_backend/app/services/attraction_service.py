@@ -104,7 +104,8 @@ class AttractionService:
             currency=data.currency,
             photo_urls=data.photo_urls,
             tags=data.tags,
-            geofence_radius_m=data.geofence_radius_m
+            geofence_radius_m=data.geofence_radius_m,
+            is_active=data.is_active
         )
         
         attraction = await self.repo.create(attraction)

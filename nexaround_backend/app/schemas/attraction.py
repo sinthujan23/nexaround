@@ -21,6 +21,8 @@ class AttractionBase(BaseModel):
 class AttractionCreate(AttractionBase):
     category_id: Optional[uuid.UUID] = None
     photo_urls: list[str] = []
+    is_active: bool = False
+
 
 
 class AttractionResponse(BaseModel):

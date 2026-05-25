@@ -93,7 +93,12 @@ class AuthService:
                 )
                 user = await self.repo.create(user)
 
+            if not user.is_active:
+                raise UnauthorizedException(detail="Account is deactivated")
+
             return await self._generate_auth_response(user)
+        except UnauthorizedException:
+            raise
         except Exception as e:
             raise UnauthorizedException(detail=f"Google authentication failed: {str(e)}")
 
@@ -128,7 +133,12 @@ class AuthService:
                 )
                 user = await self.repo.create(user)
 
+            if not user.is_active:
+                raise UnauthorizedException(detail="Account is deactivated")
+
             return await self._generate_auth_response(user)
+        except UnauthorizedException:
+            raise
         except Exception as e:
             raise UnauthorizedException(detail=f"Apple authentication failed: {str(e)}")
 

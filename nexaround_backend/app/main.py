@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 from app.core.config import settings
 from app.api.v1.router import api_router
-from app.admin.router import router as admin_router
 from app.services.google_lens_service import google_lens_service
 
 from app.core.database import engine, Base
@@ -37,7 +36,6 @@ app.add_middleware(
 
 # Include routes
 app.include_router(api_router)
-app.include_router(admin_router)
 
 
 @app.get("/", tags=["Health"])

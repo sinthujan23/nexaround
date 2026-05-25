@@ -38,3 +38,26 @@ class UserRepository:
         """Delete a user."""
         await self.db.delete(user)
         await self.db.flush()
+
+    async def list_users(self, skip: int = 0, limit: int = 20, search_query: Optional[str] = None) -> tuple[list[User], int]:
+        """List users with pagination and optional search."""
+        from sqlalchemy import func
+        
+        query = select(User)
+        count_query = select(func.count()).select_from(User)
+        
+        if search_query:
+            search = f"%{search_query}%"
+            query = query.where(User.email.ilike(search) | User.display_name.ilike(search))
+            count_query = count_query.where(User.email.ilike(search) | User.display_name.ilike(search))
+            
+        # Get total count
+        total_result = await self.db.execute(count_query)
+        total = total_result.scalar_one_or_none() or 0
+        
+        # Get users
+        query = query.order_by(User.created_at.desc()).offset(skip).limit(limit)
+        result = await self.db.execute(query)
+        users = list(result.scalars().all())
+        
+        return users, total
