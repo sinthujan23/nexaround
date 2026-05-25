@@ -41,6 +41,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.0.9"
+  arcore_flutter_plus:
+    dependency: "direct main"
+    description:
+      name: arcore_flutter_plus
+      sha256: cb7e798aee74f03dbab92b2671f9a3c1ddcf12152efa19f6fad4bbbcdbd29446
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.2"
   args:
     dependency: transitive
     description:

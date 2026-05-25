@@ -45,17 +45,9 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
-        <!-- Enable ARCore support -->
-        <meta-data android:name="com.google.ar.core" android:value="optional" />
-
-        <!-- Google Maps & ARCore API Key -->
         <meta-data
-            android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyAxGlCCI4yoOn3umPPyX1VypSzL2Sutz9U"/>
-        <meta-data
-            android:name="com.google.android.ar.API_KEY"
-            android:value="AIzaSyAxGlCCI4yoOn3umPPyX1VypSzL2Sutz9U"/>
+            android:name="com.google.ar.core"
+            android:value="optional" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
