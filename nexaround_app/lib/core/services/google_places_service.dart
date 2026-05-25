@@ -97,7 +97,7 @@ class GooglePlacesService {
   }) async {
     try {
       final response = await ApiClient.instance.get(
-        '/places/nearby',
+        '${ApiConstants.apiVersion}/places/nearby',
         queryParameters: {
           'lat': latitude,
           'lng': longitude,

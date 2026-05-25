@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 /// Central utility to handle place images with category-specific fallback assets.
 class PlaceImageHelper {
@@ -16,9 +17,16 @@ class PlaceImageHelper {
   }) {
     Widget imageWidget;
 
-    if (imagePath != null && imagePath.isNotEmpty && imagePath != 'null' && imagePath.startsWith('http')) {
+    String? resolvedUrl = imagePath;
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
+      if (resolvedUrl.startsWith('/')) {
+        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
+      }
+    }
+
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
       imageWidget = CachedNetworkImage(
-        imageUrl: imagePath,
+        imageUrl: resolvedUrl,
         fit: fit,
         width: width,
         height: height,
@@ -49,8 +57,14 @@ class PlaceImageHelper {
 
   /// Gets an [ImageProvider] for a place. Useful for Map markers or decorations.
   static ImageProvider getImageProvider(String? imagePath, String category, String name) {
-    if (imagePath != null && imagePath.isNotEmpty && imagePath != 'null' && imagePath.startsWith('http')) {
-      return CachedNetworkImageProvider(imagePath);
+    String? resolvedUrl = imagePath;
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
+      if (resolvedUrl.startsWith('/')) {
+        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
+      }
+    }
+    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
+      return CachedNetworkImageProvider(resolvedUrl);
     }
     return AssetImage(getAssetPath(category, name));
   }
