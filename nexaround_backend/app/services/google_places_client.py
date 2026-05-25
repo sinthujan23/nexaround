@@ -7,6 +7,8 @@ import math
 from typing import Optional
 import httpx
 from app.core.config import settings
+from app.core.database import async_session
+from app.services.settings_service import SettingsService
 
 
 _BASE = "https://maps.googleapis.com/maps/api"
@@ -60,10 +62,14 @@ async def nearby_search(
         google_type = CATEGORY_TYPE_MAP.get(category or "", "point_of_interest")
         eff_radius = radius
 
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key", settings.GOOGLE_API_KEY)
+
     params = {
         "location": f"{latitude},{longitude}",
         "radius": eff_radius,
-        "key": settings.GOOGLE_API_KEY,
+        "key": google_maps_key,
     }
     if category == "Beach":
         params["keyword"] = "beach"
@@ -156,10 +162,14 @@ def _resolve_category_from_types(types: list[str]) -> str:
 
 async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[bytes, str]:
     """Download a Place Photo. Returns (bytes, content_type)."""
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key", settings.GOOGLE_API_KEY)
+
     params = {
         "maxwidth": maxwidth,
         "photo_reference": photo_reference,
-        "key": settings.GOOGLE_API_KEY,
+        "key": google_maps_key,
     }
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         resp = await client.get(f"{_BASE}/place/photo", params=params)
