@@ -200,20 +200,23 @@ class _LivingMapPageState extends State<LivingMapPage>
               CustomScrollView(
                 physics: const BouncingScrollPhysics(),
                 slivers: [
-                  // Header
                   SliverAppBar(
                     floating: true,
                     automaticallyImplyLeading: false,
                     backgroundColor: Colors.transparent,
                     elevation: 0,
                     toolbarHeight: 80,
+                    titleSpacing: 0,
                     flexibleSpace: ClipRRect(
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                         child: Container(color: AppColors.background.withOpacity(0.5)),
                       ),
                     ),
-                    title: _buildHeader(),
+                    title: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _buildHeader(),
+                    ),
                   ),
       
                   // Greeting + AI prompt
