@@ -4,6 +4,21 @@ import { CompassIcon, MapPinIcon, CreditCardIcon, ClockIcon, TrendingUpIcon, Tre
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
+/** Returns the short day labels for the last 7 days ending today, in Sri Lanka time (Asia/Colombo). */
+function getWeekDayLabels() {
+  const labels = [];
+  const now = new Date();
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const short = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Asia/Colombo' })
+      .format(d)
+      .slice(0, 2);
+    labels.push(short);
+  }
+  return labels;
+}
+
 const API_KEY_MAP = {
   'Google Maps API': 'google_maps',
   'Mapbox API': 'mapbox',
@@ -21,7 +36,7 @@ function formatTime(isoStr) {
     if (diffMins < 60) return `${diffMins}m ago`;
     const diffHours = Math.floor(diffMins / 60);
     if (diffHours < 24) return `${diffHours}h ago`;
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Colombo' });
   } catch {
     return isoStr;
   }
@@ -412,8 +427,8 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0 2px' }}>
-                  {['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((day, i) => (
-                    <span key={i} style={{ fontSize: '9px', color: 'var(--text-secondary)' }}>{day}</span>
+                  {getWeekDayLabels().map((day, i) => (
+                    <span key={i} style={{ fontSize: '9px', color: 'var(--text-secondary)', fontWeight: i === 6 ? 700 : 400, color: i === 6 ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{day}</span>
                   ))}
                 </div>
               </div>

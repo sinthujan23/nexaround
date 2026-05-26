@@ -105,7 +105,7 @@ export default function Users() {
               <div className="modern-list">
                 {users.map(u => {
                   const joinedDate = u.created_at
-                    ? new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                    ? new Date(u.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'Asia/Colombo' })
                     : 'Unknown';
                   const avatarLetter = u.display_name ? u.display_name[0].toUpperCase() : 'E';
                   const travelStyle = u.preferences?.travel_style
