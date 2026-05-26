@@ -128,41 +128,93 @@ async def proxy_geoapify_reverse(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Reverse-geocode lat/lng via Geoapify and return a human-readable location name."""
+    """Reverse-geocode lat/lng via Geoapify (with fallback to Mapbox/Google) and return a human-readable location name."""
     settings = SettingsService(db)
     api_key = await settings.get_setting("geoapify_api_key")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="Geoapify API Key not configured")
 
-    await settings.log_api_request("geoapify", "/v1/geocode/reverse", current_user.id)
+    if api_key:
+        await settings.log_api_request("geoapify", "/v1/geocode/reverse", current_user.id)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(
+                    "https://api.geoapify.com/v1/geocode/reverse",
+                    params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json"}
+                )
+                resp.raise_for_status()
+                data = resp.json()
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        try:
-            resp = await client.get(
-                "https://api.geoapify.com/v1/geocode/reverse",
-                params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json"}
-            )
-            resp.raise_for_status()
-            data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    props = results[0]
+                    name = (
+                        props.get("suburb")
+                        or props.get("quarter")
+                        or props.get("neighbourhood")
+                        or props.get("city_district")
+                        or props.get("city")
+                        or props.get("county")
+                        or props.get("state")
+                        or props.get("country")
+                        or "Nearby"
+                    )
+                    return {"location_name": name}
+            except Exception as e:
+                # If Geoapify request fails, fall back to Mapbox
+                pass
 
-            results = data.get("results", [])
-            if not results:
-                return {"location_name": "Nearby"}
+    # Fallback 1: Mapbox Geocoding
+    mapbox_token = await settings.get_setting("mapbox_access_token")
+    if mapbox_token:
+        await settings.log_api_request("mapbox", "/geocoding/v5/mapbox.places", current_user.id)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(
+                    f"https://api.mapbox.com/geocoding/v5/mapbox.places/{lng},{lat}.json",
+                    params={
+                        "access_token": mapbox_token,
+                        "types": "neighborhood,locality,place,address",
+                        "limit": 1
+                    }
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                features = data.get("features", [])
+                if features:
+                    feature = features[0]
+                    name = feature.get("text") or feature.get("place_name", "").split(",")[0] or "Nearby"
+                    return {"location_name": name}
+            except Exception as e:
+                pass
 
-            props = results[0]
-            # Pick the most specific available name in order of preference
-            name = (
-                props.get("suburb")
-                or props.get("quarter")
-                or props.get("neighbourhood")
-                or props.get("city_district")
-                or props.get("city")
-                or props.get("county")
-                or props.get("state")
-                or props.get("country")
-                or "Nearby"
-            )
-            return {"location_name": name}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Geoapify proxy error: {str(e)}")
+    # Fallback 2: Google Geocoding
+    google_maps_key = await settings.get_setting("google_maps_api_key")
+    if google_maps_key:
+        await settings.log_api_request("google_maps", "/maps/api/geocode", current_user.id)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(
+                    "https://maps.googleapis.com/maps/api/geocode/json",
+                    params={
+                        "latlng": f"{lat},{lng}",
+                        "key": google_maps_key
+                    }
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    result = results[0]
+                    name = "Nearby"
+                    for component in result.get("address_components", []):
+                        types = component.get("types", [])
+                        if "locality" in types or "sublocality" in types or "administrative_area_level_2" in types:
+                            name = component.get("long_name")
+                            break
+                    if name == "Nearby" and result.get("formatted_address"):
+                        name = result.get("formatted_address").split(",")[0]
+                    return {"location_name": name}
+            except Exception as e:
+                pass
+
+    return {"location_name": "Nearby"}
 
