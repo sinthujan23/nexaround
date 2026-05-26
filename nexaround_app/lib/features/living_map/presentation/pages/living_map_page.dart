@@ -207,6 +207,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     elevation: 0,
                     toolbarHeight: 80,
                     titleSpacing: 0,
+                    centerTitle: false,
                     flexibleSpace: ClipRRect(
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
