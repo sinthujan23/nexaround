@@ -64,7 +64,7 @@ jobs:
         working-directory: nexaround_app
         run: |
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
-            echo "🔑 Building SIGNED iOS IPA..."
+            echo "🔑 Building SIGNED iOS xcarchive..."
             
             # Create ExportOptions.plist
             cat <<EOF > ios/ExportOptions.plist
@@ -80,7 +80,15 @@ jobs:
           </plist>
           EOF
             
-            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
+            # Build the archive only (we'll export manually to see any errors)
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist || echo "Flutter build ipa had an issue"
+            
+            echo "📦 Manually exporting IPA to catch errors..."
+            xcodebuild -exportArchive \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -exportPath build/ios/ipa \
+              -exportOptionsPlist ios/ExportOptions.plist \
+              -allowProvisioningUpdates
           else
             echo "📦 Building UNSIGNED iOS IPA..."
             flutter build ipa --no-codesign
