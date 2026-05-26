@@ -206,7 +206,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     backgroundColor: Colors.transparent,
                     elevation: 0,
                     toolbarHeight: 80,
-                    titleSpacing: 0,
+                    titleSpacing: 24,
                     centerTitle: false,
                     flexibleSpace: ClipRRect(
                       child: BackdropFilter(
@@ -214,10 +214,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                         child: Container(color: AppColors.background.withOpacity(0.5)),
                       ),
                     ),
-                    title: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: _buildHeader(),
-                    ),
+                    title: _buildExploringCard(),
+                    actions: [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 24),
+                        child: _buildGlassCircle(Icons.notifications_none_rounded),
+                      ),
+                    ],
                   ),
       
                   // Greeting + AI prompt
@@ -349,55 +352,43 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildHeader() {
-    return SizedBox(
-      height: 48,
+  Widget _buildExploringCard() {
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      borderRadius: BorderRadius.circular(100),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: AppColors.primaryGradient,
+              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+            ),
+            child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
+          ),
+          const SizedBox(width: 10),
           Flexible(
-            child: GlassCard(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              borderRadius: BorderRadius.circular(100),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: AppColors.primaryGradient,
-                      boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
-                    ),
-                    child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
-                  ),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          'EXPLORING',
-                          style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
-                        ),
-                        Text(
-                          _currentLocationName,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'EXPLORING',
+                  style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
+                ),
+                Text(
+                  _currentLocationName,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-          const Spacer(),
-          _buildGlassCircle(Icons.notifications_none_rounded),
         ],
       ),
     );
@@ -682,9 +673,18 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildCategoryScroller(List<CategoryEntity> categories) {
-    // Filter categories to only include those relevant to the user's request if needed
-    // or just use what comes from the backend.
-    final displayCategories = ['All', ...categories.map((c) => c.name).where((name) => name != 'Transport')];
+    final List<CategoryEntity> resolvedCategories = categories.isNotEmpty 
+        ? categories 
+        : const [
+            CategoryEntity(id: '1', name: 'Attractions', sortOrder: 1),
+            CategoryEntity(id: '2', name: 'Food & Drink', sortOrder: 2),
+            CategoryEntity(id: '3', name: 'Hotels', sortOrder: 3),
+            CategoryEntity(id: '4', name: 'Shopping', sortOrder: 4),
+            CategoryEntity(id: '5', name: 'Experiences', sortOrder: 5),
+            CategoryEntity(id: '6', name: 'Medical', sortOrder: 6),
+          ];
+
+    final displayCategories = ['All', ...resolvedCategories.map((c) => c.name).where((name) => name != 'Transport')];
     
     return SizedBox(
       height: 44,
@@ -704,7 +704,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               final position = await geo.Geolocator.getCurrentPosition();
               String? catId;
               if (catName != 'All') {
-                catId = categories.firstWhere((c) => c.name == catName).id;
+                catId = resolvedCategories.firstWhere((c) => c.name == catName).id;
               }
               
               if (mounted) {
