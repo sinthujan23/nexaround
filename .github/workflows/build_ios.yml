@@ -66,7 +66,16 @@ jobs:
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
             echo "🔑 Building SIGNED iOS xcarchive..."
             
-            # Create ExportOptions.plist
+            # Extract Profile Name and Bundle ID from the provisioning profile
+            security cms -D -i $RUNNER_TEMP/build_pp.mobileprovision > profile.plist
+            PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" profile.plist)
+            # Entitlements:application-identifier includes Team ID prefix (e.g. TEAMID.com.example.app)
+            APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" profile.plist)
+            BUNDLE_ID=$(echo $APP_IDENTIFIER | sed 's/^[^\.]*\.//')
+            echo "Using Profile Name: $PROFILE_NAME"
+            echo "Using Bundle ID: $BUNDLE_ID"
+            
+            # Create ExportOptions.plist with explicit provisioning profile mapping
             cat <<EOF > ios/ExportOptions.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -76,6 +85,11 @@ jobs:
               <string>app-store</string>
               <key>destination</key>
               <string>export</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
           </dict>
           </plist>
           EOF
@@ -89,6 +103,7 @@ jobs:
               -exportPath build/ios/ipa \
               -exportOptionsPlist ios/ExportOptions.plist \
               -allowProvisioningUpdates
+
           else
             echo "📦 Building UNSIGNED iOS IPA..."
             flutter build ipa --no-codesign
