@@ -56,14 +56,31 @@ jobs:
 
           # apply provisioning profile
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+          UUID=$(security cms -D -i $PP_PATH | grep -aA1 UUID | grep -o "[-A-Za-z0-9]\{36\}")
+          echo "Profile UUID: $UUID"
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
       - name: Build iOS Application
         working-directory: nexaround_app
         run: |
           if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
             echo "🔑 Building SIGNED iOS IPA..."
-            flutter build ipa --release
+            
+            # Create ExportOptions.plist
+            cat <<EOF > ios/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>destination</key>
+              <string>export</string>
+          </dict>
+          </plist>
+          EOF
+            
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
           else
             echo "📦 Building UNSIGNED iOS IPA..."
             flutter build ipa --no-codesign
