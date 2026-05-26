@@ -81,14 +81,23 @@ jobs:
         id: find-ipa
         working-directory: nexaround_app
         run: |
-          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
-          echo "ipa-path=$IPA_PATH" >> $GITHUB_OUTPUT
+          echo "Searching for IPA files..."
+          find build/ios -name "*.ipa" 2>/dev/null || echo "No IPA found in build/ios"
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" 2>/dev/null | head -n 1)
+          if [ -z "$IPA_PATH" ]; then
+            echo "WARNING: No IPA found in build/ios/ipa, searching broader..."
+            IPA_PATH=$(find build/ios -name "*.ipa" 2>/dev/null | head -n 1)
+          fi
+          echo "Found IPA: $IPA_PATH"
+          FULL_IPA_PATH="$GITHUB_WORKSPACE/nexaround_app/$IPA_PATH"
+          echo "Full IPA path: $FULL_IPA_PATH"
+          echo "ipa-path=$FULL_IPA_PATH" >> $GITHUB_OUTPUT
 
       - name: Upload to TestFlight
         if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
         uses: Apple-Actions/upload-testflight-build@v1
         with:
-          app-path: 'nexaround_app/${{ steps.find-ipa.outputs.ipa-path }}'
+          app-path: ${{ steps.find-ipa.outputs.ipa-path }}
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
           api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
