@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-ios:
-    runs-on: macos-latest
+    runs-on: macos-15
     env:
       BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
       P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -74,6 +74,23 @@ jobs:
             cd build/ios/iphoneos
             zip -r Runner.ipa Payload
           fi
+
+      - name: Find IPA path
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        id: find-ipa
+        working-directory: nexaround_app
+        run: |
+          IPA_PATH=$(find build/ios/ipa -name "*.ipa" | head -n 1)
+          echo "ipa-path=$IPA_PATH" >> $GITHUB_OUTPUT
+
+      - name: Upload to TestFlight
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        uses: Apple-Actions/upload-testflight-build@v1
+        with:
+          app-path: 'nexaround_app/${{ steps.find-ipa.outputs.ipa-path }}'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-key-content: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
       - name: Clean up Keychain
         if: ${{ always() && env.BUILD_CERTIFICATE_BASE64 != '' }}
