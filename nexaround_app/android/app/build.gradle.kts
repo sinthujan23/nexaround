@@ -27,7 +27,7 @@ android {
     defaultConfig {
         applicationId = "com.nexaround.nexaround_app"
         minSdk = 24 // Required for ARCore
-        targetSdk = 34
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
