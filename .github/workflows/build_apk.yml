@@ -36,8 +36,18 @@ jobs:
         working-directory: nexaround_app
         run: flutter build apk --split-per-abi
 
+      - name: Build AAB
+        working-directory: nexaround_app
+        run: flutter build appbundle
+
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: nexaround-apk
           path: nexaround_app/build/app/outputs/flutter-apk/*.apk
+
+      - name: Upload AAB Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexaround-aab
+          path: nexaround_app/build/app/outputs/bundle/release/*.aab
