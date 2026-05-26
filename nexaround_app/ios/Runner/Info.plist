@@ -66,6 +66,14 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>This app requires camera access to show augmented reality navigation and capture points of interest.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app requires microphone access for audio in videos captured during your trips.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app requires location access to show attractions near you and calculate routes on the map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app requires location access to show attractions near you and calculate routes on the map.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
