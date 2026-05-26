@@ -1,0 +1,167 @@
+name: Build Flutter iOS IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    env:
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+      P12_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASS }}
+      PROVISIONING_PROFILE_BASE64: ${{ secrets.PROVISIONING_PROFILE_BASE64 }}
+
+
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up latest Xcode
+        run: |
+          echo "Available Xcode versions:"
+          ls -1d /Applications/Xcode*.app
+          # Find the highest version of Xcode
+          LATEST_XCODE=$(ls -1d /Applications/Xcode*.app | sort -V | tail -n 1)
+          echo "Switching to $LATEST_XCODE"
+          sudo xcode-select -s "$LATEST_XCODE/Contents/Developer"
+          xcodebuild -version
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        working-directory: nexaround_app
+        run: |
+          flutter pub get
+          flutter precache --ios
+
+      - name: Install Apple Certificate and Provisioning Profile
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        run: |
+          # create variables
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          # import certificate and provisioning profile from secrets
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$PROVISIONING_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          # create temporary keychain
+          security create-keychain -p "temporary-keychain-password" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "temporary-keychain-password" $KEYCHAIN_PATH
+
+          # import certificate to keychain
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          # apply provisioning profile
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          UUID=$(security cms -D -i $PP_PATH | grep -aA1 UUID | grep -o "[-A-Za-z0-9]\{36\}")
+          echo "Profile UUID: $UUID"
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+
+      - name: Build iOS Application
+        working-directory: nexaround_app
+        run: |
+          if [ -n "$BUILD_CERTIFICATE_BASE64" ]; then
+            echo "🔑 Building SIGNED iOS xcarchive..."
+            
+            # Extract Profile Name and Bundle ID from the provisioning profile
+            security cms -D -i $RUNNER_TEMP/build_pp.mobileprovision > profile.plist
+            PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" profile.plist)
+            # Entitlements:application-identifier includes Team ID prefix (e.g. TEAMID.com.example.app)
+            APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" profile.plist)
+            BUNDLE_ID=$(echo $APP_IDENTIFIER | sed 's/^[^\.]*\.//')
+            echo "Using Profile Name: $PROFILE_NAME"
+            echo "Using Bundle ID: $BUNDLE_ID"
+            
+            # Create ExportOptions.plist with explicit provisioning profile mapping
+            cat <<EOF > ios/ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>app-store</string>
+              <key>destination</key>
+              <string>export</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$BUNDLE_ID</key>
+                  <string>$PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+            
+            # Build the archive only (we'll export manually to see any errors)
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist || echo "Flutter build ipa had an issue"
+            
+            echo "📦 Manually exporting IPA to catch errors..."
+            xcodebuild -exportArchive \
+              -archivePath build/ios/archive/Runner.xcarchive \
+              -exportPath build/ios/ipa \
+              -exportOptionsPlist ios/ExportOptions.plist \
+              -allowProvisioningUpdates
+
+          else
+            echo "📦 Building UNSIGNED iOS IPA..."
+            flutter build ipa --no-codesign
+            
+            # Package unsigned .app into a standard .ipa zip structure for sideloading/manual signing
+            echo "Packaging unsigned IPA..."
+            mkdir -p build/ios/iphoneos/Payload
+            cp -r build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app build/ios/iphoneos/Payload/
+            cd build/ios/iphoneos
+            zip -r Runner.ipa Payload
+          fi
+
+      - name: Find IPA path
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        id: find-ipa
+        working-directory: nexaround_app
+        run: |
+          echo "=== Listing build/ios directory ==="
+          find build/ios -maxdepth 4 -name "*.ipa" 2>/dev/null || echo "No IPA found"
+          find build/ios -maxdepth 4 -type d 2>/dev/null | head -20 || echo "Cannot list build dirs"
+          echo "=== Searching for IPA ==="
+          IPA_PATH=$(find build/ios -name "*.ipa" 2>/dev/null | head -n 1)
+          echo "Relative IPA path: '$IPA_PATH'"
+          if [ -n "$IPA_PATH" ]; then
+            FULL_IPA_PATH="$GITHUB_WORKSPACE/nexaround_app/$IPA_PATH"
+            echo "Full IPA path: '$FULL_IPA_PATH'"
+            echo "ipa-path=$FULL_IPA_PATH" >> $GITHUB_OUTPUT
+          else
+            echo "ERROR: No IPA file found! Build may have failed silently."
+            exit 1
+          fi
+
+
+      - name: Upload to TestFlight
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        uses: Apple-Actions/upload-testflight-build@v1
+        with:
+          app-path: ${{ steps.find-ipa.outputs.ipa-path }}
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+
+      - name: Clean up Keychain
+        if: ${{ always() && env.BUILD_CERTIFICATE_BASE64 != '' }}
+        run: |
+          security delete-keychain $RUNNER_TEMP/app-signing.keychain-db
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexaround-ipa
+          path: |
+            nexaround_app/build/ios/ipa/*.ipa
+            nexaround_app/build/ios/iphoneos/Runner.ipa
+          if-no-files-found: error

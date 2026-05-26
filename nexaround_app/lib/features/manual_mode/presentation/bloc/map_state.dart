@@ -6,6 +6,7 @@ enum MapStatus { initial, loading, success, failure }
 class MapState extends Equatable {
   final MapStatus status;
   final List<AttractionEntity> attractions;
+  final List<AttractionEntity> allAttractions;
   final List<CategoryEntity> categories;
   final AttractionEntity? selectedAttraction;
   final String? selectedCategoryId;
@@ -15,6 +16,7 @@ class MapState extends Equatable {
   const MapState({
     this.status = MapStatus.initial,
     this.attractions = const [],
+    this.allAttractions = const [],
     this.categories = const [],
     this.selectedAttraction,
     this.selectedCategoryId,
@@ -25,6 +27,7 @@ class MapState extends Equatable {
   MapState copyWith({
     MapStatus? status,
     List<AttractionEntity>? attractions,
+    List<AttractionEntity>? allAttractions,
     List<CategoryEntity>? categories,
     AttractionEntity? selectedAttraction,
     String? selectedCategoryId,
@@ -34,6 +37,7 @@ class MapState extends Equatable {
     return MapState(
       status: status ?? this.status,
       attractions: attractions ?? this.attractions,
+      allAttractions: allAttractions ?? this.allAttractions,
       categories: categories ?? this.categories,
       selectedAttraction: selectedAttraction ?? this.selectedAttraction,
       selectedCategoryId: selectedCategoryId ?? this.selectedCategoryId,
@@ -46,6 +50,7 @@ class MapState extends Equatable {
   List<Object?> get props => [
     status, 
     attractions, 
+    allAttractions,
     categories, 
     selectedAttraction,
     selectedCategoryId, 

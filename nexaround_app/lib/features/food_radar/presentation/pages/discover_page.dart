@@ -217,42 +217,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       backgroundColor: AppColors.background,
       body: SafeArea(
         child: BlocListener<MapBloc, MapState>(
-          listener: (context, state) {
-            if (state.status == MapStatus.success) {
-              setState(() {
-                if (_selectedTab == 0) {
-                  // API already returns only food places via multi-query
-                  _foodList = List.from(state.attractions);
-                  // Sort by distance
-                  _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                } else if (_selectedTab == 1) {
-                  // Filter for experience related categories
-                  _experienceList = state.attractions.where((a) {
-                    final cat = (a.categoryName ?? '').toLowerCase();
-                    final name = (a.name).toLowerCase();
-                    return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || 
-                           cat.contains('experience') || cat.contains('landmark') || cat.contains('culture') ||
-                           cat.contains('temple') || cat.contains('art') || cat.contains('zoo') ||
-                           name.contains('temple') || name.contains('park') || name.contains('museum');
-                  }).toList();
-                  // Sort by rating then distance
-                  _experienceList.sort((a, b) {
-                    int ratingComp = b.rating.compareTo(a.rating);
-                    if (ratingComp != 0) return ratingComp;
-                    return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                  });
-                } else if (_selectedTab == 2) {
-                  // Filter for shopping related categories
-                  _shoppingList = state.attractions.where((a) {
-                    final cat = (a.categoryName ?? '').toLowerCase();
-                    return cat.contains('shop') || cat.contains('mall') || cat.contains('market') || cat.contains('store') || cat.contains('fashion');
-                  }).toList();
-                  // Sort by distance
-                  _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                }
-              });
-            }
-          },
+          listener: (context, state) {},
           child: Column(
             children: [
               // Header
@@ -331,6 +296,42 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
                     final isLoading = _selectedTab < 3 && state.status == MapStatus.loading;
+                    
+                    // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
+                    final masterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
+                    
+                    // Filter Food List
+                    _foodList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      return cat.contains('food') || cat.contains('restaurant') || cat.contains('cafe') || 
+                             cat.contains('dining') || cat.contains('meal') || name.contains('restaurant') || name.contains('cafe');
+                    }).toList();
+                    _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
+                    // Filter Experiences List
+                    _experienceList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || 
+                             cat.contains('experience') || cat.contains('landmark') || cat.contains('culture') ||
+                             cat.contains('temple') || cat.contains('art') || cat.contains('zoo') ||
+                             name.contains('temple') || name.contains('park') || name.contains('museum');
+                    }).toList();
+                    _experienceList.sort((a, b) {
+                      int ratingComp = b.rating.compareTo(a.rating);
+                      if (ratingComp != 0) return ratingComp;
+                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                    });
+
+                    // Filter Shopping List
+                    _shoppingList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      return cat.contains('shop') || cat.contains('mall') || cat.contains('market') || 
+                             cat.contains('store') || cat.contains('fashion');
+                    }).toList();
+                    _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
                     return Column(
                       children: [
                         if (isLoading)

@@ -89,6 +89,17 @@ class CacheService {
     savedPlacesNotifier.value++;
   }
 
+  // Attractions Caching
+  static Future<void> cacheAttractions(List<Map<String, dynamic>> placesJson) async {
+    final List<String> list = placesJson.map((p) => json.encode(p)).toList();
+    await _prefs.setStringList('cached_attractions_list', list);
+  }
+
+  static List<Map<String, dynamic>> getCachedAttractions() {
+    final List<String> list = _prefs.getStringList('cached_attractions_list') ?? [];
+    return list.map((str) => json.decode(str) as Map<String, dynamic>).toList();
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

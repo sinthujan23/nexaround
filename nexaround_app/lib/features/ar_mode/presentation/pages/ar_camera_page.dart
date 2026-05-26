@@ -271,12 +271,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       final raw = event.heading;
       if (raw == null) return;
       final accuracy = event.accuracy;
-      // Drop low-confidence updates (e.g. magnetic interference). On platforms
-      // that don't report accuracy this is null and we accept the reading.
-      if (accuracy != null && accuracy > _maxAcceptableAccuracyDegrees) {
-        setState(() => _compassAccuracy = accuracy);
-        return;
-      }
       setState(() {
         _rawHeading = raw;
         _compassAccuracy = accuracy;
@@ -654,13 +648,31 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       
       List<_ArLandmark> collected = [];
 
+      final categoriesToFetch = [
+        null,
+        'Food & Drink',
+        'Shopping',
+        'Attractions',
+        'Hotels',
+        'Medical',
+      ];
+
       for (final radius in _searchRadii) {
-        debugPrint('🔍 AR: Searching radius $radius m...');
-        final places = await GooglePlacesService.fetchNearbyPlaces(
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          radius: radius,
+        debugPrint('🔍 AR: Searching radius $radius m across categories...');
+        
+        final List<List<dynamic>> results = await Future.wait(
+          categoriesToFetch.map((cat) => GooglePlacesService.fetchNearbyPlaces(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            radius: radius,
+            categoryName: cat,
+          ).catchError((err) {
+            debugPrint('Error fetching category $cat: $err');
+            return <dynamic>[];
+          }))
         );
+
+        final places = results.expand((x) => x).toList();
 
         for (final p in places) {
           if (collected.any((l) => l.name == p.name)) continue;
@@ -694,19 +706,19 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
-        if (collected.length >= 10) {
-          debugPrint('📍 AR: Found ${collected.length} places (>= 10). Breaking search loop early to save API cost.');
+        if (collected.length >= 15) { // Increased threshold slightly to accommodate multiple categories
+          debugPrint('📍 AR: Found ${collected.length} places (>= 15). Breaking search loop early to save API cost.');
           break;
         }
       }
 
-      // Dedicated Beach Query up to 25km to make sure beaches are always shown far away
+      // Dedicated Beach Query up to 10km specifically
       try {
-        debugPrint('🏖 AR: Querying Beaches up to 25km specifically...');
+        debugPrint('🏖 AR: Querying Beaches up to 10km specifically...');
         final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
           latitude: pos.latitude,
           longitude: pos.longitude,
-          radius: 25000,
+          radius: 10000,
           categoryName: 'Beach',
         );
 
@@ -714,7 +726,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (collected.any((l) => l.name == p.name)) continue;
 
           final rawDistM = (p.distanceM ?? 0).toDouble();
-          if (rawDistM > 25000) continue; // Limit beaches to a maximum of 25km
+          if (rawDistM > 10000) continue; // Limit beaches to a maximum of 10km
           final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
           final distKm = rawDistM / 1000;
           final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
@@ -748,16 +760,35 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         l.tags.contains('beach')
       ).toList();
       
+      // Sort beaches by distance first (closest first)
+      beaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+      // Filter beaches so we only keep one beach per direction (e.g. 30 degrees bearing difference)
+      final List<_ArLandmark> uniqueDirectionBeaches = [];
+      for (final beach in beaches) {
+        bool hasBeachInDirection = false;
+        for (final addedBeach in uniqueDirectionBeaches) {
+          final diff = _signedAngleDelta(beach.bearing, addedBeach.bearing).abs();
+          if (diff < 30.0) {
+            hasBeachInDirection = true;
+            break;
+          }
+        }
+        if (!hasBeachInDirection) {
+          uniqueDirectionBeaches.add(beach);
+        }
+      }
+      
       final nonBeaches = collected.where((l) => !beaches.any((b) => b.name == l.name)).toList();
       
       // Sort non-beaches by distance and truncate
       nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
       
-      final maxNonBeaches = _maxVisibleMarkers - beaches.length;
+      final maxNonBeaches = _maxVisibleMarkers - uniqueDirectionBeaches.length;
       final truncatedNonBeaches = nonBeaches.take(maxNonBeaches > 40 ? maxNonBeaches : 40).toList();
       
       // Combine them and sort the final list by distance
-      final finalCollected = [...truncatedNonBeaches, ...beaches];
+      final finalCollected = [...truncatedNonBeaches, ...uniqueDirectionBeaches];
       finalCollected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
       
       collected = finalCollected;
@@ -1918,8 +1949,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // AR FILTER BAR - Horizontal chip selector
   // ═══════════════════════════════════════
   Widget _buildArFilterBar() {
+    final topPadding = MediaQuery.of(context).padding.top;
     return Positioned(
-      top: 90,
+      top: topPadding + 68,
       left: 0,
       right: 0,
       child: SizedBox(
