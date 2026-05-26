@@ -91,7 +91,7 @@ jobs:
           app-path: 'nexaround_app/${{ steps.find-ipa.outputs.ipa-path }}'
           issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_API_KEY_ID }}
-          api-key-content: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
+          api-private-key: ${{ secrets.APPSTORE_API_PRIVATE_KEY }}
 
       - name: Clean up Keychain
         if: ${{ always() && env.BUILD_CERTIFICATE_BASE64 != '' }}
