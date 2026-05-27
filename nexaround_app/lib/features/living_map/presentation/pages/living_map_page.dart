@@ -234,8 +234,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                           const SizedBox(height: 24),
                           _buildAIPromptBar(),
                           const SizedBox(height: 16),
-                          _buildCurrencyIntelligence(),
-                          const SizedBox(height: 16),
                           _buildOdysseyCTA(),
                         ],
                       ),
