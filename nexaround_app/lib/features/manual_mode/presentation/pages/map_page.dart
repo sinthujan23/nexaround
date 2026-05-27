@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong2.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
@@ -90,7 +91,13 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
   bool get _isDarkStyle => _currentStyle == MapStyle.dark;
 
   Future<void> _determinePosition() async {
-    // Permissions already granted by HomePage on app launch
+    // Check location permission first (critical for iOS)
+    final permStatus = await Permission.locationWhenInUse.status;
+    if (!permStatus.isGranted && !permStatus.isLimited) {
+      final result = await Permission.locationWhenInUse.request();
+      if (!result.isGranted && !result.isLimited) return;
+    }
+
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return;
 

@@ -73,8 +73,14 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _checkLocationAndInit() async {
-    // Permissions already granted by HomePage on app launch
-    // Just check if location service (GPS) is on
+    // Check location permission first (critical for iOS)
+    final permissionGranted = await PermissionService.isLocationGranted();
+    if (!permissionGranted) {
+      // Request permission if not granted
+      await PermissionService.requestLocationPermission();
+    }
+
+    // Then check if location service (GPS) is on
     final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     
     if (mounted) {

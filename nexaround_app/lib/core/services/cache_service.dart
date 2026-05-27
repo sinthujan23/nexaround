@@ -27,6 +27,23 @@ class CacheService {
     await _prefs.setBool('is_logged_in', value);
   }
 
+  // Permission Request Flags
+  static bool hasRequestedCamera() {
+    return _prefs.getBool('has_requested_camera') ?? false;
+  }
+
+  static Future<void> setRequestedCamera() async {
+    await _prefs.setBool('has_requested_camera', true);
+  }
+
+  static bool hasRequestedLocation() {
+    return _prefs.getBool('has_requested_location') ?? false;
+  }
+
+  static Future<void> setRequestedLocation() async {
+    await _prefs.setBool('has_requested_location', true);
+  }
+
   // Essential Details (Example: User Data)
   static Future<void> saveUserData(String key, String value) async {
     await _prefs.setString(key, value);

@@ -10,6 +10,7 @@ import 'package:camera/camera.dart';
 import 'package:nexaround_app/core/network/geocoding_service.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/geo_calculator.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_bloc.dart';
@@ -89,7 +90,17 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
 
   Future<void> _initCamera() async {
     try {
-      // Camera permission already granted by HomePage on app launch
+      // On iOS, camera permission must be explicitly granted before accessing camera
+      final cameraGranted = await PermissionService.isCameraGranted();
+      if (!cameraGranted) {
+        final granted = await PermissionService.requestCameraPermission();
+        if (!granted) {
+          debugPrint('📷 Camera permission not granted for AR view');
+          if (mounted) setState(() => _cameraError = true);
+          return;
+        }
+      }
+
       final cameras = await availableCameras();
       if (cameras.isEmpty) {
         setState(() => _cameraError = true);
@@ -187,7 +198,16 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   }
 
   Future<void> _startLocationTracking() async {
-    // Location permission already granted by HomePage on app launch
+    // Check location permission (critical for iOS)
+    final locationGranted = await PermissionService.isLocationGranted();
+    if (!locationGranted) {
+      final granted = await PermissionService.requestLocationPermission();
+      if (!granted) {
+        debugPrint('📍 Location permission not granted for AR tracking');
+        return;
+      }
+    }
+
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,

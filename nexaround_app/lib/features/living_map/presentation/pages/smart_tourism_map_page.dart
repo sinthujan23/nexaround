@@ -10,6 +10,7 @@ import 'package:nexaround_app/features/attractions/data/datasources/attraction_r
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -119,7 +120,17 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   // ─── Step 1: Get user GPS, then fetch places & route ───
   Future<void> _getUserLocationThenInit() async {
     try {
-      // Permissions already granted by HomePage on app launch
+      // Check location permission first (critical for iOS)
+      final permissionGranted = await Permission.locationWhenInUse.status;
+      if (!permissionGranted.isGranted && !permissionGranted.isLimited) {
+        final result = await Permission.locationWhenInUse.request();
+        if (!result.isGranted && !result.isLimited) {
+          debugPrint('📍 Location permission not granted for map');
+          // Fall through to fallback below
+          throw Exception('Location permission denied');
+        }
+      }
+
       final pos = await geo.Geolocator.getCurrentPosition();
       setState(() {
         _userLat = pos.latitude;

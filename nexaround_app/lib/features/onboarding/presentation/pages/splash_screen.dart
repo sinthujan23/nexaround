@@ -41,10 +41,14 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
   }
 
   void _navigateToNext() async {
-    // Request permissions at the very start
+    // Wait for the first frame to render and layout to settle before requesting native dialogs on iOS
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    // Request permissions
     await PermissionService.requestAllPermissions();
     
-    await Future.delayed(const Duration(milliseconds: 3500));
+    // Wait for the remaining splash duration (3.5s total - 1.0s delay = 2.5s)
+    await Future.delayed(const Duration(milliseconds: 2500));
     if (!mounted) return;
 
     if (CacheService.isFirstTime()) {

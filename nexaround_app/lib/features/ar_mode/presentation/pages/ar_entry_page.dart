@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.da
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 
 class ArEntryPage extends StatefulWidget {
   const ArEntryPage({super.key});
@@ -19,7 +20,7 @@ class ArEntryPage extends StatefulWidget {
   State<ArEntryPage> createState() => _ArEntryPageState();
 }
 
-class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin {
+class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _orbitController;
   late AnimationController _pulseController;
   late AnimationController _scanlineController;
@@ -30,20 +31,44 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _orbitController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _scanlineController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
     _checkPermissions();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Re-check permissions when user returns from Settings (iOS flow)
+    if (state == AppLifecycleState.resumed) {
+      _checkPermissions();
+    }
+  }
+
   Future<void> _checkPermissions() async {
-    // Permissions already granted by HomePage on app launch
+    // Actually check current permission status
+    final cameraOk = await PermissionService.isCameraGranted();
+    final locationOk = await PermissionService.isLocationGranted();
+
     if (mounted) {
       setState(() {
-        _locationReady = true;
-        _cameraReady = true;
+        _cameraReady = cameraOk;
+        _locationReady = locationOk;
         _checkingPermissions = false;
       });
+    }
+
+    // If permissions are not granted, request them
+    if (!cameraOk || !locationOk) {
+      if (!cameraOk) {
+        final granted = await PermissionService.requestCameraPermission();
+        if (mounted) setState(() => _cameraReady = granted);
+      }
+      if (!locationOk) {
+        final granted = await PermissionService.requestLocationPermission();
+        if (mounted) setState(() => _locationReady = granted);
+      }
     }
   }
 
@@ -73,6 +98,7 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _orbitController.dispose();
     _pulseController.dispose();
     _scanlineController.dispose();

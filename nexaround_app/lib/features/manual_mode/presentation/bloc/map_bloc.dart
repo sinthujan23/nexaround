@@ -77,7 +77,20 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // If we don't have all categories loaded yet, perform a complete batch fetch first.
     // Check status to prevent infinite loading loops if the API returns an empty list.
     if (state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty) {
-      emit(state.copyWith(status: MapStatus.loading));
+      // Load and emit local cache first for instant feedback (zero latency)
+      final cached = CacheService.getCachedAttractions();
+      if (cached.isNotEmpty) {
+        final models = cached.map((json) => AttractionModel.fromJson(json)).toList();
+        emit(state.copyWith(
+          status: MapStatus.success,
+          attractions: models,
+          allAttractions: models,
+          selectedCategoryId: event.categoryId,
+        ));
+      } else {
+        // Show loading spinner only if there's no cache available
+        emit(state.copyWith(status: MapStatus.loading));
+      }
 
       final categoriesToFetch = [
         null,

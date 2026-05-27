@@ -254,13 +254,26 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   Future<void> _checkAndInit() async {
-    // Permissions already granted by HomePage on app launch
+    // Actually check and request permissions (critical for iOS)
+    final cameraOk = await PermissionService.isCameraGranted();
+    final locationOk = await PermissionService.isLocationGranted();
+
     if (mounted) {
       setState(() {
-        _isLocationGranted = true;
-        _isCameraGranted = true;
+        _isCameraGranted = cameraOk;
+        _isLocationGranted = locationOk;
         _isCheckingPermissions = false;
       });
+    }
+
+    // Request permissions if not granted yet
+    if (!cameraOk) {
+      final granted = await PermissionService.requestCameraPermission();
+      if (mounted) setState(() => _isCameraGranted = granted);
+    }
+    if (!locationOk) {
+      final granted = await PermissionService.requestLocationPermission();
+      if (mounted) setState(() => _isLocationGranted = granted);
     }
 
     _initializeCamera();
@@ -514,8 +527,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   Future<void> _initializeCamera() async {
-    // Camera permission is handled by Android system when camera opens
-    // We try to initialize directly and catch any errors
+    // On iOS, camera permission MUST be granted before accessing the camera.
+    // Unlike Android, iOS won't show a permission dialog when the camera opens.
+    if (!_isCameraGranted) {
+      final granted = await PermissionService.requestCameraPermission();
+      if (!granted) {
+        debugPrint('📷 Camera permission not granted — cannot initialize camera');
+        if (mounted) setState(() => _isCameraGranted = false);
+        return;
+      }
+      if (mounted) setState(() => _isCameraGranted = true);
+    }
+
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) return;
