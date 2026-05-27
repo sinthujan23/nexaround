@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>501648798743-fghkh72pqh34u787m2aq2hn8dmnmcuiq.apps.googleusercontent.com</string>
+	<string>501648798743-kqev2d391necv2mvlqeoitmch9i05rv5.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.501648798743-fghkh72pqh34u787m2aq2hn8dmnmcuiq</string>
+	<string>com.googleusercontent.apps.501648798743-kqev2d391necv2mvlqeoitmch9i05rv5</string>
 	<key>ANDROID_CLIENT_ID</key>
-	<string>501648798743-vjrfvouhnk2o0p6qm7ob595hfm68th48.apps.googleusercontent.com</string>
+	<string>501648798743-0omovnor0thg338btth5n0b7r0oq1r9h.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
 	<string>AIzaSyDmYou02Gnd79gwFuuimfKNgYqN9BgSIck</string>
 	<key>GCM_SENDER_ID</key>
@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.nexaround.nexaroundApp</string>
+	<string>com.nexaround.nexaroundApp.5X9A8V7S49</string>
 	<key>PROJECT_ID</key>
 	<string>nexaround-fb321</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:501648798743:ios:b83574bd262bb7438ad852</string>
+	<string>1:501648798743:ios:b2de8027cee96dff8ad852</string>
 </dict>
 </plist>
