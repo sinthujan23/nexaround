@@ -100,6 +100,30 @@ class CacheService {
     return list.map((str) => json.decode(str) as Map<String, dynamic>).toList();
   }
 
+  // Currency Caching (24 hours expiry)
+  static Future<void> cacheCurrencyRates(String baseCurrency, Map<String, double> rates) async {
+    await _prefs.setString('currency_cache_$baseCurrency', json.encode(rates));
+    await _prefs.setInt('currency_cache_time_$baseCurrency', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static Map<String, double>? getCachedCurrencyRates(String baseCurrency) {
+    final timestamp = _prefs.getInt('currency_cache_time_$baseCurrency') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    
+    // 24 hours in milliseconds = 24 * 60 * 60 * 1000 = 86,400,000
+    if (now - timestamp > 86400000) return null;
+    
+    final jsonStr = _prefs.getString('currency_cache_$baseCurrency');
+    if (jsonStr == null) return null;
+    
+    try {
+      final decoded = json.decode(jsonStr) as Map<String, dynamic>;
+      return decoded.map((key, value) => MapEntry(key, (value as num).toDouble()));
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

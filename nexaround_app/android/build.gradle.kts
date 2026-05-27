@@ -17,7 +17,7 @@ allprojects {
     configurations.all {
         resolutionStrategy.eachDependency {
             if (requested.group == "org.jetbrains.kotlin") {
-                useVersion("2.1.0")
+                useVersion("2.1.21")
             }
             if (requested.group == "com.google.firebase" && requested.name == "firebase-iid") {
                 useVersion("21.1.0")
