@@ -90,6 +90,12 @@ class ArBloc extends Bloc<ArEvent, ArState> {
       AttractionEntity? closest;
       double closestDistance = double.infinity;
 
+      // Hysteresis: use wider angle to clear than to detect, preventing flicker at boundary
+      const double detectAngle = 20.0;
+      const double clearAngle = 30.0;
+      const double maxDistance = 50000.0;
+      final bool alreadyDetected = state.detectedAttraction != null;
+
       for (final attraction in currentAttractions) {
         final bearing = GeoCalculator.bearing(event.latitude, event.longitude, attraction.latitude, attraction.longitude);
         final distance = GeoCalculator.distance(event.latitude, event.longitude, attraction.latitude, attraction.longitude);
@@ -97,7 +103,12 @@ class ArBloc extends Bloc<ArEvent, ArState> {
         double diff = (bearing - event.heading).abs();
         if (diff > 180) diff = 360 - diff;
 
-        if (diff <= 20.0 && distance <= 50000.0) {
+        // Use wider angle if this attraction is already detected (hysteresis)
+        final threshold = (alreadyDetected && state.detectedAttraction?.id == attraction.id)
+            ? clearAngle
+            : detectAngle;
+
+        if (diff <= threshold && distance <= maxDistance) {
           if (distance < closestDistance) {
             closest = attraction;
             closestDistance = distance;

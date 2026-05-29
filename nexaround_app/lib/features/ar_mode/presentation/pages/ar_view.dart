@@ -40,6 +40,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   double _currentHeading = 0.0;
   double _currentLatitude = 0.0;
   double _currentLongitude = 0.0;
+  Timer? _compassThrottle;
   
   // Mapping Mode Controllers
   final TextEditingController _placeNameController = TextEditingController();
@@ -134,6 +135,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   void dispose() {
     _positionStream?.cancel();
     _compassStream?.cancel();
+    _compassThrottle?.cancel();
     _cameraController?.dispose();
     _objectDetector.close();
     _pulseController.dispose();
@@ -235,17 +237,23 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       final heading = event.heading;
       if (heading == null || !mounted) return;
 
-      // Skip tiny jitters to avoid spamming the bloc
+      // Skip tiny jitters
       if ((heading - _currentHeading).abs() < 1.5) return;
 
       _currentHeading = heading;
-      if (_currentLatitude != 0.0 && _currentLongitude != 0.0) {
-        context.read<ArBloc>().add(ArUpdateLocation(
-          latitude: _currentLatitude,
-          longitude: _currentLongitude,
-          heading: heading,
-        ));
-      }
+
+      // Throttle: send to BLoC at most once every 200ms to prevent iOS compass flooding
+      if (_compassThrottle?.isActive ?? false) return;
+      _compassThrottle = Timer(const Duration(milliseconds: 200), () {
+        if (!mounted) return;
+        if (_currentLatitude != 0.0 && _currentLongitude != 0.0) {
+          context.read<ArBloc>().add(ArUpdateLocation(
+            latitude: _currentLatitude,
+            longitude: _currentLongitude,
+            heading: _currentHeading,
+          ));
+        }
+      });
     });
   }
 
