@@ -28,19 +28,22 @@ void main() async {
       if (mapboxToken != null && mapboxToken is String && mapboxToken.isNotEmpty) {
         ApiConstants.mapboxAccessToken = mapboxToken;
         MapboxOptions.setAccessToken(mapboxToken);
-      } else {
-        MapboxOptions.setAccessToken("pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ");
       }
       
       if (googleMapsKey != null && googleMapsKey is String && googleMapsKey.isNotEmpty) {
         ApiConstants.googleMapsApiKey = googleMapsKey;
+        // Pass Google Maps API Key to iOS native side dynamically
+        try {
+          const platform = MethodChannel('com.nexaround.app/keys');
+          await platform.invokeMethod('setGoogleMapsKey', {'key': googleMapsKey});
+          debugPrint('Successfully set Google Maps API Key on iOS native side');
+        } catch (e) {
+          debugPrint('Failed to set Google Maps API Key on native side: $e');
+        }
       }
-    } else {
-      MapboxOptions.setAccessToken("pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ");
     }
   } catch (e) {
     debugPrint("Failed to fetch keys from backend: $e");
-    MapboxOptions.setAccessToken("pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ");
   }
 
   // Force dark status bar for futuristic feel

@@ -27,12 +27,12 @@ async def startup():
     from app.services.settings_service import SettingsService
     async with async_session() as db:
         service = SettingsService(db)
-        # Check if keys are set, if not seed defaults
+        # Check if keys are set, if not seed defaults (placeholder empty strings)
         google_maps_key = await service.get_setting("google_maps_api_key")
         if not google_maps_key:
             await service.set_setting(
                 "google_maps_api_key",
-                "AIzaSyAxGlCCI4yoOn3umPPyX1VypSzL2Sutz9U",
+                "",
                 "Google Maps API Key for Geocoding, Places, and Directions"
             )
         
@@ -40,7 +40,7 @@ async def startup():
         if not mapbox_token:
             await service.set_setting(
                 "mapbox_access_token",
-                "pk.eyJ1IjoiaGFzaG5hdGUiLCJhIjoiY21vaWpmd2o5MDNiejJ2cThwZDl5cGI2diJ9.Zat9TI_nSBO6iwTF2_JtQQ",
+                "",
                 "Mapbox Public Access Token for SDK and Driving Directions"
             )
             
@@ -48,7 +48,7 @@ async def startup():
         if not gemini_key:
             await service.set_setting(
                 "gemini_api_key",
-                "AIzaSyC2y9dsp2ODG_eUy3OFpwonN8MH8TRE9oY",
+                "",
                 "Gemini Generative AI API Key for Chat and Vision Details"
             )
 
