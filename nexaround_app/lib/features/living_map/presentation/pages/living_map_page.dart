@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
@@ -263,6 +264,28 @@ class _LivingMapPageState extends State<LivingMapPage>
       
                   // Computed lists
                   ...() {
+                    if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
+                      return [
+                        // Trending Shimmer
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+                            child: _buildSectionHeader('🔥  Trending Near You', 'See all'),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+                        
+                        // Nearby Shimmer
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader('✨  Nearby Places', 'Explore'),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
+                      ];
+                    }
+
                     List<AttractionEntity> trendingPlaces = [];
                     if (_selectedCategory != 'All') {
                       trendingPlaces = state.attractions.take(5).toList();
@@ -391,12 +414,27 @@ class _LivingMapPageState extends State<LivingMapPage>
                   'EXPLORING',
                   style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
                 ),
-                Text(
-                  _currentLocationName,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                _currentLocationName == 'Locating...'
+                    ? SizedBox(
+                        width: 80,
+                        height: 12,
+                        child: Shimmer.fromColors(
+                          baseColor: Colors.grey[200]!,
+                          highlightColor: Colors.grey[50]!,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Text(
+                        _currentLocationName,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
               ],
             ),
           ),
@@ -802,6 +840,53 @@ class _LivingMapPageState extends State<LivingMapPage>
           final p = attractions[index];
           return _buildPlaceCard(p, index);
         },
+      ),
+    );
+  }
+
+  Widget _buildShimmerTrendingCards() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: SizedBox(
+        height: 240,
+        child: ListView.builder(
+          padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
+          scrollDirection: Axis.horizontal,
+          itemCount: 3,
+          itemBuilder: (context, index) {
+            return Container(
+              width: 200,
+              margin: const EdgeInsets.only(right: 16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildShimmerHiddenGemCards() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+        child: Column(
+          children: List.generate(3, (index) {
+            return Container(
+              height: 84,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+              ),
+            );
+          }),
+        ),
       ),
     );
   }

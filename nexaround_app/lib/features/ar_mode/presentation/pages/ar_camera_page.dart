@@ -106,6 +106,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   double? _rawHeading; // last raw reading from sensor (pre-smoothing)
   double? _compassAccuracy; // 0..360°, lower = more reliable
   List<_ArLandmark> _landmarks = [];
+  bool _isFetchingPlaces = false;
+  DateTime? _lastFetchTime;
 
   /// User's manual choice for the "Your Location" pill, overriding auto-pick.
   /// Cleared on every fresh place fetch so it doesn't stick after you walk
@@ -277,6 +279,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
 
     _initializeCamera();
+    _loadCachedPlaces();
     _fetchLivePlaces();
 
     _compassSubscription = FlutterCompass.events?.listen((event) {
@@ -663,13 +666,88 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   static const int _maxVisibleOnScreen = 8;
   static const List<int> _searchRadii = [100, 200, 500, 1000, 5000];
 
+  void _loadCachedPlaces() {
+    try {
+      final cachedJson = CacheService.getCachedAttractions();
+      if (cachedJson.isNotEmpty) {
+        final pos = _currentPosition;
+        final double currentLat = pos?.latitude ?? 6.9271; // Colombo default fallback
+        final double currentLng = pos?.longitude ?? 79.8612;
+
+        final List<_ArLandmark> cachedLandmarks = cachedJson.map((jsonMap) {
+          final name = jsonMap['name'] as String? ?? 'Discovery';
+          final lat = (jsonMap['latitude'] as num?)?.toDouble();
+          final lng = (jsonMap['longitude'] as num?)?.toDouble();
+          final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
+          final rating = (jsonMap['rating'] as num?)?.toDouble() ?? 0.0;
+          final description = jsonMap['description'] as String? ?? '';
+          final photoUrls = jsonMap['photo_urls'] as List? ?? [];
+          final tags = (jsonMap['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+
+          final photoUrl = photoUrls.isNotEmpty 
+              ? photoUrls.first 
+              : (categoryName == 'Nature' 
+                  ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop' 
+                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
+
+          double bearing = 0.0;
+          double distanceM = 0.0;
+          if (lat != null && lng != null) {
+            bearing = _calculateBearing(currentLat, currentLng, lat, lng);
+            distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
+          }
+
+          final distKm = distanceM / 1000;
+          final distStr = distKm < 1 ? '${distanceM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+
+          return _ArLandmark(
+            name,
+            photoUrl,
+            rating,
+            distStr,
+            bearing,
+            description,
+            categoryName.toUpperCase(),
+            distanceM,
+            lat,
+            lng,
+            tags,
+          );
+        }).toList();
+
+        // Sort by distance
+        cachedLandmarks.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+        setState(() {
+          _landmarks = cachedLandmarks;
+        });
+        debugPrint('📦 AR: Loaded ${_landmarks.length} places from cache.');
+      }
+    } catch (e) {
+      debugPrint('Error loading cached places in AR: $e');
+    }
+  }
+
   Future<void> _fetchLivePlaces() async {
     if (!_isLocationGranted) return;
+    if (_isFetchingPlaces) {
+      debugPrint('🔍 AR: Fetch already in progress, ignoring duplicate call.');
+      return;
+    }
+    final now = DateTime.now();
+    if (_lastFetchTime != null && now.difference(_lastFetchTime!) < const Duration(seconds: 15)) {
+      debugPrint('🔍 AR: Fetch throttled (cooldown active), ignoring call.');
+      return;
+    }
+    _isFetchingPlaces = true;
+    _lastFetchTime = now;
+
     try {
       final pos = await PermissionService.getSafePosition();
       if (pos == null) return;
       
       List<_ArLandmark> collected = [];
+      List<AttractionEntity> allPlaces = []; // to save to cache later
 
       final categoriesToFetch = [
         null,
@@ -726,6 +804,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             p.longitude,
             p.tags,
           ));
+          allPlaces.add(p);
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
@@ -771,64 +850,103 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             p.longitude,
             p.tags,
           ));
+          allPlaces.add(p);
         }
       } catch (e) {
         debugPrint('AR dedicated Beach fetch failed: $e');
       }
 
-      // Separate beaches and non-beaches to ensure beaches are never truncated
-      final beaches = collected.where((l) => 
-        l.category == 'NATURE' || 
-        l.name.toLowerCase().contains('beach') || 
-        l.tags.contains('beach')
-      ).toList();
-      
-      // Sort beaches by distance first (closest first)
-      beaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+      if (collected.isNotEmpty) {
+        // Separate beaches and non-beaches to ensure beaches are never truncated
+        final beaches = collected.where((l) => 
+          l.category == 'NATURE' || 
+          l.name.toLowerCase().contains('beach') || 
+          l.tags.contains('beach')
+        ).toList();
+        
+        // Sort beaches by distance first (closest first)
+        beaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
-      // Filter beaches so we only keep one beach per direction (e.g. 30 degrees bearing difference)
-      final List<_ArLandmark> uniqueDirectionBeaches = [];
-      for (final beach in beaches) {
-        bool hasBeachInDirection = false;
-        for (final addedBeach in uniqueDirectionBeaches) {
-          final diff = _signedAngleDelta(beach.bearing, addedBeach.bearing).abs();
-          if (diff < 30.0) {
-            hasBeachInDirection = true;
-            break;
+        // Filter beaches so we only keep one beach per direction (e.g. 30 degrees bearing difference)
+        final List<_ArLandmark> uniqueDirectionBeaches = [];
+        for (final beach in beaches) {
+          bool hasBeachInDirection = false;
+          for (final addedBeach in uniqueDirectionBeaches) {
+            final diff = _signedAngleDelta(beach.bearing, addedBeach.bearing).abs();
+            if (diff < 30.0) {
+              hasBeachInDirection = true;
+              break;
+            }
+          }
+          if (!hasBeachInDirection) {
+            uniqueDirectionBeaches.add(beach);
           }
         }
-        if (!hasBeachInDirection) {
-          uniqueDirectionBeaches.add(beach);
+        
+        final nonBeaches = collected.where((l) => !beaches.any((b) => b.name == l.name)).toList();
+        
+        // Sort non-beaches by distance and truncate
+        nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        
+        final maxNonBeaches = _maxVisibleMarkers - uniqueDirectionBeaches.length;
+        final truncatedNonBeaches = nonBeaches.take(maxNonBeaches > 40 ? maxNonBeaches : 40).toList();
+        
+        // Combine them and sort the final list by distance
+        final finalCollected = [...truncatedNonBeaches, ...uniqueDirectionBeaches];
+        finalCollected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        
+        collected = finalCollected;
+
+        if (mounted) {
+          setState(() {
+            _landmarks = collected;
+            _currentPosition = pos;
+            // Fresh fetch means user likely moved; drop any manual override so
+            // the smart picker is in charge again.
+            _userPickedLocationName = null;
+          });
+        }
+
+        // Cache the newly fetched places to the persistent cache so other screens can use them
+        try {
+          final attractionJsons = allPlaces.map((p) => {
+            'id': p.id,
+            'name': p.name,
+            'description': p.description,
+            'history': p.history,
+            'latitude': p.latitude,
+            'longitude': p.longitude,
+            'category_id': p.categoryId,
+            'category_name': p.categoryName,
+            'address': p.address,
+            'rating': p.rating,
+            'review_count': p.reviewCount,
+            'photo_urls': p.photoUrls,
+            'tags': p.tags,
+            'distance_m': p.distanceM,
+            'created_at': p.createdAt.toIso8601String(),
+          }).toList();
+          CacheService.cacheAttractions(attractionJsons);
+        } catch (e) {
+          debugPrint('AR: Failed to cache fetched places: $e');
+        }
+      } else {
+        // If collected is empty (e.g. timeout or no result), keep the old landmarks (cached or from last load)
+        if (mounted) {
+          setState(() {
+            _currentPosition = pos;
+          });
         }
       }
-      
-      final nonBeaches = collected.where((l) => !beaches.any((b) => b.name == l.name)).toList();
-      
-      // Sort non-beaches by distance and truncate
-      nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
-      
-      final maxNonBeaches = _maxVisibleMarkers - uniqueDirectionBeaches.length;
-      final truncatedNonBeaches = nonBeaches.take(maxNonBeaches > 40 ? maxNonBeaches : 40).toList();
-      
-      // Combine them and sort the final list by distance
-      final finalCollected = [...truncatedNonBeaches, ...uniqueDirectionBeaches];
-      finalCollected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
-      
-      collected = finalCollected;
-
-      if (mounted) setState(() {
-        _landmarks = collected;
-        _currentPosition = pos;
-        // Fresh fetch means user likely moved; drop any manual override so
-        // the smart picker is in charge again.
-        _userPickedLocationName = null;
-      });
 
       // Resolve a friendly name for the "Your Location" pill.
       _resolveCurrentLocationName(pos.latitude, pos.longitude);
     } catch (e) {
       debugPrint('AR places error: $e');
+    } finally {
+      _isFetchingPlaces = false;
     }
+  }
   }
 
   Future<void> _resolveCurrentLocationName(double lat, double lng) async {
