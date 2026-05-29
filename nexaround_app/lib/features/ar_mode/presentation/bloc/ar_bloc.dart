@@ -5,6 +5,7 @@ import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_event.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/bloc/ar_state.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:nexaround_app/core/utils/geo_calculator.dart';
 
 class ArBloc extends Bloc<ArEvent, ArState> {
   final AttractionRepository _repository;
@@ -67,6 +68,8 @@ class ArBloc extends Bloc<ArEvent, ArState> {
       currentHeading: event.heading,
     ));
 
+    List<AttractionEntity> currentAttractions = state.attractions;
+
     if (shouldFetch) {
       final result = await _repository.getNearbyAttractions(
         latitude: event.latitude,
@@ -76,8 +79,55 @@ class ArBloc extends Bloc<ArEvent, ArState> {
 
       result.fold(
         (failure) => emit(state.copyWith(errorMessage: failure.message)),
-        (attractions) => emit(state.copyWith(attractions: attractions)),
+        (attractions) {
+          currentAttractions = attractions;
+          emit(state.copyWith(attractions: attractions));
+        },
       );
+    }
+
+    if (currentAttractions.isNotEmpty) {
+      AttractionEntity? closest;
+      double closestDistance = double.infinity;
+
+      for (final attraction in currentAttractions) {
+        final bearing = GeoCalculator.bearing(event.latitude, event.longitude, attraction.latitude, attraction.longitude);
+        final distance = GeoCalculator.distance(event.latitude, event.longitude, attraction.latitude, attraction.longitude);
+
+        double diff = (bearing - event.heading).abs();
+        if (diff > 180) diff = 360 - diff;
+
+        if (diff <= 20.0 && distance <= 50000.0) {
+          if (distance < closestDistance) {
+            closest = attraction;
+            closestDistance = distance;
+          }
+        }
+      }
+
+      if (closest != null) {
+        if (state.detectedAttraction?.id != closest.id || (state.detectedDistance - closestDistance).abs() > 5.0) {
+          emit(state.copyWith(
+            detectedAttraction: closest,
+            detectedDistance: closestDistance,
+            clearInsight: state.detectedAttraction?.id != closest.id,
+          ));
+        }
+      } else {
+        if (state.detectedAttraction != null) {
+          emit(state.copyWith(
+            clearDetected: true,
+            clearInsight: true,
+          ));
+        }
+      }
+    } else {
+      if (state.detectedAttraction != null) {
+        emit(state.copyWith(
+          clearDetected: true,
+          clearInsight: true,
+        ));
+      }
     }
   }
 

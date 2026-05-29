@@ -38,6 +38,8 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
   List<DetectedObject> _detectedObjects = [];
   String _currentAddress = 'Locating...';
   double _currentHeading = 0.0;
+  double _currentLatitude = 0.0;
+  double _currentLongitude = 0.0;
   
   // Mapping Mode Controllers
   final TextEditingController _placeNameController = TextEditingController();
@@ -215,12 +217,13 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       ),
     ).listen((position) {
       if (mounted) {
+        _currentLatitude = position.latitude;
+        _currentLongitude = position.longitude;
         context.read<ArBloc>().add(ArUpdateLocation(
           latitude: position.latitude,
           longitude: position.longitude,
           heading: _currentHeading,
         ));
-        _detectAttractionInView(_currentHeading);
       }
     });
   }
@@ -236,43 +239,14 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       if ((heading - _currentHeading).abs() < 1.5) return;
 
       _currentHeading = heading;
-      final state = context.read<ArBloc>().state;
-      context.read<ArBloc>().add(ArUpdateLocation(
-        latitude: state.currentLatitude,
-        longitude: state.currentLongitude,
-        heading: heading,
-      ));
-      _detectAttractionInView(heading);
-    });
-  }
-
-  void _detectAttractionInView(double heading) {
-    final state = context.read<ArBloc>().state;
-    if (state.attractions.isEmpty) return;
-
-    AttractionEntity? closest;
-    double closestDistance = double.infinity;
-
-    for (final attraction in state.attractions) {
-      final bearing = GeoCalculator.bearing(state.currentLatitude, state.currentLongitude, attraction.latitude, attraction.longitude);
-      final distance = GeoCalculator.distance(state.currentLatitude, state.currentLongitude, attraction.latitude, attraction.longitude);
-
-      double diff = (bearing - heading).abs();
-      if (diff > 180) diff = 360 - diff;
-
-      if (diff <= _detectionAngle && distance <= _detectionDistance) {
-        if (distance < closestDistance) {
-          closest = attraction;
-          closestDistance = distance;
-        }
+      if (_currentLatitude != 0.0 && _currentLongitude != 0.0) {
+        context.read<ArBloc>().add(ArUpdateLocation(
+          latitude: _currentLatitude,
+          longitude: _currentLongitude,
+          heading: heading,
+        ));
       }
-    }
-
-    if (closest != null) {
-      context.read<ArBloc>().add(ArDetectAttraction(closest, closestDistance));
-    } else {
-      context.read<ArBloc>().add(ArClearDetection());
-    }
+    });
   }
 
   Future<void> _onMappingToggled(bool isMapping) async {
@@ -949,9 +923,20 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     
     return state.attractions.take(6).map((point) {
       final bearing = GeoCalculator.bearing(state.currentLatitude, state.currentLongitude, point.latitude, point.longitude);
-      final angle = (bearing - state.currentHeading) * pi / 180;
       
-      final x = screenWidth / 2 + (screenWidth * 0.4 * sin(angle));
+      // Calculate normalized difference between bearing and current heading (-180 to 180)
+      double diff = bearing - state.currentHeading;
+      while (diff < -180) diff += 360;
+      while (diff > 180) diff -= 360;
+
+      // Field of view (FOV) limit (e.g., ±45 degrees)
+      const double fov = 45.0;
+      if (diff.abs() > fov) {
+        return const SizedBox.shrink();
+      }
+
+      // Map diff (-fov to fov) linearly to x coordinate (0 to screenWidth)
+      final x = screenWidth / 2 + (screenWidth * 0.5 * (diff / fov));
       final y = screenHeight * 0.35 + (bearing % 20) * 8;
       
       final isDetected = state.detectedAttraction?.id == point.id;
