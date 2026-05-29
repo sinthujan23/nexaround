@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
@@ -70,6 +71,31 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     };
   }
 
+  List<AttractionModel> _getFilteredCache(double lat, double lng) {
+    try {
+      final cached = CacheService.getCachedAttractions();
+      if (cached.isEmpty) return [];
+      
+      // Filter out attractions that are more than 50km away from current coordinates
+      // (consistent with our maximum search radius of 50000m)
+      return cached
+          .map((json) => AttractionModel.fromJson(json))
+          .where((a) {
+            if (a.latitude == null || a.longitude == null) return false;
+            final double distanceM = geo.Geolocator.distanceBetween(
+              lat,
+              lng,
+              a.latitude!,
+              a.longitude!,
+            );
+            return distanceM <= 50000;
+          })
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   Future<void> _onFetchNearbyAttractions(
     FetchNearbyAttractions event,
     Emitter<MapState> emit,
@@ -77,14 +103,13 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // If we don't have all categories loaded yet, perform a complete batch fetch first.
     // Check status to prevent infinite loading loops if the API returns an empty list.
     if (state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty) {
-      // Load and emit local cache first for instant feedback (zero latency)
-      final cached = CacheService.getCachedAttractions();
-      if (cached.isNotEmpty) {
-        final models = cached.map((json) => AttractionModel.fromJson(json)).toList();
+      // Load and emit local cache first for instant feedback (zero latency) if it is nearby
+      final cachedModels = _getFilteredCache(event.latitude, event.longitude);
+      if (cachedModels.isNotEmpty) {
         emit(state.copyWith(
           status: MapStatus.success,
-          attractions: models,
-          allAttractions: models,
+          attractions: cachedModels,
+          allAttractions: cachedModels,
           selectedCategoryId: event.categoryId,
         ));
       } else {
@@ -133,13 +158,12 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
         if (finalAttractions.isEmpty) {
           // If network results are completely empty (offline/no network), load cache
-          final cached = CacheService.getCachedAttractions();
-          if (cached.isNotEmpty) {
-            final models = cached.map((json) => AttractionModel.fromJson(json)).toList();
+          final cachedModels = _getFilteredCache(event.latitude, event.longitude);
+          if (cachedModels.isNotEmpty) {
             emit(state.copyWith(
               status: MapStatus.success,
-              attractions: models,
-              allAttractions: models,
+              attractions: cachedModels,
+              allAttractions: cachedModels,
               selectedCategoryId: event.categoryId,
             ));
             return;
@@ -160,13 +184,12 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         ));
       } catch (e) {
         // Fallback to cache if network failed/threw SocketException
-        final cached = CacheService.getCachedAttractions();
-        if (cached.isNotEmpty) {
-          final models = cached.map((json) => AttractionModel.fromJson(json)).toList();
+        final cachedModels = _getFilteredCache(event.latitude, event.longitude);
+        if (cachedModels.isNotEmpty) {
           emit(state.copyWith(
             status: MapStatus.success,
-            attractions: models,
-            allAttractions: models,
+            attractions: cachedModels,
+            allAttractions: cachedModels,
             selectedCategoryId: event.categoryId,
           ));
           return;

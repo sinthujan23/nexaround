@@ -668,62 +668,72 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   static const int _maxVisibleOnScreen = 8;
   static const List<int> _searchRadii = [100, 200, 500, 1000, 5000];
 
-  void _loadCachedPlaces() {
+  void _loadCachedPlaces({geo.Position? position}) {
     try {
       final cachedJson = CacheService.getCachedAttractions();
       if (cachedJson.isNotEmpty) {
-        final pos = _currentPosition;
-        final double currentLat = pos?.latitude ?? 6.9271; // Colombo default fallback
-        final double currentLng = pos?.longitude ?? 79.8612;
+        final pos = position ?? _currentPosition;
+        if (pos == null) {
+          // Without location, we can't filter cached places by distance.
+          // Do not load to avoid showing unrelated places from other countries.
+          return;
+        }
+        final double currentLat = pos.latitude;
+        final double currentLng = pos.longitude;
 
-        final List<_ArLandmark> cachedLandmarks = cachedJson.map((jsonMap) {
-          final name = jsonMap['name'] as String? ?? 'Discovery';
+        final List<_ArLandmark> cachedLandmarks = [];
+        for (final jsonMap in cachedJson) {
           final lat = (jsonMap['latitude'] as num?)?.toDouble();
           final lng = (jsonMap['longitude'] as num?)?.toDouble();
-          final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
-          final rating = (jsonMap['rating'] as num?)?.toDouble() ?? 0.0;
-          final description = jsonMap['description'] as String? ?? '';
-          final photoUrls = jsonMap['photo_urls'] as List? ?? [];
-          final tags = (jsonMap['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
-
-          final photoUrl = photoUrls.isNotEmpty 
-              ? photoUrls.first 
-              : (categoryName == 'Nature' 
-                  ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop' 
-                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
-
-          double bearing = 0.0;
-          double distanceM = 0.0;
+          
           if (lat != null && lng != null) {
-            bearing = _calculateBearing(currentLat, currentLng, lat, lng);
-            distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
+            final distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
+            // Only keep cached places that are within 10 km (10000m)
+            if (distanceM > 10000) continue;
+
+            final name = jsonMap['name'] as String? ?? 'Discovery';
+            final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
+            final rating = (jsonMap['rating'] as num?)?.toDouble() ?? 0.0;
+            final description = jsonMap['description'] as String? ?? '';
+            final photoUrls = jsonMap['photo_urls'] as List? ?? [];
+            final tags = (jsonMap['tags'] as List?)?.map((e) => e.toString()).toList() ?? [];
+
+            final photoUrl = photoUrls.isNotEmpty 
+                ? photoUrls.first 
+                : (categoryName == 'Nature' 
+                    ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop' 
+                    : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
+
+            final bearing = _calculateBearing(currentLat, currentLng, lat, lng);
+            final distKm = distanceM / 1000;
+            final distStr = distKm < 1 ? '${distanceM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+
+            cachedLandmarks.add(_ArLandmark(
+              name,
+              photoUrl,
+              rating,
+              distStr,
+              bearing,
+              description,
+              categoryName.toUpperCase(),
+              distanceM,
+              lat,
+              lng,
+              tags,
+            ));
           }
-
-          final distKm = distanceM / 1000;
-          final distStr = distKm < 1 ? '${distanceM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-
-          return _ArLandmark(
-            name,
-            photoUrl,
-            rating,
-            distStr,
-            bearing,
-            description,
-            categoryName.toUpperCase(),
-            distanceM,
-            lat,
-            lng,
-            tags,
-          );
-        }).toList();
+        }
 
         // Sort by distance
         cachedLandmarks.sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
         setState(() {
           _landmarks = cachedLandmarks;
+          if (_currentPosition == null) {
+            _currentPosition = pos;
+          }
         });
-        debugPrint('📦 AR: Loaded ${_landmarks.length} places from cache.');
+        debugPrint('📦 AR: Loaded ${_landmarks.length} places from cache within 10km.');
       }
     } catch (e) {
       debugPrint('Error loading cached places in AR: $e');
@@ -747,6 +757,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     try {
       final pos = await PermissionService.getSafePosition();
       if (pos == null) return;
+      
+      // Load relevant cached places immediately to show them first
+      if (_landmarks.isEmpty) {
+        _loadCachedPlaces(position: pos);
+      }
       
       List<_ArLandmark> collected = [];
       List<AttractionEntity> allPlaces = []; // to save to cache later
