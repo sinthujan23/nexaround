@@ -23,6 +23,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -946,7 +948,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     } finally {
       _isFetchingPlaces = false;
     }
-  }
   }
 
   Future<void> _resolveCurrentLocationName(double lat, double lng) async {

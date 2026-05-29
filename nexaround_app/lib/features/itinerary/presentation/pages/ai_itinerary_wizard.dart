@@ -44,7 +44,7 @@ class _AiItineraryWizardState extends State<AiItineraryWizard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.darkBackground,
+      backgroundColor: AppColors.primary,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: const Text('AI Trip Designer'),

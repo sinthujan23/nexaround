@@ -7,7 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:camera/camera.dart';
-import 'package:nexaround_app/core/network/geocoding_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:google_mlkit_object_detection/google_mlkit_object_detection.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -262,9 +262,8 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
       // Get current position for geocoding
       try {
         final pos = await Geolocator.getCurrentPosition();
-        final service = GeocodingService();
-        final name = await service.getPlaceNameFromCoordinates(pos.latitude, pos.longitude);
-        if (mounted && name != null) {
+        final name = await GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude);
+        if (mounted && name.isNotEmpty) {
           setState(() {
             _placeNameController.text = name;
           });
