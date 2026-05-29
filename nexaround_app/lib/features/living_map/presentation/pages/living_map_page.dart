@@ -118,7 +118,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     try {
       // Permissions already granted by HomePage
       final position = await PermissionService.getSafePosition();
-      if (position == null) return;
+      if (position == null) {
+        _useFallbackLocation();
+        return;
+      }
       
       // Reverse geocode to get human readable address
       final locationName = await GooglePlacesService.reverseGeocode(
@@ -140,19 +143,23 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     } catch (e) {
       debugPrint('Error fetching location: $e');
-      if (mounted) {
-        setState(() {
-          _currentLocationName = 'Colombo, Sri Lanka';
-          _userLatitude = 6.9271; // Fallback to Colombo
-          _userLongitude = 79.8612;
-        });
-        // Still fetch data with fallback location
-        context.read<MapBloc>().add(FetchNearbyAttractions(
-          latitude: 6.9271,
-          longitude: 79.8612,
-        ));
-        context.read<MapBloc>().add(const FetchCategories());
-      }
+      _useFallbackLocation();
+    }
+  }
+
+  void _useFallbackLocation() {
+    if (mounted) {
+      setState(() {
+        _currentLocationName = 'Colombo, Sri Lanka';
+        _userLatitude = 6.9271; // Fallback to Colombo
+        _userLongitude = 79.8612;
+      });
+      // Still fetch data with fallback location
+      context.read<MapBloc>().add(FetchNearbyAttractions(
+        latitude: 6.9271,
+        longitude: 79.8612,
+      ));
+      context.read<MapBloc>().add(const FetchCategories());
     }
   }
 

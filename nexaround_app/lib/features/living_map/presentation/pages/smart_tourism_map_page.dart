@@ -228,13 +228,14 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   void _onMapCreated(mapbox.MapboxMap map) async {
     _mapboxMap = map;
 
-    // Enable the user‑location puck (blue dot)
+    // Enable the user‑location puck (blue dot) only if permission is granted to avoid native crashes
+    final permissionGranted = await Permission.locationWhenInUse.isGranted || await Permission.locationWhenInUse.isLimited;
     map.location.updateSettings(
       mapbox.LocationComponentSettings(
-        enabled: true,
-        pulsingEnabled: true,
+        enabled: permissionGranted,
+        pulsingEnabled: permissionGranted,
         pulsingColor: AppColors.primary.toARGB32(),
-        showAccuracyRing: true,
+        showAccuracyRing: permissionGranted,
       ),
     );
 
