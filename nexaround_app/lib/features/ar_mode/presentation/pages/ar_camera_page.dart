@@ -110,6 +110,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   List<_ArLandmark> _landmarks = [];
   bool _isFetchingPlaces = false;
   DateTime? _lastFetchTime;
+  // Distinguishes "still loading" from "finished and found nothing" so the UI
+  // can stop showing "SCANNING…" forever when a fetch comes back empty.
+  bool _hasCompletedInitialFetch = false;
+  // Set when a live fetch threw (network / backend error) rather than simply
+  // returning zero results. Drives the retry prompt instead of "no places".
+  bool _placesFetchError = false;
 
   /// User's manual choice for the "Your Location" pill, overriding auto-pick.
   /// Cleared on every fresh place fetch so it doesn't stick after you walk
@@ -741,7 +747,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   Future<void> _fetchLivePlaces() async {
-    if (!_isLocationGranted) return;
+    if (!_isLocationGranted) {
+      // No location → we can't search. Stop the "scanning" spinner so the UI
+      // can prompt for permission instead of hanging forever.
+      if (mounted) {
+        setState(() {
+          _hasCompletedInitialFetch = true;
+          _placesFetchError = false;
+        });
+      }
+      return;
+    }
     if (_isFetchingPlaces) {
       debugPrint('🔍 AR: Fetch already in progress, ignoring duplicate call.');
       return;
@@ -765,6 +781,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       
       List<_ArLandmark> collected = [];
       List<AttractionEntity> allPlaces = []; // to save to cache later
+      // True if any category call failed with a real error (vs. empty result).
+      // Lets the empty-state UI say "couldn't load / retry" instead of "none".
+      bool fetchHadError = false;
 
       final categoriesToFetch = [
         null,
@@ -786,6 +805,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             categoryName: cat,
           ).catchError((err) {
             debugPrint('Error fetching category $cat: $err');
+            if (err is PlacesFetchException) fetchHadError = true;
             return <dynamic>[];
           }))
         );
@@ -918,6 +938,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           setState(() {
             _landmarks = collected;
             _currentPosition = pos;
+            _placesFetchError = false;
             // Fresh fetch means user likely moved; drop any manual override so
             // the smart picker is in charge again.
             _userPickedLocationName = null;
@@ -952,6 +973,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         if (mounted) {
           setState(() {
             _currentPosition = pos;
+            // No results: distinguish a real failure (all calls errored) from a
+            // genuinely empty area, so the UI shows the right message.
+            _placesFetchError = fetchHadError;
           });
         }
       }
@@ -960,9 +984,34 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       _resolveCurrentLocationName(pos.latitude, pos.longitude);
     } catch (e) {
       debugPrint('AR places error: $e');
+      // Surface the failure to the UI so the user gets a retry prompt instead
+      // of an endless "SCANNING…" spinner.
+      if (mounted) setState(() => _placesFetchError = true);
     } finally {
       _isFetchingPlaces = false;
+      // First fetch has now finished (success, empty, or error) — let the UI
+      // switch away from the initial scanning state.
+      if (mounted) setState(() => _hasCompletedInitialFetch = true);
     }
+  }
+
+  /// User-initiated retry from the AR overlay. Re-checks location permission,
+  /// clears the throttle so the fetch isn't skipped, and tries again.
+  Future<void> _retryFetchPlaces() async {
+    if (_isFetchingPlaces) return;
+    // Re-check permission in case the user just granted it from settings.
+    if (!_isLocationGranted) {
+      final granted = await PermissionService.requestLocationPermission();
+      if (mounted) setState(() => _isLocationGranted = granted);
+    }
+    if (mounted) {
+      setState(() {
+        _placesFetchError = false;
+        _hasCompletedInitialFetch = false; // show "scanning" again while retrying
+      });
+    }
+    _lastFetchTime = null; // bypass the 15s cooldown for an explicit retry
+    await _fetchLivePlaces();
   }
 
   Future<void> _resolveCurrentLocationName(double lat, double lng) async {
@@ -3028,6 +3077,70 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
   
+  /// Empty / error / no-permission state for the AR overlay, shown when there
+  /// are no landmarks to display after a fetch has finished. Always offers a
+  /// retry so the user is never stuck on an endless "SCANNING…" spinner.
+  Widget _buildArEmptyState(double bottom, IconData icon, String title, String subtitle) {
+    return Positioned(
+      left: 24, right: 24, bottom: bottom,
+      child: Center(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.45),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white.withOpacity(0.14)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: Colors.white70, size: 26),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w800, letterSpacing: 1.0),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 11.5, height: 1.3),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: _isFetchingPlaces ? null : _retryFetchPlaces,
+                    behavior: HitTestBehavior.opaque,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withOpacity(0.25)),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.refresh_rounded, color: Colors.white, size: 16),
+                          SizedBox(width: 7),
+                          Text('RETRY', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.0)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Direction guide — tells user to turn left/right with degrees to nearest place
   Widget _buildDirectionGuide() {
     // Sit above the "Your Location" pill (at bottom: 158, ~50px tall) so they
@@ -3035,35 +3148,54 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     const double guideBottom = 240;
 
     if (_landmarks.isEmpty) {
-      // Still scanning
-      return Positioned(
-        left: 0, right: 0, bottom: guideBottom,
-        child: Center(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(30),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.07),
-                  borderRadius: BorderRadius.circular(30),
-                  border: Border.all(color: Colors.white.withOpacity(0.12)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white38))
-                      .animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.2, end: 1, duration: 700.ms),
-                    const SizedBox(width: 10),
-                    const Text('SCANNING FOR PLACES...', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
-                  ],
+      final bool stillLoading = !_hasCompletedInitialFetch || _isFetchingPlaces;
+      if (stillLoading) {
+        // Genuine loading — show the scanning pulse.
+        return Positioned(
+          left: 0, right: 0, bottom: guideBottom,
+          child: Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 11),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(color: Colors.white.withOpacity(0.12)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 6, height: 6, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white38))
+                        .animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.2, end: 1, duration: 700.ms),
+                      const SizedBox(width: 10),
+                      const Text('SCANNING FOR PLACES...', style: TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700, letterSpacing: 1.5)),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.4, end: 1, duration: 900.ms),
-        ),
-      );
+            ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.4, end: 1, duration: 900.ms),
+          ),
+        );
+      }
+
+      // Fetch finished with nothing to display — explain why and offer a retry,
+      // instead of leaving the scanning spinner up forever.
+      final bool needsLocation = !_isLocationGranted;
+      final IconData icon = needsLocation
+          ? Icons.location_off_rounded
+          : (_placesFetchError ? Icons.cloud_off_rounded : Icons.explore_off_rounded);
+      final String title = needsLocation
+          ? 'LOCATION NEEDED'
+          : (_placesFetchError ? "COULDN'T LOAD PLACES" : 'NO PLACES NEARBY');
+      final String subtitle = needsLocation
+          ? 'Enable location to discover places around you'
+          : (_placesFetchError
+              ? 'Check your connection and try again'
+              : 'Nothing found in this area right now');
+      return _buildArEmptyState(guideBottom, icon, title, subtitle);
     }
 
     // Find the nearest place by angle difference

@@ -26,7 +26,7 @@ android {
 
     defaultConfig {
         applicationId = "com.nexaround.nexaround_app"
-        minSdk = 24 // Required for ARCore
+        minSdk = 24 // Floor required by Mapbox/Firebase/ML Kit plugins
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName

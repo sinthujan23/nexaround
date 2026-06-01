@@ -6,7 +6,6 @@ the key, never sees a googleapis.com URL.
 import math
 from typing import Optional
 import httpx
-from app.core.config import settings
 from app.core.database import async_session
 from app.services.settings_service import SettingsService
 
@@ -65,7 +64,13 @@ async def nearby_search(
 
     async with async_session() as db:
         settings_service = SettingsService(db)
-        google_maps_key = await settings_service.get_setting("google_maps_api_key", settings.GOOGLE_API_KEY)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    # Single source of truth: the admin-panel key only. No baked-in fallback,
+    # so an unset key never silently bills a leftover company account.
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
+        return []
 
     headers = {
         "Content-Type": "application/json",
@@ -91,7 +96,12 @@ async def nearby_search(
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         resp = await client.post("https://places.googleapis.com/v1/places:searchNearby", json=body, headers=headers)
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            # Log Google's verbatim error (API-not-enabled / billing disabled /
+            # key restriction) so the cause is visible in server logs instead of
+            # surfacing as a blind 500.
+            print(f"❌ Google searchNearby HTTP {resp.status_code}: {resp.text[:600]}")
+            resp.raise_for_status()
         data = resp.json()
 
     return data.get("places", [])
@@ -167,7 +177,7 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
     """Download a Place Photo. Returns (bytes, content_type)."""
     async with async_session() as db:
         settings_service = SettingsService(db)
-        google_maps_key = await settings_service.get_setting("google_maps_api_key", settings.GOOGLE_API_KEY)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
 
     params = {
         "maxwidth": maxwidth,

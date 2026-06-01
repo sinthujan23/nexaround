@@ -2,7 +2,7 @@ name: nexaround_app
 description: "NexAround - AI-powered smart tourism companion"
 publish_to: 'none'
 
-version: 1.0.0+11
+version: 1.0.0+13
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -66,7 +66,6 @@ dependencies:
   http: ^1.2.1
   google_sign_in: ^6.2.1
   sign_in_with_apple: ^6.1.1
-  arcore_flutter_plus: ^1.0.2
 
 dependency_overrides:
   latlong2:
