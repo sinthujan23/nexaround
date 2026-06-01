@@ -35,6 +35,9 @@ class LivingMapPage extends StatefulWidget {
 class _LivingMapPageState extends State<LivingMapPage>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _pulseController;
+  late AnimationController _globeController;
+  late List<_SpotlightPoint3D> _globePoints;
+  late List<_SpotlightPoint3D> _globePlacePoints;
   bool _showProximityAlert = false;
   String _selectedCategory = 'All';
   double? _userLatitude;
@@ -54,13 +57,66 @@ class _LivingMapPageState extends State<LivingMapPage>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
+    
+    _globeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 16),
+    )..repeat();
+    _globePoints = _generateWorldMapPoints();
+    // Notable cities/places highlighted as yellow pins on the globe
+    _globePlacePoints = [
+      _SpotlightPoint3D(40.7, -74.0),   // New York
+      _SpotlightPoint3D(51.5, -0.1),    // London
+      _SpotlightPoint3D(35.7, 139.7),   // Tokyo
+      _SpotlightPoint3D(48.9, 2.3),     // Paris
+      _SpotlightPoint3D(-33.9, 151.2),  // Sydney
+      _SpotlightPoint3D(25.2, 55.3),    // Dubai
+      _SpotlightPoint3D(-22.9, -43.2),  // Rio de Janeiro
+      _SpotlightPoint3D(-33.9, 18.4),   // Cape Town
+      _SpotlightPoint3D(19.1, 72.9),    // Mumbai
+      _SpotlightPoint3D(1.3, 103.8),    // Singapore
+      _SpotlightPoint3D(41.9, 12.5),    // Rome
+      _SpotlightPoint3D(30.0, 31.2),    // Cairo
+    ];
+
     _checkLocationAndInit();
+  }
+
+  List<_SpotlightPoint3D> _generateWorldMapPoints() {
+    final List<_SpotlightPoint3D> points = [];
+    final random = Random(42); // Seeded for consistency
+
+    void addLandmass(double minLat, double maxLat, double minLng, double maxLng, int count) {
+      for (int i = 0; i < count; i++) {
+        final lat = minLat + random.nextDouble() * (maxLat - minLat);
+        final lng = minLng + random.nextDouble() * (maxLng - minLng);
+        points.add(_SpotlightPoint3D(lat, lng));
+      }
+    }
+
+    // North America
+    addLandmass(20, 70, -160, -60, 90);
+    // South America
+    addLandmass(-55, 10, -80, -40, 70);
+    // Africa
+    addLandmass(-30, 30, -15, 45, 90);
+    // Europe & Asia
+    addLandmass(10, 75, 0, 140, 180);
+    // Australia
+    addLandmass(-38, -12, 113, 150, 40);
+    // Antarctica
+    addLandmass(-85, -75, -180, 180, 50);
+    // Greenland
+    addLandmass(60, 80, -70, -20, 20);
+
+    return points;
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
+    _globeController.dispose();
     _positionSubscription?.cancel();
     super.dispose();
   }
@@ -246,7 +302,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         children: [
                           _buildGreeting(),
                           const SizedBox(height: 24),
-                          _buildAIPromptBar(),
+                          _buildArSpotlight(),
                           const SizedBox(height: 16),
                           _buildOdysseyCTA(),
                         ],
@@ -503,72 +559,396 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildAIPromptBar() {
-    final prompt = 'What\'s the local vibe and hidden gems around $_currentLocationName? Give me your best insider tips!';
+  /// Full-width AR preview card — simulates an AR camera viewfinder with
+  /// floating place-detail cards, pins, and distance markers.
+  Widget _buildArSpotlight() {
     return GestureDetector(
-      onTap: () => HomePage.homeKey.currentState?.switchToNeva(prompt),
-      child: GlassCard(
-      padding: const EdgeInsets.all(16),
-      glowColor: AppColors.primary,
+      onTap: () => HomePage.homeKey.currentState?.switchToAr(),
+      child: Container(
+        width: double.infinity,
+        height: 200,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          // Dark background simulating a camera viewfinder
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF1B2838),
+              Color(0xFF0F1923),
+              Color(0xFF0A1018),
+            ],
+          ),
+          border: Border.all(color: Colors.white.withOpacity(0.08)),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // ── 3D Revolving Holographic World Map Globe ──
+              Positioned.fill(
+                child: Center(
+                  child: AnimatedBuilder(
+                    animation: _globeController,
+                    builder: (context, _) {
+                      return SizedBox(
+                        width: 160,
+                        height: 160,
+                        child: CustomPaint(
+                          painter: _SpotlightWorldMapPainter(
+                            rotation: _globeController.value * 2 * pi,
+                            tilt: 0.35,
+                            points: _globePoints,
+                            placePoints: _globePlacePoints,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+
+              // ── Subtle environment dots (simulating a night cityscape) ──
+              ...List.generate(8, (i) {
+                final positions = [
+                  [0.1, 0.7], [0.25, 0.5], [0.4, 0.65], [0.55, 0.45],
+                  [0.7, 0.6], [0.85, 0.4], [0.15, 0.85], [0.6, 0.8],
+                ];
+                final colors = [
+                  const Color(0xFFFFB74D), const Color(0xFF4FC3F7),
+                  const Color(0xFFAED581), const Color(0xFFFF8A65),
+                  const Color(0xFF81D4FA), const Color(0xFFFFD54F),
+                  const Color(0xFFA5D6A7), const Color(0xFFCE93D8),
+                ];
+                return Positioned(
+                  left: positions[i][0] * 350,
+                  top: positions[i][1] * 200,
+                  child: Container(
+                    width: 4,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: colors[i].withOpacity(0.3),
+                    ),
+                  ).animate(onPlay: (c) => c.repeat(reverse: true))
+                      .fade(begin: 0.2, end: 0.6, duration: Duration(milliseconds: 1500 + i * 300)),
+                );
+              }),
+
+              // ── Viewfinder corner brackets ──
+              const Positioned(top: 14, left: 14, child: _ArCorner(top: true, left: true)),
+              const Positioned(top: 14, right: 14, child: _ArCorner(top: true, left: false)),
+              const Positioned(bottom: 14, left: 14, child: _ArCorner(top: false, left: true)),
+              const Positioned(bottom: 14, right: 14, child: _ArCorner(top: false, left: false)),
+
+              // ── Floating place card 1 (left side) ──
+              Positioned(
+                left: 20,
+                top: 30,
+                child: _buildMiniPlaceCard(
+                  name: 'Café Mocha',
+                  category: 'Food & Drink',
+                  distance: '85 m',
+                  rating: '4.6',
+                  color: const Color(0xFF66BB6A),
+                ).animate(onPlay: (c) => c.repeat(reverse: true))
+                    .moveY(begin: -5, end: 5, duration: 2800.ms, curve: Curves.easeInOut)
+                    .fade(begin: 0.7, end: 1.0, duration: 2800.ms),
+              ),
+
+              // ── Floating place card 2 (right side) ──
+              Positioned(
+                right: 16,
+                top: 50,
+                child: _buildMiniPlaceCard(
+                  name: 'City Museum',
+                  category: 'Attraction',
+                  distance: '320 m',
+                  rating: '4.9',
+                  color: const Color(0xFFEF5350),
+                ).animate(onPlay: (c) => c.repeat(reverse: true))
+                    .moveY(begin: 4, end: -4, duration: 3200.ms, curve: Curves.easeInOut)
+                    .moveX(begin: -2, end: 2, duration: 4000.ms, curve: Curves.easeInOut),
+              ),
+
+              // ── Floating pin marker 1 (emerald - Coffee) ──
+              Positioned(
+                left: 145,
+                top: 35,
+                child: _buildPinMarker(
+                  icon: Icons.local_cafe_rounded,
+                  color: const Color(0xFF66BB6A),
+                ),
+              ),
+
+              // ── Floating pin marker 2 (coral - Museum) ──
+              Positioned(
+                right: 145,
+                top: 55,
+                child: _buildPinMarker(
+                  icon: Icons.museum_rounded,
+                  color: const Color(0xFFEF5350),
+                ),
+              ),
+
+              // ── Floating pin marker 3 (violet - Park, small background) ──
+              Positioned(
+                left: 180,
+                top: 75,
+                child: _buildPinMarker(
+                  icon: Icons.park_rounded,
+                  color: const Color(0xFFAB47BC),
+                  small: true,
+                ),
+              ),
+
+              // ── Floating pin marker 4 (amber - Shopping, far background) ──
+              Positioned(
+                right: 180,
+                top: 25,
+                child: _buildPinMarker(
+                  icon: Icons.shopping_bag_rounded,
+                  color: const Color(0xFFFFB74D),
+                  small: true,
+                ),
+              ),
+
+              // ── Bottom overlay with text + CTA ──
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(18, 20, 18, 16),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        const Color(0xFF0A1018).withOpacity(0.9),
+                        const Color(0xFF0A1018),
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Left text
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.view_in_ar_rounded, color: Color(0xFF4FC3F7), size: 16),
+                                const SizedBox(width: 6),
+                                const Text(
+                                  'AR VIEW',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF4FC3F7),
+                                    letterSpacing: 1.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  width: 5,
+                                  height: 5,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: Color(0xFF66BB6A),
+                                  ),
+                                ).animate(onPlay: (c) => c.repeat(reverse: true))
+                                    .fade(begin: 0.3, end: 1.0, duration: 900.ms),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Point camera to discover places',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // CTA button
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(24),
+                          color: Colors.white,
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.camera_alt_rounded, size: 15, color: Color(0xFF0A1018)),
+                            SizedBox(width: 6),
+                            Text(
+                              'Open AR',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0A1018),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade(delay: 300.ms).slideY(begin: 0.1, end: 0);
+  }
+
+  /// Mini place-info card used inside the AR preview.
+  Widget _buildMiniPlaceCard({
+    required String name,
+    required String category,
+    required String distance,
+    required String rating,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withOpacity(0.1),
+        border: Border.all(color: color.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(color: color.withOpacity(0.15), blurRadius: 12),
+        ],
+      ),
       child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 1.5),
-              boxShadow: [
-                BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 12),
-              ],
+              borderRadius: BorderRadius.circular(8),
+              color: color.withOpacity(0.2),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(21),
-              child: Image.asset(
-                'assets/images/neva_avatar.png',
-                fit: BoxFit.cover,
+            child: Icon(Icons.location_on_rounded, color: color, size: 18),
+          ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                name,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'MEET NEVA',
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.primary,
-                    letterSpacing: 2,
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.star_rounded, size: 10, color: const Color(0xFFFFD700)),
+                  const SizedBox(width: 2),
+                  Text(
+                    rating,
+                    style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w700),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '"Neva, what\'s the secret vibe here?"',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: AppColors.textSecondary,
-                    fontStyle: FontStyle.italic,
+                  const SizedBox(width: 6),
+                  Text(
+                    distance,
+                    style: TextStyle(fontSize: 9, color: color.withOpacity(0.8), fontWeight: FontWeight.w600),
                   ),
-                ),
-              ],
-            ),
-          ),
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.primary.withOpacity(0.3)),
-            ),
-            child: Icon(Icons.mic_rounded, color: AppColors.primary, size: 18),
+                ],
+              ),
+            ],
           ),
         ],
       ),
-    ),
-    ).animate().fade(delay: 300.ms).slideY(begin: 0.1, end: 0);
+    );
+  }
+
+  /// Pulsing neon icon bubble marker for the AR preview card.
+  Widget _buildPinMarker({
+    required IconData icon,
+    required Color color,
+    bool small = false,
+  }) {
+    final size = small ? 24.0 : 32.0;
+    final iconSize = small ? 12.0 : 16.0;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xFF0D1520),
+        border: Border.all(color: color, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.5),
+            blurRadius: 8,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: Center(
+        child: Icon(
+          icon,
+          color: color,
+          size: iconSize,
+        ),
+      ),
+    ).animate(onPlay: (c) => c.repeat(reverse: true))
+        .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 1600.ms)
+        .moveY(begin: -2, end: 2, duration: 2000.ms, curve: Curves.easeInOut);
+  }
+
+  /// Pulsing "LIVE" pill that signals the AR experience is ready to go.
+  Widget _buildLiveBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(30),
+        color: Colors.black.withOpacity(0.25),
+        border: Border.all(color: Colors.white.withOpacity(0.18)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FadeTransition(
+            opacity: _pulseController,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppColors.neonGreen,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text(
+            'LIVE',
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildCurrencyIntelligence() {
@@ -1378,6 +1758,217 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 }
 
+/// L-shaped viewfinder bracket used to frame the AR spotlight card,
+/// evoking a camera/AR scanning overlay.
+class _ArCorner extends StatelessWidget {
+  final bool top;
+  final bool left;
+  const _ArCorner({required this.top, required this.left});
 
+  @override
+  Widget build(BuildContext context) {
+    final side = BorderSide(color: Colors.white.withOpacity(0.5), width: 2);
+    return SizedBox(
+      width: 16,
+      height: 16,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: top ? side : BorderSide.none,
+            bottom: top ? BorderSide.none : side,
+            left: left ? side : BorderSide.none,
+            right: left ? BorderSide.none : side,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
+/// Smaller viewfinder corner brackets for the mini AR preview inside the
+/// homepage AR spotlight card.
+class _MiniCorner extends StatelessWidget {
+  final bool top;
+  final bool left;
+  const _MiniCorner({required this.top, required this.left});
 
+  @override
+  Widget build(BuildContext context) {
+    final side = BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.6), width: 1.5);
+    return SizedBox(
+      width: 10,
+      height: 10,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: top ? side : BorderSide.none,
+            bottom: top ? BorderSide.none : side,
+            left: left ? side : BorderSide.none,
+            right: left ? BorderSide.none : side,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SpotlightWorldMapPainter extends CustomPainter {
+  final double rotation;
+  final double tilt; // tilt angle in radians
+  final List<_SpotlightPoint3D> points;
+  final List<_SpotlightPoint3D> placePoints;
+
+  _SpotlightWorldMapPainter({
+    required this.rotation,
+    required this.tilt,
+    required this.points,
+    required this.placePoints,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    
+    // Draw outer glow and sphere boundary
+    final spherePaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          const Color(0xFF00E5FF).withOpacity(0.01),
+          const Color(0xFF00E5FF).withOpacity(0.08),
+        ],
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius, spherePaint);
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(0.15)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+    canvas.drawCircle(center, radius, borderPaint);
+
+    // Draw grid lines (parallels and meridians)
+    final linePaint = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(0.04)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.5;
+
+    // Draw parallels (latitude lines) every 30 degrees
+    for (double latDeg = -60; latDeg <= 60; latDeg += 30) {
+      final latRad = latDeg * pi / 180;
+      final rLat = radius * cos(latRad);
+      final yLat = radius * sin(latRad);
+
+      final cy = center.dy + yLat * cos(tilt);
+      final rect = Rect.fromCenter(
+        center: Offset(center.dx, cy),
+        width: rLat * 2,
+        height: (rLat * 2 * sin(tilt)).abs(),
+      );
+      canvas.drawOval(rect, linePaint);
+    }
+
+    // Draw meridians (longitude lines) every 45 degrees
+    for (double lngDeg = 0; lngDeg < 180; lngDeg += 45) {
+      final lngRad = (lngDeg * pi / 180) + rotation;
+      
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(tilt);
+      canvas.drawOval(
+        Rect.fromCenter(center: Offset.zero, width: (radius * 2 * sin(lngRad)).abs(), height: radius * 2),
+        linePaint,
+      );
+      canvas.restore();
+    }
+
+    // Draw world map points (dots)
+    final pointPaint = Paint()..style = PaintingStyle.fill;
+
+    for (final pt in points) {
+      // Rotate around Y-axis (spin)
+      final rotLng = pt.lng + rotation;
+      
+      // 3D coordinates before tilt
+      final x3d = radius * cos(pt.lat) * sin(rotLng);
+      final y3d = radius * sin(pt.lat);
+      final z3d = radius * cos(pt.lat) * cos(rotLng);
+
+      // Apply tilt around X-axis (pitch)
+      final xTilted = x3d;
+      final yTilted = y3d * cos(tilt) - z3d * sin(tilt);
+      final zTilted = y3d * sin(tilt) + z3d * cos(tilt);
+
+      // Depth transparency (front = solid/bright, back = dimmed)
+      final isFront = zTilted >= 0;
+      final opacity = isFront 
+          ? (0.15 + 0.5 * (zTilted / radius)).clamp(0.1, 0.7)
+          : (0.02 + 0.05 * (1.0 + zTilted / radius)).clamp(0.01, 0.08);
+
+      pointPaint.color = const Color(0xFF00E5FF).withOpacity(opacity);
+      final size = isFront ? (1.0 + 1.2 * (zTilted / radius)) : 0.6;
+
+      canvas.drawCircle(
+        Offset(center.dx + xTilted, center.dy + yTilted),
+        size,
+        pointPaint,
+      );
+    }
+
+    // Draw highlighted place points (yellow dots with pulsing ring)
+    final placePaint = Paint()..style = PaintingStyle.fill;
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.0;
+
+    for (final pt in placePoints) {
+      // Rotate around Y-axis (spin)
+      final rotLng = pt.lng + rotation;
+      
+      // 3D coordinates before tilt
+      final x3d = radius * cos(pt.lat) * sin(rotLng);
+      final y3d = radius * sin(pt.lat);
+      final z3d = radius * cos(pt.lat) * cos(rotLng);
+
+      // Apply tilt around X-axis (pitch)
+      final xTilted = x3d;
+      final yTilted = y3d * cos(tilt) - z3d * sin(tilt);
+      final zTilted = y3d * sin(tilt) + z3d * cos(tilt);
+
+      // We only draw them if they are on the front side (facing viewer) for clean occlusion
+      if (zTilted >= 0) {
+        final opacity = (0.5 + 0.4 * (zTilted / radius)).clamp(0.2, 0.9);
+        
+        // Draw outer ring
+        ringPaint.color = const Color(0xFFFFD54F).withOpacity(opacity * 0.4);
+        canvas.drawCircle(
+          Offset(center.dx + xTilted, center.dy + yTilted),
+          6.0 * (zTilted / radius),
+          ringPaint,
+        );
+
+        // Draw inner solid dot
+        placePaint.color = const Color(0xFFFFD54F).withOpacity(opacity);
+        canvas.drawCircle(
+          Offset(center.dx + xTilted, center.dy + yTilted),
+          3.0 * (zTilted / radius),
+          placePaint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SpotlightWorldMapPainter old) {
+    return old.rotation != rotation || old.tilt != tilt || old.placePoints != placePoints;
+  }
+}
+
+class _SpotlightPoint3D {
+  final double lat; // in radians
+  final double lng; // in radians
+
+  _SpotlightPoint3D(double latDeg, double lngDeg)
+      : lat = latDeg * pi / 180,
+        lng = lngDeg * pi / 180;
+}

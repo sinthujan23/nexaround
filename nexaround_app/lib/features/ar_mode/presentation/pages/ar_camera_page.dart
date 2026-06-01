@@ -129,10 +129,19 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Hard cone used to decide whether a landmark is "in front of the camera".
   // Includes a small buffer so cards don't pop in/out at the FOV edge.
   static const double _viewConeHalfDegrees = (_cameraFovDegrees / 2) + 5;
-  // reading from the sensor is jittery; we low-pass filter it so cards don't
-  // dance even when the phone is "still". Higher = more responsive, lower =
-  // more stable. 0.05 is stable and prevents jumping.
-  static const double _headingSmoothing = 0.05;
+  // Half-angle of the cone in which place cards are actually drawn. Matches the
+  // camera field of view plus the same 8° edge buffer the projection uses, so
+  // "a place has a visible card" and "a place is in front of the lens" mean the
+  // same thing. Used to gate the turn/direction guide so it only appears when
+  // nothing is visible in the camera frame.
+  static const double _cardConeHalfDegrees = _viewConeHalfDegrees + 8;
+  // The raw sensor reading is jittery; we low-pass filter it so cards don't
+  // dance when the phone is "still". Higher = more responsive, lower = more
+  // stable. 0.05 was far too low — it made the heading lag reality by several
+  // seconds (places pointed the wrong way until it slowly caught up). 0.2 keeps
+  // jitter down while tracking turns in a fraction of a second. The very first
+  // reading is snapped directly (see compass listener) so AR opens aligned.
+  static const double _headingSmoothing = 0.2;
   // If the OS reports compass accuracy worse than this, ignore the update.
   static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
@@ -215,8 +224,76 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     return false;
   }
 
-  List<_ArLandmark> get _filteredLandmarks =>
-      _landmarks.where((lm) => _matchesFilter(lm, _selectedFilter)).toList();
+  // ── Category display policy (client rules) ──────────────────────────
+  //  • No fixed "max per category" — proximity alone decides how many show.
+  //  • Normal categories (food, shopping, hotels, others) show ONLY when
+  //    extremely close (within [_extremelyCloseM]). This keeps the list short
+  //    without an arbitrary count cap.
+  //  • LONG-RANGE categories — attractions, hospitals, beaches — may show at
+  //    any distance (their numbers are already limited when fetched).
+  static const double _extremelyCloseM = 300;
+
+  // Buckets allowed to appear at long range. In this app the backend maps
+  // "Medical" → Google `hospital` and "Beach" → `beach`, so these three keys
+  // are exactly "attractions and hospitals (and beaches)".
+  static const Set<String> _longRangeKeys = {'hospital', 'beach', 'historical'};
+
+  /// Bucket a landmark into a single display category. Order matters: the
+  /// sparse, long-range buckets (hospital, beach) are tested first so a place
+  /// that could match several lands in the most specific one.
+  String _displayCategoryKey(_ArLandmark lm) {
+    if (_matchesFilter(lm, 'Medical')) return 'hospital';
+    if (_matchesFilter(lm, 'Nature')) return 'beach';
+    if (_matchesFilter(lm, 'Historical')) return 'historical';
+    if (_matchesFilter(lm, 'Food')) return 'food';
+    if (_matchesFilter(lm, 'Shopping')) return 'shopping';
+    if (_matchesFilter(lm, 'Hotels')) return 'hotel';
+    return 'others';
+  }
+
+  /// Keep a landmark only if it is extremely close, OR it belongs to a
+  /// long-range category (attraction / hospital / beach) that is allowed at
+  /// any distance. No count cap — proximity does the limiting.
+  List<_ArLandmark> _filterByProximity(List<_ArLandmark> sortedByDistance) {
+    final result = <_ArLandmark>[];
+    for (final lm in sortedByDistance) {
+      final key = _displayCategoryKey(lm);
+      if (_longRangeKeys.contains(key) || lm.distanceM <= _extremelyCloseM) {
+        result.add(lm);
+      }
+    }
+    return result;
+  }
+
+  // Memoize the filtered lists per filter. The result only depends on
+  // [_landmarks] and the proximity rule, NOT on heading — yet build() runs on
+  // every compass tick. Caching against the current landmark snapshot keeps
+  // those frequent rebuilds (and the 8 filter chips that each call this) cheap.
+  List<_ArLandmark>? _capCacheSource;
+  int _capCacheLen = -1;
+  final Map<String, List<_ArLandmark>> _capCache = {};
+
+  /// Places to display for [filter] — keyword match, closest-first, then the
+  /// proximity rule (extremely-close normals + any-distance attractions/hospitals).
+  List<_ArLandmark> _placesForFilter(String filter) {
+    if (!identical(_capCacheSource, _landmarks) || _capCacheLen != _landmarks.length) {
+      _capCache.clear();
+      _capCacheSource = _landmarks;
+      _capCacheLen = _landmarks.length;
+    }
+    final cached = _capCache[filter];
+    if (cached != null) return cached;
+
+    final matches = _landmarks
+        .where((lm) => _matchesFilter(lm, filter))
+        .toList()
+      ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+    final result = _filterByProximity(matches);
+    _capCache[filter] = result;
+    return result;
+  }
+
+  List<_ArLandmark> get _filteredLandmarks => _placesForFilter(_selectedFilter);
 
   /// Landmarks the camera is currently pointed at, ordered by how centred
   /// they are in the view (most-centred first). Used to pick the focused
@@ -231,6 +308,24 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
     inView.sort((a, b) => a.value.compareTo(b.value));
     return inView.map((e) => e.key).toList();
+  }
+
+  /// True when at least one place sits inside the on-screen card cone
+  /// (~±[_cardConeHalfDegrees]° of the camera heading) — i.e. the user can
+  /// already see place cards laid out in front of them. Bearing is computed
+  /// exactly like [_buildOtherPlaceDots] so the two never disagree.
+  bool get _hasLandmarkInForwardView {
+    for (final lm in _filteredLandmarks) {
+      final double liveBearing =
+          (_currentPosition != null && lm.lat != null && lm.lng != null)
+              ? _calculateBearing(_currentPosition!.latitude,
+                  _currentPosition!.longitude, lm.lat!, lm.lng!)
+              : lm.bearing;
+      if (_signedAngleDelta(_heading, liveBearing).abs() <= _cardConeHalfDegrees) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /// The nearest landmark by angle that is NOT in view — used to hint the
@@ -293,12 +388,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _compassSubscription = FlutterCompass.events?.listen((event) {
       if (!mounted) return;
       final raw = event.heading;
-      if (raw == null) return;
+      if (raw == null || raw.isNaN) return;
       final accuracy = event.accuracy;
       setState(() {
+        // First valid reading: snap straight to it so the AR view opens aligned
+        // with reality instead of slewing all the way from north (0°) over
+        // several seconds, which made every place point the wrong way at first.
+        _heading = _rawHeading == null
+            ? raw
+            : _smoothHeading(_heading, raw, _headingSmoothing);
         _rawHeading = raw;
         _compassAccuracy = accuracy;
-        _heading = _smoothHeading(_heading, raw, _headingSmoothing);
       });
     });
 
@@ -891,6 +991,60 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
       } catch (e) {
         debugPrint('AR dedicated Beach fetch failed: $e');
+      }
+
+      // Dedicated LONG-RANGE query (up to 10km): per the client rule, only
+      // attractions and hospitals are worth surfacing from far away. The tier
+      // loop above can stop early in dense areas, so this guarantees a far-but-
+      // notable attraction/hospital still shows. Display caps trim the rest.
+      const longRangeQueries = [
+        {'category': 'Attractions', 'label': 'ATTRACTION', 'max': 5},
+        {'category': 'Medical', 'label': 'MEDICAL', 'max': 3},
+      ];
+      for (final q in longRangeQueries) {
+        try {
+          final cat = q['category'] as String;
+          final maxAdd = q['max'] as int;
+          debugPrint('🛰 AR: Long-range query for $cat up to 10km...');
+          final farPlaces = await GooglePlacesService.fetchNearbyPlaces(
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            radius: 10000,
+            categoryName: cat,
+          );
+
+          final candidates = farPlaces
+              .where((p) => (p.distanceM ?? 0) <= 10000)
+              .where((p) => !collected.any((l) => l.name == p.name))
+              .toList()
+            ..sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
+          for (final p in candidates.take(maxAdd)) {
+            final rawDistM = (p.distanceM ?? 0).toDouble();
+            final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
+            final distKm = rawDistM / 1000;
+            final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+
+            collected.add(_ArLandmark(
+              p.name,
+              p.photoUrls.isNotEmpty
+                  ? p.photoUrls.first
+                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+              p.rating,
+              distStr,
+              bearing,
+              p.description ?? 'A notable place worth the trip.',
+              p.categoryName?.toUpperCase() ?? (q['label'] as String),
+              rawDistM,
+              p.latitude,
+              p.longitude,
+              p.tags,
+            ));
+            allPlaces.add(p);
+          }
+        } catch (e) {
+          debugPrint('AR long-range fetch failed for ${q['category']}: $e');
+        }
       }
 
       if (collected.isNotEmpty) {
@@ -1660,6 +1814,85 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
   }
   
+  Widget _buildHomeButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        debugPrint('🏠 [Home Button] Tap registered!');
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        }
+        HomePage.homeKey.currentState?.switchToExplore();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.2),
+        ),
+        child: const Text(
+          'Home',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapsButton() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        debugPrint('🗺️ [Maps Button] Tap registered!');
+        if (_currentPosition != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SmartTourismMapPage(
+                initialLat: _currentPosition!.latitude,
+                initialLng: _currentPosition!.longitude,
+                destinationName: _currentLocationName,
+                initialCategory: _selectedFilter == 'All' ? 'HIDDEN' : _selectedFilter.toUpperCase(),
+              ),
+            ),
+          );
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const SmartTourismMapPage(
+                initialLat: 7.8731,
+                initialLng: 80.7718,
+                destinationName: 'Sri Lanka',
+                initialCategory: 'HIDDEN',
+              ),
+            ),
+          );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.2),
+        ),
+        child: const Text(
+          'Maps',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildSmallLocationBadge() {
     final name = _resolveDisplayLocation();
     final canPick = _locationCandidates.length > 1;
@@ -1838,10 +2071,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               ],
             ),
           ),
-        ),
+        ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(
+            begin: 1, end: 1.02, duration: 1800.ms),
       ),
-    ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(
-        begin: 1, end: 1.02, duration: 1800.ms);
+    );
   }
 
   /// Convert a heading in degrees to a compass cardinal (N, NE, E, …, NW).
@@ -2081,16 +2314,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               child: Center(child: _buildXPBadge()),
             ),
 
-          // "Your Location" pill — also hidden when the detail card is open
-          // so the two don't overlap at the bottom of the screen.
-          if (!_minimalHud && !_isNavigating && !_isMapping && _nevaSearchResult == null && !_showInfoCard && !(_isIdentifying && (_frozenLandmark ?? _getPointedLandmark()) != null))
-            _buildLocationPill(),
-
           // Tap-triggered place detail card (compact bottom card) - Consolidated Explore & Navigation Page!
           if (_isNavigating && _navigationTarget != null)
             _buildInfoCard(_navigationTarget!)
           else if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length)
             _buildInfoCard(_landmarks[_selectedLandmark]),
+
+          // Redesigned persistent Bottom Navigation Row (which includes Home, Location Pill, and Maps)
+          if (!_minimalHud && !_isMapping && _nevaSearchResult == null)
+            _buildBottomNavigationRow(),
 
           // DISCOVERY CROSSHAIR (Only in Mapping Mode)
           if (_isMapping) _buildDiscoveryCrosshair(),
@@ -2173,9 +2405,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             final label = f['label'] as String;
             final icon = f['icon'] as IconData;
             final selected = _selectedFilter == id;
-            final count = id == 'All'
-                ? _landmarks.length
-                : _landmarks.where((lm) => _matchesFilter(lm, id)).length;
+            // Show the count actually rendered (after per-category caps), not
+            // the raw match count, so the chip never promises more than it shows.
+            final count = _placesForFilter(id).length;
 
             return GestureDetector(
               onTap: () {
@@ -2225,9 +2457,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               ),
             );
           },
-        ),
+        ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0),
       ),
-    ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0);
+    );
   }
 
   Widget _buildCameraBackground() {
@@ -2426,7 +2658,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _visibleCount++;
 
     // === COMPACT LAYOUT ===
-    const double topStart = 200.0;
+    const double topStart = 230.0; // Adjusted from 200.0 to prevent overlapping top categories/HUD
     const double rowHeight = 75.0;
     const double cardW = 170.0;
 
@@ -2459,22 +2691,29 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── COMPACT NAME PILL (BLUE FOR EXACT DIRECTION, GREEN FOR OTHERS) ──
+            // ── COMPACT NAME PILL (BLUE FOR EXACT DIRECTION, NEUTRAL FOR OTHERS) ──
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: currentSlot == 0 ? const Color(0xFF00E5FF) : const Color(0xFF4ADE80),
+                color: currentSlot == 0 ? const Color(0xFF00E5FF) : Colors.black.withOpacity(0.6),
                 borderRadius: BorderRadius.circular(12),
+                border: currentSlot == 0 ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 0.8),
                 boxShadow: [
-                  BoxShadow(
-                    color: (currentSlot == 0 ? const Color(0xFF00E5FF) : const Color(0xFF4ADE80)).withOpacity(0.35), 
-                    blurRadius: 8,
-                  ),
+                  if (currentSlot == 0)
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withOpacity(0.35), 
+                      blurRadius: 8,
+                    ),
                 ],
               ),
               child: Text(
                 landmark.name,
-                style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: -0.3),
+                style: TextStyle(
+                  color: currentSlot == 0 ? Colors.black : Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
                 maxLines: 1, overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -2527,21 +2766,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                               landmark.distance,
                               style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 11, fontWeight: FontWeight.w600),
                             ),
-                          ],
-                        ),
-                      ),
-                      // Direction badge
-                      Container(
-                        width: 34, height: 34,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(arrowIcon, color: Colors.white, size: 14),
-                            Text(cardinal, style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w800)),
                           ],
                         ),
                       ),
@@ -2619,10 +2843,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             left: 16,
             right: 16,
             bottom: 30,
-            child: Stack(
-              clipBehavior: Clip.none,
-              alignment: Alignment.topCenter,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildHomeButton(),
+                      const SizedBox(width: 8),
+                      Flexible(child: _buildSmallLocationBadge()),
+                      const SizedBox(width: 8),
+                      _buildMapsButton(),
+                    ],
+                  ),
+                ),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _startNevaSearch(pointedLandmark),
@@ -2716,10 +2952,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     ),
                   ),
                 ),
-                Positioned(
-                  top: -35,
-                  child: _buildSmallLocationBadge(),
-                ),
               ],
             ),
           ),
@@ -2746,7 +2978,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final double maxDist = visible.map((l) => l.distanceM).reduce((a, b) => a > b ? a : b);
     if (maxDist <= 1.0) return markers;
 
-    const double topY = 140.0;
+    const double topY = 185.0; // Adjusted from 140.0 to prevent overlapping with the top category selection bar
     final double bottomY = screenH * 0.55;
     const double cardW = 165;
     const double cardH = 60;
@@ -2764,10 +2996,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (diff > 180) diff -= 360;
       if (diff < -180) diff += 360;
 
-      if (diff.abs() > 70) continue;
-
-      final double xFraction = 0.5 + (diff / 70) * 0.5;
-      final double centerX = (screenW * xFraction).clamp(cardW / 2 + 8, screenW - cardW / 2 - 8);
+      // Position the card with the SAME perspective projection the camera lens
+      // uses (tan(angle)/tan(halfFov)), so a card sits exactly where its place
+      // appears in the live image — instead of being spread linearly across a
+      // cone far wider than the real field of view. Returns null when the place
+      // is outside the lens's view, so cards only show for things actually in
+      // front of the camera (this is what fixes the "wrong direction" mismatch).
+      final double? dx = _projectAngleToScreenX(diff);
+      if (dx == null) continue;
+      final double centerX = (screenW * dx).clamp(cardW / 2 + 8, screenW - cardW / 2 - 8);
 
       final double logNorm = (log(lm.distanceM + 1) / log(maxDist + 1)).clamp(0.05, 1.0);
       final double preferredY = bottomY - logNorm * (bottomY - topY);
@@ -2810,9 +3047,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (p.finalY == null) continue;
       final lm = p.landmark;
       final bool isLocked = pointedLandmark != null && lm.name == pointedLandmark.name;
-      // "Extremely close" — within walking-step distance. We give these a
-      // brighter (green) border so they pop visually.
-      final bool isNear = lm.distanceM > 0 && lm.distanceM <= 50;
+      // Disabled green highlights for close places as requested
+      final bool isNear = false;
 
       final cardinal = _cardinalFromHeading(p.bearing);
       final arrowIcon = _arrowIconForCardinal(cardinal);
@@ -2820,10 +3056,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       const Color nearColor = Color(0xFF4ADE80);
       final Color cardBg = isLocked
           ? lockedColor.withOpacity(0.18)
-          : (isNear ? const Color(0xFF0F2A1A).withOpacity(0.92) : Colors.black.withOpacity(0.82));
+          : Colors.black.withOpacity(0.82);
       final Color borderColor = isLocked
           ? lockedColor
-          : (isNear ? nearColor : Colors.white.withOpacity(0.08));
+          : Colors.white.withOpacity(0.08);
 
       // Realistic short pointers (fixed 40px length) instead of floor cables
       const double lineHeight = 40.0;
@@ -2914,31 +3150,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                 color: Colors.white.withOpacity(0.7),
                                 fontSize: 9,
                                 fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      // Direction badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(7),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(arrowIcon, color: Colors.black, size: 10),
-                            const SizedBox(height: 1),
-                            Text(
-                              cardinal,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900,
-                                height: 1,
                               ),
                             ),
                           ],
@@ -3197,6 +3408,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               : 'Nothing found in this area right now');
       return _buildArEmptyState(guideBottom, icon, title, subtitle);
     }
+
+    // Places are already visible in front of the user — don't nag them with
+    // a "turn" instruction toward a place they can already see. The guide is
+    // only meant to point the way when the camera is aimed at empty space.
+    // This is what fixed the "navigation shows randomly" report: the guide
+    // now strictly appears only when no places sit in the forward view.
+    if (_hasLandmarkInForwardView) return const SizedBox.shrink();
 
     // Find the nearest place by angle difference
     final pool = _filteredLandmarks;
@@ -4405,10 +4623,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       bottom: 20,
       left: 16,
       right: 16,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12, left: 8, right: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildHomeButton(),
+                const SizedBox(width: 8),
+                Flexible(child: _buildSmallLocationBadge()),
+                const SizedBox(width: 8),
+                _buildMapsButton(),
+              ],
+            ),
+          ),
           ClipRRect(
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(
@@ -4427,31 +4657,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // ── Section headers row: YOU SELECTED | NEARBY | X ──
+                    // ── Section headers row: YOU SELECTED | X ──
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Expanded(
-                          flex: 4, // Aligned with the body flex ratio
-                          child: Text(
-                            'YOU SELECTED',
-                            style: TextStyle(
-                              color: Color(0xFF00E5FF), // Brighter neon blue
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.4,
-                            ),
-                          ),
-                        ),
-                        const Expanded(
-                          flex: 7, // Aligned with the body flex ratio
-                          child: Text(
-                            'NEARBY',
-                            style: TextStyle(
-                              color: Color(0xFF00E5FF), // Brighter neon blue
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.4,
-                            ),
+                        const Text(
+                          'YOU SELECTED',
+                          style: TextStyle(
+                            color: Color(0xFF00E5FF), // Brighter neon blue
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.4,
                           ),
                         ),
                         if (!_isNavigating)
@@ -4474,148 +4690,169 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     ),
                     const SizedBox(height: 10),
 
-                    // ── Body row: selected-place block | divider | nearby icons ──
-                    IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ── Left: selected place (flex 4 for extra space on the right) ──
-                          Expanded(
-                            flex: 4,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    PlaceImageHelper.buildPlaceImage(
-                                      imagePath: landmark.imagePath,
-                                      category: landmark.category,
-                                      name: landmark.name,
-                                      width: 56,
-                                      height: 56,
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        landmark.name,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 17,
-                                          fontWeight: FontWeight.w900,
-                                          height: 1.15,
-                                          letterSpacing: -0.3,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
-                                    const SizedBox(width: 3),
-                                    Text(
-                                      '${landmark.rating}',
-                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '($reviewCount)',
-                                      style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w600),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Icon(Icons.straighten_rounded, color: Colors.white.withOpacity(0.6), size: 13),
-                                    const SizedBox(width: 3),
-                                    Flexible(
-                                      child: Text(
-                                        landmark.distance,
-                                        style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w700),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                // MORE INFO — opens Ask Neva
-                                GestureDetector(
-                                  onTap: () => _openAskNevaFor(landmark),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                    decoration: BoxDecoration(
-                                      color: Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-                                    ),
-                                    child: const Text(
-                                      'MORE INFO',
-                                      style: TextStyle(
+                    // ── Body (Details / Nearby Categories Side-by-Side) ──
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Left half: Selected Place Details
+                        Expanded(
+                          flex: 7,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  PlaceImageHelper.buildPlaceImage(
+                                    imagePath: landmark.imagePath,
+                                    category: landmark.category,
+                                    name: landmark.name,
+                                    width: 56,
+                                    height: 56,
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      landmark.name,
+                                      style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 10,
+                                        fontSize: 17,
                                         fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.4,
+                                        height: 1.15,
+                                        letterSpacing: -0.3,
                                       ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  const Icon(Icons.star_rounded, color: Colors.amber, size: 14),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    '${landmark.rating}',
+                                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w800),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '($reviewCount)',
+                                    style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w600),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Icon(Icons.straighten_rounded, color: Colors.white.withOpacity(0.6), size: 13),
+                                  const SizedBox(width: 3),
+                                  Flexible(
+                                    child: Text(
+                                      landmark.distance,
+                                      style: TextStyle(color: Colors.white.withOpacity(0.75), fontSize: 12, fontWeight: FontWeight.w700),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              // MORE INFO — opens Ask Neva
+                              GestureDetector(
+                                onTap: () => _openAskNevaFor(landmark),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: Colors.transparent,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                                  ),
+                                  child: const Text(
+                                    'MORE INFO',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.4,
                                     ),
                                   ),
                                 ),
-                              ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Right half: NEARBY category shortcuts
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            padding: const EdgeInsets.only(left: 8),
+                            decoration: BoxDecoration(
+                              border: Border(
+                                left: BorderSide(color: Colors.white.withOpacity(0.12), width: 0.8),
+                              ),
                             ),
-                          ),
-
-                          // ── Subtle vertical divider (reduced horizontal margins) ──
-                          Container(
-                            width: 1,
-                            margin: const EdgeInsets.symmetric(horizontal: 6),
-                            color: Colors.white.withOpacity(0.1),
-                          ),
-
-                          // ── Right: nearby category icons (flex 7 + spacious horizontal layouts) ──
-                          Expanded(
-                            flex: 7,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                _buildNearbyTile(
-                                  landmark: landmark,
-                                  icon: Icons.restaurant_rounded,
-                                  label: 'FOOD',
-                                  color: const Color(0xFFEF5350),
-                                  categoryId: 'Food & Drink',
-                                  prettyLabel: 'food',
+                                const Text(
+                                  'NEARBY',
+                                  style: TextStyle(
+                                    color: Color(0xFF00E5FF),
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 1.0,
+                                  ),
                                 ),
-                                _buildNearbyTile(
-                                  landmark: landmark,
-                                  icon: Icons.shopping_bag_rounded,
-                                  label: 'SHOP',
-                                  color: const Color(0xFF66BB6A),
-                                  categoryId: 'Shopping',
-                                  prettyLabel: 'shopping',
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _buildNearbyTile(
+                                      landmark: landmark,
+                                      icon: Icons.restaurant_rounded,
+                                      label: 'FOOD',
+                                      color: Colors.redAccent,
+                                      categoryId: 'food',
+                                      prettyLabel: 'Food',
+                                    ),
+                                    _buildNearbyTile(
+                                      landmark: landmark,
+                                      icon: Icons.shopping_bag_rounded,
+                                      label: 'SHOP',
+                                      color: Colors.greenAccent.shade700,
+                                      categoryId: 'shopping',
+                                      prettyLabel: 'Shopping',
+                                    ),
+                                  ],
                                 ),
-                                _buildNearbyTile(
-                                  landmark: landmark,
-                                  icon: Icons.account_balance_rounded,
-                                  label: 'HISTORY',
-                                  color: const Color(0xFF42A5F5),
-                                  categoryId: 'Attractions',
-                                  prettyLabel: 'historical',
-                                ),
-                                _buildNearbyTile(
-                                  landmark: landmark,
-                                  icon: Icons.hotel_rounded,
-                                  label: 'HOTELS',
-                                  color: const Color(0xFFAB47BC),
-                                  categoryId: 'Hotels',
-                                  prettyLabel: 'hotels',
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    _buildNearbyTile(
+                                      landmark: landmark,
+                                      icon: Icons.account_balance_rounded,
+                                      label: 'HISTORY',
+                                      color: Colors.blueAccent,
+                                      categoryId: 'historical',
+                                      prettyLabel: 'Historical Sites',
+                                    ),
+                                    _buildNearbyTile(
+                                      landmark: landmark,
+                                      icon: Icons.hotel_rounded,
+                                      label: 'HOTELS',
+                                      color: Colors.purpleAccent,
+                                      categoryId: 'hotel',
+                                      prettyLabel: 'Hotels',
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 14),
 
@@ -4807,13 +5044,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               ),
             ),
           ),
-          Positioned(
-            top: -34, // Raised vertically from -18 to -34 to fully avoid overlapping headers inside the card
-            child: _buildSmallLocationBadge(),
-          ),
         ],
-      ),
-    ).animate().slideY(begin: 0.4, end: 0, duration: 400.ms, curve: Curves.easeOutQuart).fade(duration: 300.ms);
+      ).animate().slideY(begin: 0.4, end: 0, duration: 400.ms, curve: Curves.easeOutQuart).fade(duration: 300.ms),
+    );
   }
 
   /// One tile in the NEARBY strip — colored icon square + caption underneath.
@@ -6334,6 +6567,118 @@ extension _ArCameraNavigation on _ArCameraPageState {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBottomNavigationRow() {
+    final name = _resolveDisplayLocation();
+    final canPick = _locationCandidates.length > 1;
+
+    // Hide row if there is an active selected place info card so it doesn't float above it
+    final hasActivePlaceCard = _isNavigating || _showInfoCard || (_isIdentifying && (_frozenLandmark ?? _getPointedLandmark()) != null);
+    if (hasActivePlaceCard) {
+      return const SizedBox.shrink();
+    }
+    const rowBottom = 36.0;
+
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: MediaQuery.of(context).padding.bottom + rowBottom,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Home Button
+          _buildHomeButton(),
+
+          // Location Pill (Center)
+          GestureDetector(
+            onTap: () {
+              debugPrint('📍 [Location Pill] Tap registered! canPick: $canPick');
+              if (canPick) _showLocationPicker();
+            },
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E88E5),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1E88E5).withOpacity(0.4),
+                    blurRadius: 12,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Your Location',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 8,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                    ),
+                    child: const Icon(Icons.person_rounded,
+                        color: Color(0xFF1E88E5), size: 16),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Maps Button
+          _buildMapsButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNevaAvatar(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFF00E5FF), width: 1.5),
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/neva_avatar.png',
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) {
+            // Fallback icon if asset doesn't load or exist yet
+            return const Icon(Icons.auto_awesome, color: Color(0xFF00E5FF));
+          },
+        ),
+      ),
     );
   }
 }

@@ -28,6 +28,8 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
   bool _cameraReady = false;
   bool _checkingPermissions = true;
 
+  late List<Point3D> _globePoints;
+
   @override
   void initState() {
     super.initState();
@@ -35,7 +37,38 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
     _orbitController = AnimationController(vsync: this, duration: const Duration(seconds: 12))..repeat();
     _pulseController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat(reverse: true);
     _scanlineController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+    _globePoints = _generateWorldMapPoints();
     _checkPermissions();
+  }
+
+  List<Point3D> _generateWorldMapPoints() {
+    final List<Point3D> points = [];
+    final random = Random(42); // Seeded for consistency
+
+    void addLandmass(double minLat, double maxLat, double minLng, double maxLng, int count) {
+      for (int i = 0; i < count; i++) {
+        final lat = minLat + random.nextDouble() * (maxLat - minLat);
+        final lng = minLng + random.nextDouble() * (maxLng - minLng);
+        points.add(Point3D(lat, lng));
+      }
+    }
+
+    // North America
+    addLandmass(20, 70, -160, -60, 90);
+    // South America
+    addLandmass(-55, 10, -80, -40, 70);
+    // Africa
+    addLandmass(-30, 30, -15, 45, 90);
+    // Europe & Asia
+    addLandmass(10, 75, 0, 140, 180);
+    // Australia
+    addLandmass(-38, -12, 113, 150, 40);
+    // Antarctica
+    addLandmass(-85, -75, -180, 180, 50);
+    // Greenland
+    addLandmass(60, 80, -70, -20, 20);
+
+    return points;
   }
 
   @override
@@ -255,35 +288,50 @@ class _ArEntryPageState extends State<ArEntryPage> with TickerProviderStateMixin
 
   Widget _buildCenterReticle() {
     return AnimatedBuilder(
-      animation: _pulseController,
+      animation: _orbitController,
       builder: (context, _) {
-        final scale = 1.0 + 0.05 * _pulseController.value;
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: 100,
-            height: 100,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppColors.primary.withOpacity(0.06),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2), width: 2),
+        return SizedBox(
+          width: 220,
+          height: 220,
+          child: CustomPaint(
+            painter: _WorldMapPainter(
+              rotation: _orbitController.value * 2 * pi,
+              tilt: 0.35, // ~20 degrees tilt towards the viewer
+              points: _globePoints,
             ),
             child: Center(
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withOpacity(0.1),
-                  border: Border.all(color: AppColors.primary.withOpacity(0.4), width: 1.5),
-                ),
-                child: const Icon(Icons.filter_center_focus_rounded, color: AppColors.primary, size: 22),
+              child: AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, _) {
+                  final scale = 1.0 + 0.05 * _pulseController.value;
+                  return Transform.scale(
+                    scale: scale,
+                    child: Container(
+                      width: 76,
+                      height: 76,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.primary.withOpacity(0.08),
+                        border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 1.5),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primary.withOpacity(0.15),
+                            blurRadius: 16,
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.filter_center_focus_rounded, color: AppColors.primary, size: 24),
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ),
         );
       },
-    ).animate().scale(duration: 800.ms, curve: Curves.easeOutBack);
+    );
   }
 
   Widget _buildNearbyStats() {
@@ -402,4 +450,121 @@ class _GridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _WorldMapPainter extends CustomPainter {
+  final double rotation;
+  final double tilt; // tilt angle in radians
+  final List<Point3D> points;
+
+  _WorldMapPainter({
+    required this.rotation,
+    required this.tilt,
+    required this.points,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    
+    // Draw outer glow and sphere boundary
+    final spherePaint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          const Color(0xFF00E5FF).withOpacity(0.03),
+          const Color(0xFF00E5FF).withOpacity(0.15),
+        ],
+      ).createShader(Rect.fromCircle(center: center, radius: radius))
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(center, radius, spherePaint);
+
+    final borderPaint = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(0.25)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawCircle(center, radius, borderPaint);
+
+    // Draw grid lines (parallels and meridians)
+    final linePaint = Paint()
+      ..color = const Color(0xFF00E5FF).withOpacity(0.08)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 0.8;
+
+    // Draw parallels (latitude lines) every 30 degrees
+    for (double latDeg = -60; latDeg <= 60; latDeg += 30) {
+      final latRad = latDeg * pi / 180;
+      final rLat = radius * cos(latRad);
+      final yLat = radius * sin(latRad);
+
+      final cy = center.dy + yLat * cos(tilt);
+      final rect = Rect.fromCenter(
+        center: Offset(center.dx, cy),
+        width: rLat * 2,
+        height: (rLat * 2 * sin(tilt)).abs(),
+      );
+      canvas.drawOval(rect, linePaint);
+    }
+
+    // Draw meridians (longitude lines) every 45 degrees
+    for (double lngDeg = 0; lngDeg < 180; lngDeg += 45) {
+      final lngRad = (lngDeg * pi / 180) + rotation;
+      
+      canvas.save();
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(tilt);
+      canvas.drawOval(
+        Rect.fromCenter(center: Offset.zero, width: (radius * 2 * sin(lngRad)).abs(), height: radius * 2),
+        linePaint,
+      );
+      canvas.restore();
+    }
+
+    // Draw world map points (dots)
+    final pointPaint = Paint()..style = PaintingStyle.fill;
+
+    for (final pt in points) {
+      // Rotate around Y-axis (spin)
+      final rotLng = pt.lng + rotation;
+      
+      // 3D coordinates before tilt
+      final x3d = radius * cos(pt.lat) * sin(rotLng);
+      final y3d = radius * sin(pt.lat);
+      final z3d = radius * cos(pt.lat) * cos(rotLng);
+
+      // Apply tilt around X-axis (pitch)
+      final xTilted = x3d;
+      final yTilted = y3d * cos(tilt) - z3d * sin(tilt);
+      final zTilted = y3d * sin(tilt) + z3d * cos(tilt);
+
+      // Depth transparency (front = solid/bright, back = dimmed)
+      final isFront = zTilted >= 0;
+      final opacity = isFront 
+          ? (0.2 + 0.65 * (zTilted / radius)).clamp(0.2, 0.85)
+          : (0.04 + 0.08 * (1.0 + zTilted / radius)).clamp(0.02, 0.12);
+
+      pointPaint.color = const Color(0xFF00E5FF).withOpacity(opacity);
+      final size = isFront ? (1.5 + 1.5 * (zTilted / radius)) : 0.8;
+
+      canvas.drawCircle(
+        Offset(center.dx + xTilted, center.dy + yTilted),
+        size,
+        pointPaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WorldMapPainter old) {
+    return old.rotation != rotation || old.tilt != tilt;
+  }
+}
+
+class Point3D {
+  final double lat; // in radians
+  final double lng; // in radians
+
+  Point3D(double latDeg, double lngDeg)
+      : lat = latDeg * pi / 180,
+        lng = lngDeg * pi / 180;
 }

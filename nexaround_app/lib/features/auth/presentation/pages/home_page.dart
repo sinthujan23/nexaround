@@ -73,6 +73,12 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     });
   }
 
+  void switchToAr() {
+    setState(() {
+      _selectedIndex = 1; // AR Camera Tab
+    });
+  }
+
   void switchToExplore() {
     setState(() {
       _selectedIndex = 0; // Explore/Map Tab
