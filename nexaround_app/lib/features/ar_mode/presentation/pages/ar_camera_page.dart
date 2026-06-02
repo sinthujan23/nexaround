@@ -197,10 +197,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             c.contains('market') || c.contains('retail') || c.contains('clothing') ||
             tagsLower.any((tag) => tag.contains('shopping') || tag.contains('store') || tag.contains('mall') || tag.contains('clothing') || tag.contains('supermarket'));
       case 'Historical':
+        // `attraction` is deliberate: the curated DB and the backend both file
+        // every heritage landmark (temples, forts, museums) under the broad
+        // category_name "Attractions" — there is no dedicated "Historical"
+        // category. Matching it on the category (not the raw `tourist_attraction`
+        // tag) keeps shopping malls Google sometimes tags as attractions out of
+        // this bucket. This is what makes the Historical filter actually
+        // populate instead of dropping every landmark into Others.
         return c.contains('museum') || c.contains('temple') || c.contains('church') ||
             c.contains('monument') || c.contains('historic') || c.contains('heritage') ||
             c.contains('mosque') || c.contains('shrine') || c.contains('castle') ||
-            c.contains('landmark') || c.contains('tourist') ||
+            c.contains('landmark') || c.contains('tourist') || c.contains('attraction') ||
             tagsLower.any((tag) => tag.contains('museum') || tag.contains('place_of_worship') || tag.contains('church') || tag.contains('hindu_temple') || tag.contains('mosque') || tag.contains('synagogue') || tag.contains('monument'));
       case 'Nature':
         return isNature();
@@ -226,17 +233,21 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   // ── Category display policy (client rules) ──────────────────────────
   //  • No fixed "max per category" — proximity alone decides how many show.
-  //  • Normal categories (food, shopping, hotels, others) show ONLY when
-  //    extremely close (within [_extremelyCloseM]). This keeps the list short
-  //    without an arbitrary count cap.
-  //  • LONG-RANGE categories — attractions, hospitals, beaches — may show at
-  //    any distance (their numbers are already limited when fetched).
+  //  • Normal categories (food, hotels, others) show ONLY when extremely
+  //    close (within [_extremelyCloseM]). This keeps the list short without
+  //    an arbitrary count cap.
+  //  • LONG-RANGE categories — attractions, hospitals, beaches, shopping —
+  //    may show at any distance (their numbers are already limited when
+  //    fetched).
   static const double _extremelyCloseM = 300;
 
   // Buckets allowed to appear at long range. In this app the backend maps
-  // "Medical" → Google `hospital` and "Beach" → `beach`, so these three keys
-  // are exactly "attractions and hospitals (and beaches)".
-  static const Set<String> _longRangeKeys = {'hospital', 'beach', 'historical'};
+  // "Medical" → Google `hospital` and "Beach" → `beach`. Shopping is included
+  // because malls/markets/supermarkets are destinations people travel to, and
+  // they're almost always farther than [_extremelyCloseM]: capping them to 300m
+  // left the Shopping filter showing only the rotate/nav hint with no place
+  // labels (client report), since matched shops got stripped by proximity.
+  static const Set<String> _longRangeKeys = {'hospital', 'beach', 'historical', 'shopping'};
 
   /// Bucket a landmark into a single display category. Order matters: the
   /// sparse, long-range buckets (hospital, beach) are tested first so a place
@@ -273,8 +284,27 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   int _capCacheLen = -1;
   final Map<String, List<_ArLandmark>> _capCache = {};
 
-  /// Places to display for [filter] — keyword match, closest-first, then the
-  /// proximity rule (extremely-close normals + any-distance attractions/hospitals).
+  // Maps an AR filter id to the single display bucket a place must resolve to
+  // before it shows under that filter. Filtering on the *primary* bucket (from
+  // [_displayCategoryKey]) instead of a loose keyword match makes the categories
+  // mutually exclusive: Google tags supermarkets, grocery stores and food courts
+  // with a generic `store`/`supermarket` type, which used to leak them into
+  // Shopping even though they're really Food. Now each place lands in exactly one
+  // bucket (priority order: Medical → Nature → Historical → Food → Shopping →
+  // Hotels → others), so a food place can never appear under Shopping. 'All' is
+  // intentionally absent — it bypasses this and shows every bucket.
+  static const Map<String, String> _filterBucketKey = {
+    'Food': 'food',
+    'Shopping': 'shopping',
+    'Historical': 'historical',
+    'Nature': 'beach',
+    'Hotels': 'hotel',
+    'Medical': 'hospital',
+    'Others': 'others',
+  };
+
+  /// Places to display for [filter] — exclusive bucket match, closest-first, then
+  /// the proximity rule (extremely-close normals + any-distance long-range ones).
   List<_ArLandmark> _placesForFilter(String filter) {
     if (!identical(_capCacheSource, _landmarks) || _capCacheLen != _landmarks.length) {
       _capCache.clear();
@@ -284,8 +314,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final cached = _capCache[filter];
     if (cached != null) return cached;
 
+    final bucket = _filterBucketKey[filter];
     final matches = _landmarks
-        .where((lm) => _matchesFilter(lm, filter))
+        .where((lm) => filter == 'All' || _displayCategoryKey(lm) == bucket)
         .toList()
       ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
     final result = _filterByProximity(matches);
@@ -771,8 +802,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   static const int _maxVisibleMarkers = 60;
-  static const int _maxVisibleOnScreen = 8;
-  static const List<int> _searchRadii = [100, 200, 500, 1000, 5000];
+  // How many place cards are drawn on screen at once. Kept low so the vertically
+  // stacked cards (see [_buildLandmarkMarker]) never overlap each other — the
+  // most-centred places win the visible slots.
+  static const int _maxVisibleOnScreen = 5;
+  // Search radii, widest-first fallback. Start at 1 km — that single tier already
+  // covers the close places too, so we skip the old 100/200/500 m micro-tiers and
+  // their extra API calls. We only expand to 2/5/10 km when 1 km comes back too
+  // sparse (see the early-break on [_minPlacesBeforeStop] in the fetch loop).
+  static const List<int> _searchRadii = [1000, 2000, 5000, 10000];
+  // Once a radius tier has collected at least this many places, stop widening.
+  static const int _minPlacesBeforeStop = 12;
 
   void _loadCachedPlaces({geo.Position? position}) {
     try {
@@ -945,8 +985,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
-        if (collected.length >= 15) { // Increased threshold slightly to accommodate multiple categories
-          debugPrint('📍 AR: Found ${collected.length} places (>= 15). Breaking search loop early to save API cost.');
+        // 1 km first; only widen to the next tier when this one came back sparse.
+        if (collected.length >= _minPlacesBeforeStop) {
+          debugPrint('📍 AR: Found ${collected.length} places (>= $_minPlacesBeforeStop) at $radius m. Stopping radius expansion to save API cost.');
           break;
         }
       }
@@ -2658,8 +2699,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _visibleCount++;
 
     // === COMPACT LAYOUT ===
+    // Cards are stacked one per row. rowHeight MUST stay >= the rendered card
+    // height (name pill + thumbnail card + tether ≈ 97 px) or consecutive cards
+    // overlap. 104 leaves a small gap. Combined with [_maxVisibleOnScreen] this
+    // keeps every visible label clear of its neighbours.
     const double topStart = 230.0; // Adjusted from 200.0 to prevent overlapping top categories/HUD
-    const double rowHeight = 75.0;
+    const double rowHeight = 104.0;
     const double cardW = 170.0;
 
     double topPos = topStart + (currentSlot * rowHeight);
@@ -2743,7 +2788,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                       ClipRRect(
                         borderRadius: BorderRadius.circular(10),
                         child: SizedBox(
-                          width: 44, height: 44,
+                          width: 40, height: 40,
                           child: _buildMarkerImage(landmark),
                         ),
                       ),
@@ -2777,7 +2822,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
             // ── DOTTED LINE TO GROUND ──
             SizedBox(
-              height: 24,
+              height: 12,
               child: CustomPaint(
                 size: const Size(2, double.infinity),
                 painter: _DottedLinePainter(

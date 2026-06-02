@@ -1,10 +1,18 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, date
 
 class ItineraryItem(BaseModel):
-    attraction_id: UUID
+    # `extra="allow"` + optional attraction_id lets a single Itinerary row hold
+    # either a classic saved-attraction item (with attraction_id) OR a free-form
+    # AI "Odyssey" block (a meta header or a day's activities) whose shape the
+    # backend never needs to understand — it's stored verbatim in the JSON
+    # `items` column and round-tripped to the app. Keeps the existing itinerary
+    # flow working with zero DB migration.
+    model_config = ConfigDict(extra="allow")
+
+    attraction_id: Optional[UUID] = None
     time: Optional[str] = None
     note: Optional[str] = None
 
