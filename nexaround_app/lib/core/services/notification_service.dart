@@ -52,6 +52,7 @@ class NotificationService {
   void _record(RemoteMessage m) {
     final n = m.notification;
     CacheService.addNotification(
+      id: m.messageId,
       title: (n?.title ?? m.data['title'] ?? 'NexAround').toString(),
       body: (n?.body ?? m.data['body'] ?? '').toString(),
       type: (m.data['type'] ?? '').toString(),

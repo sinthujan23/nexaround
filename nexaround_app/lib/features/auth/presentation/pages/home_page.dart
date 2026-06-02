@@ -15,6 +15,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -60,6 +61,8 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _checkLocationService();
+      // Surface any notifications saved while the app was backgrounded.
+      CacheService.reload();
     }
   }
 

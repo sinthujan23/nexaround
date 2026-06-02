@@ -8,6 +8,8 @@
 /// This needs no DB migration — the backend stores/returns the JSON verbatim.
 library;
 
+import 'package:nexaround_app/core/utils/number_format.dart';
+
 /// A single scheduled stop within a day.
 class OdysseyActivity {
   final String time; // e.g. "09:00" or "Morning"
@@ -148,12 +150,8 @@ class Odyssey {
       totalActivities > 0 && visitedActivities == totalActivities;
 
   /// One-line stats label used on cards, e.g. "4 Days · LKR 120,000".
-  String get statsLabel {
-    final b = budget >= 1000
-        ? '${(budget / 1000).toStringAsFixed(budget % 1000 == 0 ? 0 : 1)}k'
-        : budget.toStringAsFixed(0);
-    return '$days ${days == 1 ? 'Day' : 'Days'} · $currency $b';
-  }
+  String get statsLabel =>
+      '$days ${days == 1 ? 'Day' : 'Days'} · $currency ${formatAmount(budget)}';
 
   // ── Gemini output ────────────────────────────────────────────────────────
   /// Build from the JSON object Gemini returns. Tolerant of missing fields so a

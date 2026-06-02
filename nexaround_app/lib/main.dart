@@ -12,10 +12,23 @@ import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 
 /// Handles FCM messages while the app is backgrounded/terminated. Must be a
-/// top-level function. The OS renders the `notification` payload itself; we
-/// don't need to do anything here.
+/// top-level function and runs in its own isolate. The OS renders the
+/// `notification` payload itself; here we also record it into the local inbox
+/// so it shows up under the bell when the user opens the app.
 @pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {}
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  try {
+    await CacheService.init();
+    final n = message.notification;
+    await CacheService.addNotification(
+      id: message.messageId,
+      title: (n?.title ?? message.data['title'] ?? 'NexAround').toString(),
+      body: (n?.body ?? message.data['body'] ?? '').toString(),
+      type: (message.data['type'] ?? '').toString(),
+      data: message.data.map((k, v) => MapEntry(k, v)),
+    );
+  } catch (_) {}
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

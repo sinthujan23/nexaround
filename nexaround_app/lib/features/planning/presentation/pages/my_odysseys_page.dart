@@ -27,6 +27,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   @override
   void initState() {
     super.initState();
+    // Render the last cached list instantly; the network refresh updates it.
+    _odysseys = _repository.getCachedOdysseys();
+    _loading = _odysseys.isEmpty;
     _load();
     // Refresh whenever an Odyssey is saved/deleted anywhere in the app.
     OdysseyRepository.revision.addListener(_load);
@@ -54,7 +57,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Could not load your odysseys.';
+        // Keep showing the cached list on failure — only surface the error
+        // screen when there's nothing cached to fall back to.
+        if (_odysseys.isEmpty) _error = 'Could not load your odysseys.';
       });
     }
   }

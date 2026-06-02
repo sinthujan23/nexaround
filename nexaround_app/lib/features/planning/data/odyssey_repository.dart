@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 
 /// Persists Odysseys on the backend by reusing the `/itineraries` endpoints.
@@ -104,15 +105,25 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
-  /// All saved Odysseys for the current user, newest first.
+  /// All saved Odysseys for the current user, newest first. Caches the raw
+  /// result locally so [getCachedOdysseys] can render it instantly next time.
   Future<List<Odyssey>> getMyOdysseys() async {
     final response = await _dio.get(_collection);
-    final list = (response.data as List)
+    final raw = (response.data as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())
         .where(Odyssey.isOdyssey)
-        .map(Odyssey.fromItinerary)
         .toList();
+    await CacheService.cacheOdysseys(raw);
+    return _sorted(raw.map(Odyssey.fromItinerary).toList());
+  }
+
+  /// The last cached Odyssey list (from the previous successful fetch). Returns
+  /// an empty list if nothing is cached yet. Synchronous — no network.
+  List<Odyssey> getCachedOdysseys() =>
+      _sorted(CacheService.getCachedOdysseysRaw().map(Odyssey.fromItinerary).toList());
+
+  List<Odyssey> _sorted(List<Odyssey> list) {
     list.sort((a, b) {
       final ad = a.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
       final bd = b.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);

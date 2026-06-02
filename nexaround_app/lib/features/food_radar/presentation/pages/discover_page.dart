@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -1390,14 +1391,14 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
                                     Text(
-                                      '${b.currency} ${b.totalSpent.toStringAsFixed(0)}',
+                                      '${b.currency} ${formatAmount(b.totalSpent)}',
                                       style: TextStyle(
                                         fontWeight: FontWeight.bold,
                                         color: b.totalSpent > b.totalAmount ? AppColors.error : AppColors.textPrimary,
                                       ),
                                     ),
                                     Text(
-                                      '/ ${b.totalAmount.toStringAsFixed(0)}',
+                                      '/ ${formatAmount(b.totalAmount)}',
                                       style: TextStyle(fontSize: 10, color: AppColors.textTertiary),
                                     ),
                                   ],
@@ -1472,7 +1473,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                               return _buildTransaction(
                                 e.description ?? e.category,
                                 _getCategoryEmoji(e.category),
-                                '-${budget.currency} ${e.amount.toStringAsFixed(0)}',
+                                '-${budget.currency} ${formatAmount(e.amount)}',
                                 DateFormat('MMM d, hh:mm a').format(e.spentAt),
                               );
                             },
@@ -1549,7 +1550,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               ShaderMask(
                 shaderCallback: (b) => (budget.isOverBudget ? const LinearGradient(colors: [AppColors.error, AppColors.error]) : AppColors.primaryGradient).createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                 child: Text(
-                  '${budget.currency} ${budget.spentAmount.toStringAsFixed(0)}',
+                  '${budget.currency} ${formatAmount(budget.spentAmount)}',
                   style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                 ),
               ),
@@ -1557,12 +1558,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
-                    '+${budget.currency} ${budget.overAmount.toStringAsFixed(0)} OVER BUDGET',
+                    '+${budget.currency} ${formatAmount(budget.overAmount)} OVER BUDGET',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.error),
                   ),
                 ),
               const SizedBox(height: 12),
-              Text('of ${budget.currency} ${budget.totalAmount.toStringAsFixed(0)} total budget', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+              Text('of ${budget.currency} ${formatAmount(budget.totalAmount)} total budget', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
               const SizedBox(height: 16),
               // Progress bar
               ClipRRect(
@@ -1641,7 +1642,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           ...budget.expenses.take(10).map((e) => _buildTransaction(
                 e.description ?? e.category,
                 _getCategoryEmoji(e.category),
-                '-${budget.currency} ${e.amount.toStringAsFixed(0)}',
+                '-${budget.currency} ${formatAmount(e.amount)}',
                 DateFormat('hh:mm a').format(e.spentAt),
               )),
         
@@ -1663,10 +1664,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
     return Column(
       children: [
-        _buildBudgetCategory('🍽', 'Food', '${budget.currency} ${totals['Food']!.toStringAsFixed(0)}', (totals['Food']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.accent, 0),
-        _buildBudgetCategory('🚕', 'Transport', '${budget.currency} ${totals['Transport']!.toStringAsFixed(0)}', (totals['Transport']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.secondary, 1),
-        _buildBudgetCategory('🛍', 'Shopping', '${budget.currency} ${totals['Shopping']!.toStringAsFixed(0)}', (totals['Shopping']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.warning, 2),
-        _buildBudgetCategory('🎫', 'Activities', '${budget.currency} ${totals['Activities']!.toStringAsFixed(0)}', (totals['Activities']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.neonGreen, 3),
+        _buildBudgetCategory('🍽', 'Food', '${budget.currency} ${formatAmount(totals['Food']!)}', (totals['Food']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.accent, 0),
+        _buildBudgetCategory('🚕', 'Transport', '${budget.currency} ${formatAmount(totals['Transport']!)}', (totals['Transport']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.secondary, 1),
+        _buildBudgetCategory('🛍', 'Shopping', '${budget.currency} ${formatAmount(totals['Shopping']!)}', (totals['Shopping']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.warning, 2),
+        _buildBudgetCategory('🎫', 'Activities', '${budget.currency} ${formatAmount(totals['Activities']!)}', (totals['Activities']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.neonGreen, 3),
       ],
     );
   }
@@ -1891,7 +1892,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Expense of ${amount.toStringAsFixed(0)} LKR added successfully!'),
+                            content: Text('Expense of ${formatAmount(amount)} LKR added successfully!'),
                             backgroundColor: Colors.green,
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

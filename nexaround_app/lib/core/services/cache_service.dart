@@ -3,10 +3,20 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CacheService {
-  static late final SharedPreferences _prefs;
+  static SharedPreferences? _prefsOrNull;
+  static SharedPreferences get _prefs => _prefsOrNull!;
 
+  /// Idempotent — safe to call again from the FCM background isolate, which has
+  /// its own memory and must initialise SharedPreferences separately.
   static Future<void> init() async {
-    _prefs = await SharedPreferences.getInstance();
+    _prefsOrNull ??= await SharedPreferences.getInstance();
+  }
+
+  /// Re-read from disk so the main isolate picks up values written by the FCM
+  /// background isolate (e.g. notifications saved while the app was backgrounded).
+  static Future<void> reload() async {
+    await _prefsOrNull?.reload();
+    notificationsNotifier.value++;
   }
 
   // Onboarding
@@ -204,6 +214,30 @@ class CacheService {
         .toList();
   }
 
+  // ── Odyssey list cache ─────────────────────────────────────────────────
+  // Caches the raw itinerary JSON for Odysseys so Blueprints renders instantly
+  // on open and survives a slow/failed network (no spinner / retry screen).
+  static Future<void> cacheOdysseys(List<Map<String, dynamic>> raw) async {
+    await _prefs.setStringList(
+      'odysseys_cache',
+      raw.map((e) => json.encode(e)).toList(),
+    );
+  }
+
+  static List<Map<String, dynamic>> getCachedOdysseysRaw() {
+    final list = _prefs.getStringList('odysseys_cache') ?? [];
+    return list
+        .map((s) {
+          try {
+            return json.decode(s) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
+
   // ── Notifications (bell inbox) ─────────────────────────────────────────
   // Locally-stored inbox shown by the homepage bell. Fed by FCM messages
   // (foreground + on-tap). Each record: {title, body, type, data, date, read}.
@@ -213,12 +247,25 @@ class CacheService {
     required String title,
     required String body,
     String type = '',
+    String? id,
     Map<String, dynamic>? data,
   }) async {
+    // Re-read first: the same notification may have been written by the
+    // background isolate already.
+    await _prefsOrNull?.reload();
     final list = _prefs.getStringList('notifications') ?? [];
+    // Dedup by message id so background + foreground + tap don't triple-add.
+    if (id != null && id.isNotEmpty) {
+      for (final s in list) {
+        try {
+          if ((json.decode(s) as Map)['id'] == id) return;
+        } catch (_) {}
+      }
+    }
     list.insert(
       0,
       json.encode({
+        'id': id ?? '',
         'title': title,
         'body': body,
         'type': type,

@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
@@ -349,7 +350,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             child: Column(
               children: [
                 Text(
-                  '$_currency ${_budget.toInt()}',
+                  '$_currency ${formatAmount(_budget)}',
                   style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: -1),
                 ),
                 const Text('ESTIMATED TOTAL BUDGET', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),

@@ -17,10 +17,16 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
-    // Mark read after the first frame so the badge clears.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      CacheService.markNotificationsRead();
-    });
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    // Pull in notifications saved by the FCM background isolate, then show them
+    // and clear the unread badge.
+    await CacheService.reload();
+    if (!mounted) return;
+    setState(() {});
+    await CacheService.markNotificationsRead();
   }
 
   void _onTap(Map<String, dynamic> n) {
