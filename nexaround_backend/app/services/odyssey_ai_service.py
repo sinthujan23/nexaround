@@ -118,6 +118,90 @@ async def generate_odyssey(
     return title, [meta] + day_items
 
 
+async def generate_replacement_activity(
+    *,
+    destination: str,
+    mood: str,
+    budget: float,
+    currency: str,
+    day_no: int,
+    theme: str,
+    time_slot: str,
+    old_name: str,
+    reason: str,
+    existing_names: list[str],
+    api_key: str,
+) -> dict:
+    """Generate ONE replacement stop for a single activity the user wants
+    swapped out (e.g. already visited / not interested). Returns a dict shaped
+    like an activity: {time, name, tip, cost}. The original `time_slot` is
+    preserved so the day's ordering stays stable.
+
+    Raises on any failure so the caller can surface an error to the user.
+    """
+    prompt = _build_swap_prompt(
+        destination=destination,
+        mood=mood,
+        budget=budget,
+        currency=currency,
+        day_no=day_no,
+        theme=theme,
+        time_slot=time_slot,
+        old_name=old_name,
+        reason=reason,
+        existing_names=existing_names,
+    )
+    text = await _call_gemini(prompt, api_key, max_tokens=512)
+    data = _parse_json(text)
+
+    name = str(data.get("name") or data.get("attraction_name") or "").strip()
+    if not name:
+        raise ValueError("Replacement had no place name")
+
+    return {
+        "time": time_slot or str(data.get("time") or ""),
+        "name": name,
+        "tip": str(data.get("tip") or data.get("note") or ""),
+        "cost": str(data.get("cost") or ""),
+    }
+
+
+def _build_swap_prompt(
+    *,
+    destination: str,
+    mood: str,
+    budget: float,
+    currency: str,
+    day_no: int,
+    theme: str,
+    time_slot: str,
+    old_name: str,
+    reason: str,
+    existing_names: list[str],
+) -> str:
+    avoid = ", ".join(n for n in existing_names if n) or "(none)"
+    why = reason.strip() or "the traveler wants a different option"
+    slot = time_slot or "this time slot"
+    return f"""A traveler is on a {mood} trip to {destination} (total budget {int(budget)} {currency}).
+
+On Day {day_no} ("{theme}"), one stop needs replacing.
+- Stop to replace: "{old_name}" (scheduled for {slot})
+- Why replace it: {why}
+
+These places are ALREADY in the trip - do NOT suggest any of them again:
+{avoid}
+
+Suggest exactly ONE different, real, well-known place or activity near "{destination}" that:
+- fits the day's "{theme}" theme and the "{slot}" time slot,
+- matches the "{mood}" travel style,
+- keeps within the overall {int(budget)} {currency} budget,
+- is NOT in the avoid-list above.
+
+Return ONLY a JSON object with this exact shape (no markdown, no commentary):
+{{ "time": "{slot}", "name": "Place or activity name", "tip": "Short practical tip under ~12 words", "cost": "{currency} amount or 'Free'" }}
+"""
+
+
 def _build_prompt(destination: str, mood: str, budget: float, days: int, currency: str) -> str:
     nights = days - 1 if days > 1 else 0
     return f"""Design a {days}-day travel Odyssey.
@@ -158,13 +242,13 @@ Rules:
 """
 
 
-async def _call_gemini(prompt: str, api_key: str) -> str:
+async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096) -> str:
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
         "system_instruction": {"parts": [{"text": _SYSTEM}]},
         "generationConfig": {
             "temperature": 0.8,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": max_tokens,
             "responseMimeType": "application/json",
         },
     }

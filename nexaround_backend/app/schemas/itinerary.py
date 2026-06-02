@@ -39,6 +39,14 @@ class OdysseyGenerateRequest(BaseModel):
     days: int = 3
     currency: str = "LKR"
 
+class OdysseySwapRequest(BaseModel):
+    """Request body for swapping a single activity in a saved Odyssey for an
+    AI-suggested alternative. `day_index` and `activity_index` are zero-based
+    positions within the plan (day position, then activity within that day)."""
+    day_index: int
+    activity_index: int
+    reason: str = ""
+
 class ItineraryResponse(ItineraryBase):
     id: UUID
     user_id: UUID

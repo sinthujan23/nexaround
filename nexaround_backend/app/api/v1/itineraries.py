@@ -18,6 +18,7 @@ from app.schemas.itinerary import (
     ItineraryUpdate,
     ItineraryResponse,
     OdysseyGenerateRequest,
+    OdysseySwapRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -107,6 +108,73 @@ async def _run_odyssey_generation(
             logger.error(f"Odyssey generation failed for {itinerary_id}: {e}")
             itin.status = "failed"
         await repo.update(itin)
+
+
+@router.post("/{itinerary_id}/odyssey/swap", response_model=ItineraryResponse)
+async def swap_odyssey_activity(
+    itinerary_id: uuid.UUID,
+    data: OdysseySwapRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replace a single activity in a saved Odyssey with an AI-suggested
+    alternative (e.g. the user already visited it or isn't interested). Runs
+    synchronously — a single place is fast — and returns the updated itinerary.
+    """
+    repo = ItineraryRepository(db)
+    itin = await repo.get_by_id(itinerary_id, current_user.id)
+    if not itin:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+
+    items = [dict(it) for it in (itin.items or [])]
+    meta = next((it for it in items if it.get("kind") == "odyssey_meta"), {})
+    if not meta:
+        raise HTTPException(status_code=400, detail="Not an Odyssey")
+
+    day_positions = [i for i, it in enumerate(items) if it.get("kind") == "day"]
+    if data.day_index < 0 or data.day_index >= len(day_positions):
+        raise HTTPException(status_code=400, detail="Invalid day index")
+    pos = day_positions[data.day_index]
+    day = dict(items[pos])
+    activities = [dict(a) for a in (day.get("activities") or [])]
+    if data.activity_index < 0 or data.activity_index >= len(activities):
+        raise HTTPException(status_code=400, detail="Invalid activity index")
+
+    api_key = await SettingsService(db).get_setting("gemini_api_key")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI is not configured")
+
+    old = activities[data.activity_index]
+    existing_names = [
+        str(a.get("name") or "")
+        for d in items if d.get("kind") == "day"
+        for a in (d.get("activities") or [])
+    ]
+
+    try:
+        replacement = await odyssey_ai_service.generate_replacement_activity(
+            destination=str(meta.get("destination") or ""),
+            mood=str(meta.get("mood") or ""),
+            budget=float(meta.get("budget") or 0),
+            currency=str(meta.get("currency") or "LKR"),
+            day_no=int(day.get("day") or data.day_index + 1),
+            theme=str(day.get("theme") or ""),
+            time_slot=str(old.get("time") or ""),
+            old_name=str(old.get("name") or ""),
+            reason=data.reason,
+            existing_names=existing_names,
+            api_key=api_key,
+        )
+    except Exception as e:
+        logger.error(f"Odyssey swap failed for {itinerary_id}: {e}")
+        raise HTTPException(status_code=502, detail="Could not generate a replacement")
+
+    activities[data.activity_index] = replacement
+    day["activities"] = activities
+    items[pos] = day
+    itin.items = items  # reassign whole list so SQLAlchemy persists the JSON change
+    return await repo.update(itin)
+
 
 @router.post("/generate", response_model=dict)
 async def generate_ai_itinerary(
