@@ -71,7 +71,12 @@ async def generate_odyssey(
     'failed'.
     """
     prompt = _build_prompt(destination, mood, budget, days, currency)
-    text = await _call_gemini(prompt, api_key)
+    # thinking_budget=0 disables gemini-2.5-flash's hidden "thinking" tokens, which
+    # otherwise count against maxOutputTokens and were truncating the plan's JSON
+    # mid-output (finishReason MAX_TOKENS) -> _parse_json raised "did not return a
+    # JSON object". The plan is pure structured output and needs no reasoning. Give
+    # it a larger budget than the default so longer multi-day trips fit comfortably.
+    text = await _call_gemini(prompt, api_key, max_tokens=8192, thinking_budget=0)
     plan = _parse_json(text)
 
     g_days = _as_int(plan.get("days"), days)

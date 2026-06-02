@@ -16,6 +16,8 @@ services:
       - ./app:/app/app
       # Persist proxied place photos across container restarts.
       - photo_cache:/app/app/static/photo_cache
+      # Firebase service-account credential (read-only, kept outside the repo).
+      - /etc/nexaround/firebase-sa.json:/etc/nexaround/firebase-sa.json:ro
     depends_on:
       - db
       - redis
