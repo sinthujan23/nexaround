@@ -9,10 +9,21 @@ class OdysseyPlanView extends StatelessWidget {
   final Odyssey odyssey;
   final EdgeInsetsGeometry padding;
 
+  /// When provided, each activity shows an edit button that asks the AI to swap
+  /// that place. Called with the zero-based (dayIndex, activityIndex). When
+  /// null the plan is read-only (e.g. the planner preview).
+  final void Function(int dayIndex, int activityIndex)? onSwapActivity;
+
+  /// Key of the activity currently being swapped ("dayIndex:activityIndex"),
+  /// so that row can show a spinner instead of its edit button.
+  final String? swappingKey;
+
   const OdysseyPlanView({
     super.key,
     required this.odyssey,
     this.padding = const EdgeInsets.all(24),
+    this.onSwapActivity,
+    this.swappingKey,
   });
 
   @override
@@ -78,7 +89,7 @@ class OdysseyPlanView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             ...odyssey.dayPlans.asMap().entries.map(
-                  (e) => _dayCard(e.value)
+                  (e) => _dayCard(e.key, e.value)
                       .animate()
                       .fade(delay: (80 * e.key).ms)
                       .slideY(begin: 0.1, end: 0),
@@ -159,7 +170,7 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  Widget _dayCard(OdysseyDay day) {
+  Widget _dayCard(int dayIndex, OdysseyDay day) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.all(20),
@@ -202,13 +213,17 @@ class OdysseyPlanView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          ...day.activities.map(_activityRow),
+          ...day.activities.asMap().entries.map(
+                (a) => _activityRow(dayIndex, a.key, a.value),
+              ),
         ],
       ),
     );
   }
 
-  Widget _activityRow(OdysseyActivity act) {
+  Widget _activityRow(int dayIndex, int activityIndex, OdysseyActivity act) {
+    final bool editable = onSwapActivity != null;
+    final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
@@ -262,6 +277,39 @@ class OdysseyPlanView extends StatelessWidget {
                 color: Colors.black,
               ),
             ),
+          ],
+          if (editable) ...[
+            const SizedBox(width: 4),
+            if (isSwapping)
+              const SizedBox(
+                width: 32,
+                height: 32,
+                child: Padding(
+                  padding: EdgeInsets.all(8),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.actionTeal,
+                  ),
+                ),
+              )
+            else
+              SizedBox(
+                width: 32,
+                height: 32,
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Swap this place',
+                  icon: const Icon(
+                    Icons.autorenew_rounded,
+                    size: 18,
+                    color: Colors.black45,
+                  ),
+                  onPressed: swappingKey != null
+                      ? null
+                      : () => onSwapActivity!(dayIndex, activityIndex),
+                ),
+              ),
           ],
         ],
       ),

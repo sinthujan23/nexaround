@@ -89,7 +89,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   Widget build(BuildContext context) {
     final pages = [
       const LivingMapPage(),
-      const ArCameraPage(),
+      ArCameraPage(isActive: _selectedIndex == 1),
       AiChatPage(initialPrompt: _pendingPrompt),
       const DiscoverPage(),
       const MyOdysseysPage(),

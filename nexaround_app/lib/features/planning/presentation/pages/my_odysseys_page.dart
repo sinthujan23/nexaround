@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
+import 'package:nexaround_app/features/mini_tour/presentation/pages/mini_tour_game_page.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -75,6 +76,73 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     if (created == true) _load();
   }
 
+  void _openMiniTour() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MiniTourGamePage()),
+    );
+  }
+
+  Widget _buildMiniTourCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: GestureDetector(
+        onTap: _openMiniTour,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 10)),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Text('🚩', style: TextStyle(fontSize: 24)),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'MINI TOUR',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2, color: Colors.white70),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Nearby flag challenge',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Visit the stops, reach 🏁, earn XP',
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 34),
+            ],
+          ),
+        ),
+      ).animate().fade().slideY(begin: 0.1, end: 0),
+    );
+  }
+
   Future<void> _openDetail(Odyssey odyssey) async {
     if (odyssey.status == 'generating') {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,7 +196,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
+            _buildMiniTourCard(),
+            const SizedBox(height: 16),
             Expanded(child: _buildContent()),
           ],
         ),

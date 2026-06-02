@@ -10,6 +10,12 @@ import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 class OdysseyRepository {
   final Dio _dio = ApiClient.instance;
 
+  /// The collection endpoint MUST keep its trailing slash. The backend route is
+  /// `/itineraries/`; calling it without the slash triggers a 307→301 redirect
+  /// (which even bounces via http://), and HTTP clients drop the Authorization
+  /// header across redirects — surfacing as a 401 "Not authenticated".
+  static final String _collection = '${ApiConstants.itineraries}/';
+
   /// Bumped whenever the saved set changes so list screens can refresh.
   static final ValueNotifier<int> revision = ValueNotifier(0);
 
@@ -42,7 +48,7 @@ class OdysseyRepository {
   /// client-side). Returns it with the backend id attached.
   Future<Odyssey> save(Odyssey odyssey) async {
     final response = await _dio.post(
-      ApiConstants.itineraries,
+      _collection,
       data: {
         'title': odyssey.title,
         'trip_date': null,
@@ -55,9 +61,31 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
+  /// Ask the AI to replace a single activity (the user already visited it or
+  /// isn't interested). Returns the full updated Odyssey with the new place in
+  /// place of the old one. [dayIndex]/[activityIndex] are zero-based positions.
+  Future<Odyssey> swapActivity({
+    required String itineraryId,
+    required int dayIndex,
+    required int activityIndex,
+    String reason = '',
+  }) async {
+    final response = await _dio.post(
+      '${ApiConstants.itineraries}/$itineraryId/odyssey/swap',
+      data: {
+        'day_index': dayIndex,
+        'activity_index': activityIndex,
+        'reason': reason,
+      },
+    );
+    revision.value++;
+    final json = (response.data as Map).cast<String, dynamic>();
+    return Odyssey.fromItinerary(json);
+  }
+
   /// All saved Odysseys for the current user, newest first.
   Future<List<Odyssey>> getMyOdysseys() async {
-    final response = await _dio.get(ApiConstants.itineraries);
+    final response = await _dio.get(_collection);
     final list = (response.data as List)
         .whereType<Map>()
         .map((e) => e.cast<String, dynamic>())

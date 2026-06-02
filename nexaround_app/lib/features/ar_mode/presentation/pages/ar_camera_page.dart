@@ -28,7 +28,12 @@ import 'package:nexaround_app/features/attractions/domain/entities/attraction.da
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
-  const ArCameraPage({super.key, this.initialPlace});
+  // Whether the AR tab is currently the visible one. The home tabs are kept
+  // alive in an IndexedStack, so without this the camera + compass + GPS would
+  // run (and redraw) in the background even when you're on another tab. When
+  // false, AR pauses all of that and resumes when you return.
+  final bool isActive;
+  const ArCameraPage({super.key, this.initialPlace, this.isActive = true});
 
   @override
   State<ArCameraPage> createState() => _ArCameraPageState();
@@ -142,6 +147,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // jitter down while tracking turns in a fraction of a second. The very first
   // reading is snapped directly (see compass listener) so AR opens aligned.
   static const double _headingSmoothing = 0.2;
+  // The compass fires 20-50x/sec and jitters even when the phone is still.
+  // Rebuilding the whole AR tree on every tick is wasteful, so we only rebuild
+  // when the smoothed heading actually moved at least this many degrees (plus
+  // the first reading / accuracy changes). Below this, the move is invisible.
+  static const double _headingRebuildThresholdDegrees = 0.4;
   // If the OS reports compass accuracy worse than this, ignore the update.
   static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
@@ -412,25 +422,36 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (mounted) setState(() => _isLocationGranted = granted);
     }
 
-    _initializeCamera();
     _loadCachedPlaces();
-    _fetchLivePlaces();
+    if (widget.isActive) _startArCapture();
 
     _compassSubscription = FlutterCompass.events?.listen((event) {
-      if (!mounted) return;
+      if (!mounted || !widget.isActive) return;
       final raw = event.heading;
       if (raw == null || raw.isNaN) return;
-      final accuracy = event.accuracy;
-      setState(() {
-        // First valid reading: snap straight to it so the AR view opens aligned
-        // with reality instead of slewing all the way from north (0°) over
-        // several seconds, which made every place point the wrong way at first.
-        _heading = _rawHeading == null
-            ? raw
-            : _smoothHeading(_heading, raw, _headingSmoothing);
-        _rawHeading = raw;
-        _compassAccuracy = accuracy;
-      });
+
+      final bool firstReading = _rawHeading == null;
+      // First valid reading: snap straight to it so the AR view opens aligned
+      // with reality instead of slewing all the way from north (0°) over
+      // several seconds, which made every place point the wrong way at first.
+      final double newHeading = firstReading
+          ? raw
+          : _smoothHeading(_heading, raw, _headingSmoothing);
+
+      _rawHeading = raw;
+      final double? prevAccuracy = _compassAccuracy;
+      _compassAccuracy = event.accuracy;
+
+      // Throttle: skip the (expensive) full rebuild when the heading barely
+      // moved. The compass jitters constantly while stationary, so without this
+      // the whole AR tree redraws 20-50x/sec for no visible change.
+      double delta = (newHeading - _heading).abs();
+      if (delta > 180) delta = 360 - delta; // shortest angle across 0°/360°
+      final bool accuracyChanged = (prevAccuracy ?? -1) != (_compassAccuracy ?? -1);
+      if (!firstReading && delta < _headingRebuildThresholdDegrees && !accuracyChanged) {
+        return; // value already stored above; no rebuild needed
+      }
+      setState(() => _heading = newHeading);
     });
 
     _positionSubscription = geo.Geolocator.getPositionStream(
@@ -439,8 +460,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         distanceFilter: 2,
       ),
     ).listen((pos) {
+      if (!mounted || !widget.isActive) return;
       debugPrint('📍 AR Location Update: ${pos.latitude}, ${pos.longitude}');
-      if (!mounted) return;
       setState(() {
         _currentPosition = pos;
         
@@ -517,6 +538,43 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           _startNevaSearch(landmark);
         }
       });
+    }
+  }
+
+  // Live places are fetched once, lazily, the first time AR becomes visible.
+  bool _placesFetched = false;
+
+  /// Called when the AR tab becomes visible: (re)start the camera and load
+  /// places. The compass/GPS callbacks gate on [widget.isActive] themselves, so
+  /// they resume doing work automatically.
+  void _startArCapture() {
+    if (_controller == null) {
+      _initializeCamera();
+    } else {
+      try { _controller!.resumePreview(); } catch (_) {}
+    }
+    if (!_placesFetched) {
+      _placesFetched = true;
+      _fetchLivePlaces();
+    }
+  }
+
+  /// Called when the AR tab is hidden: freeze the camera preview and clear the
+  /// heading so it re-snaps on return. The compass/GPS callbacks early-return
+  /// while hidden, so the heavy AR tree stops rebuilding in the background.
+  void _stopArCapture() {
+    _rawHeading = null;
+    try { _controller?.pausePreview(); } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didUpdateWidget(covariant ArCameraPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _startArCapture();
+    } else if (!widget.isActive && oldWidget.isActive) {
+      _stopArCapture();
     }
   }
 
@@ -3556,14 +3614,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     double smallestAngleDiff = double.infinity;
     
     for (final landmark in pool) {
-      // Calculate bearing to this landmark
-      final bearing = _calculateBearing(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        landmark.lat ?? 0,
-        landmark.lng ?? 0,
-      );
-      
+      // Reuse the bearing already maintained on position updates instead of
+      // recomputing it every compass tick — it only changes when the user moves,
+      // not when they rotate, and this matches how the markers are placed.
+      final bearing = landmark.bearing;
+
       // Calculate angle difference between camera heading and landmark bearing
       double angleDiff = (bearing - cameraHeading).abs();
       if (angleDiff > 180) angleDiff = 360 - angleDiff;
@@ -3574,9 +3629,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         closestLandmark = landmark;
       }
     }
-    
-    debugPrint('🔍 CAMERA: Heading $cameraHeading°, Closest landmark: ${closestLandmark?.name}, Angle diff: $smallestAngleDiff°');
-    
+
     return closestLandmark;
   }
   

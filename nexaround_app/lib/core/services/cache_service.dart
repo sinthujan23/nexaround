@@ -141,6 +141,31 @@ class CacheService {
     }
   }
 
+  // ── Explorer stats (gamification) ──────────────────────────────────────
+  // Local XP / places-visited counters powering the profile's "Explorer Level"
+  // and "Places Visited". Bumped by completing a Mini Tour. Level is derived
+  // from XP so the two never drift apart.
+  static const int xpPerLevel = 100;
+  static final ValueNotifier<int> statsNotifier = ValueNotifier(0);
+
+  static int getExplorerXp() => _prefs.getInt('explorer_xp') ?? 0;
+  static int getPlacesVisited() => _prefs.getInt('places_visited') ?? 0;
+
+  static int explorerLevelForXp(int xp) => 1 + (xp ~/ xpPerLevel);
+  static int getExplorerLevel() => explorerLevelForXp(getExplorerXp());
+
+  /// XP earned inside the current level, 0..[xpPerLevel].
+  static int getXpIntoLevel() => getExplorerXp() % xpPerLevel;
+
+  /// Record a completed exploration. Returns true if the explorer level rose.
+  static Future<bool> addExploration({required int placesVisited, required int xp}) async {
+    final beforeLevel = getExplorerLevel();
+    await _prefs.setInt('explorer_xp', getExplorerXp() + xp);
+    await _prefs.setInt('places_visited', getPlacesVisited() + placesVisited);
+    statsNotifier.value++;
+    return getExplorerLevel() > beforeLevel;
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

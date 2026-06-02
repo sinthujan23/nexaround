@@ -178,21 +178,24 @@ class ProfilePage extends StatelessWidget {
               ),
             ],
           ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.diamond_rounded, color: Colors.black, size: 14),
-              SizedBox(width: 6),
-              Text(
-                'Explorer Level 1',
-                style: TextStyle(
-                  fontSize: 12, 
-                  fontWeight: FontWeight.w800, 
-                  color: Colors.black, 
-                  letterSpacing: 0.8,
+          child: ValueListenableBuilder<int>(
+            valueListenable: CacheService.statsNotifier,
+            builder: (context, _, __) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.diamond_rounded, color: Colors.black, size: 14),
+                const SizedBox(width: 6),
+                Text(
+                  'Explorer Level ${CacheService.getExplorerLevel()}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                    letterSpacing: 0.8,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ).animate().fade(delay: 400.ms).scale(begin: const Offset(0.9, 0.9), curve: Curves.easeOutBack),
       ],
@@ -200,17 +203,23 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildStatsRow() {
-    final savedCount = CacheService.getSavedPlaceJsons().length;
-    return Row(
-      children: [
-        _buildStat('0', 'Places\nVisited', AppColors.primary),
-        const SizedBox(width: 10),
-        _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
-        const SizedBox(width: 10),
-        _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen),
-        const SizedBox(width: 10),
-        _buildStat('--', 'Avg\nRating', AppColors.warning),
-      ],
+    return ValueListenableBuilder<int>(
+      valueListenable: CacheService.statsNotifier,
+      builder: (context, _, __) {
+        final savedCount = CacheService.getSavedPlaceJsons().length;
+        final visited = CacheService.getPlacesVisited();
+        return Row(
+          children: [
+            _buildStat('$visited', 'Places\nVisited', AppColors.primary),
+            const SizedBox(width: 10),
+            _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
+            const SizedBox(width: 10),
+            _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen),
+            const SizedBox(width: 10),
+            _buildStat('--', 'Avg\nRating', AppColors.warning),
+          ],
+        );
+      },
     ).animate().fade(delay: 300.ms);
   }
 
