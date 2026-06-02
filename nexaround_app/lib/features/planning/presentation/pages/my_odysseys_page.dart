@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -19,6 +20,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   bool _loading = true;
   String? _error;
   List<Odyssey> _odysseys = const [];
+  Timer? _pollTimer;
 
   @override
   void initState() {
@@ -30,6 +32,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
   @override
   void dispose() {
+    _pollTimer?.cancel();
     OdysseyRepository.revision.removeListener(_load);
     super.dispose();
   }
@@ -44,12 +47,23 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         _loading = false;
         _error = null;
       });
+      _schedulePoll();
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
         _error = 'Could not load your odysseys.';
       });
+    }
+  }
+
+  /// While any Odyssey is still being built server-side, re-poll so its card
+  /// flips from "Generating…" to the finished plan without a manual refresh.
+  void _schedulePoll() {
+    _pollTimer?.cancel();
+    final anyGenerating = _odysseys.any((o) => o.status == 'generating');
+    if (anyGenerating && mounted) {
+      _pollTimer = Timer(const Duration(seconds: 5), _load);
     }
   }
 
@@ -62,6 +76,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   }
 
   Future<void> _openDetail(Odyssey odyssey) async {
+    if (odyssey.status == 'generating') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Still building this Odyssey — hang tight.')),
+      );
+      return;
+    }
     final deleted = await Navigator.push<bool>(
       context,
       MaterialPageRoute(builder: (_) => OdysseyDetailPage(odyssey: odyssey)),
@@ -152,6 +172,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     switch (status.toLowerCase()) {
       case 'active':
         return AppColors.ratingGold;
+      case 'generating':
+        return AppColors.actionTeal;
+      case 'failed':
+        return Colors.redAccent;
       case 'completed':
         return Colors.black12;
       default:
@@ -161,6 +185,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
   Widget _buildOdysseyCard(Odyssey odyssey) {
     final accentColor = _statusColor(odyssey.status);
+    final isGenerating = odyssey.status == 'generating';
+    final isFailed = odyssey.status == 'failed';
+
     return GestureDetector(
       onTap: () => _openDetail(odyssey),
       child: Container(
@@ -199,7 +226,14 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     ),
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.black26, size: 14),
+                if (isGenerating)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.actionTeal),
+                  )
+                else
+                  const Icon(Icons.arrow_forward_ios_rounded, color: Colors.black26, size: 14),
               ],
             ),
             const SizedBox(height: 16),
@@ -213,26 +247,51 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                const Icon(Icons.auto_mode_rounded, size: 14, color: AppColors.ratingGold),
-                const SizedBox(width: 6),
-                const Text(
-                  'AI Optimized Plan',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
-                ),
-                const Spacer(),
-                const Text(
-                  'EXPLORE',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                    decoration: TextDecoration.underline,
+            if (isGenerating)
+              Row(
+                children: const [
+                  Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.actionTeal),
+                  SizedBox(width: 6),
+                  Text(
+                    'AI is crafting your plan…',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
                   ),
-                ),
-              ],
-            ),
+                ],
+              )
+            else if (isFailed)
+              Row(
+                children: const [
+                  Icon(Icons.error_outline_rounded, size: 14, color: Colors.redAccent),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Generation failed — tap to remove.',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
+                    ),
+                  ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  const Icon(Icons.auto_mode_rounded, size: 14, color: AppColors.ratingGold),
+                  const SizedBox(width: 6),
+                  const Text(
+                    'AI Optimized Plan',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
+                  ),
+                  const Spacer(),
+                  const Text(
+                    'EXPLORE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ],
+              ),
           ],
         ),
       ).animate().fade().slideY(begin: 0.1, end: 0),

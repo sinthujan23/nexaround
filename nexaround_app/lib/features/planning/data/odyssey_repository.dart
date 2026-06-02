@@ -13,7 +13,33 @@ class OdysseyRepository {
   /// Bumped whenever the saved set changes so list screens can refresh.
   static final ValueNotifier<int> revision = ValueNotifier(0);
 
-  /// Save a freshly generated Odyssey. Returns it with the backend id attached.
+  /// Kick off server-side AI generation. Returns immediately with a
+  /// `status: "generating"` Odyssey; the backend fills in the plan in the
+  /// background and the status flips to `active` (or `failed`).
+  Future<Odyssey> requestGeneration({
+    required String destination,
+    required String mood,
+    required double budget,
+    required int days,
+    String currency = 'LKR',
+  }) async {
+    final response = await _dio.post(
+      '${ApiConstants.itineraries}/odyssey/generate',
+      data: {
+        'destination': destination,
+        'mood': mood,
+        'budget': budget,
+        'days': days,
+        'currency': currency,
+      },
+    );
+    revision.value++;
+    final json = (response.data as Map).cast<String, dynamic>();
+    return Odyssey.fromItinerary(json);
+  }
+
+  /// Save an already-built Odyssey directly (used if a plan is generated
+  /// client-side). Returns it with the backend id attached.
   Future<Odyssey> save(Odyssey odyssey) async {
     final response = await _dio.post(
       ApiConstants.itineraries,

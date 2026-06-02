@@ -4,9 +4,6 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
-import 'package:nexaround_app/features/planning/data/odyssey_service.dart';
-import 'package:nexaround_app/features/planning/domain/odyssey.dart';
-import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_plan_view.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -18,7 +15,6 @@ class OdysseyPlannerPage extends StatefulWidget {
 class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   static const String _currency = 'LKR';
 
-  final OdysseyService _service = OdysseyService();
   final OdysseyRepository _repository = OdysseyRepository();
   final TextEditingController _destinationController = TextEditingController();
 
@@ -26,10 +22,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   int _days = 3;
   double _budget = 50000;
   String _selectedMood = 'Adventurous';
-
-  bool _isGenerating = false;
-  bool _isSaving = false;
-  Odyssey? _result;
+  bool _isSubmitting = false;
 
   final List<int> _dayOptions = const [2, 3, 4, 5, 7];
 
@@ -82,10 +75,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   // ── Actions ────────────────────────────────────────────────────────────
   void _onPrimaryAction() {
     FocusScope.of(context).unfocus();
-    if (_result != null) {
-      _save();
-      return;
-    }
     if (_currentStep == 0 && _destinationController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Where do you want to go?')),
@@ -95,14 +84,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     if (_currentStep < 2) {
       setState(() => _currentStep++);
     } else {
-      _generate();
+      _submit();
     }
   }
 
-  Future<void> _generate() async {
-    setState(() => _isGenerating = true);
+  /// Hand the brief to the server and leave — generation continues in the
+  /// background and the finished plan shows up in My Odysseys.
+  Future<void> _submit() async {
+    setState(() => _isSubmitting = true);
     try {
-      final odyssey = await _service.generate(
+      await _repository.requestGeneration(
         destination: _destinationController.text.trim(),
         mood: _selectedMood,
         budget: _budget,
@@ -110,36 +101,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         currency: _currency,
       );
       if (!mounted) return;
-      setState(() {
-        _result = odyssey;
-        _isGenerating = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _isGenerating = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e is OdysseyGenerationException ? e.message : 'Generation failed: $e'),
+        const SnackBar(
+          content: Text('Building your Odyssey — it will appear in My Odysseys shortly.'),
+          duration: Duration(seconds: 4),
         ),
-      );
-    }
-  }
-
-  Future<void> _save() async {
-    if (_result == null) return;
-    setState(() => _isSaving = true);
-    try {
-      await _repository.save(_result!);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Saved to My Odysseys')),
       );
       Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isSaving = false);
+      setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not save: $e')),
+        SnackBar(content: Text('Could not start generation: $e')),
       );
     }
   }
@@ -154,13 +127,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
-          onPressed: () {
-            if (_result != null && !_isSaving) {
-              setState(() => _result = null); // back to wizard from result
-            } else {
-              Navigator.pop(context);
-            }
-          },
+          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
         ),
         title: const Text(
           'NEXUS ODYSSEY',
@@ -173,24 +140,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ),
         centerTitle: true,
       ),
-      body: _buildBody(),
-      bottomNavigationBar: _isGenerating ? null : _buildBottomAction(),
-    );
-  }
-
-  Widget _buildBody() {
-    if (_isGenerating) return _buildGenerating();
-    if (_result != null) return OdysseyPlanView(odyssey: _result!);
-    return Column(
-      children: [
-        _buildProgressIndicator(),
-        Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 400),
-            child: _buildCurrentStep(),
+      body: Column(
+        children: [
+          _buildProgressIndicator(),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              child: _buildCurrentStep(),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
+      bottomNavigationBar: _buildBottomAction(),
     );
   }
 
@@ -418,37 +379,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
-  Widget _buildGenerating() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const SizedBox(
-            width: 46,
-            height: 46,
-            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
-          ),
-          const SizedBox(height: 28),
-          const Text(
-            'Designing your Odyssey…',
-            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-          ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.5, end: 1, duration: 900.ms),
-          const SizedBox(height: 8),
-          Text(
-            '$_selectedMood · $_days days · ${_destinationController.text.trim()}',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildBottomAction() {
-    final String label = _result != null
-        ? 'SAVE TO MY ODYSSEYS'
-        : (_currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE');
-
+    final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: BoxDecoration(
@@ -465,13 +397,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
           ),
           child: ElevatedButton(
-            onPressed: _isSaving ? null : _onPrimaryAction,
+            onPressed: _isSubmitting ? null : _onPrimaryAction,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
             ),
-            child: _isSaving
+            child: _isSubmitting
                 ? const SizedBox(
                     width: 22,
                     height: 22,

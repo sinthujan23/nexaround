@@ -1,8 +1,18 @@
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+
+/// Per-request timeout for Gemini calls. The shared ApiClient uses a 20s
+/// receiveTimeout, which is too short for generative requests (an itinerary can
+/// take 20-40s end to end, and the backend proxy itself allows 60s upstream).
+/// We override it here so long generations don't get their socket torn down.
+final _kGeminiOptions = Options(
+  receiveTimeout: const Duration(seconds: 120),
+  sendTimeout: const Duration(seconds: 60),
+);
 
 class GeminiService {
   static final GeminiService _instance = GeminiService._internal();
@@ -46,6 +56,7 @@ class GeminiService {
       final response = await ApiClient.instance.post(
         path,
         data: requestBody,
+        options: _kGeminiOptions,
       );
 
       if (response.statusCode == 200) {
@@ -126,6 +137,7 @@ If you cannot confidently identify the place, set "identified" to false and desc
       final response = await ApiClient.instance.post(
         path,
         data: requestBody,
+        options: _kGeminiOptions,
       );
 
       if (response.statusCode == 200) {

@@ -31,6 +31,14 @@ class ItineraryUpdate(BaseModel):
     items: Optional[List[ItineraryItem]] = None
     status: Optional[str] = None
 
+class OdysseyGenerateRequest(BaseModel):
+    """Request body for kicking off a server-side AI Odyssey generation."""
+    destination: str
+    mood: str = "Adventurous"
+    budget: float = 50000
+    days: int = 3
+    currency: str = "LKR"
+
 class ItineraryResponse(ItineraryBase):
     id: UUID
     user_id: UUID
