@@ -38,6 +38,11 @@ class UserPreferencesUpdate(BaseModel):
     preferred_transport: Optional[str] = None
 
 
+class FcmTokenRequest(BaseModel):
+    """Device push token, stored on the user for FCM delivery."""
+    token: str
+
+
 # --- Response Schemas ---
 
 class UserResponse(BaseModel):

@@ -6,7 +6,8 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
-import 'package:nexaround_app/features/mini_tour/presentation/pages/mini_tour_game_page.dart';
+import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -76,10 +77,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     if (created == true) _load();
   }
 
-  void _openMiniTour() {
+  void _openMiniTour() => launchMiniTour(context);
+
+  void _openHistory() {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => const MiniTourGamePage()),
+      MaterialPageRoute(builder: (_) => const HistoryPage()),
     );
   }
 
@@ -91,11 +94,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         child: Container(
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
+            gradient: AppColors.brandGradient,
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 20, offset: const Offset(0, 10)),
@@ -163,7 +162,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       backgroundColor: AppColors.background,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openPlanner,
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.brandGreen,
         icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
         label: const Text(
           'NEW ODYSSEY',
@@ -174,24 +173,39 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(24, 24, 24, 0),
-              child: Column(
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'MY ODYSSEYS',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2,
-                      color: AppColors.textTertiary,
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'MY ODYSSEYS',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                            color: AppColors.textTertiary,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Blueprints',
+                          style: TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -1),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Blueprints',
-                    style: TextStyle(fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -1),
+                  IconButton(
+                    onPressed: _openHistory,
+                    tooltip: 'History',
+                    icon: const Icon(Icons.history_rounded, color: Colors.black),
                   ),
                 ],
               ),
@@ -206,6 +220,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 
+  /// Completed trips move to the History page, so the main list shows only
+  /// in-progress ones (active / generating / failed).
+  List<Odyssey> get _activeOdysseys =>
+      _odysseys.where((o) => o.status != 'completed').toList();
+
   Widget _buildContent() {
     if (_loading) {
       return const Center(child: CircularProgressIndicator(color: Colors.black));
@@ -218,7 +237,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         onAction: _load,
       );
     }
-    if (_odysseys.isEmpty) {
+    final active = _activeOdysseys;
+    if (active.isEmpty) {
       return _buildMessage(
         icon: Icons.auto_awesome_rounded,
         title: 'No odysseys yet',
@@ -232,8 +252,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       color: Colors.black,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-        itemCount: _odysseys.length,
-        itemBuilder: (context, index) => _buildOdysseyCard(_odysseys[index]),
+        itemCount: active.length,
+        itemBuilder: (context, index) => _buildOdysseyCard(active[index]),
       ),
     );
   }
@@ -259,14 +279,19 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     final isFailed = odyssey.status == 'failed';
 
     return GestureDetector(
-      onTap: () => _openDetail(odyssey),
+      // Disabled while generating — not tappable until the plan is ready.
+      onTap: isGenerating ? null : () => _openDetail(odyssey),
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isGenerating ? AppColors.surface : Colors.white,
           borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.black.withOpacity(0.05)),
+          border: Border.all(
+            color: isGenerating
+                ? AppColors.brandGreen.withOpacity(0.35)
+                : Colors.black.withOpacity(0.05),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.03),
@@ -318,13 +343,32 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             ),
             const SizedBox(height: 16),
             if (isGenerating)
-              Row(
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: const [
-                  Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.actionTeal),
-                  SizedBox(width: 6),
-                  Text(
-                    'AI is crafting your plan…',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.brandGreen),
+                      SizedBox(width: 6),
+                      Text(
+                        'AI is crafting your plan…',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
+                      ),
+                      Spacer(),
+                      Text(
+                        'PLEASE WAIT',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1, color: Colors.black38),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  ClipRRect(
+                    borderRadius: BorderRadius.all(Radius.circular(100)),
+                    child: LinearProgressIndicator(
+                      minHeight: 5,
+                      backgroundColor: Color(0x14000000),
+                      color: AppColors.brandGreen,
+                    ),
                   ),
                 ],
               )

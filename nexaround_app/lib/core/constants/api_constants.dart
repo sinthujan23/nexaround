@@ -17,6 +17,7 @@ class ApiConstants {
   static const String refreshToken = '$apiVersion/auth/refresh';
   static const String me = '$apiVersion/auth/me';
   static const String updatePreferences = '$apiVersion/auth/me/preferences';
+  static const String fcmToken = '$apiVersion/auth/me/fcm-token';
   
   // Attraction endpoints
   static const String attractionsNearby = '$apiVersion/attractions/nearby';

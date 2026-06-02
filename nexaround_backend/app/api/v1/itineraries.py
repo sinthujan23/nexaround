@@ -109,6 +109,32 @@ async def _run_odyssey_generation(
             itin.status = "failed"
         await repo.update(itin)
 
+        if itin.status == "active":
+            await _notify_odyssey_ready(db, user_id, itin.title, itinerary_id)
+
+
+async def _notify_odyssey_ready(db, user_id, title, itinerary_id) -> None:
+    """Best-effort push telling the user their Odyssey finished generating."""
+    try:
+        from sqlalchemy import select
+        from app.models.user import User
+        from app.services import fcm_service
+
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        token = (user.preferences or {}).get("fcm_token") if user else None
+        if not token:
+            return
+        await fcm_service.send_to_token(
+            db,
+            token,
+            title="Your Odyssey is ready ✨",
+            body=title or "Tap to view your trip plan.",
+            data={"type": "odyssey_ready", "itinerary_id": str(itinerary_id)},
+        )
+    except Exception as e:
+        logger.error(f"Odyssey-ready notification failed for {itinerary_id}: {e}")
+
 
 @router.post("/{itinerary_id}/odyssey/swap", response_model=ItineraryResponse)
 async def swap_odyssey_activity(

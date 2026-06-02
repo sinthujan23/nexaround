@@ -14,6 +14,7 @@ from app.schemas.user import (
     TokenRefreshRequest,
     UserResponse,
     UserPreferencesUpdate,
+    FcmTokenRequest,
     MessageResponse,
 )
 
@@ -98,3 +99,17 @@ async def update_preferences(
     service = AuthService(db)
     user = await service.get_current_user(token)
     return await service.update_preferences(user.id, data.model_dump(exclude_none=True))
+
+
+@router.post("/me/fcm-token", response_model=MessageResponse)
+async def register_fcm_token(
+    data: FcmTokenRequest,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register the device's FCM push token (stored in user preferences)."""
+    token = authorization.replace("Bearer ", "")
+    service = AuthService(db)
+    user = await service.get_current_user(token)
+    await service.update_preferences(user.id, {"fcm_token": data.token})
+    return MessageResponse(message="Token registered")

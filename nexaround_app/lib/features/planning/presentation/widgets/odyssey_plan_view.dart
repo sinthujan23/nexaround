@@ -18,12 +18,18 @@ class OdysseyPlanView extends StatelessWidget {
   /// so that row can show a spinner instead of its edit button.
   final String? swappingKey;
 
+  /// When provided, each activity gets a tappable check circle to mark it
+  /// visited as the traveler completes the trip. Called with (dayIndex,
+  /// activityIndex). When null the plan shows no check-off controls.
+  final void Function(int dayIndex, int activityIndex)? onToggleVisited;
+
   const OdysseyPlanView({
     super.key,
     required this.odyssey,
     this.padding = const EdgeInsets.all(24),
     this.onSwapActivity,
     this.swappingKey,
+    this.onToggleVisited,
   });
 
   @override
@@ -87,6 +93,7 @@ class OdysseyPlanView extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
+            if (onToggleVisited != null) _buildProgress(),
             const SizedBox(height: 12),
             ...odyssey.dayPlans.asMap().entries.map(
                   (e) => _dayCard(e.key, e.value)
@@ -221,22 +228,92 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
+  Widget _buildProgress() {
+    final total = odyssey.totalActivities;
+    final done = odyssey.visitedActivities;
+    final pct = total == 0 ? 0.0 : done / total;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                odyssey.isComplete
+                    ? 'Trip complete 🎉'
+                    : 'Tick off each place as you go',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: odyssey.isComplete
+                      ? AppColors.neonGreen
+                      : Colors.black54,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$done / $total',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(100),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 7,
+              backgroundColor: Colors.black12,
+              color: odyssey.isComplete
+                  ? AppColors.neonGreen
+                  : AppColors.actionTeal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _activityRow(int dayIndex, int activityIndex, OdysseyActivity act) {
     final bool editable = onSwapActivity != null;
+    final bool checkable = onToggleVisited != null;
     final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (checkable) ...[
+            GestureDetector(
+              onTap: () => onToggleVisited!(dayIndex, activityIndex),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1, right: 8),
+                child: Icon(
+                  act.visited
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 22,
+                  color:
+                      act.visited ? AppColors.neonGreen : Colors.black26,
+                ),
+              ),
+            ),
+          ],
           SizedBox(
             width: 56,
             child: Text(
               act.time,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
-                color: AppColors.actionTeal,
+                color: act.visited
+                    ? Colors.black26
+                    : AppColors.actionTeal,
               ),
             ),
           ),
@@ -247,10 +324,12 @@ class OdysseyPlanView extends StatelessWidget {
               children: [
                 Text(
                   act.name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
-                    color: Colors.black,
+                    color: act.visited ? Colors.black38 : Colors.black,
+                    decoration:
+                        act.visited ? TextDecoration.lineThrough : null,
                   ),
                 ),
                 if (act.tip.isNotEmpty) ...[

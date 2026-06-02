@@ -270,9 +270,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                           padding: const EdgeInsets.symmetric(horizontal: 18),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
-                            gradient: isActive ? AppColors.primaryGradient : null,
-                            color: isActive ? null : AppColors.surfaceVariant,
+                            color: isActive ? AppColors.brandGreen : AppColors.surfaceVariant,
                             border: Border.all(color: isActive ? Colors.transparent : AppColors.border),
+                            boxShadow: isActive
+                                ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 10)]
+                                : null,
                           ),
                           child: Center(
                             child: Text(

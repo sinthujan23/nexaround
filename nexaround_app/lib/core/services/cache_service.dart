@@ -166,6 +166,106 @@ class CacheService {
     return getExplorerLevel() > beforeLevel;
   }
 
+  // ── Mini Tour history ──────────────────────────────────────────────────
+  // Completed mini tours are kept locally (there's no backend table for them).
+  // Newest first. Each record: {area, places:[..], xp, date(ISO)}.
+  static final ValueNotifier<int> historyNotifier = ValueNotifier(0);
+
+  static Future<void> addMiniTourHistory({
+    required String area,
+    required List<String> placeNames,
+    required int xp,
+  }) async {
+    final list = _prefs.getStringList('mini_tour_history') ?? [];
+    list.insert(
+      0,
+      json.encode({
+        'area': area,
+        'places': placeNames,
+        'xp': xp,
+        'date': DateTime.now().toIso8601String(),
+      }),
+    );
+    await _prefs.setStringList('mini_tour_history', list);
+    historyNotifier.value++;
+  }
+
+  static List<Map<String, dynamic>> getMiniTourHistory() {
+    final list = _prefs.getStringList('mini_tour_history') ?? [];
+    return list
+        .map((s) {
+          try {
+            return json.decode(s) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
+
+  // ── Notifications (bell inbox) ─────────────────────────────────────────
+  // Locally-stored inbox shown by the homepage bell. Fed by FCM messages
+  // (foreground + on-tap). Each record: {title, body, type, data, date, read}.
+  static final ValueNotifier<int> notificationsNotifier = ValueNotifier(0);
+
+  static Future<void> addNotification({
+    required String title,
+    required String body,
+    String type = '',
+    Map<String, dynamic>? data,
+  }) async {
+    final list = _prefs.getStringList('notifications') ?? [];
+    list.insert(
+      0,
+      json.encode({
+        'title': title,
+        'body': body,
+        'type': type,
+        'data': data ?? {},
+        'date': DateTime.now().toIso8601String(),
+        'read': false,
+      }),
+    );
+    if (list.length > 50) list.removeRange(50, list.length);
+    await _prefs.setStringList('notifications', list);
+    notificationsNotifier.value++;
+  }
+
+  static List<Map<String, dynamic>> getNotifications() {
+    final list = _prefs.getStringList('notifications') ?? [];
+    return list
+        .map((s) {
+          try {
+            return json.decode(s) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
+
+  static int unreadNotifications() =>
+      getNotifications().where((n) => n['read'] != true).length;
+
+  static Future<void> markNotificationsRead() async {
+    final list = getNotifications();
+    for (final n in list) {
+      n['read'] = true;
+    }
+    await _prefs.setStringList(
+      'notifications',
+      list.map((n) => json.encode(n)).toList(),
+    );
+    notificationsNotifier.value++;
+  }
+
+  static Future<void> clearNotifications() async {
+    await _prefs.remove('notifications');
+    notificationsNotifier.value++;
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

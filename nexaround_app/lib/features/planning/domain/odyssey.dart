@@ -14,19 +14,30 @@ class OdysseyActivity {
   final String name; // place / activity name
   final String tip; // short practical note
   final String cost; // optional human-readable cost, e.g. "LKR 1,500"
+  final bool visited; // ticked off as the traveler completes the trip
 
   const OdysseyActivity({
     required this.time,
     required this.name,
     this.tip = '',
     this.cost = '',
+    this.visited = false,
   });
+
+  OdysseyActivity copyWith({bool? visited}) => OdysseyActivity(
+        time: time,
+        name: name,
+        tip: tip,
+        cost: cost,
+        visited: visited ?? this.visited,
+      );
 
   factory OdysseyActivity.fromJson(Map<String, dynamic> json) => OdysseyActivity(
         time: (json['time'] ?? '').toString(),
         name: (json['name'] ?? json['attraction_name'] ?? '').toString(),
         tip: (json['tip'] ?? json['note'] ?? '').toString(),
         cost: (json['cost'] ?? '').toString(),
+        visited: json['visited'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -34,6 +45,7 @@ class OdysseyActivity {
         'name': name,
         'tip': tip,
         'cost': cost,
+        'visited': visited,
       };
 }
 
@@ -48,6 +60,12 @@ class OdysseyDay {
     required this.theme,
     required this.activities,
   });
+
+  OdysseyDay copyWith({List<OdysseyActivity>? activities}) => OdysseyDay(
+        day: day,
+        theme: theme,
+        activities: activities ?? this.activities,
+      );
 
   factory OdysseyDay.fromJson(Map<String, dynamic> json) => OdysseyDay(
         day: (json['day'] as num?)?.toInt() ?? 0,
@@ -102,7 +120,8 @@ class Odyssey {
     this.createdAt,
   });
 
-  Odyssey copyWith({String? id, String? status}) => Odyssey(
+  Odyssey copyWith({String? id, String? status, List<OdysseyDay>? dayPlans}) =>
+      Odyssey(
         id: id ?? this.id,
         title: title,
         destination: destination,
@@ -115,10 +134,18 @@ class Odyssey {
         budgetSplit: budgetSplit,
         visa: visa,
         logistics: logistics,
-        dayPlans: dayPlans,
+        dayPlans: dayPlans ?? this.dayPlans,
         status: status ?? this.status,
         createdAt: createdAt,
       );
+
+  // ── Trip progress (per-place check-off) ──────────────────────────────────
+  int get totalActivities =>
+      dayPlans.fold(0, (n, d) => n + d.activities.length);
+  int get visitedActivities => dayPlans.fold(
+      0, (n, d) => n + d.activities.where((a) => a.visited).length);
+  bool get isComplete =>
+      totalActivities > 0 && visitedActivities == totalActivities;
 
   /// One-line stats label used on cards, e.g. "4 Days · LKR 120,000".
   String get statsLabel {

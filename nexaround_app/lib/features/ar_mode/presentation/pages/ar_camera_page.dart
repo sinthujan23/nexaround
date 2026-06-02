@@ -2516,14 +2516,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                 duration: const Duration(milliseconds: 220),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
                 decoration: BoxDecoration(
-                  color: selected ? Colors.black : Colors.black.withOpacity(0.5),
+                  color: selected ? AppColors.brandGreen : Colors.black.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
-                    color: selected ? Colors.white.withOpacity(0.25) : Colors.white.withOpacity(0.1),
+                    color: selected ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.1),
                     width: 1,
                   ),
                   boxShadow: selected
-                      ? [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 12)]
+                      ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.5), blurRadius: 12)]
                       : null,
                 ),
                 child: Row(

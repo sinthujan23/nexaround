@@ -157,6 +157,65 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     );
   }
 
+  /// Toggle a single place visited/not and persist. When every place is
+  /// ticked the trip auto-completes (status → 'completed') and moves to
+  /// History; un-ticking re-opens it.
+  Future<void> _toggleVisited(int dayIndex, int activityIndex) async {
+    final before = _odyssey;
+    final day = before.dayPlans[dayIndex];
+    final acts = List<OdysseyActivity>.from(day.activities);
+    acts[activityIndex] =
+        acts[activityIndex].copyWith(visited: !acts[activityIndex].visited);
+    final newDays = List<OdysseyDay>.from(before.dayPlans);
+    newDays[dayIndex] = day.copyWith(activities: acts);
+
+    var updated = before.copyWith(dayPlans: newDays);
+    updated = updated.copyWith(status: updated.isComplete ? 'completed' : 'active');
+    final justCompleted =
+        updated.status == 'completed' && before.status != 'completed';
+
+    setState(() => _odyssey = updated); // optimistic
+    try {
+      final saved = await _repo.updateOdyssey(updated);
+      if (!mounted) return;
+      setState(() => _odyssey = saved);
+      if (justCompleted) _celebrate();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _odyssey = before); // revert on failure
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not save progress. Try again.')),
+      );
+    }
+  }
+
+  void _celebrate() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Trip Complete! 🎉'),
+        content: const Text(
+          'Every stop is ticked off. This Odyssey has moved to your History.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep viewing'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.black),
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context, true);
+            },
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _delete() async {
     final id = _odyssey.id;
     if (id == null) return;
@@ -236,6 +295,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
         odyssey: _odyssey,
         onSwapActivity: _swapActivity,
         swappingKey: _swappingKey,
+        onToggleVisited: _toggleVisited,
       ),
     );
   }

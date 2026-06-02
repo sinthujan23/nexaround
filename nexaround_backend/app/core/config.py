@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
 
+    # Firebase push notifications. Provide ONE of these (via .env / server env,
+    # NOT committed to git). Most secure first:
+    #   FIREBASE_SERVICE_ACCOUNT_FILE — absolute path to the service-account
+    #       .json on the server (e.g. /etc/nexaround/firebase-sa.json)
+    #   FIREBASE_SERVICE_ACCOUNT_JSON — the raw JSON, or its base64, inline
+    # If neither is set, the backend falls back to the admin-panel DB setting.
+    FIREBASE_SERVICE_ACCOUNT_FILE: str = ""
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
+
     model_config = SettingsConfigDict(
         case_sensitive=True, 
         env_file=".env",

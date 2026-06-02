@@ -15,8 +15,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
+import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
@@ -288,7 +291,18 @@ class _LivingMapPageState extends State<LivingMapPage>
                     actions: [
                       Padding(
                         padding: const EdgeInsets.only(right: 24),
-                        child: _buildGlassCircle(Icons.notifications_none_rounded),
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: CacheService.notificationsNotifier,
+                          builder: (_, __, ___) => _buildGlassCircle(
+                            Icons.notifications_none_rounded,
+                            badge: CacheService.unreadNotifications(),
+                            onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const NotificationsPage()),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -499,8 +513,8 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildGlassCircle(IconData icon) {
-    return ClipRRect(
+  Widget _buildGlassCircle(IconData icon, {VoidCallback? onTap, int badge = 0}) {
+    final circle = ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
@@ -514,6 +528,40 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           child: Icon(icon, color: AppColors.textPrimary, size: 20),
         ),
+      ),
+    );
+    if (onTap == null && badge == 0) return circle;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          circle,
+          if (badge > 0)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.background, width: 1.5),
+                ),
+                child: Text(
+                  badge > 9 ? '9+' : '$badge',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -650,7 +698,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   category: 'Food & Drink',
                   distance: '85 m',
                   rating: '4.6',
-                  color: const Color(0xFF66BB6A),
+                  color: AppColors.brandGreen,
                 ).animate(onPlay: (c) => c.repeat(reverse: true))
                     .moveY(begin: -5, end: 5, duration: 2800.ms, curve: Curves.easeInOut)
                     .fade(begin: 0.7, end: 1.0, duration: 2800.ms),
@@ -677,7 +725,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 top: 35,
                 child: _buildPinMarker(
                   icon: Icons.local_cafe_rounded,
-                  color: const Color(0xFF66BB6A),
+                  color: AppColors.brandGreen,
                 ),
               ),
 
@@ -759,7 +807,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                   height: 5,
                                   decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: Color(0xFF66BB6A),
+                                    color: AppColors.brandGreen,
                                   ),
                                 ).animate(onPlay: (c) => c.repeat(reverse: true))
                                     .fade(begin: 0.3, end: 1.0, duration: 900.ms),
@@ -1032,73 +1080,138 @@ class _LivingMapPageState extends State<LivingMapPage>
         MaterialPageRoute(builder: (_) => OdysseyPlannerPage()),
       ),
       child: Container(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(18, 14, 16, 14),
         decoration: BoxDecoration(
           color: Colors.black,
-          borderRadius: BorderRadius.circular(28),
+          borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: AppColors.ratingGold.withOpacity(0.2),
-              blurRadius: 20,
+              color: AppColors.brandGreen.withOpacity(0.3),
+              blurRadius: 22,
               offset: const Offset(0, 10),
             ),
           ],
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Stack(
+            Row(
               children: [
+                // Compass emblem
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 46,
+                  height: 46,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.1),
+                    color: AppColors.brandGreen.withOpacity(0.16),
+                    border: Border.all(
+                      color: AppColors.brandGreen.withOpacity(0.5),
+                      width: 1.2,
+                    ),
                   ),
-                  child: const Icon(Icons.auto_mode_rounded, color: AppColors.ratingGold, size: 24),
+                  child: const Icon(Icons.explore_rounded,
+                      color: AppColors.brandGreen, size: 24),
                 ),
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: AppColors.ratingGold, shape: BoxShape.circle),
-                    child: const Icon(Icons.star, size: 8, color: Colors.black),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'BUILD AN ODYSSEY',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.brandGreen,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Chart your journey with AI',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1.1,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.brandGreen,
+                  ),
+                  child: const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 17),
                 ),
               ],
             ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'BUILD AN ODYSSEY',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.ratingGold,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Personalized Trip Mining',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 16),
+            const SizedBox(height: 12),
+            _odysseyRouteLine(),
           ],
         ),
       ),
     ).animate().fade(delay: 400.ms).slideX(begin: 0.1, end: 0);
+  }
+
+  /// A green dotted "voyage" route with stops, evoking an odyssey/journey.
+  Widget _odysseyRouteLine() {
+    Widget dot({double size = 7}) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: AppColors.brandGreen,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                  color: AppColors.brandGreen.withOpacity(0.5), blurRadius: 6),
+            ],
+          ),
+        );
+    Widget dashes() => Expanded(
+          child: LayoutBuilder(
+            builder: (ctx, c) {
+              final int n = (c.maxWidth / 9).floor().clamp(3, 40).toInt();
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(
+                  n,
+                  (_) => Container(
+                    width: 4,
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen.withOpacity(0.45),
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+    return Row(
+      children: [
+        dot(),
+        const SizedBox(width: 6),
+        dashes(),
+        const SizedBox(width: 6),
+        dot(),
+        const SizedBox(width: 6),
+        dashes(),
+        const SizedBox(width: 6),
+        dot(),
+        const SizedBox(width: 6),
+        dashes(),
+        const SizedBox(width: 6),
+        dot(size: 9),
+      ],
+    );
   }
 
   Widget _buildCategoryScroller(List<CategoryEntity> categories) {
@@ -1151,13 +1264,12 @@ class _LivingMapPageState extends State<LivingMapPage>
               padding: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                gradient: isActive ? AppColors.primaryGradient : null,
-                color: isActive ? null : AppColors.surfaceVariant,
+                color: isActive ? AppColors.brandGreen : AppColors.surfaceVariant,
                 border: Border.all(
                   color: isActive ? Colors.transparent : AppColors.border,
                 ),
                 boxShadow: isActive
-                    ? [BoxShadow(color: AppColors.primary.withOpacity(0.25), blurRadius: 10)]
+                    ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 10)]
                     : null,
               ),
               child: Center(
@@ -1516,7 +1628,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     return GlassCard(
       padding: const EdgeInsets.all(20),
-      glowColor: AppColors.secondary,
+      glowColor: AppColors.brandGreen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1524,9 +1636,9 @@ class _LivingMapPageState extends State<LivingMapPage>
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: AppColors.secondaryGradient,
+                  gradient: AppColors.brandGradient,
                 ),
                 child: const Icon(Icons.route_rounded, color: Colors.white, size: 18),
               ),
@@ -1536,7 +1648,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary,
+                  color: AppColors.brandGreen,
                 ),
               ),
             ],
@@ -1559,14 +1671,14 @@ class _LivingMapPageState extends State<LivingMapPage>
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.secondary.withOpacity(0.3)),
+                border: Border.all(color: AppColors.brandGreen.withOpacity(0.35)),
               ),
               child: TextButton(
-                onPressed: () {},
-                child: Text(
+                onPressed: () => launchMiniTour(context),
+                child: const Text(
                   'START TOUR',
                   style: TextStyle(
-                    color: AppColors.secondary,
+                    color: AppColors.brandGreen,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1.5,
                     fontSize: 13,

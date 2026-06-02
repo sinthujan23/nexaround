@@ -12,6 +12,15 @@ class AppColors {
   static const Color secondary = Color(0xFF262626);
   static const Color accent = Color(0xFF545454);
   
+  // ── Brand accent (matches the admin panel) ──────────────────────────────
+  // The team's preferred "green" is the brand Action Teal (#007A7C) paired
+  // with charcoal black — exactly the admin panel's look. Used app-wide as the
+  // accent alongside black: focus rings, toggles, progress, links, active tab.
+  static const Color brandGreen = Color(0xFF007A7C);
+  static const Color brandGreenDark = Color(0xFF005E60);
+  static const Color brandGreenLight = Color(0x14007A7C); // ~8% fill
+  static const Color charcoal = Color(0xFF121212);
+
   // Vitality Colors (Premium Accents)
   static const Color ratingGold = Color(0xFFFFB800);
   static const Color actionTeal = Color(0xFF007A7C);
@@ -43,6 +52,16 @@ class AppColors {
     colors: [
       Color(0xFF000000),
       Color(0xFF262626),
+    ],
+  );
+
+  // Brand gradient: teal-green → charcoal black (the admin's signature look).
+  static const LinearGradient brandGradient = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Color(0xFF007A7C),
+      Color(0xFF121212),
     ],
   );
 

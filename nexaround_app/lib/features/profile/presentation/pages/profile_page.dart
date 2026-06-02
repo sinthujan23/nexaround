@@ -317,8 +317,8 @@ class ProfilePage extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
-              gradient: AppColors.primaryGradient,
-              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.2), blurRadius: 8)],
+              color: AppColors.brandGreen,
+              boxShadow: [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 8)],
             ),
             child: Text(pref, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
           )).toList(),

@@ -14,6 +14,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/permission_service.dart';
+import 'package:nexaround_app/core/services/notification_service.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -40,6 +41,13 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     WidgetsBinding.instance.addObserver(this);
     // Direct check and redirect on launch
     _checkLocationService();
+
+    // Now that we're in the authenticated shell, register the device for push
+    // and route notification taps to the right tab.
+    NotificationService.instance.onOpen = (data) {
+      if (data['type'] == 'odyssey_ready') switchToPlans();
+    };
+    NotificationService.instance.syncToken();
   }
 
   @override
@@ -82,6 +90,12 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   void switchToExplore() {
     setState(() {
       _selectedIndex = 0; // Explore/Map Tab
+    });
+  }
+
+  void switchToPlans() {
+    setState(() {
+      _selectedIndex = 4; // Blueprints / Odysseys Tab
     });
   }
 

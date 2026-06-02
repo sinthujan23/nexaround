@@ -44,6 +44,27 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
+  /// Persist edits to an existing Odyssey (e.g. per-place check-off marking
+  /// activities visited, or flipping status to `completed`). Sends the whole
+  /// plan back via PUT so the nested `visited` flags and status are saved.
+  Future<Odyssey> updateOdyssey(Odyssey odyssey) async {
+    final id = odyssey.id;
+    if (id == null) {
+      throw ArgumentError('Cannot update an Odyssey without an id');
+    }
+    final response = await _dio.put(
+      '${ApiConstants.itineraries}/$id',
+      data: {
+        'title': odyssey.title,
+        'items': odyssey.toItineraryItems(),
+        'status': odyssey.status,
+      },
+    );
+    revision.value++;
+    final json = (response.data as Map).cast<String, dynamic>();
+    return Odyssey.fromItinerary(json);
+  }
+
   /// Save an already-built Odyssey directly (used if a plan is generated
   /// client-side). Returns it with the backend id attached.
   Future<Odyssey> save(Odyssey odyssey) async {

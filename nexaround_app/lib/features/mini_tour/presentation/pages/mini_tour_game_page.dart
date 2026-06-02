@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -7,13 +9,25 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
 
 /// A gamified "Mini Tour": real nearby places are dropped onto a Mapbox map as
 /// flags 🚩 with a checkered finish flag 🏁 on the last stop. The map tracks the
 /// user live; reaching a stop (or checking in) plants the flag ✅. Visiting every
 /// stop finishes the tour and awards Explorer XP + Places Visited.
 class MiniTourGamePage extends StatefulWidget {
-  const MiniTourGamePage({super.key});
+  /// Optional tour center. When null the tour is built around the user's live
+  /// GPS location; when set (e.g. picked on the map) it's built around there.
+  final double? startLat;
+  final double? startLng;
+  final String? areaName;
+
+  const MiniTourGamePage({
+    super.key,
+    this.startLat,
+    this.startLng,
+    this.areaName,
+  });
 
   @override
   State<MiniTourGamePage> createState() => _MiniTourGamePageState();
@@ -45,6 +59,11 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   double? _userLat;
   double? _userLng;
 
+  // Intro animation coordination: both map and stops must be ready.
+  bool _mapReady = false;
+  bool _stopsReady = false;
+  bool _introPlayed = false;
+
   // Reward summary, shown on the finish screen.
   int _xpEarned = 0;
   bool _leveledUp = false;
@@ -65,36 +84,70 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   // ── Setup: location + nearby stops ───────────────────────────────────────
   Future<void> _setup() async {
     try {
-      var perm = await geo.Geolocator.checkPermission();
-      if (perm == geo.LocationPermission.denied) {
-        perm = await geo.Geolocator.requestPermission();
+      final bool chosen = widget.startLat != null && widget.startLng != null;
+      double centerLat, centerLng;
+
+      if (chosen) {
+        // Build around the picked location. Permission is best-effort — the
+        // live puck/auto-check-in only matter if the user is actually there.
+        centerLat = widget.startLat!;
+        centerLng = widget.startLng!;
+        var perm = await geo.Geolocator.checkPermission();
+        if (perm == geo.LocationPermission.denied) {
+          await geo.Geolocator.requestPermission();
+        }
+      } else {
+        var perm = await geo.Geolocator.checkPermission();
+        if (perm == geo.LocationPermission.denied) {
+          perm = await geo.Geolocator.requestPermission();
+        }
+        if (perm == geo.LocationPermission.denied ||
+            perm == geo.LocationPermission.deniedForever) {
+          _fail('Location permission is needed to build a tour near you.');
+          return;
+        }
+        final pos = await geo.Geolocator.getCurrentPosition(
+          desiredAccuracy: geo.LocationAccuracy.high,
+        ).timeout(const Duration(seconds: 12));
+        centerLat = pos.latitude;
+        centerLng = pos.longitude;
       }
-      if (perm == geo.LocationPermission.denied || perm == geo.LocationPermission.deniedForever) {
-        _fail('Location permission is needed to build a tour near you.');
-        return;
+
+      // Seed the "user" position with the tour center so the map frames the
+      // area and distances render; the live GPS stream overwrites it later.
+      _userLat = centerLat;
+      _userLng = centerLng;
+
+      if (widget.areaName != null && widget.areaName!.isNotEmpty) {
+        _area = widget.areaName!;
+      } else {
+        try {
+          final n = await GooglePlacesService.reverseGeocode(centerLat, centerLng);
+          if (n.isNotEmpty && n != 'Nearby') _area = n;
+        } catch (_) {}
       }
 
-      final pos = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.high,
-      ).timeout(const Duration(seconds: 12));
-      _userLat = pos.latitude;
-      _userLng = pos.longitude;
-
-      try {
-        final n = await GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude);
-        if (n.isNotEmpty && n != 'Nearby') _area = n;
-      } catch (_) {}
-
+      // Fetch famous tourist attractions within 2–3 km.
       final places = await GooglePlacesService.fetchNearbyPlaces(
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        radius: 1500,
+        latitude: centerLat,
+        longitude: centerLng,
+        radius: 2500,
+        categoryName: 'Attractions',
       );
-      final usable = places.where((p) => p.distanceM != null).toList()
-        ..sort((a, b) => a.distanceM!.compareTo(b.distanceM!));
+
+      // Filter places within 3 km and prefer those with known distance/rating.
+      final usable = places
+          .where((p) => p.distanceM != null && p.distanceM! <= 3000)
+          .toList()
+        ..sort((a, b) {
+          // Primary: sort by rating (highest first for famous spots)
+          if (b.rating != a.rating) return b.rating.compareTo(a.rating);
+          // Secondary: closer distance
+          return a.distanceM!.compareTo(b.distanceM!);
+        });
 
       if (usable.length < 3) {
-        _fail('Not enough places nearby to build a tour. Try again from a busier spot.');
+        _fail('Not enough famous spots found within 3 km. Try a different area.');
         return;
       }
 
@@ -105,6 +158,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
 
       if (!mounted) return;
       setState(() => _phase = _Phase.playing);
+      _stopsReady = true;
+      _maybePlayIntro();
     } catch (e) {
       _fail('Could not start the tour: $e');
     }
@@ -145,7 +200,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     map.location.updateSettings(mapbox.LocationComponentSettings(
       enabled: true,
       pulsingEnabled: true,
-      pulsingColor: AppColors.primary.toARGB32(),
+      pulsingColor: AppColors.brandGreen.toARGB32(),
       showAccuracyRing: true,
     ));
     map.compass.updateSettings(mapbox.CompassSettings(enabled: false));
@@ -155,8 +210,78 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
 
     _markers = await map.annotations.createPointAnnotationManager();
     await _refreshMarkers();
-    _recenter();
     _startTracking();
+    // Mark map ready; intro animation (zoom-out → zoom-in) fires once stops
+    // are also loaded. If they already are, it fires immediately.
+    _mapReady = true;
+    _maybePlayIntro();
+  }
+
+  /// Fires the intro animation as soon as both the map and the stops are ready.
+  void _maybePlayIntro() {
+    if (_mapReady && _stopsReady && !_introPlayed) {
+      _introPlayed = true;
+      _playIntroAnimation();
+    }
+  }
+
+  /// Cinematic intro:
+  ///   1. Zoom out to a bounding-box overview of all flag stops.
+  ///   2. Pause so the user can see the full route.
+  ///   3. Fly back down to the user's live GPS position.
+  Future<void> _playIntroAnimation() async {
+    if (_map == null || _stops.isEmpty || _userLat == null || _userLng == null) {
+      _recenter();
+      return;
+    }
+
+    // Build bounding box: user position + all stop positions.
+    final lats = [_userLat!, ..._stops.map((s) => s.lat)];
+    final lngs = [_userLng!, ..._stops.map((s) => s.lng)];
+    final minLat = lats.reduce(math.min);
+    final maxLat = lats.reduce(math.max);
+    final minLng = lngs.reduce(math.min);
+    final maxLng = lngs.reduce(math.max);
+
+    // Ask Mapbox for the exact camera that fits all points with padding.
+    final overviewCamera = await _map!.cameraForCoordinateBounds(
+      mapbox.CoordinateBounds(
+        southwest: mapbox.Point(coordinates: mapbox.Position(minLng, minLat)),
+        northeast: mapbox.Point(coordinates: mapbox.Position(maxLng, maxLat)),
+        infiniteBounds: false,
+      ),
+      // Generous padding: extra bottom for the stops panel, top for status bar.
+      mapbox.MbxEdgeInsets(top: 100, left: 60, bottom: 280, right: 60),
+      null, // bearing
+      null, // pitch
+      13.5, // max zoom so we don't zoom in past a useful overview level
+      null, // offset
+    );
+
+    if (!mounted) return;
+
+    // Step 1 – zoom OUT to show all flags.
+    await _map!.flyTo(
+      overviewCamera,
+      mapbox.MapAnimationOptions(duration: 1800),
+    );
+
+    // Hold the overview so the user can read the flag layout.
+    await Future.delayed(const Duration(milliseconds: 2200));
+
+    if (!mounted) return;
+
+    // Step 2 – zoom back IN to the user's position.
+    await _map!.flyTo(
+      mapbox.CameraOptions(
+        center: mapbox.Point(
+            coordinates: mapbox.Position(_userLng!, _userLat!)),
+        zoom: 15.5,
+        pitch: 0,
+        bearing: 0,
+      ),
+      mapbox.MapAnimationOptions(duration: 1600),
+    );
   }
 
   void _startTracking() {
@@ -190,17 +315,72 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     final opts = <mapbox.PointAnnotationOptions>[];
     for (int i = 0; i < _stops.length; i++) {
       final s = _stops[i];
+      final icon = await _markerImage(_emoji(i, s));
       opts.add(mapbox.PointAnnotationOptions(
         geometry: mapbox.Point(coordinates: mapbox.Position(s.lng, s.lat)),
-        textField: '${_emoji(i, s)}\n${s.name}',
-        textSize: 15.0,
-        textOffset: [0.0, 0.0],
+        image: icon,
+        iconSize: 0.8,
+        textField: s.name,
+        textSize: 12.0,
+        textOffset: [0.0, 1.7],
+        textAnchor: mapbox.TextAnchor.TOP,
         textColor: Colors.white.toARGB32(),
         textHaloColor: Colors.black.toARGB32(),
         textHaloWidth: 1.6,
       ));
     }
     await _markers!.createMulti(opts);
+  }
+
+  /// Mapbox's label font has no color-emoji glyphs, so a 🚩/🏁/✅ set via
+  /// `textField` renders blank. We instead paint the emoji into a small PNG
+  /// with Flutter's text engine (which supports emoji) and attach it as the
+  /// marker `image`. Cached per-emoji since there are only three.
+  final Map<String, Uint8List> _iconCache = {};
+
+  Future<Uint8List> _markerImage(String emoji) async {
+    final cached = _iconCache[emoji];
+    if (cached != null) return cached;
+
+    const double size = 96;
+    const double radius = 38;
+    const Offset center = Offset(48, 48);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    // Soft drop shadow.
+    canvas.drawCircle(
+      const Offset(48, 51),
+      radius,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    // White disc + brand ring.
+    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = AppColors.brandGreen,
+    );
+
+    // Emoji, centered.
+    final tp = TextPainter(
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 46)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+
+    final img =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = data!.buffer.asUint8List();
+    _iconCache[emoji] = bytes;
+    return bytes;
   }
 
   void _recenter() {
@@ -227,6 +407,22 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     await _posSub?.cancel();
     final xp = _stops.length * _xpPerStop;
     final leveled = await CacheService.addExploration(placesVisited: _stops.length, xp: xp);
+    final placeNames = _stops.map((s) => s.name).toList();
+    // Save to the backend (syncs across devices); fall back to local storage
+    // if offline so the record is never lost.
+    try {
+      await MiniTourRepository().saveMiniTour(
+        area: _area,
+        placeNames: placeNames,
+        xp: xp,
+      );
+    } catch (_) {
+      await CacheService.addMiniTourHistory(
+        area: _area,
+        placeNames: placeNames,
+        xp: xp,
+      );
+    }
     if (!mounted) return;
     setState(() {
       _xpEarned = xp;
@@ -257,7 +453,9 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         children: [
           CircularProgressIndicator(color: Colors.white),
           SizedBox(height: 20),
-          Text('Scouting a tour near you…', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+          Text('Finding famous spots near you…', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+          SizedBox(height: 8),
+          Text('Discovering top tourist attractions within 3 km', style: TextStyle(color: Colors.white54, fontSize: 13)),
         ],
       ),
     );

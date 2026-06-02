@@ -60,6 +60,14 @@ async def startup():
                 "Geoapify Geocoding API Key for Reverse Geocoding"
             )
 
+        firebase_sa = await service.get_setting("firebase_service_account_json")
+        if firebase_sa is None:
+            await service.set_setting(
+                "firebase_service_account_json",
+                "",
+                "Firebase service-account JSON (paste the whole file) for sending push notifications"
+            )
+
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

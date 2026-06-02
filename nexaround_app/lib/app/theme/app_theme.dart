@@ -22,11 +22,15 @@ class AppTheme {
       visualDensity: VisualDensity.standard,
       colorScheme: const ColorScheme.dark(
         primary: AppColors.primary,
-        secondary: AppColors.secondary,
+        // Brand green as the accent (paired with black). Material widgets that
+        // pull from secondary/tertiary now read green.
+        secondary: AppColors.brandGreen,
+        tertiary: AppColors.brandGreen,
         surface: AppColors.surface,
         error: AppColors.error,
         onPrimary: Colors.white,
         onSecondary: Colors.white,
+        onTertiary: Colors.white,
         onSurface: AppColors.textPrimary,
         onError: Colors.white,
         outlineVariant: AppColors.border,
@@ -77,7 +81,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: AppRadii.brMd,
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.4),
+          borderSide: const BorderSide(color: AppColors.brandGreen, width: 1.6),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: AppRadii.brMd,
@@ -149,7 +153,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.textPrimary,
+          foregroundColor: AppColors.brandGreen,
           padding:
               const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           shape: const RoundedRectangleBorder(borderRadius: AppRadii.brSm),
@@ -169,8 +173,8 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surfaceVariant.withOpacity(0.7),
-        selectedColor: AppColors.primary,
-        secondarySelectedColor: AppColors.primary,
+        selectedColor: AppColors.brandGreen,
+        secondarySelectedColor: AppColors.brandGreen,
         disabledColor: AppColors.surfaceElevated,
         labelStyle: GoogleFonts.outfit(
           color: AppColors.textPrimary,
@@ -231,11 +235,12 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         elevation: 0,
         shape: const RoundedRectangleBorder(borderRadius: AppRadii.brMd),
-        actionTextColor: AppColors.ratingGold,
+        actionTextColor: AppColors.brandGreen,
       ),
       tabBarTheme: TabBarThemeData(
         labelColor: AppColors.textPrimary,
         unselectedLabelColor: AppColors.textTertiary,
+        indicatorColor: AppColors.brandGreen,
         indicatorSize: TabBarIndicatorSize.label,
         labelStyle: GoogleFonts.outfit(
           fontSize: 14,
@@ -256,20 +261,20 @@ class AppTheme {
         }),
         trackColor: WidgetStateProperty.resolveWith((states) {
           return states.contains(WidgetState.selected)
-              ? AppColors.primary
+              ? AppColors.brandGreen
               : AppColors.surfaceVariant;
         }),
       ),
       sliderTheme: SliderThemeData(
-        activeTrackColor: AppColors.primary,
+        activeTrackColor: AppColors.brandGreen,
         inactiveTrackColor: AppColors.surfaceVariant,
-        thumbColor: AppColors.primary,
-        overlayColor: AppColors.primary.withOpacity(0.08),
+        thumbColor: AppColors.brandGreen,
+        overlayColor: AppColors.brandGreen.withOpacity(0.12),
         trackHeight: 3,
         thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.primary,
+        color: AppColors.brandGreen,
         linearTrackColor: AppColors.surfaceVariant,
         circularTrackColor: AppColors.surfaceVariant,
       ),
