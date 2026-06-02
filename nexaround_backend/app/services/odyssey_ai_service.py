@@ -151,7 +151,10 @@ async def generate_replacement_activity(
         reason=reason,
         existing_names=existing_names,
     )
-    text = await _call_gemini(prompt, api_key, max_tokens=512)
+    # thinking_budget=0 disables gemini-2.5-flash's hidden "thinking" tokens —
+    # they otherwise eat the output budget and can leave zero text for a small
+    # task like this. A single activity needs no reasoning, so turn it off.
+    text = await _call_gemini(prompt, api_key, max_tokens=2048, thinking_budget=0)
     data = _parse_json(text)
 
     name = str(data.get("name") or data.get("attraction_name") or "").strip()
@@ -242,22 +245,36 @@ Rules:
 """
 
 
-async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096) -> str:
+async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinking_budget=None) -> str:
+    generation_config = {
+        "temperature": 0.8,
+        "maxOutputTokens": max_tokens,
+        "responseMimeType": "application/json",
+    }
+    # thinkingBudget=0 turns off gemini-2.5-flash's hidden reasoning tokens
+    # (which count against maxOutputTokens). Pass None to leave it on the default.
+    if thinking_budget is not None:
+        generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
         "system_instruction": {"parts": [{"text": _SYSTEM}]},
-        "generationConfig": {
-            "temperature": 0.8,
-            "maxOutputTokens": max_tokens,
-            "responseMimeType": "application/json",
-        },
+        "generationConfig": generation_config,
     }
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     async with httpx.AsyncClient(timeout=90.0) as client:
         resp = await client.post(_URL, json=body, headers=headers)
         resp.raise_for_status()
         data = resp.json()
-    return data["candidates"][0]["content"]["parts"][0]["text"]
+
+    candidates = data.get("candidates") or []
+    if not candidates:
+        raise ValueError(f"Gemini returned no candidates (feedback={data.get('promptFeedback')})")
+    cand = candidates[0]
+    parts = (cand.get("content") or {}).get("parts") or []
+    text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+    if not text.strip():
+        raise ValueError(f"Gemini returned no text (finishReason={cand.get('finishReason')})")
+    return text
 
 
 def _parse_json(raw: str) -> dict:
