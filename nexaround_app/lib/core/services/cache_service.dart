@@ -313,6 +313,14 @@ class CacheService {
     notificationsNotifier.value++;
   }
 
+  static bool areNotificationsEnabled() {
+    return _prefs.getBool('notifications_enabled') ?? true;
+  }
+
+  static Future<void> setNotificationsEnabled(bool value) async {
+    await _prefs.setBool('notifications_enabled', value);
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

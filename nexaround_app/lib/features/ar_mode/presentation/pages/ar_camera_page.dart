@@ -4898,13 +4898,27 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                               _isListening = false;
                             }),
                             child: Container(
-                              width: 28,
-                              height: 28,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withOpacity(0.15),
+                                color: const Color(0xFFFF5252).withValues(alpha: 0.18),
+                                border: Border.all(
+                                  color: const Color(0xFFFF5252).withValues(alpha: 0.6),
+                                  width: 1.5,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFFF5252).withValues(alpha: 0.2),
+                                    blurRadius: 8,
+                                  ),
+                                ],
                               ),
-                              child: const Icon(Icons.close_rounded, color: Colors.white, size: 16),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                color: Color(0xFFFF5252),
+                                size: 18,
+                              ),
                             ),
                           ),
                       ],

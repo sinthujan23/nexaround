@@ -20,7 +20,7 @@ class Expense(ExpenseBase):
 class BudgetBase(BaseModel):
     name: str = "My Budget"
     total_amount: float
-    currency: str = "LKR"
+    currency: str = "USD"
     start_date: date
     end_date: date
 

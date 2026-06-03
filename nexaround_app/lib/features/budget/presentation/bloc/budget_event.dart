@@ -31,7 +31,7 @@ class SetupBudgetEvent extends BudgetEvent {
     required this.totalAmount,
     required this.startDate,
     required this.endDate,
-    this.currency = 'LKR',
+    this.currency = 'USD',
   });
 
   @override

@@ -36,6 +36,7 @@ class UserPreferencesUpdate(BaseModel):
     budget_range: Optional[str] = None  # budget, moderate, luxury
     accessibility_needs: Optional[list[str]] = None
     preferred_transport: Optional[str] = None
+    currency: Optional[str] = None
 
 
 class FcmTokenRequest(BaseModel):

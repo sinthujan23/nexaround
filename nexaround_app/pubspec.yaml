@@ -2,7 +2,7 @@ name: nexaround_app
 description: "NexAround - AI-powered smart tourism companion"
 publish_to: 'none'
 
-version: 1.0.0+18
+version: 1.0.0+19
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -81,6 +81,7 @@ dev_dependencies:
   injectable_generator: ^2.4.0
   bloc_test: ^10.0.0
   mocktail: ^1.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
@@ -92,3 +93,9 @@ flutter:
     - assets/images/sigiriya.png
     - assets/images/food_corner.png
     - assets/images/craft_market.png
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/images/app_logo.png"
+  remove_alpha_ios: true

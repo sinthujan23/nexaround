@@ -9,7 +9,7 @@ abstract class BudgetRepository {
     required double totalAmount,
     required DateTime startDate,
     required DateTime endDate,
-    String currency = 'LKR',
+    String currency = 'USD',
   });
   Future<Budget> closeBudget();
   Future<Expense> addExpense({

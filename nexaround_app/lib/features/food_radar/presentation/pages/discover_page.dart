@@ -24,6 +24,8 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.da
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
@@ -1780,11 +1782,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       final amount = double.tryParse(amountController.text) ?? 0;
                       final days = int.tryParse(daysController.text) ?? 1;
                       if (amount > 0) {
+                        final authState = context.read<AuthBloc>().state;
+                        String userCurrency = 'USD';
+                        if (authState is AuthAuthenticated) {
+                          userCurrency = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
+                        }
                         budgetBloc.add(SetupBudgetEvent(
                           name: name,
                           totalAmount: amount,
                           startDate: DateTime.now(),
                           endDate: DateTime.now().add(Duration(days: days)),
+                          currency: userCurrency,
                         ));
                         Navigator.pop(context);
                       }

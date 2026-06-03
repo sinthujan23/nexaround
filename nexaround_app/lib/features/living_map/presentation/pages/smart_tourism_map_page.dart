@@ -820,9 +820,9 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                       border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
                     ),
                     child: const Icon(
-                      Icons.arrow_back_ios_new_rounded,
+                      Icons.close_rounded,
                       color: Colors.white,
-                      size: 18,
+                      size: 20,
                     ),
                   ),
                 ),

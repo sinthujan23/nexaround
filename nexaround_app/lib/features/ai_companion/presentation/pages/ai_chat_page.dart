@@ -7,6 +7,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
@@ -348,21 +349,26 @@ Always stay in character as Neva. Never say you are an AI language model or ment
       ),
       child: Row(
         children: [
-          if (Navigator.canPop(context)) ...[
-            GestureDetector(
-              onTap: () => Navigator.pop(context),
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.black12),
-                ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 16),
+          GestureDetector(
+            onTap: () {
+              final route = ModalRoute.of(context);
+              if (route != null && !route.isFirst) {
+                Navigator.pop(context);
+              } else {
+                HomePage.homeKey.currentState?.switchToExplore();
+              }
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.black12),
               ),
+              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 16),
             ),
-            const SizedBox(width: 12),
-          ],
+          ),
+          const SizedBox(width: 12),
           _buildNevaAvatar(48),
           const SizedBox(width: 12),
           Expanded(

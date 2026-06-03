@@ -10,6 +10,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 
 /// A gamified "Mini Tour": real nearby places are dropped onto a Mapbox map as
 /// flags 🚩 with a checkered finish flag 🏁 on the last stop. The map tracks the
@@ -21,12 +22,14 @@ class MiniTourGamePage extends StatefulWidget {
   final double? startLat;
   final double? startLng;
   final String? areaName;
+  final List<AttractionEntity>? preFetchedPlaces;
 
   const MiniTourGamePage({
     super.key,
     this.startLat,
     this.startLng,
     this.areaName,
+    this.preFetchedPlaces,
   });
 
   @override
@@ -127,13 +130,18 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         } catch (_) {}
       }
 
-      // Fetch famous tourist attractions within 2–3 km.
-      final places = await GooglePlacesService.fetchNearbyPlaces(
-        latitude: centerLat,
-        longitude: centerLng,
-        radius: 2500,
-        categoryName: 'Attractions',
-      );
+      // Fetch famous tourist attractions within 2–3 km if not pre-fetched.
+      final List<AttractionEntity> places;
+      if (widget.preFetchedPlaces != null && widget.preFetchedPlaces!.isNotEmpty) {
+        places = widget.preFetchedPlaces!;
+      } else {
+        places = await GooglePlacesService.fetchNearbyPlaces(
+          latitude: centerLat,
+          longitude: centerLng,
+          radius: 2500,
+          categoryName: 'Attractions',
+        );
+      }
 
       // Filter places within 3 km and prefer those with known distance/rating.
       final usable = places

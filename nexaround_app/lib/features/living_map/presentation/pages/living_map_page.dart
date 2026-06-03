@@ -51,6 +51,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   // We'll use the state data instead of these dummy lists
 
   String _currentLocationName = 'Locating...';
+  List<AttractionEntity>? _miniTourPlaces;
+  bool _loadingMiniTour = false;
 
   @override
   void initState() {
@@ -170,6 +172,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _userLongitude = position.longitude;
           _currentLocationName = locationName;
         });
+        _fetchMiniTourPlaces(position.latitude, position.longitude);
       }
     });
   }
@@ -200,6 +203,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           longitude: position.longitude,
         ));
         context.read<MapBloc>().add(const FetchCategories());
+        _fetchMiniTourPlaces(position.latitude, position.longitude);
       }
     } catch (e) {
       debugPrint('Error fetching location: $e');
@@ -220,6 +224,40 @@ class _LivingMapPageState extends State<LivingMapPage>
         longitude: 79.8612,
       ));
       context.read<MapBloc>().add(const FetchCategories());
+      _fetchMiniTourPlaces(6.9271, 79.8612);
+    }
+  }
+
+  Future<void> _fetchMiniTourPlaces(double lat, double lng) async {
+    if (_loadingMiniTour) return;
+    setState(() => _loadingMiniTour = true);
+    try {
+      final places = await GooglePlacesService.fetchNearbyPlaces(
+        latitude: lat,
+        longitude: lng,
+        radius: 2500,
+        categoryName: 'Attractions',
+      );
+      
+      final usable = places
+          .where((p) => p.distanceM != null && p.distanceM! <= 3000)
+          .toList()
+        ..sort((a, b) {
+          if (b.rating != a.rating) return b.rating.compareTo(a.rating);
+          return a.distanceM!.compareTo(b.distanceM!);
+        });
+
+      if (mounted) {
+        setState(() {
+          _miniTourPlaces = usable;
+          _loadingMiniTour = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching mini tour places for preview: $e');
+      if (mounted) {
+        setState(() => _loadingMiniTour = false);
+      }
     }
   }
 
@@ -435,12 +473,20 @@ class _LivingMapPageState extends State<LivingMapPage>
                   }(),
       
                   // Cluster suggestion
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: _buildClusterSuggestion(state.attractions),
-                    ),
-                  ),
+                  ...() {
+                    if (_loadingMiniTour || _miniTourPlaces == null || _miniTourPlaces!.length < 3) {
+                      return <Widget>[const SliverToBoxAdapter(child: SizedBox.shrink())];
+                    }
+
+                    return <Widget>[
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: _buildClusterSuggestion(_miniTourPlaces!),
+                        ),
+                      ),
+                    ];
+                  }(),
       
                   const SliverToBoxAdapter(child: SizedBox(height: 120)),
                 ],
@@ -1655,13 +1701,23 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           const SizedBox(height: 16),
           // Route items
-          ...attractions.take(3).toList().asMap().entries.map((entry) {
+          ...attractions.take(5).toList().asMap().entries.map((entry) {
             final p = entry.value;
             final i = entry.key;
+            final totalStops = min(attractions.length, 5);
+
+            final dist = p.distanceM;
+            final distLabel = dist == null
+                ? '—'
+                : (dist < 1000 ? '${dist.toInt()} m' : '${(dist / 1000).toStringAsFixed(1)} km');
+            final walkMin = dist == null ? 0 : (dist / 80).round();
+            final walkLabel = walkMin <= 0 ? '' : ' · $walkMin min walk';
+            final info = '$distLabel$walkLabel';
+
             return Column(
               children: [
-                _buildRouteItem('${i + 1}', p.name, '${((p.distanceM ?? 0) / 10).toStringAsFixed(0)} min walk', AppColors.primary),
-                if (i < 2 && i < attractions.length - 1) _buildRouteConnector(),
+                _buildRouteItem('${i + 1}', p.name, info, AppColors.primary),
+                if (i < totalStops - 1) _buildRouteConnector(),
               ],
             );
           }),
@@ -1674,7 +1730,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                 border: Border.all(color: AppColors.brandGreen.withOpacity(0.35)),
               ),
               child: TextButton(
-                onPressed: () => launchMiniTour(context),
+                onPressed: () => launchMiniTour(
+                  context,
+                  lat: _userLatitude,
+                  lng: _userLongitude,
+                  areaName: _currentLocationName,
+                  preFetchedPlaces: attractions,
+                ),
                 child: const Text(
                   'START TOUR',
                   style: TextStyle(

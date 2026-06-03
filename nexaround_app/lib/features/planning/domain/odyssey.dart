@@ -233,7 +233,7 @@ class Odyssey {
       destination: (meta['destination'] ?? '').toString(),
       mood: (meta['mood'] ?? '').toString(),
       budget: (meta['budget'] as num?)?.toDouble() ?? 0,
-      currency: (meta['currency'] ?? 'LKR').toString(),
+      currency: (meta['currency'] ?? 'USD').toString(),
       days: (meta['days'] as num?)?.toInt() ?? dayItems.length,
       nights: (meta['nights'] as num?)?.toInt() ?? 0,
       summary: (meta['summary'] ?? '').toString(),

@@ -69,7 +69,7 @@ class BudgetRepositoryImpl implements BudgetRepository {
     required double totalAmount,
     required DateTime startDate,
     required DateTime endDate,
-    String currency = 'LKR',
+    String currency = 'USD',
   }) async {
     try {
       final response = await _dio.post(

@@ -197,7 +197,7 @@ async def swap_odyssey_activity(
             destination=str(meta.get("destination") or ""),
             mood=str(meta.get("mood") or ""),
             budget=float(meta.get("budget") or 0),
-            currency=str(meta.get("currency") or "LKR"),
+            currency=str(meta.get("currency") or "USD"),
             day_no=int(day.get("day") or data.day_index + 1),
             theme=str(day.get("theme") or ""),
             time_slot=str(old.get("time") or ""),

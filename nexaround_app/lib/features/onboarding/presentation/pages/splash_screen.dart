@@ -4,10 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
-import 'package:nexaround_app/features/onboarding/presentation/pages/onboarding_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/login_page.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -187,7 +184,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
           ),
         ],
       ),
-      child: const Center(child: NexaroundLogo(size: 80)),
+      child: const Center(child: NexaroundLogo(size: 125)),
     )
         .animate()
         .scale(
@@ -239,7 +236,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
         const Text(
           'AI TOURISM COMPANION',
           style: TextStyle(
-            color: AppColors.textTertiary,
+            color: AppColors.textSecondary,
             fontSize: 10.5,
             fontWeight: FontWeight.w600,
             letterSpacing: 4.5,

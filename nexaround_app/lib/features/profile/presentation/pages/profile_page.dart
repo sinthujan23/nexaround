@@ -12,10 +12,16 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
+import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
@@ -295,10 +301,6 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildPreferencesSection(Map<String, dynamic> preferences) {
-    final List<String> prefs = preferences.isNotEmpty 
-      ? preferences.keys.take(4).toList() 
-      : ['🍜 Food', '🏛 Culture', '🌿 Nature', '🏔 Adventure'];
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -310,31 +312,32 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: prefs.map((pref) => Container(
-            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(14),
-              color: AppColors.brandGreen,
-              boxShadow: [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 8)],
-            ),
-            child: Text(pref, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.white)),
-          )).toList(),
-        ),
-        const SizedBox(height: 10),
-        TextButton.icon(
-          onPressed: () {},
-          icon: const Icon(Icons.edit_rounded, size: 14, color: AppColors.primary),
-          label: const Text('Edit Preferences', style: TextStyle(fontSize: 13, color: AppColors.primary, fontWeight: FontWeight.w600)),
+        // Preference customization isn't available yet — show a placeholder
+        // instead of the editable pills.
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            color: AppColors.surfaceVariant,
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.hourglass_top_rounded, size: 16, color: AppColors.textSecondary),
+              const SizedBox(width: 8),
+              const Text(
+                'Coming Soon',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 
   Widget _buildSettingsMenu(BuildContext context, dynamic user) {
-    final language = user.language;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -346,17 +349,45 @@ class ProfilePage extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
-        _buildMenuItem(Icons.language_rounded, 'Language', language.toUpperCase()),
+        _buildMenuItem(
+          Icons.language_rounded,
+          'Language',
+          'Coming Soon',
+          onTap: () {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Language settings coming soon!'),
+                backgroundColor: AppColors.primary,
+              ),
+            );
+          },
+        ),
         _buildMenuItem(
           Icons.attach_money_rounded,
           'Currency',
           user.preferences['currency']?.toString().toUpperCase() ?? 'USD',
           onTap: () => _showCurrencyPicker(context, user),
         ),
-        _buildMenuItem(Icons.notifications_rounded, 'Notifications', 'On'),
-        _buildMenuItem(Icons.dark_mode_rounded, 'Dark Mode', 'Always'),
-        _buildMenuItem(Icons.privacy_tip_rounded, 'Privacy', ''),
-        _buildMenuItem(Icons.help_outline_rounded, 'Help & Support', ''),
+        _buildMenuItem(
+          Icons.notifications_rounded, 
+          'Notifications', 
+          CacheService.areNotificationsEnabled() ? 'On' : 'Off',
+          onTap: () async {
+            final current = CacheService.areNotificationsEnabled();
+            await CacheService.setNotificationsEnabled(!current);
+            setState(() {});
+          },
+        ),
+        _buildMenuItem(
+          Icons.help_outline_rounded, 
+          'Help & Support', 
+          '',
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HelpSupportPage()),
+            );
+          },
+        ),
         const SizedBox(height: 20),
         // Logout
         SizedBox(

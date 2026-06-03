@@ -165,15 +165,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openPlanner,
-        backgroundColor: AppColors.brandGreen,
-        icon: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 18),
-        label: const Text(
-          'NEW ODYSSEY',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12, letterSpacing: 1),
-        ),
-      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,6 +198,17 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       ],
                     ),
                   ),
+                  TextButton.icon(
+                    onPressed: _openPlanner,
+                    icon: const Icon(Icons.auto_awesome_rounded, color: AppColors.brandGreen, size: 16),
+                    label: const Text('CREATE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.w800, fontSize: 11)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      backgroundColor: AppColors.brandGreen.withOpacity(0.12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   IconButton(
                     onPressed: _openHistory,
                     tooltip: 'History',

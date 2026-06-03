@@ -28,7 +28,8 @@ class OdysseyRepository {
     required String mood,
     required double budget,
     required int days,
-    String currency = 'LKR',
+    String currency = 'USD',
+    int travelers = 1,
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -38,6 +39,7 @@ class OdysseyRepository {
         'budget': budget,
         'days': days,
         'currency': currency,
+        'travelers': travelers,
       },
     );
     revision.value++;

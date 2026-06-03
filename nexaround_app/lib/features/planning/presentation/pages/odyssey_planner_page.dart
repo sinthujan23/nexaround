@@ -5,6 +5,9 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -14,14 +17,18 @@ class OdysseyPlannerPage extends StatefulWidget {
 }
 
 class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
-  static const String _currency = 'LKR';
+  String _currency = 'USD';
 
   final OdysseyRepository _repository = OdysseyRepository();
   final TextEditingController _destinationController = TextEditingController();
+  final TextEditingController _daysController = TextEditingController();
+  final TextEditingController _budgetController = TextEditingController();
+  final TextEditingController _travelersController = TextEditingController();
 
   int _currentStep = 0; // 0 destination, 1 mood, 2 budget
   int _days = 3;
   double _budget = 50000;
+  int _travelers = 1;
   String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
 
@@ -37,12 +44,31 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   @override
   void initState() {
     super.initState();
+    _daysController.text = _days.toString();
+    _budgetController.text = _budget.toInt().toString();
+    _travelersController.text = _travelers.toString();
     _prefillDestination();
+    _loadUserCurrency();
+  }
+
+  void _loadUserCurrency() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      final userCurrency = authState.user.preferences['currency']?.toString().toUpperCase();
+      if (userCurrency != null && userCurrency.isNotEmpty) {
+        setState(() {
+          _currency = userCurrency;
+        });
+      }
+    }
   }
 
   @override
   void dispose() {
     _destinationController.dispose();
+    _daysController.dispose();
+    _budgetController.dispose();
+    _travelersController.dispose();
     super.dispose();
   }
 
@@ -100,6 +126,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         budget: _budget,
         days: _days,
         currency: _currency,
+        travelers: _travelers,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -239,7 +266,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             children: _dayOptions.map((d) {
               final selected = _days == d;
               return GestureDetector(
-                onTap: () => setState(() => _days = d),
+                onTap: () => setState(() {
+                  _days = d;
+                  _daysController.text = d.toString();
+                }),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -260,6 +290,65 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               );
             }).toList(),
           ).animate().fade(delay: 250.ms),
+          const SizedBox(height: 20),
+          TextField(
+            controller: _daysController,
+            keyboardType: TextInputType.number,
+            onChanged: (val) {
+              final parsed = int.tryParse(val);
+              if (parsed != null && parsed > 0) {
+                setState(() => _days = parsed);
+              }
+            },
+            decoration: InputDecoration(
+              labelText: 'Or enter custom days',
+              hintText: 'e.g. 10',
+              prefixIcon: const Icon(Icons.calendar_today_rounded, color: Colors.black54),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
+            ),
+          ).animate().fade(delay: 300.ms),
+          const SizedBox(height: 32),
+          const Text(
+            'NUMBER OF TRAVELERS',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _travelersController,
+            keyboardType: TextInputType.number,
+            onChanged: (val) {
+              final parsed = int.tryParse(val);
+              if (parsed != null && parsed > 0) {
+                setState(() => _travelers = parsed);
+              }
+            },
+            decoration: InputDecoration(
+              labelText: 'How many travelers?',
+              hintText: 'e.g. 2',
+              prefixIcon: const Icon(Icons.people_rounded, color: Colors.black54),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
+            ),
+          ).animate().fade(delay: 350.ms),
         ],
       ),
     );
@@ -358,6 +447,34 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             ),
           ).animate().scale(),
           const Spacer(),
+          TextField(
+            controller: _budgetController,
+            keyboardType: TextInputType.number,
+            onChanged: (val) {
+              final parsed = double.tryParse(val);
+              if (parsed != null && parsed > 0) {
+                setState(() => _budget = parsed);
+              }
+            },
+            decoration: InputDecoration(
+              labelText: 'Or enter custom budget limit',
+              hintText: 'e.g. 75000',
+              prefixText: '$_currency ',
+              prefixIcon: const Icon(Icons.wallet_rounded, color: Colors.black54),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black12),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(18),
+                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+              ),
+            ),
+          ).animate().fade(delay: 200.ms),
+          const SizedBox(height: 24),
           SliderTheme(
             data: SliderThemeData(
               activeTrackColor: Colors.black,
@@ -367,11 +484,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               trackHeight: 8,
             ),
             child: Slider(
-              value: _budget,
+              value: _budget.clamp(10000.0, 500000.0),
               min: 10000,
               max: 500000,
               divisions: 49,
-              onChanged: (val) => setState(() => _budget = val),
+              onChanged: (val) {
+                setState(() {
+                  _budget = val;
+                  _budgetController.text = val.toInt().toString();
+                });
+              },
             ),
           ),
           const SizedBox(height: 40),

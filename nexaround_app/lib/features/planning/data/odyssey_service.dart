@@ -27,7 +27,7 @@ class OdysseyService {
     required String mood,
     required double budget,
     int days = 3,
-    String currency = 'LKR',
+    String currency = 'USD',
   }) async {
     final prompt = _buildPrompt(
       destination: destination,
