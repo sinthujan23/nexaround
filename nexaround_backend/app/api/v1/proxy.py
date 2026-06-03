@@ -58,19 +58,22 @@ async def proxy_mapbox_directions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Proxy Mapbox Driving Directions requests securely."""
+    """Proxy Mapbox Directions requests securely."""
     settings = SettingsService(db)
     token = await settings.get_setting("mapbox_access_token")
     if not token:
         raise HTTPException(status_code=500, detail="Mapbox Access Token not configured")
 
     params = dict(request.query_params)
+    profile = params.pop("profile", "driving")
+    if profile not in ["driving", "walking", "cycling", "driving-traffic"]:
+        profile = "driving"
     params["access_token"] = token
 
-    url = f"https://api.mapbox.com/directions/v5/mapbox/driving/{path}"
+    url = f"https://api.mapbox.com/directions/v5/mapbox/{profile}/{path}"
     
     # Extract only the first coordinate part of the path for logging summary
-    log_endpoint = f"/directions/v5/mapbox/driving/{path.split('/')[0]}"
+    log_endpoint = f"/directions/v5/mapbox/{profile}/{path.split('/')[0]}"
     await settings.log_api_request("mapbox", log_endpoint, current_user.id)
 
     async with httpx.AsyncClient() as client:

@@ -107,9 +107,15 @@ async def register_fcm_token(
     authorization: str = Header(...),
     db: AsyncSession = Depends(get_db),
 ):
-    """Register the device's FCM push token (stored in user preferences)."""
+    """Register this device's FCM push token. A user can be signed in on several
+    devices (Android + iOS), so tokens are kept as a list and pushes go to all.
+    """
     token = authorization.replace("Bearer ", "")
     service = AuthService(db)
     user = await service.get_current_user(token)
-    await service.update_preferences(user.id, {"fcm_token": data.token})
+    prefs = user.preferences or {}
+    tokens = [t for t in (prefs.get("fcm_tokens") or []) if t and t != data.token]
+    tokens.insert(0, data.token)  # newest first
+    tokens = tokens[:8]           # keep the few most recent devices
+    await service.update_preferences(user.id, {"fcm_tokens": tokens})
     return MessageResponse(message="Token registered")

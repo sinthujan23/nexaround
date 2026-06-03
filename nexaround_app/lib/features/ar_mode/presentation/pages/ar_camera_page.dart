@@ -161,6 +161,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // AR FILTER (category-based)
   // ═══════════════════════════════════════
   String _selectedFilter = 'All';
+  // User-selectable search range (km). The slider snaps to [_rangeSteps]; both
+  // the live fetch and the on-screen cull honor it so the user controls how far
+  // out attractions / medical (and all categories) are shown.
+  int _rangeKm = 10;
+  static const List<int> _rangeSteps = [2, 5, 10, 20, 50];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -325,8 +330,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     if (cached != null) return cached;
 
     final bucket = _filterBucketKey[filter];
+    final double maxRangeM = (_rangeKm * 1000).toDouble();
     final matches = _landmarks
-        .where((lm) => filter == 'All' || _displayCategoryKey(lm) == bucket)
+        .where((lm) =>
+            lm.distanceM <= maxRangeM &&
+            (filter == 'All' || _displayCategoryKey(lm) == bucket))
         .toList()
       ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
     final result = _filterByProximity(matches);
@@ -795,7 +803,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             setState(() {
               _isNevaAnalyzing = false;
               _identifiedPlace = landmark;
-              _showInfoCard = true;
+              // Do NOT auto-open info card — user taps to open it
               
               // Only add if it's not already in the list (simple check)
               if (!_landmarks.any((l) => l.name == landmark.name)) {
@@ -892,8 +900,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           
           if (lat != null && lng != null) {
             final distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
-            // Only keep cached places that are within 10 km (10000m)
-            if (distanceM > 10000) continue;
+            // Only keep cached places within the user-selected range.
+            if (distanceM > _rangeKm * 1000) continue;
 
             final name = jsonMap['name'] as String? ?? 'Discovery';
             final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
@@ -992,7 +1000,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         'Medical',
       ];
 
-      for (final radius in _searchRadii) {
+      // Honor the user-selected range: build the radius tiers up to _rangeKm.
+      final int maxRangeM = _rangeKm * 1000;
+      final List<int> activeRadii = [
+        ..._searchRadii.where((r) => r < maxRangeM),
+        maxRangeM,
+      ];
+
+      for (final radius in activeRadii) {
         debugPrint('🔍 AR: Searching radius $radius m across categories...');
         
         final List<List<dynamic>> results = await Future.wait(
@@ -1056,7 +1071,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
           latitude: pos.latitude,
           longitude: pos.longitude,
-          radius: 10000,
+          radius: maxRangeM,
           categoryName: 'Beach',
         );
 
@@ -1064,7 +1079,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (collected.any((l) => l.name == p.name)) continue;
 
           final rawDistM = (p.distanceM ?? 0).toDouble();
-          if (rawDistM > 10000) continue; // Limit beaches to a maximum of 10km
+          if (rawDistM > maxRangeM) continue; // within the selected range
           final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
           final distKm = rawDistM / 1000;
           final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
@@ -1092,10 +1107,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         debugPrint('AR dedicated Beach fetch failed: $e');
       }
 
-      // Dedicated LONG-RANGE query (up to 10km): per the client rule, only
-      // attractions and hospitals are worth surfacing from far away. The tier
-      // loop above can stop early in dense areas, so this guarantees a far-but-
-      // notable attraction/hospital still shows. Display caps trim the rest.
+      // Dedicated LONG-RANGE query (up to the selected range): per the client
+      // rule, attractions and hospitals are worth surfacing from far away. The
+      // tier loop above can stop early in dense areas, so this guarantees a
+      // far-but-notable attraction/hospital still shows. Display caps trim rest.
       const longRangeQueries = [
         {'category': 'Attractions', 'label': 'ATTRACTION', 'max': 5},
         {'category': 'Medical', 'label': 'MEDICAL', 'max': 3},
@@ -1104,16 +1119,16 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         try {
           final cat = q['category'] as String;
           final maxAdd = q['max'] as int;
-          debugPrint('🛰 AR: Long-range query for $cat up to 10km...');
+          debugPrint('🛰 AR: Long-range query for $cat up to ${_rangeKm}km...');
           final farPlaces = await GooglePlacesService.fetchNearbyPlaces(
             latitude: pos.latitude,
             longitude: pos.longitude,
-            radius: 10000,
+            radius: maxRangeM,
             categoryName: cat,
           );
 
           final candidates = farPlaces
-              .where((p) => (p.distanceM ?? 0) <= 10000)
+              .where((p) => (p.distanceM ?? 0) <= maxRangeM)
               .where((p) => !collected.any((l) => l.name == p.name))
               .toList()
             ..sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
@@ -1942,12 +1957,24 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildMapsButton() {
+  Widget _buildMapsButton([_ArLandmark? landmark]) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
         debugPrint('🗺️ [Maps Button] Tap registered!');
-        if (_currentPosition != null) {
+        if (landmark != null && landmark.lat != null && landmark.lng != null) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => SmartTourismMapPage(
+                initialLat: landmark.lat!,
+                initialLng: landmark.lng!,
+                destinationName: landmark.name,
+                initialCategory: landmark.category.toUpperCase(),
+              ),
+            ),
+          );
+        } else if (_currentPosition != null) {
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -2193,131 +2220,199 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Live dot
-              Container(
-                width: 8, height: 8,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary,
-                  boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
-                ),
-              ).animate(onPlay: (c) => c.repeat(reverse: true))
-               .fade(begin: 0.3, end: 1, duration: 900.ms),
-              const SizedBox(width: 8),
-              // AR LIVE label
-              Text(
-                'AR LIVE',
-                style: TextStyle(
-                  color: AppColors.primary,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 13,
-                  letterSpacing: 2,
-                ),
-              ),
-              const Spacer(),
-              // Combined XP + Compass pill
-              ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+              Row(
+                children: [
+                  // Live dot
+                  Container(
+                    width: 8, height: 8,
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.55),
-                      borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+                      shape: BoxShape.circle,
+                      color: AppColors.primary,
+                      boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // XP segment
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.amber.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.stars_rounded, color: Colors.amber, size: 16),
-                              const SizedBox(width: 5),
-                              Text(
-                                '$_nexusPoints XP',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // Compass segment
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Transform.rotate(
-                                  angle: -_heading * pi / 180,
-                                  child: CustomPaint(painter: _CompassNeedlePainter()),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                cardinal,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 13,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                  ).animate(onPlay: (c) => c.repeat(reverse: true))
+                   .fade(begin: 0.3, end: 1, duration: 900.ms),
+                  const SizedBox(width: 8),
+                  // AR LIVE label
+                  Text(
+                    'AR LIVE',
+                    style: TextStyle(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13,
+                      letterSpacing: 2,
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              // Exit AR Button
-              GestureDetector(
-                onTap: () {
-                  if (widget.initialPlace != null) {
-                    Navigator.of(context).pop();
-                  } else {
-                    HomePage.homeKey.currentState?.switchToExplore();
-                  }
-                },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(50),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                    child: Container(
-                      width: 38, height: 38,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.9),
-                        border: Border.all(color: Colors.white.withOpacity(0.6), width: 1),
+                  const SizedBox(width: 18),
+                  // ── KM RANGE CYCLE CIRCLE (beside AR LIVE) ──
+                  _buildKmRangePicker(),
+                  const Spacer(),
+                  // Combined XP + Compass pill
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.55),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // XP segment
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.stars_rounded, color: Colors.amber, size: 16),
+                                  const SizedBox(width: 5),
+                                  Text(
+                                    '$_nexusPoints XP',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            // Compass segment
+                            Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  SizedBox(
+                                    width: 22,
+                                    height: 22,
+                                    child: Transform.rotate(
+                                      angle: -_heading * pi / 180,
+                                      child: CustomPaint(painter: _CompassNeedlePainter()),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    cardinal,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w900,
+                                      fontSize: 13,
+                                      letterSpacing: 1,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      child: const Icon(Icons.close_rounded, color: Colors.black, size: 20),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 12),
+                  // Exit AR Button
+                  GestureDetector(
+                    onTap: () {
+                      if (widget.initialPlace != null) {
+                        Navigator.of(context).pop();
+                      } else {
+                        HomePage.homeKey.currentState?.switchToExplore();
+                      }
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(50),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          width: 38, height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.9),
+                            border: Border.all(color: Colors.white.withOpacity(0.6), width: 1),
+                          ),
+                          child: const Icon(Icons.close_rounded, color: Colors.black, size: 20),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// Single circular tap-to-cycle KM range button beside "AR LIVE".
+  /// Each tap advances to the next step: 2→5→10→20→50→2→…
+  Widget _buildKmRangePicker() {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        final idx = _rangeSteps.indexOf(_rangeKm);
+        final next = _rangeSteps[(idx + 1) % _rangeSteps.length];
+        setState(() {
+          _rangeKm = next;
+          _capCache.clear();
+        });
+        _lastFetchTime = null;
+        _fetchLivePlaces();
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: AppColors.brandGreen,
+          border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandGreen.withOpacity(0.55),
+              blurRadius: 10,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '$_rangeKm',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                height: 1.0,
+              ),
+            ),
+            Text(
+              'km',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.75),
+                fontSize: 7,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.5,
+                height: 1.1,
+              ),
+            ),
+          ],
+        ),
+      ).animate(onPlay: (c) => c.repeat(reverse: true))
+        .scaleXY(begin: 1.0, end: 1.05, duration: 1200.ms, curve: Curves.easeInOut),
     );
   }
 
@@ -2404,10 +2499,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildArFilterBar(),
 
+          // Range slider - sits just below the filter chips; lets the user pick
+          // how far out (km) to surface attractions / medical and all places.
+          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
+            _buildRangeSlider(),
+
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
-          if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null) 
+          if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null)
             Positioned(
-              top: 190,
+              // Anchored below the range slider relative to the notch so it
+              // never overlaps the slider or the floating place labels.
+              top: MediaQuery.of(context).padding.top + 154,
               left: 0,
               right: 0,
               child: Center(child: _buildXPBadge()),
@@ -2481,6 +2583,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       ),
     ).animate(onPlay: (c) => c.repeat(reverse: true)).fade(begin: 0.6, end: 1.0, duration: 1500.ms);
   }
+
+  // ═══════════════════════════════════════
+  // AR RANGE SLIDER - now replaced by the inline KM picker in _buildTopHUD
+  // Kept as a no-op so existing call-sites in build() don't break.
+  // ═══════════════════════════════════════
+  Widget _buildRangeSlider() => const SizedBox.shrink();
 
   // ═══════════════════════════════════════
   // AR FILTER BAR - Horizontal chip selector
@@ -2761,7 +2869,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     // height (name pill + thumbnail card + tether ≈ 97 px) or consecutive cards
     // overlap. 104 leaves a small gap. Combined with [_maxVisibleOnScreen] this
     // keeps every visible label clear of its neighbours.
-    const double topStart = 230.0; // Adjusted from 200.0 to prevent overlapping top categories/HUD
+    // Notch-relative: clears the top HUD row (~48px) + filter chip bar (40px)
+    // + a comfortable gap so cards never overlap the chips.
+    // The range slider row was removed (now in HUD), so we reclaim that 34px
+    // and push the first card slightly higher for a cleaner look.
+    final double topStart = MediaQuery.of(context).padding.top + 160;
     const double rowHeight = 104.0;
     const double cardW = 170.0;
 
@@ -2794,25 +2906,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ── COMPACT NAME PILL (BLUE FOR EXACT DIRECTION, NEUTRAL FOR OTHERS) ──
+            // ── COMPACT NAME PILL (uniform style for all markers) ──
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: currentSlot == 0 ? const Color(0xFF00E5FF) : Colors.black.withOpacity(0.6),
+                color: Colors.black.withOpacity(0.7),
                 borderRadius: BorderRadius.circular(12),
-                border: currentSlot == 0 ? null : Border.all(color: Colors.white.withOpacity(0.15), width: 0.8),
-                boxShadow: [
-                  if (currentSlot == 0)
-                    BoxShadow(
-                      color: const Color(0xFF00E5FF).withOpacity(0.35), 
-                      blurRadius: 8,
-                    ),
-                ],
+                border: Border.all(color: Colors.white.withOpacity(0.18), width: 0.8),
               ),
               child: Text(
                 landmark.name,
-                style: TextStyle(
-                  color: currentSlot == 0 ? Colors.black : Colors.white,
+                style: const TextStyle(
+                  color: Colors.white,
                   fontSize: 11,
                   fontWeight: FontWeight.w800,
                   letterSpacing: -0.3,
@@ -2834,10 +2939,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     color: Colors.black.withOpacity(0.75),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: currentSlot == 0
-                          ? const Color(0xFF00E5FF).withOpacity(0.8)
-                          : Colors.white.withOpacity(0.12),
-                      width: currentSlot == 0 ? 1.5 : 0.8,
+                      color: Colors.white.withOpacity(0.12),
+                      width: 0.8,
                     ),
                   ),
                   child: Row(
@@ -2958,13 +3061,20 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                       const SizedBox(width: 8),
                       Flexible(child: _buildSmallLocationBadge()),
                       const SizedBox(width: 8),
-                      _buildMapsButton(),
+                      _buildMapsButton(pointedLandmark),
                     ],
                   ),
                 ),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
-                  onTap: () => _startNevaSearch(pointedLandmark),
+                  onTap: () {
+                    // Banner body tap → open the place info / navigation card
+                    final i = _landmarks.indexWhere((l) => l.name == pointedLandmark.name);
+                    setState(() {
+                      _selectedLandmark = i >= 0 ? i : _selectedLandmark;
+                      _showInfoCard = true;
+                    });
+                  },
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(24),
                     child: BackdropFilter(
@@ -3021,33 +3131,37 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                               ),
                             ),
                             const SizedBox(width: 12),
-                            // Neva avatar + floating label
-                            Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildNevaAvatar(52)
-                                  .animate(onPlay: (c) => c.repeat(reverse: true))
-                                  .moveY(begin: -3, end: 3, duration: 1800.ms, curve: Curves.easeInOut)
-                                  .shimmer(duration: 3.seconds, color: const Color(0xFF00E5FF).withOpacity(0.3)),
-                                const SizedBox(height: 5),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.6),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 0.8),
-                                  ),
-                                  child: const Text(
-                                    'ASK NEVA',
-                                    style: TextStyle(
-                                      color: Color(0xFF00E5FF),
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.2,
+                            // ── NEVA AVATAR — only this area opens Neva ──
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => _startNevaSearch(pointedLandmark),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildNevaAvatar(52)
+                                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                                    .moveY(begin: -3, end: 3, duration: 1800.ms, curve: Curves.easeInOut)
+                                    .shimmer(duration: 3.seconds, color: const Color(0xFF00E5FF).withOpacity(0.3)),
+                                  const SizedBox(height: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.6),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.5), width: 0.8),
+                                    ),
+                                    child: const Text(
+                                      'ASK NEVA',
+                                      style: TextStyle(
+                                        color: Color(0xFF00E5FF),
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 1.2,
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -3074,7 +3188,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   List<Widget> _buildOtherPlaceDots(_ArLandmark? pointedLandmark, double screenW, double screenH) {
     final List<Widget> markers = [];
     final visible = _filteredLandmarks;
-    const Color lockedColor = Color(0xFF00E5FF);
 
     if (visible.isEmpty) return markers;
 
@@ -3149,20 +3262,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     for (final p in placements) {
       if (p.finalY == null) continue;
       final lm = p.landmark;
-      final bool isLocked = pointedLandmark != null && lm.name == pointedLandmark.name;
-      // Disabled green highlights for close places as requested
-      final bool isNear = false;
 
       final cardinal = _cardinalFromHeading(p.bearing);
       final arrowIcon = _arrowIconForCardinal(cardinal);
 
-      const Color nearColor = Color(0xFF4ADE80);
-      final Color cardBg = isLocked
-          ? lockedColor.withOpacity(0.18)
-          : Colors.black.withOpacity(0.82);
-      final Color borderColor = isLocked
-          ? lockedColor
-          : Colors.white.withOpacity(0.08);
+      // All cards use the same neutral dark style — no blue lock highlight
+      const Color cardBg = Colors.black;
+      final Color borderColor = Colors.white.withOpacity(0.08);
 
       // Realistic short pointers (fixed 40px length) instead of floor cables
       const double lineHeight = 40.0;
@@ -3197,12 +3303,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
                       color: borderColor,
-                      width: isLocked ? 1.5 : (isNear ? 1.5 : 1),
+                      width: 1,
                     ),
                     boxShadow: [
                       BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
-                      if (isLocked) BoxShadow(color: lockedColor.withOpacity(0.4), blurRadius: 16),
-                      if (isNear && !isLocked) BoxShadow(color: nearColor.withOpacity(0.35), blurRadius: 14),
                     ],
                   ),
                   child: Row(
@@ -3258,6 +3362,27 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                           ],
                         ),
                       ),
+                      const SizedBox(width: 6),
+                      // ── SMALL WHITE DIRECTION BADGE (no arrow) ──
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Center(
+                          child: Text(
+                            cardinal,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -3271,9 +3396,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                     height: lineHeight,
                     child: CustomPaint(
                       painter: _DottedDropLinePainter(
-                        color: isLocked
-                            ? lockedColor
-                            : (isNear ? nearColor : Colors.white.withOpacity(0.55)),
+                        color: Colors.white.withOpacity(0.55),
                       ),
                     ),
                   ),
@@ -4733,7 +4856,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                 const SizedBox(width: 8),
                 Flexible(child: _buildSmallLocationBadge()),
                 const SizedBox(width: 8),
-                _buildMapsButton(),
+                _buildMapsButton(landmark),
               ],
             ),
           ),

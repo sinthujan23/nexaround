@@ -114,7 +114,9 @@ async def _run_odyssey_generation(
 
 
 async def _notify_odyssey_ready(db, user_id, title, itinerary_id) -> None:
-    """Best-effort push telling the user their Odyssey finished generating."""
+    """Best-effort push telling the user their Odyssey finished generating.
+    Sends to every device the user is signed in on (Android + iOS) and prunes
+    any tokens FCM reports as dead."""
     try:
         from sqlalchemy import select
         from app.models.user import User
@@ -122,16 +124,29 @@ async def _notify_odyssey_ready(db, user_id, title, itinerary_id) -> None:
 
         result = await db.execute(select(User).where(User.id == user_id))
         user = result.scalar_one_or_none()
-        token = (user.preferences or {}).get("fcm_token") if user else None
-        if not token:
+        if not user:
             return
-        await fcm_service.send_to_token(
+        prefs = user.preferences or {}
+        tokens = list(prefs.get("fcm_tokens") or [])
+        legacy = prefs.get("fcm_token")  # pre-multi-device single token
+        if legacy and legacy not in tokens:
+            tokens.append(legacy)
+        if not tokens:
+            logger.warning(f"Odyssey ready but user {user_id} has no device tokens")
+            return
+
+        invalid = await fcm_service.send_to_tokens(
             db,
-            token,
+            tokens,
             title="Your Odyssey is ready ✨",
             body=title or "Tap to view your trip plan.",
             data={"type": "odyssey_ready", "itinerary_id": str(itinerary_id)},
         )
+        if invalid:
+            new_prefs = {**prefs, "fcm_tokens": [t for t in tokens if t not in invalid]}
+            new_prefs.pop("fcm_token", None)  # drop legacy if it was dead
+            user.preferences = new_prefs
+            await db.commit()
     except Exception as e:
         logger.error(f"Odyssey-ready notification failed for {itinerary_id}: {e}")
 

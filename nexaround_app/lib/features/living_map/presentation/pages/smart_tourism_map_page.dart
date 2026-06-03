@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
@@ -11,6 +13,7 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -49,6 +52,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   String _duration = '--';
   String _distance = '--';
   List<List<double>> _routeCoordinates = [];
+  bool _isActivelyNavigating = false;
+  List<String> _navigationSteps = [];
+  int _currentStepIndex = 0;
+  String _navigationProfile = 'driving';
 
   // Map style
   int _styleIndex = 0;
@@ -150,7 +157,11 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       });
     }
 
-    _fetchPlaces();
+    if (widget.destinationName == null) {
+      _fetchPlaces();
+    } else {
+      setState(() => _isLoading = false);
+    }
     _fetchRoute();
   }
 
@@ -192,6 +203,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         queryParameters: {
           'geometries': 'geojson',
           'overview': 'full',
+          'steps': 'true',
+          'profile': _navigationProfile,
         },
       );
       final data = response.data;
@@ -205,6 +218,20 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 (c) => [c[0].toDouble(), c[1].toDouble()])
             .toList();
 
+        final List<String> parsedSteps = [];
+        final legs = route['legs'] as List?;
+        if (legs != null && legs.isNotEmpty) {
+          final stepsRaw = legs[0]['steps'] as List?;
+          if (stepsRaw != null) {
+            for (final step in stepsRaw) {
+              final maneuver = step['maneuver'] as Map?;
+              if (maneuver != null && maneuver['instruction'] != null) {
+                parsedSteps.add(maneuver['instruction'] as String);
+              }
+            }
+          }
+        }
+
         if (mounted) {
           setState(() {
             _duration = durationSec < 3600
@@ -214,9 +241,12 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 ? '${distanceM.toInt()} m'
                 : '${(distanceM / 1000).toStringAsFixed(1)} km';
             _routeCoordinates = coords;
+            _navigationSteps = parsedSteps;
+            _currentStepIndex = 0;
             _routeLoaded = true;
           });
           _drawRoute();
+          _addMarkers();
         }
       }
     } catch (e) {
@@ -286,6 +316,9 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           _userLng = pos.longitude;
         });
         _checkProximity();
+        if (_isActivelyNavigating) {
+          _flyToUserWithBearing();
+        }
       }
     });
   }
@@ -383,17 +416,22 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       );
 
       // Add glow (wider, transparent) layer underneath
+      final Map<String, dynamic> glowPaint = {
+        'line-color': '#00E5FF',
+        'line-width': 12,
+        'line-opacity': 0.25,
+        'line-blur': 8,
+      };
+      if (_navigationProfile == 'walking') {
+        glowPaint['line-dasharray'] = [0.01, 2.0];
+      }
+
       await _mapboxMap!.style.addStyleLayer(
         jsonEncode({
           'id': 'route-glow',
           'type': 'line',
           'source': 'route-source',
-          'paint': {
-            'line-color': '#00E5FF',
-            'line-width': 12,
-            'line-opacity': 0.25,
-            'line-blur': 8,
-          },
+          'paint': glowPaint,
           'layout': {
             'line-cap': 'round',
             'line-join': 'round',
@@ -403,16 +441,21 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       );
 
       // Add main route line
+      final Map<String, dynamic> linePaint = {
+        'line-color': '#00E5FF',
+        'line-width': 5,
+        'line-opacity': 0.9,
+      };
+      if (_navigationProfile == 'walking') {
+        linePaint['line-dasharray'] = [0.01, 2.0];
+      }
+
       await _mapboxMap!.style.addStyleLayer(
         jsonEncode({
           'id': 'route-line',
           'type': 'line',
           'source': 'route-source',
-          'paint': {
-            'line-color': '#00E5FF',
-            'line-width': 5,
-            'line-opacity': 0.9,
-          },
+          'paint': linePaint,
           'layout': {
             'line-cap': 'round',
             'line-join': 'round',
@@ -474,10 +517,76 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     return (math.atan2(x, y) * 180 / math.pi + 360) % 360;
   }
 
+  final Map<String, Uint8List> _iconCache = {};
+
+  Future<Uint8List> _markerImage(String emoji) async {
+    final cached = _iconCache[emoji];
+    if (cached != null) return cached;
+
+    const double size = 96;
+    const double radius = 38;
+    const Offset center = Offset(48, 48);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    // Soft drop shadow.
+    canvas.drawCircle(
+      const Offset(48, 51),
+      radius,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.25)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+    // White disc + brand ring.
+    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..color = AppColors.primary,
+    );
+
+    // Emoji, centered.
+    final tp = TextPainter(
+      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 46)),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+
+    final img =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = data!.buffer.asUint8List();
+    _iconCache[emoji] = bytes;
+    return bytes;
+  }
+
   // ─── Add place markers ───
   Future<void> _addMarkers() async {
     if (_annotationManager == null) return;
     await _annotationManager!.deleteAll();
+
+    if (widget.destinationName != null) {
+      final iconBytes = await _markerImage('🏁');
+      final destAnnotation = mapbox.PointAnnotationOptions(
+        geometry: mapbox.Point(
+          coordinates: mapbox.Position(_destLng, _destLat),
+        ),
+        image: iconBytes,
+        iconSize: 0.6,
+        textField: widget.destinationName!,
+        textSize: 12.0,
+        textOffset: [0.0, 2.0],
+        textColor: Colors.white.toARGB32(),
+        textHaloColor: Colors.black.toARGB32(),
+        textHaloWidth: 1.5,
+      );
+      await _annotationManager!.create(destAnnotation);
+      return;
+    }
 
     if (_places.isEmpty) return;
 
@@ -527,6 +636,21 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         bearing: 0,
       ),
       mapbox.MapAnimationOptions(duration: 1500),
+    );
+  }
+
+  void _flyToUserWithBearing() {
+    if (_userLat == null || _userLng == null) return;
+    _mapboxMap?.flyTo(
+      mapbox.CameraOptions(
+        center: mapbox.Point(
+          coordinates: mapbox.Position(_userLng!, _userLat!),
+        ),
+        zoom: 17.5,
+        pitch: 65.0,
+        bearing: _calculateBearing(),
+      ),
+      mapbox.MapAnimationOptions(duration: 1800),
     );
   }
 
@@ -629,6 +753,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     return (math.atan2(x, y) * 180 / math.pi + 360) % 360;
   }
 
+  double _getManeuverAngle() {
+    if (_navigationSteps.isEmpty || _currentStepIndex >= _navigationSteps.length) return 0.0;
+    final inst = _navigationSteps[_currentStepIndex].toLowerCase();
+    if (inst.contains('left')) return -math.pi / 2;
+    if (inst.contains('right')) return math.pi / 2;
+    if (inst.contains('turn back') || inst.contains('uturn')) return math.pi;
+    return 0.0; // straight
+  }
+
   String _categoryEmoji(String? cat) {
     if (cat == null) return '📍';
     final c = cat.toLowerCase();
@@ -645,9 +778,11 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    final hasCards = _places.isNotEmpty && !_isLoading;
+    final hasCards = _places.isNotEmpty && !_isLoading && widget.destinationName == null;
     final cardAreaHeight = hasCards ? 180.0 : 0.0;
-    final navCardHeight = _routeLoaded ? 180.0 : 0.0;
+    final navCardHeight = _routeLoaded
+        ? (widget.destinationName != null ? 310.0 : 250.0)
+        : 0.0;
     final bottomOffset = cardAreaHeight + navCardHeight + bottomPad + 16;
 
     return Scaffold(
@@ -667,54 +802,222 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
           ),
 
-          // ── Location Bar ──
+          // ── Location Bar & Back Button ──
           Positioned(
             top: MediaQuery.of(context).padding.top + 20,
             left: 20,
-            right: 80, 
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.6),
-                borderRadius: BorderRadius.circular(100),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.near_me_rounded, color: Color(0xFF00E5FF), size: 14),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            right: 20,
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black.withValues(alpha: 0.7),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.6),
+                      borderRadius: BorderRadius.circular(100),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    ),
+                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Text(
-                          'CURRENT NEIGHBORHOOD',
-                          style: TextStyle(
-                            fontSize: 7,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white70,
-                            letterSpacing: 1,
+                        const Icon(Icons.near_me_rounded, color: Color(0xFF00E5FF), size: 14),
+                        const SizedBox(width: 10),
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                'CURRENT NEIGHBORHOOD',
+                                style: TextStyle(
+                                  fontSize: 7,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white70,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              Text(
+                                _currentNeighborhood,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                        ),
-                        Text(
-                          _currentNeighborhood,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+          // ── Active Navigation HUD Banner ──
+          if (_isActivelyNavigating)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 85,
+              left: 20,
+              right: 20,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFF00E5FF).withValues(alpha: 0.3), width: 1.2),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withValues(alpha: 0.15),
+                      blurRadius: 20,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        // Dynamic turn/arrow icon based on instruction text
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF00E5FF).withValues(alpha: 0.12),
+                          ),
+                          child: Transform.rotate(
+                            angle: _getManeuverAngle(),
+                            child: const Icon(
+                              Icons.navigation_rounded,
+                              color: Color(0xFF00E5FF),
+                              size: 26,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Text(
+                                    'TURN-BY-TURN GUIDANCE',
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF00E5FF),
+                                      letterSpacing: 1.5,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Icon(
+                                    _navigationProfile == 'walking'
+                                        ? Icons.directions_walk_rounded
+                                        : Icons.directions_car_rounded,
+                                    color: const Color(0xFF00E5FF).withValues(alpha: 0.6),
+                                    size: 11,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _navigationSteps.isNotEmpty && _currentStepIndex < _navigationSteps.length
+                                    ? _navigationSteps[_currentStepIndex]
+                                    : 'Proceed to ${widget.destinationName ?? "Destination"}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Close button to exit navigation
+                        GestureDetector(
+                          onTap: () => setState(() => _isActivelyNavigating = false),
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withValues(alpha: 0.08),
+                            ),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_navigationSteps.length > 1) ...[
+                      const SizedBox(height: 10),
+                      const Divider(color: Colors.white10, height: 1),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          GestureDetector(
+                            onTap: _currentStepIndex > 0
+                                ? () => setState(() => _currentStepIndex--)
+                                : null,
+                            child: Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: _currentStepIndex > 0 ? Colors.white70 : Colors.white24,
+                              size: 14,
+                            ),
+                          ),
+                          Text(
+                            'Step ${_currentStepIndex + 1} of ${_navigationSteps.length}',
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: _currentStepIndex < _navigationSteps.length - 1
+                                ? () => setState(() => _currentStepIndex++)
+                                : null,
+                            child: Icon(
+                              Icons.arrow_forward_ios_rounded,
+                              color: _currentStepIndex < _navigationSteps.length - 1 ? Colors.white70 : Colors.white24,
+                              size: 14,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
 
           // ── Loading ──
           if (_isLoading)
@@ -790,17 +1093,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
               child: _buildNavigationCard(),
             ),
 
-          // ── Left side buttons ──
-          Positioned(
-            bottom: bottomOffset,
-            left: 20,
-            child: _buildCircleButton(
-              icon: Icons.arrow_back_ios_new_rounded,
-              onTap: () => Navigator.pop(context),
-              bgColor: Colors.black.withValues(alpha: 0.7),
-              iconColor: Colors.white,
-            ),
-          ),
+
 
           // ── Right side buttons ──
           Positioned(
@@ -946,6 +1239,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
   }
 
+  Future<void> _launchExternalMapNav() async {
+    if (_userLat == null || _userLng == null) return;
+    final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&origin=$_userLat,$_userLng&destination=$_destLat,$_destLng&travelmode=driving');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   // ─── Navigation Bottom Card ───
   Widget _buildNavigationCard() {
     return Container(
@@ -984,7 +1286,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '$_distance · Fastest Route',
+                      '$_distance · ${_navigationProfile == 'walking' ? 'Walking Path' : 'Fastest Route'}',
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.white.withValues(alpha: 0.6),
@@ -996,7 +1298,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
               ),
               // Destination icon
               GestureDetector(
-                onTap: _flyToDestination,
+                onTap: _flyToUserWithBearing,
                 child: Container(
                   width: 56,
                   height: 56,
@@ -1023,8 +1325,114 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ],
           ),
           const SizedBox(height: 20),
+          // Segmented profile toggle
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      if (_navigationProfile != 'driving') {
+                        setState(() {
+                          _navigationProfile = 'driving';
+                          _currentStepIndex = 0;
+                        });
+                        _fetchRoute();
+                      }
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _navigationProfile == 'driving'
+                            ? const Color(0xFF00E5FF)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.directions_car_rounded,
+                            color: _navigationProfile == 'driving'
+                                ? Colors.black
+                                : Colors.white70,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Driving',
+                            style: TextStyle(
+                              color: _navigationProfile == 'driving'
+                                  ? Colors.black
+                                  : Colors.white70,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () {
+                      if (_navigationProfile != 'walking') {
+                        setState(() {
+                          _navigationProfile = 'walking';
+                          _currentStepIndex = 0;
+                        });
+                        _fetchRoute();
+                      }
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: _navigationProfile == 'walking'
+                            ? const Color(0xFF00E5FF)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.directions_walk_rounded,
+                            color: _navigationProfile == 'walking'
+                                ? Colors.black
+                                : Colors.white70,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Walking',
+                            style: TextStyle(
+                              color: _navigationProfile == 'walking'
+                                  ? Colors.black
+                                  : Colors.white70,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
           // Destination name
-          if (widget.destinationName != null)
+          if (widget.destinationName != null) ...[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1055,6 +1463,46 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 ],
               ),
             ),
+            const SizedBox(height: 12),
+             GestureDetector(
+              onTap: () {
+                setState(() {
+                  _isActivelyNavigating = true;
+                });
+                _flyToUserWithBearing();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: const Color(0xFF00E5FF),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF00E5FF).withValues(alpha: 0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.directions_rounded, color: Colors.black),
+                    SizedBox(width: 8),
+                    Text(
+                      'Start Turn-by-Turn GPS',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

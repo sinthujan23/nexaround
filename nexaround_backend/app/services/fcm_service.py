@@ -80,6 +80,56 @@ def _ensure_app(db_json: Optional[str]):
     return _app
 
 
+async def _resolve_app(db):
+    """Resolve the credential (file/env/DB) and return the firebase app or None."""
+    db_json = None
+    try:
+        from app.services.settings_service import SettingsService
+        db_json = await SettingsService(db).get_setting("firebase_service_account_json")
+    except Exception:
+        pass
+    return _ensure_app(db_json)
+
+
+def _build_message(token, title, body, data):
+    from firebase_admin import messaging
+    return messaging.Message(
+        token=token,
+        notification=messaging.Notification(title=title, body=body),
+        data={k: str(v) for k, v in (data or {}).items()},
+        android=messaging.AndroidConfig(priority="high"),
+        apns=messaging.APNSConfig(
+            headers={"apns-priority": "10"},
+            payload=messaging.APNSPayload(aps=messaging.Aps(sound="default")),
+        ),
+    )
+
+
+async def _send_one(token, title, body, data):
+    """Send to one token. Returns (ok: bool, status: str). status is '' on
+    success, else a coarse error code used for pruning + diagnostics."""
+    from firebase_admin import messaging
+    try:
+        msg_id = await asyncio.to_thread(
+            messaging.send, _build_message(token, title, body, data)
+        )
+        logger.info(f"FCM ✅ sent to {token[:14]}… msg={msg_id}")
+        return True, ""
+    except Exception as e:
+        name = type(e).__name__
+        msg = str(e)
+        # Stale/invalid token → prune it.
+        if "Unregistered" in name or "not a valid FCM" in msg or "not found" in msg.lower():
+            logger.warning(f"FCM ⚠️ token unregistered (will prune): {token[:14]}…")
+            return False, "UNREGISTERED"
+        # APNs key / Team-ID / Key-ID / environment problem (iOS-specific).
+        if "ThirdPartyAuth" in name or "APNS" in msg or "APNs" in msg or "BadDeviceToken" in msg:
+            logger.error(f"FCM ❌ APNs config/env error for {token[:14]}… — check APNs key & sandbox/production: {msg}")
+            return False, "APNS"
+        logger.error(f"FCM ❌ send failed for {token[:14]}…: {name}: {msg}")
+        return False, name
+
+
 async def send_to_token(
     db,
     token: str,
@@ -90,35 +140,36 @@ async def send_to_token(
     """Send a push to a single device token. Returns True on success."""
     if not token:
         return False
-
-    # DB setting is only the fallback; the file/env path is preferred.
-    db_json = None
-    try:
-        from app.services.settings_service import SettingsService
-        db_json = await SettingsService(db).get_setting("firebase_service_account_json")
-    except Exception:
-        pass
-
-    app = _ensure_app(db_json)
+    app = await _resolve_app(db)
     if app is None:
         logger.warning("FCM skipped: no Firebase credential configured")
         return False
+    ok, _ = await _send_one(token, title, body, data)
+    return ok
 
-    try:
-        from firebase_admin import messaging
 
-        message = messaging.Message(
-            token=token,
-            notification=messaging.Notification(title=title, body=body),
-            data={k: str(v) for k, v in (data or {}).items()},
-            android=messaging.AndroidConfig(priority="high"),
-            apns=messaging.APNSConfig(
-                payload=messaging.APNSPayload(aps=messaging.Aps(sound="default")),
-            ),
-        )
-        # messaging.send is blocking — run it off the event loop.
-        await asyncio.to_thread(messaging.send, message)
-        return True
-    except Exception as e:
-        logger.error(f"FCM send failed: {e}")
-        return False
+async def send_to_tokens(
+    db,
+    tokens: list,
+    title: str,
+    body: str,
+    data: Optional[dict] = None,
+) -> list:
+    """Send to many device tokens (one user can have several — Android + iOS).
+    Returns the tokens FCM reports as UNREGISTERED so the caller can prune them.
+    """
+    uniq = [t for t in dict.fromkeys(tokens) if t]  # dedup + drop empties
+    if not uniq:
+        logger.warning("FCM skipped: user has no device tokens")
+        return []
+    app = await _resolve_app(db)
+    if app is None:
+        logger.warning("FCM skipped: no Firebase credential configured")
+        return []
+    logger.info(f"FCM: sending '{title}' to {len(uniq)} device token(s)")
+    invalid = []
+    for t in uniq:
+        ok, status = await _send_one(t, title, body, data)
+        if status == "UNREGISTERED":
+            invalid.append(t)
+    return invalid
