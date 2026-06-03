@@ -264,10 +264,96 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // labels (client report), since matched shops got stripped by proximity.
   static const Set<String> _longRangeKeys = {'hospital', 'beach', 'historical', 'shopping'};
 
-  /// Bucket a landmark into a single display category. Order matters: the
-  /// sparse, long-range buckets (hospital, beach) are tested first so a place
-  /// that could match several lands in the most specific one.
+  // ── Real Google Place-type sets (New Places API) ────────────────────
+  // Classification keys off the place's ACTUAL types (lm.tags), NOT its
+  // category name. The category name is only the *query bucket* the place was
+  // fetched under, so it describes the search, not the place — a university
+  // with a campus cafe was being stamped "Food & Drink" and leaking into the
+  // Food filter (tester report: "Food shows a college"). Matching real types
+  // and routing institutional/service places to Others fixes that.
+  static const Set<String> _medicalTypes = {
+    'hospital', 'pharmacy', 'drugstore', 'doctor', 'dentist',
+    'physiotherapist', 'medical_lab', 'dental_clinic', 'wellness_center',
+  };
+  static const Set<String> _natureTypes = {
+    'beach', 'park', 'national_park', 'state_park', 'garden',
+    'botanical_garden', 'campground', 'hiking_area', 'natural_feature',
+    'wildlife_park', 'wildlife_refuge', 'zoo', 'dog_park', 'picnic_ground',
+  };
+  static const Set<String> _historicalTypes = {
+    'tourist_attraction', 'museum', 'art_gallery', 'historical_landmark',
+    'historical_place', 'monument', 'cultural_landmark', 'hindu_temple',
+    'church', 'mosque', 'synagogue', 'temple', 'shrine', 'castle', 'fort',
+    'place_of_worship', 'amusement_park', 'aquarium', 'cultural_center',
+  };
+  static const Set<String> _foodTypes = {
+    'restaurant', 'cafe', 'coffee_shop', 'bar', 'bakery', 'meal_takeaway',
+    'meal_delivery', 'fast_food_restaurant', 'ice_cream_shop', 'food_court',
+    'food', 'pub', 'wine_bar', 'bar_and_grill', 'breakfast_restaurant',
+    'brunch_restaurant',
+  };
+  static const Set<String> _shoppingTypes = {
+    'shopping_mall', 'department_store', 'clothing_store', 'supermarket',
+    'grocery_store', 'convenience_store', 'market', 'shoe_store',
+    'jewelry_store', 'electronics_store', 'book_store', 'furniture_store',
+    'hardware_store', 'gift_shop', 'shopping_center', 'store',
+  };
+  static const Set<String> _hotelTypes = {
+    'lodging', 'hotel', 'motel', 'resort_hotel', 'guest_house', 'hostel',
+    'bed_and_breakfast', 'inn', 'extended_stay_hotel',
+  };
+  // Institutional / service / transport — never a sightseeing category. These
+  // are routed to Others BEFORE food/shopping/hotel so a place that is really
+  // a school / bank / office / fuel station can't leak into a tourist filter
+  // just because Google also tagged an ancillary cafe or shop on it.
+  static const Set<String> _excludedTypes = {
+    'school', 'primary_school', 'secondary_school', 'university', 'college',
+    'preschool', 'child_care_agency', 'tutoring_service',
+    'government_office', 'local_government_office', 'city_hall', 'courthouse',
+    'embassy', 'fire_station', 'police', 'post_office',
+    'bank', 'atm', 'finance', 'accounting', 'insurance_agency',
+    'real_estate_agency', 'lawyer', 'corporate_office', 'office',
+    'gas_station', 'car_repair', 'car_dealer', 'car_rental', 'car_wash',
+    'parking', 'electrician', 'plumber', 'moving_company', 'storage',
+    'funeral_home', 'cemetery', 'telecommunications_service_provider',
+    'transit_station', 'bus_station', 'train_station', 'subway_station',
+    'light_rail_station', 'airport', 'taxi_stand',
+  };
+
+  bool _isFoodType(String t) => _foodTypes.contains(t) || t.endsWith('_restaurant');
+  bool _isShoppingType(String t) => _shoppingTypes.contains(t) || t.endsWith('_store');
+
+  /// Bucket a landmark into a single display category using its REAL Google
+  /// types first. A place only lands in a tourist bucket when its actual type
+  /// fits; otherwise it falls through to Others — so categories stay clean
+  /// (no colleges under Food, no banks under Historical, etc.).
   String _displayCategoryKey(_ArLandmark lm) {
+    final types = lm.tags.map((t) => t.toLowerCase().trim()).toSet()
+      ..removeWhere((t) => t.isEmpty);
+
+    // No real types (curated DB / older cache entries) → fall back to the
+    // legacy category-name keyword match so those still bucket sensibly.
+    if (types.isEmpty) return _legacyCategoryKey(lm);
+
+    bool hasAny(Set<String> s) => types.any((t) => s.contains(t));
+
+    // Medical wins outright (safety category, unambiguous types).
+    if (hasAny(_medicalTypes)) return 'hospital';
+    // Strong sightseeing / nature signals beat everything non-medical.
+    if (hasAny(_natureTypes)) return 'beach';
+    if (hasAny(_historicalTypes)) return 'historical';
+    // Institutional / service / transport → Others, BEFORE food/shopping/hotel
+    // so a college-with-a-cafe or a fuel-station-with-a-shop can't slip in.
+    if (hasAny(_excludedTypes)) return 'others';
+    if (types.any(_isFoodType)) return 'food';
+    if (types.any(_isShoppingType)) return 'shopping';
+    if (hasAny(_hotelTypes)) return 'hotel';
+    return 'others';
+  }
+
+  /// Fallback bucketing for places with no Google types (curated DB / cache),
+  /// using the category-name keyword match. Mirrors the type-based priority.
+  String _legacyCategoryKey(_ArLandmark lm) {
     if (_matchesFilter(lm, 'Medical')) return 'hospital';
     if (_matchesFilter(lm, 'Nature')) return 'beach';
     if (_matchesFilter(lm, 'Historical')) return 'historical';
