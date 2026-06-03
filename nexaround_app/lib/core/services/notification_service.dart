@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
@@ -30,15 +31,32 @@ class NotificationService {
         sound: true,
       );
 
-      _token = await _fm.getToken();
-      debugPrint('📲 FCM token: $_token');
-
+      // Set listeners up first so a token that arrives late still gets synced.
       FirebaseMessaging.onMessage.listen(_record);
       FirebaseMessaging.onMessageOpenedApp.listen(_opened);
       _fm.onTokenRefresh.listen((t) {
         _token = t;
         syncToken();
       });
+
+      // iOS: getToken() throws/returns null until the APNs token is set (the
+      // plugin registers for remote notifications during requestPermission).
+      // Wait briefly for it. Android has no APNs step.
+      if (Platform.isIOS) {
+        String? apns = await _fm.getAPNSToken();
+        for (int i = 0; i < 6 && apns == null; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          apns = await _fm.getAPNSToken();
+        }
+        debugPrint('📲 APNs token: $apns');
+      }
+
+      try {
+        _token = await _fm.getToken();
+        debugPrint('📲 FCM token: $_token');
+      } catch (e) {
+        debugPrint('FCM getToken failed (will retry on refresh): $e');
+      }
 
       // App launched from terminated state by tapping a notification.
       final initial = await _fm.getInitialMessage();
@@ -69,9 +87,9 @@ class NotificationService {
   /// Push the device token to the backend. Safe to call repeatedly; requires
   /// the user to be authenticated (the auth interceptor adds the Bearer token).
   Future<void> syncToken() async {
-    final t = _token ??= await _fm.getToken();
-    if (t == null || t.isEmpty) return;
     try {
+      final t = _token ??= await _fm.getToken();
+      if (t == null || t.isEmpty) return;
       await ApiClient.instance.post(ApiConstants.fcmToken, data: {'token': t});
       debugPrint('📲 FCM token synced to backend');
     } catch (e) {
