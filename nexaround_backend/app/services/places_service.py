@@ -53,3 +53,50 @@ async def get_nearby(
         cached=False,
         source="google",
     )
+
+
+async def search(
+    *,
+    query: str,
+    latitude: float,
+    longitude: float,
+) -> PlacesNearbyResponse:
+    snap_lat = place_cache_service._snap(latitude)
+    snap_lng = place_cache_service._snap(longitude)
+    clean_query = query.strip().lower().replace(" ", "_")
+    key = f"places:search:{snap_lat}:{snap_lng}:{clean_query}"
+
+    cached = await place_cache_service.get_cached(key)
+    if cached is not None:
+        return PlacesNearbyResponse(
+            places=[PlaceResponse.model_validate(p) for p in cached],
+            cached=True,
+            source="cache",
+        )
+
+    raw = await google_places_client.text_search(
+        query=query,
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+    place_dicts = [
+        google_places_client.to_place_dict(p, latitude, longitude, None, _photo_url)
+        for p in raw
+    ]
+    
+    # Inject formatted address into place_dicts
+    for i, p in enumerate(raw):
+        if "formattedAddress" in p:
+            place_dicts[i]["address"] = p["formattedAddress"]
+
+    place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
+
+    await place_cache_service.set_cached(key, place_dicts)
+
+    return PlacesNearbyResponse(
+        places=[PlaceResponse.model_validate(p) for p in place_dicts],
+        cached=False,
+        source="google",
+    )
+

@@ -107,6 +107,51 @@ async def nearby_search(
     return data.get("places", [])
 
 
+async def text_search(
+    *,
+    query: str,
+    latitude: float,
+    longitude: float,
+) -> list[dict]:
+    """Call Google Text Search (New). Returns the raw places list (unfiltered)."""
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
+        return []
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": google_maps_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress"
+    }
+
+    body = {
+        "textQuery": query,
+        "locationBias": {
+            "circle": {
+                "center": {
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "radius": 50000.0
+            }
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.post("https://places.googleapis.com/v1/places:searchText", json=body, headers=headers)
+        if resp.status_code != 200:
+            print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
+            resp.raise_for_status()
+        data = resp.json()
+
+    return data.get("places", [])
+
+
+
 def filter_food(places: list[dict]) -> list[dict]:
     """Drop hotels / generic POIs from a 'restaurant' result set."""
     out: list[dict] = []

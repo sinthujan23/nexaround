@@ -30,6 +30,20 @@ async def get_nearby_places(
     )
 
 
+@router.get("/search", response_model=PlacesNearbyResponse)
+async def search_places(
+    query: str = Query(..., min_length=1, description="Text search query"),
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+):
+    """Search Google Places near a coordinate by text query. Cached server-side for 7 days."""
+    return await places_service.search(
+        query=query,
+        latitude=lat,
+        longitude=lng,
+    )
+
+
 @router.get("/photo")
 async def get_place_photo(
     ref: str = Query(..., min_length=10, description="Google photo_reference"),
