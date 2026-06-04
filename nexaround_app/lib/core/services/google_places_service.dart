@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -93,4 +94,92 @@ class GooglePlacesService {
       throw const PlacesFetchException();
     }
   }
+
+  /// Search places by text query biased towards current coordinates
+  static Future<List<AttractionEntity>> searchPlaces({
+    required String query,
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/search',
+        queryParameters: {
+          'query': query,
+          'lat': latitude,
+          'lng': longitude,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final List<dynamic> placesList = data['places'] as List? ?? [];
+        final models = placesList.map((p) => AttractionModel.fromJson(p)).toList();
+        print('✅ Places searched: ${models.length} items (Source: ${data['source']})');
+        return models;
+      }
+      return [];
+    } on DioException catch (e) {
+      debugPrint(
+        '❌ Places search failed: status=${e.response?.statusCode} '
+        'query=$query lat=$latitude lng=$longitude '
+        'body=${e.response?.data}',
+      );
+      throw const PlacesFetchException();
+    } catch (e) {
+      debugPrint('Error searching places from backend: $e');
+      throw const PlacesFetchException();
+    }
+  }
+
+  /// Get driving directions between two coordinates.
+  /// Returns a map with keys: 'polyline' (List<LatLng>), 'duration_seconds' (double), 'distance_meters' (double).
+  /// Returns null on failure so callers can fall back gracefully.
+  static Future<Map<String, dynamic>?> getDirections({
+    required double originLat,
+    required double originLng,
+    required double destLat,
+    required double destLng,
+    String profile = 'driving',
+  }) async {
+    try {
+      final path =
+          '${ApiConstants.mapboxProxy}/$originLng,$originLat;$destLng,$destLat';
+      final response = await ApiClient.instance.get(
+        path,
+        queryParameters: {
+          'geometries': 'geojson',
+          'overview': 'full',
+          'steps': 'false',
+          'profile': profile,
+        },
+      );
+      final data = response.data as Map<String, dynamic>?;
+      if (data == null) return null;
+
+      final routes = data['routes'] as List?;
+      if (routes == null || routes.isEmpty) return null;
+
+      final route = routes[0] as Map<String, dynamic>;
+      final durationSec = (route['duration'] as num).toDouble();
+      final distanceM = (route['distance'] as num).toDouble();
+      final rawCoords = (route['geometry']['coordinates'] as List);
+      final points = rawCoords
+          .map<LatLng>((c) => LatLng(
+                (c[1] as num).toDouble(),
+                (c[0] as num).toDouble(),
+              ))
+          .toList();
+
+      return {
+        'polyline': points,
+        'duration_seconds': durationSec,
+        'distance_meters': distanceM,
+      };
+    } catch (e) {
+      debugPrint('getDirections error: $e');
+      return null;
+    }
+  }
 }
+

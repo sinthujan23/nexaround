@@ -30,6 +30,9 @@ android {
         targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Inject GOOGLE_MAPS_API_KEY from gradle.properties into AndroidManifest placeholders
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] =
+            (project.findProperty("GOOGLE_MAPS_API_KEY") as? String) ?: ""
     }
 
     val keystorePropertiesFile = rootProject.file("key.properties")

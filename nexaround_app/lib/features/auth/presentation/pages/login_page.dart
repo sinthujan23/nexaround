@@ -4,7 +4,6 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
-import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/register_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -329,11 +328,11 @@ class _LoginPageState extends State<LoginPage> {
 
   Widget _buildLogo() {
     return Container(
-      width: 80,
-      height: 80,
+      width: 110,
+      height: 110,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: AppColors.glassBorder),
+        border: Border.all(color: AppColors.glassBorder, width: 1.5),
         gradient: RadialGradient(
           colors: [
             AppColors.surfaceVariant,
@@ -342,13 +341,21 @@ class _LoginPageState extends State<LoginPage> {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.15),
-            blurRadius: 30,
-            spreadRadius: 3,
+            color: AppColors.primary.withOpacity(0.2),
+            blurRadius: 40,
+            spreadRadius: 5,
           ),
         ],
       ),
-      child: const Center(child: NexaroundLogo(size: 44)),
+      child: ClipOval(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Image.asset(
+            'assets/images/app_icon.png',
+            fit: BoxFit.contain,
+          ),
+        ),
+      ),
     ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack);
   }
 

@@ -2,8 +2,6 @@ import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/app/theme/app_dimensions.dart';
-import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
@@ -79,8 +77,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
               animation: _pulseController,
               builder: (context, child) {
                 return Container(
-                  width: 300 + (_pulseController.value * 40),
-                  height: 300 + (_pulseController.value * 40),
+                  width: 360 + (_pulseController.value * 50),
+                  height: 360 + (_pulseController.value * 50),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
@@ -115,12 +113,8 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Logo with glow
+                // Logo only — no text per client request
                 _buildLogo(),
-                const SizedBox(height: 48),
-                _buildBrandText(),
-                const SizedBox(height: 64),
-                _buildLoadingIndicator(),
               ],
             ),
           ),
@@ -163,28 +157,23 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
 
   Widget _buildLogo() {
     return Container(
-      width: 144,
-      height: 144,
+      width: 280,
+      // Let the logo determine its own height via aspect ratio.
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.glassBorder, width: 0.8),
-        gradient: const RadialGradient(
-          colors: [
-            AppColors.surface,
-            AppColors.surfaceVariant,
-          ],
-          stops: [0.4, 1.0],
-        ),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
-          ...AppShadows.md,
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.06),
-            blurRadius: 36,
+            color: AppColors.primary.withOpacity(0.14),
+            blurRadius: 60,
             spreadRadius: 4,
           ),
         ],
       ),
-      child: const Center(child: NexaroundLogo(size: 125)),
+      child: Image.asset(
+        'assets/images/app_logo.png',
+        width: 280,
+        fit: BoxFit.contain,
+      ),
     )
         .animate()
         .scale(
@@ -196,90 +185,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
         .fade(duration: 800.ms);
   }
 
-  Widget _buildBrandText() {
-    return Column(
-      children: [
-        ShaderMask(
-          shaderCallback: (bounds) => AppColors.primaryGradient.createShader(
-            Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-          ),
-          child: const Text(
-            'NexAround',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 40,
-              fontWeight: FontWeight.w300,
-              letterSpacing: 8,
-              height: 1.0,
-            ),
-          ),
-        )
-            .animate()
-            .fade(delay: 600.ms, duration: 800.ms)
-            .slideY(begin: 0.3, end: 0),
-        const SizedBox(height: 16),
-        Container(
-          width: 80,
-          height: 2,
-          decoration: BoxDecoration(
-            gradient: AppColors.primaryGradient,
-            borderRadius: BorderRadius.circular(2),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.primary.withOpacity(0.5),
-                blurRadius: 10,
-              ),
-            ],
-          ),
-        ).animate().scaleX(delay: 1000.ms, begin: 0, end: 1, duration: 600.ms),
-        const SizedBox(height: 16),
-        const Text(
-          'AI TOURISM COMPANION',
-          style: TextStyle(
-            color: AppColors.textSecondary,
-            fontSize: 10.5,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 4.5,
-          ),
-        ).animate().fade(delay: 1400.ms).slideY(begin: 0.5, end: 0),
-      ],
-    );
-  }
 
-  Widget _buildLoadingIndicator() {
-    return SizedBox(
-      width: 160,
-      child: Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              backgroundColor: AppColors.surfaceVariant,
-              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
-              minHeight: 3,
-            ),
-          )
-              .animate()
-              .fade(delay: 1800.ms)
-              .shimmer(
-                delay: 2.seconds,
-                duration: 1500.ms,
-                color: AppColors.primary.withOpacity(0.3),
-              ),
-          const SizedBox(height: 12),
-          const Text(
-            'INITIALIZING AI',
-            style: TextStyle(
-              color: AppColors.textMuted,
-              fontSize: 9,
-              letterSpacing: 2.8,
-              fontWeight: FontWeight.w600,
-            ),
-          ).animate().fade(delay: 2.seconds),
-        ],
-      ),
-    );
-  }
 }
 
 class _GridPainter extends CustomPainter {

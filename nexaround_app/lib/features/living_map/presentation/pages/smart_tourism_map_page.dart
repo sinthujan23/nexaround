@@ -2,18 +2,18 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
+import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -74,6 +74,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   bool _isAutoTouring = false;
   final ScrollController _cardScrollController = ScrollController();
 
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  List<AttractionEntity> _searchResults = [];
+  bool _isSearching = false;
+  bool _showSearchResults = false;
+  String? _destinationNameOverride;
+
+  String? get _destinationName => _destinationNameOverride ?? widget.destinationName;
+
   // Animation
   late AnimationController _pulseController;
   late AnimationController _alertController;
@@ -121,6 +130,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     _pulseController.dispose();
     _alertController.dispose();
     _cardScrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -157,7 +167,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       });
     }
 
-    if (widget.destinationName == null) {
+    if (_destinationName == null) {
       _fetchPlaces();
     } else {
       setState(() => _isLoading = false);
@@ -189,6 +199,40 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     } catch (e) {
       debugPrint('Fetch places error: $e');
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _performSearch(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _showSearchResults = false;
+      });
+      return;
+    }
+    setState(() {
+      _isSearching = true;
+      _showSearchResults = true;
+    });
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: _userLat ?? _destLat,
+        longitude: _userLng ?? _destLng,
+      );
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
     }
   }
 
@@ -569,7 +613,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     if (_annotationManager == null) return;
     await _annotationManager!.deleteAll();
 
-    if (widget.destinationName != null) {
+    if (_destinationName != null) {
       final iconBytes = await _markerImage('🏁');
       final destAnnotation = mapbox.PointAnnotationOptions(
         geometry: mapbox.Point(
@@ -577,7 +621,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         ),
         image: iconBytes,
         iconSize: 0.6,
-        textField: widget.destinationName!,
+        textField: _destinationName!,
         textSize: 12.0,
         textOffset: [0.0, 2.0],
         textColor: Colors.white.toARGB32(),
@@ -778,10 +822,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
-    final hasCards = _places.isNotEmpty && !_isLoading && widget.destinationName == null;
+    final hasCards = _places.isNotEmpty && !_isLoading && _destinationName == null;
     final cardAreaHeight = hasCards ? 180.0 : 0.0;
     final navCardHeight = _routeLoaded
-        ? (widget.destinationName != null ? 310.0 : 250.0)
+        ? (_destinationName != null ? 310.0 : 250.0)
         : 0.0;
     final bottomOffset = cardAreaHeight + navCardHeight + bottomPad + 16;
 
@@ -828,52 +872,148 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 ),
                 const SizedBox(width: 10),
                 Expanded(
+                  child: _buildSearchBar(),
+                ),
+                const SizedBox(width: 10),
+                // ── Open in Google Maps button ──
+                GestureDetector(
+                  onTap: _launchExternalMapNav,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    width: 44,
+                    height: 44,
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(100),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.near_me_rounded, color: Color(0xFF00E5FF), size: 14),
-                        const SizedBox(width: 10),
-                        Flexible(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text(
-                                'CURRENT NEIGHBORHOOD',
-                                style: TextStyle(
-                                  fontSize: 7,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white70,
-                                  letterSpacing: 1,
-                                ),
-                              ),
-                              Text(
-                                _currentNeighborhood,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
+                      shape: BoxShape.circle,
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF4285F4), Color(0xFF34A853)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.2), width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF4285F4).withValues(alpha: 0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
                         ),
                       ],
+                    ),
+                    child: const Icon(
+                      Icons.map_rounded,
+                      color: Colors.white,
+                      size: 20,
                     ),
                   ),
                 ),
               ],
             ),
           ),
+
+          // ── Search Results Dropdown Overlay ──
+          if (_showSearchResults && (_searchResults.isNotEmpty || _isSearching))
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 72,
+              left: 74,
+              right: 20,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 280),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.85),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.5),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: _isSearching
+                        ? const Padding(
+                            padding: EdgeInsets.all(20.0),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF00E5FF),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          )
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            itemCount: _searchResults.length,
+                            separatorBuilder: (context, index) => Divider(
+                              color: Colors.white.withOpacity(0.08),
+                              height: 1,
+                            ),
+                            itemBuilder: (context, index) {
+                              final place = _searchResults[index];
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(
+                                  Icons.place_rounded,
+                                  color: Color(0xFF00E5FF),
+                                  size: 18,
+                                ),
+                                title: Text(
+                                  place.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                subtitle: place.address != null
+                                    ? Text(
+                                        place.address!,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.6),
+                                          fontSize: 11,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    : null,
+                                trailing: place.distanceM != null
+                                    ? Text(
+                                        place.distanceM! < 1000
+                                            ? '${place.distanceM!.toInt()} m'
+                                            : '${(place.distanceM! / 1000).toStringAsFixed(1)} km',
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.4),
+                                          fontSize: 10,
+                                        ),
+                                      )
+                                    : null,
+                                onTap: () {
+                                  setState(() {
+                                    _destLat = place.latitude;
+                                    _destLng = place.longitude;
+                                    _destinationNameOverride = place.name;
+                                    _showSearchResults = false;
+                                    _searchController.text = place.name;
+                                  });
+                                  FocusScope.of(context).unfocus();
+                                  _fetchRoute();
+                                  _addMarkers();
+                                  _fitRouteBounds();
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ),
+              ),
+            ),
           // ── Active Navigation HUD Banner ──
           if (_isActivelyNavigating)
             Positioned(
@@ -945,7 +1085,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                               Text(
                                 _navigationSteps.isNotEmpty && _currentStepIndex < _navigationSteps.length
                                     ? _navigationSteps[_currentStepIndex]
-                                    : 'Proceed to ${widget.destinationName ?? "Destination"}',
+                                    : 'Proceed to ${_destinationName ?? "Destination"}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 14,
@@ -1239,13 +1379,17 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
   }
 
-  Future<void> _launchExternalMapNav() async {
-    if (_userLat == null || _userLng == null) return;
-    final uri = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&origin=$_userLat,$_userLng&destination=$_destLat,$_destLng&travelmode=driving');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
+  void _launchExternalMapNav() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GoogleMapsPage(
+          initialLat: _destLat,
+          initialLng: _destLng,
+          destinationName: _destinationName,
+        ),
+      ),
+    );
   }
 
   // ─── Navigation Bottom Card ───
@@ -1432,7 +1576,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           ),
           const SizedBox(height: 16),
           // Destination name
-          if (widget.destinationName != null) ...[
+          if (_destinationName != null) ...[
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1450,7 +1594,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      widget.destinationName!,
+                      _destinationName!,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 15,
@@ -1497,6 +1641,44 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                         fontWeight: FontWeight.w800,
                         fontSize: 15,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            // ── Open in Google Maps ──
+            GestureDetector(
+              onTap: _launchExternalMapNav,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.map_rounded,
+                        color: Color(0xFF4285F4), size: 20),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Open in Google Maps',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.open_in_new_rounded,
+                      color: Colors.white.withValues(alpha: 0.5),
+                      size: 14,
                     ),
                   ],
                 ),
@@ -1559,6 +1741,55 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Container(
+      height: 44,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.75),
+        borderRadius: BorderRadius.circular(100),
+        border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: _searchController.text.isEmpty && _currentNeighborhood.isNotEmpty
+              ? 'Current: $_currentNeighborhood'
+              : 'Search any place...',
+          hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w500),
+          prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 18),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchResults = [];
+                      _showSearchResults = false;
+                    });
+                  },
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+        ),
+        onChanged: (val) {
+          _performSearch(val);
+        },
+        onSubmitted: (val) {
+          _performSearch(val);
+        },
       ),
     );
   }

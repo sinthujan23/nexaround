@@ -52,6 +52,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   String _selectedCategory = 'HIDDEN';
   final TextEditingController _newPlaceController = TextEditingController();
   final TextEditingController _newPlaceDescriptionController = TextEditingController();
+
+  void updateState(VoidCallback fn) => setState(fn);
+
+  // Search state
+  final TextEditingController _searchController = TextEditingController();
+  List<AttractionEntity> _searchResults = [];
+  bool _isSearching = false;
+  bool _showSearchResults = false;
   
   // Permission state
   bool _isLocationGranted = false;
@@ -679,12 +687,47 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   // ═══════════════════════════════════════════════════════════
   // ROUTE NAVIGATION — Fetch directions + start turn-by-turn
   // ═══════════════════════════════════════════════════════════
+  Future<void> _performArSearch(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _showSearchResults = false;
+      });
+      return;
+    }
+    setState(() {
+      _isSearching = true;
+      _showSearchResults = true;
+    });
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: _currentPosition?.latitude ?? 6.9271,
+        longitude: _currentPosition?.longitude ?? 79.8612,
+      );
+      if (mounted) {
+        setState(() {
+          _searchResults = results;
+          _isSearching = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('AR Search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+        });
+      }
+    }
+  }
+
   void _startRouteNavigation(_ArLandmark landmark) {
     setState(() {
       _navigationTarget = landmark;
@@ -2581,6 +2624,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           // Top HUD (XP and Map Place) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null) _buildTopHUD(),
 
+
+
           // Filter chip bar - hide when mapping or showing detail (can be shown while navigating)
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildArFilterBar(),
@@ -2687,70 +2732,73 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       right: 0,
       child: SizedBox(
         height: 40,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: _arFilters.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, i) {
-            final f = _arFilters[i];
-            final id = f['id'] as String;
-            final label = f['label'] as String;
-            final icon = f['icon'] as IconData;
-            final selected = _selectedFilter == id;
-            // Show the count actually rendered (after per-category caps), not
-            // the raw match count, so the chip never promises more than it shows.
-            final count = _placesForFilter(id).length;
+        child: Material(
+          color: Colors.transparent,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _arFilters.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final f = _arFilters[i];
+              final id = f['id'] as String;
+              final label = f['label'] as String;
+              final icon = f['icon'] as IconData;
+              final selected = _selectedFilter == id;
+              // Show the count actually rendered (after per-category caps), not
+              // the raw match count, so the chip never promises more than it shows.
+              final count = _placesForFilter(id).length;
 
-            return GestureDetector(
-              onTap: () {
-                setState(() => _selectedFilter = id);
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 220),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                decoration: BoxDecoration(
-                  color: selected ? AppColors.brandGreen : Colors.black.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: selected ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.1),
-                    width: 1,
-                  ),
-                  boxShadow: selected
-                      ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.5), blurRadius: 12)]
-                      : null,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(icon, size: 14, color: Colors.white),
-                    const SizedBox(width: 8),
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.4,
-                      ),
+              return GestureDetector(
+                onTap: () {
+                  setState(() => _selectedFilter = id);
+                },
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 220),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                  decoration: BoxDecoration(
+                    color: selected ? AppColors.brandGreen : Colors.black.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: selected ? Colors.white.withOpacity(0.35) : Colors.white.withOpacity(0.1),
+                      width: 1,
                     ),
-                    if (count > 0) ...[
+                    boxShadow: selected
+                        ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.5), blurRadius: 12)]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(icon, size: 14, color: Colors.white),
                       const SizedBox(width: 8),
                       Text(
-                        '$count',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
+                        label,
+                        style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 12,
-                          fontWeight: FontWeight.w900,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.4,
                         ),
                       ),
+                      if (count > 0) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          '$count',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            );
-          },
-        ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0),
+              );
+            },
+          ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0),
+        ),
       ),
     );
   }
@@ -6998,6 +7046,192 @@ extension _ArCameraNavigation on _ArCameraPageState {
             // Fallback icon if asset doesn't load or exist yet
             return const Icon(Icons.auto_awesome, color: Color(0xFF00E5FF));
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildArSearchBar() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 74,
+      left: 16,
+      right: 16,
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: TextField(
+              controller: _searchController,
+              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: 'Search any place to navigate...',
+                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w500),
+                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
+                        onPressed: () {
+                          _searchController.clear();
+                          updateState(() {
+                            _searchResults = [];
+                            _showSearchResults = false;
+                          });
+                        },
+                      )
+                    : null,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: true,
+                fillColor: Colors.transparent,
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onChanged: (val) {
+                _performArSearch(val);
+              },
+              onSubmitted: (val) {
+                _performArSearch(val);
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildArSearchResultsOverlay() {
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 124,
+      left: 16,
+      right: 16,
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 280),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.78),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+            child: _isSearching
+                ? const Padding(
+                    padding: EdgeInsets.all(20.0),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF00E5FF),
+                          strokeWidth: 2,
+                        ),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _searchResults.length,
+                    separatorBuilder: (context, index) => Divider(
+                      color: Colors.white.withOpacity(0.08),
+                      height: 1,
+                    ),
+                    itemBuilder: (context, index) {
+                      final place = _searchResults[index];
+                      final distanceM = place.distanceM ?? 0.0;
+                      final distanceText = distanceM < 1000
+                          ? '${distanceM.toInt()} m'
+                          : '${(distanceM / 1000).toStringAsFixed(1)} km';
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(
+                          Icons.place_rounded,
+                          color: Color(0xFF00E5FF),
+                          size: 18,
+                        ),
+                        title: Text(
+                          place.name,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        subtitle: place.address != null
+                            ? Text(
+                                place.address!,
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.6),
+                                  fontSize: 11,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : null,
+                        trailing: Text(
+                          distanceText,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.4),
+                            fontSize: 10,
+                          ),
+                        ),
+                        onTap: () {
+                          final pos = _currentPosition;
+                          final bearing = pos != null
+                              ? _calculateBearing(pos.latitude, pos.longitude, place.latitude, place.longitude)
+                              : 0.0;
+                          final landmark = _ArLandmark(
+                            place.name,
+                            place.photoUrls.isNotEmpty
+                                ? place.photoUrls.first
+                                : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+                            place.rating,
+                            distanceText,
+                            bearing,
+                            place.description ?? 'A remarkable location nearby!',
+                            place.categoryName?.toUpperCase() ?? 'ATTRACTION',
+                            distanceM,
+                            place.latitude,
+                            place.longitude,
+                          );
+
+                          updateState(() {
+                            if (!_landmarks.any((l) => l.name == landmark.name)) {
+                              _landmarks.add(landmark);
+                            }
+                            _selectedLandmark = _landmarks.indexWhere((l) => l.name == landmark.name);
+                            _showInfoCard = true;
+                            _showSearchResults = false;
+                            _searchController.text = place.name;
+                          });
+                          FocusScope.of(context).unfocus();
+                        },
+                      );
+                    },
+                  ),
+          ),
         ),
       ),
     );

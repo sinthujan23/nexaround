@@ -1,6 +1,7 @@
 import Flutter
 import UIKit
 import FirebaseMessaging
+import GoogleMaps
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -8,16 +9,23 @@ import FirebaseMessaging
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Register plugins on the app delegate so that Firebase Messaging's native
-    // APNs swizzling hooks (didRegisterForRemoteNotificationsWithDeviceToken, etc.)
-    // are attached to this object. Without this, the Scene-based lifecycle
-    // means the APNs token callback never reaches Firebase on iOS.
-    GeneratedPluginRegistrant.register(with: self)
+    // NOTE: Do NOT call GeneratedPluginRegistrant.register(with: self) here.
+    // For scene-based apps the Flutter engine is initialised implicitly; plugins
+    // must be registered exactly once via didInitializeImplicitFlutterEngine
+    // below. Calling register(with:) here AND there triggers a duplicate-plugin
+    // NSAssertion in FlutterEngine.mm that crashes the app on launch (SIGABRT).
+
+    // Initialize Google Maps SDK (required before MapView is shown).
+    // Replace the string below with your actual Google Maps iOS API key.
+    GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    // Also register via the engine bridge for the Flutter plugin channel.
+    // Single, authoritative plugin registration point.
+    // Firebase Messaging's APNs swizzling hooks are established here via
+    // the plugin's own initialisation — no manual forward is needed.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
   }
 

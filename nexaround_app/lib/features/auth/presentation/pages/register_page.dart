@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/widgets/nexaround_logo.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -115,7 +114,37 @@ class _RegisterPageState extends State<RegisterPage> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const NexaroundLogo(size: 60),
+                          // Icon-only logo — phone/compass graphic, no text
+                          Container(
+                            width: 110,
+                            height: 110,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.glassBorder, width: 1.5),
+                              gradient: RadialGradient(
+                                colors: [
+                                  AppColors.surfaceVariant,
+                                  AppColors.surface,
+                                ],
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.primary.withOpacity(0.2),
+                                  blurRadius: 40,
+                                  spreadRadius: 5,
+                                ),
+                              ],
+                            ),
+                            child: ClipOval(
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Image.asset(
+                                  'assets/images/app_icon.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            ),
+                          ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
                           const SizedBox(height: 32),
 
                           const Text(

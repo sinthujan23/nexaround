@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
 class NexaroundLogo extends StatelessWidget {
+  /// Controls the rendered width. Height is determined by the image's own
+  /// aspect ratio so the "nexARound" wordmark and tagline are never clipped.
   final double size;
-  final bool showShimmer;
+  final BoxFit fit;
 
   const NexaroundLogo({
-    super.key, 
-    this.size = 100, 
-    this.showShimmer = false
+    super.key,
+    this.size = 100,
+    this.fit = BoxFit.contain,
   });
 
   @override
@@ -15,8 +17,9 @@ class NexaroundLogo extends StatelessWidget {
     return Image.asset(
       'assets/images/app_logo.png',
       width: size,
-      height: size,
-      fit: BoxFit.contain,
+      // No forced height — let the image decide its own proportions.
+      fit: fit,
     );
   }
 }
+
