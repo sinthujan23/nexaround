@@ -15,9 +15,9 @@ import GoogleMaps
     // below. Calling register(with:) here AND there triggers a duplicate-plugin
     // NSAssertion in FlutterEngine.mm that crashes the app on launch (SIGABRT).
 
-    // Initialize Google Maps SDK (required before MapView is shown).
-    // Replace the string below with your actual Google Maps iOS API key.
-    GMSServices.provideAPIKey("YOUR_GOOGLE_MAPS_API_KEY")
+    // The Google Maps iOS key is NOT hardcoded. It is supplied at runtime from the
+    // backend (admin-managed, stored in the DB) via the method channel registered
+    // in didInitializeImplicitFlutterEngine below.
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -27,6 +27,28 @@ import GoogleMaps
     // Firebase Messaging's APNs swizzling hooks are established here via
     // the plugin's own initialisation — no manual forward is needed.
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
+    // Receive the Google Maps API key from Dart. main.dart fetches it from the
+    // backend /config/keys (admin-managed value in the DB) and sends it here.
+    // Google Maps iOS accepts the key at runtime via GMSServices.provideAPIKey,
+    // so nothing is hardcoded and the admin panel stays the single source of truth.
+    if let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "GoogleMapsKeyChannel") {
+      let channel = FlutterMethodChannel(
+        name: "com.nexaround.app/keys",
+        binaryMessenger: registrar.messenger()
+      )
+      channel.setMethodCallHandler { call, result in
+        guard call.method == "setGoogleMapsKey",
+              let args = call.arguments as? [String: Any],
+              let key = args["key"] as? String,
+              !key.isEmpty else {
+          result(FlutterMethodNotImplemented)
+          return
+        }
+        GMSServices.provideAPIKey(key)
+        result(true)
+      }
+    }
   }
 
   // Manually forward the APNs device token to Firebase Messaging.

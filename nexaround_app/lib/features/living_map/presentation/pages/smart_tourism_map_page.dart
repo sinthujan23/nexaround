@@ -1,13 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
-import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
@@ -37,6 +39,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     with TickerProviderStateMixin {
   mapbox.MapboxMap? _mapboxMap;
   mapbox.PointAnnotationManager? _annotationManager;
+  StreamSubscription<CompassEvent>? _compassSub;
+  double _navBearing = 0;
 
   double? _userLat;
   double? _userLng;
@@ -64,7 +68,6 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     mapbox.MapboxStyles.SATELLITE_STREETS,
     mapbox.MapboxStyles.STANDARD,
   ];
-  static const _styleLabels = ['Dark', 'Satellite', 'Standard'];
   static const _styleIcons = [Icons.dark_mode, Icons.satellite_alt, Icons.map];
 
   // Proximity alert
@@ -74,11 +77,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   bool _isAutoTouring = false;
   final ScrollController _cardScrollController = ScrollController();
 
-  // Search state
-  final TextEditingController _searchController = TextEditingController();
-  List<AttractionEntity> _searchResults = [];
-  bool _isSearching = false;
-  bool _showSearchResults = false;
+  // Destination can be overridden (e.g. when navigating to a tapped place).
   String? _destinationNameOverride;
 
   String? get _destinationName => _destinationNameOverride ?? widget.destinationName;
@@ -127,10 +126,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   @override
   void dispose() {
+    _compassSub?.cancel();
     _pulseController.dispose();
     _alertController.dispose();
     _cardScrollController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -202,39 +201,6 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     }
   }
 
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _searchResults = [];
-        _showSearchResults = false;
-      });
-      return;
-    }
-    setState(() {
-      _isSearching = true;
-      _showSearchResults = true;
-    });
-    try {
-      final results = await GooglePlacesService.searchPlaces(
-        query: query,
-        latitude: _userLat ?? _destLat,
-        longitude: _userLng ?? _destLng,
-      );
-      if (mounted) {
-        setState(() {
-          _searchResults = results;
-          _isSearching = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Search error: $e');
-      if (mounted) {
-        setState(() {
-          _isSearching = false;
-        });
-      }
-    }
-  }
 
   // ─── Fetch driving route from Mapbox Directions API via backend proxy ───
   Future<void> _fetchRoute() async {
@@ -667,22 +633,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
   }
 
-  // ─── Re‑center on user ───
-  void _flyToUser() {
-    if (_userLat == null || _userLng == null) return;
-    _mapboxMap?.flyTo(
-      mapbox.CameraOptions(
-        center: mapbox.Point(
-          coordinates: mapbox.Position(_userLng!, _userLat!),
-        ),
-        zoom: 16.5,
-        pitch: 65.0,
-        bearing: 0,
-      ),
-      mapbox.MapAnimationOptions(duration: 1500),
-    );
-  }
-
+  // Follow-the-user camera used during active navigation: closer zoom + strong
+  // tilt for a 3D first-person feel, rotated to the travel heading.
   void _flyToUserWithBearing() {
     if (_userLat == null || _userLng == null) return;
     _mapboxMap?.flyTo(
@@ -690,12 +642,233 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         center: mapbox.Point(
           coordinates: mapbox.Position(_userLng!, _userLat!),
         ),
-        zoom: 17.5,
-        pitch: 65.0,
-        bearing: _calculateBearing(),
+        zoom: 19.5,
+        pitch: 75.0,
+        bearing: _navBearing,
       ),
-      mapbox.MapAnimationOptions(duration: 1800),
+      mapbox.MapAnimationOptions(duration: 1500),
     );
+  }
+
+  void _updateNavCamera() {
+    if (_userLat == null || _userLng == null) return;
+    _mapboxMap?.easeTo(
+      mapbox.CameraOptions(
+        center: mapbox.Point(
+          coordinates: mapbox.Position(_userLng!, _userLat!),
+        ),
+        zoom: 19.5,
+        pitch: 75.0,
+        bearing: _navBearing,
+      ),
+      mapbox.MapAnimationOptions(duration: 300), // smooth easing
+    );
+  }
+
+  // ─── Recenter button: just show where I am (north-up overview) ───
+  // Deliberately different from Navigate so the two buttons aren't redundant.
+  void _recenterOnUser() {
+    if (_userLat == null || _userLng == null) return;
+    _mapboxMap?.flyTo(
+      mapbox.CameraOptions(
+        center: mapbox.Point(
+          coordinates: mapbox.Position(_userLng!, _userLat!),
+        ),
+        zoom: 16.0,
+        pitch: 35.0,
+        bearing: 0,
+      ),
+      mapbox.MapAnimationOptions(duration: 1200),
+    );
+  }
+
+  // ─── Navigate button: enter 3D follow mode ───
+  // Turns the location dot into a car (Driving) or person (Walking) and follows
+  // the user in 3D. The position stream keeps re-centering while navigating.
+  Future<void> _enterFollowNavigation() async {
+    if (_userLat == null || _userLng == null) return;
+    setState(() => _isActivelyNavigating = true);
+    await _applyVehiclePuck();
+    _flyToUserWithBearing();
+
+    // Start compass listener to rotate the map
+    _compassSub?.cancel();
+    _compassSub = FlutterCompass.events?.listen((event) {
+      final h = event.heading;
+      if (h == null || !mounted || !_isActivelyNavigating) return;
+      double d = (h - _navBearing).abs() % 360;
+      if (d > 180) d = 360 - d;
+      if (d < 3) return; // ignore tiny jitters to avoid camera spam
+      _navBearing = h;
+      _updateNavCamera();
+    });
+  }
+
+  Future<void> _exitFollowNavigation() async {
+    _compassSub?.cancel();
+    _compassSub = null;
+    setState(() => _isActivelyNavigating = false);
+    await _applyDefaultPuck();
+  }
+
+  // Swap the map's location puck for a car/person icon based on travel mode.
+  Future<void> _applyVehiclePuck() async {
+    if (_mapboxMap == null) return;
+    try {
+      final icon = _navigationProfile == 'walking'
+          ? Icons.directions_walk_rounded
+          : Icons.directions_car_rounded;
+      final bytes = await _renderPuckIcon(icon);
+      await _mapboxMap!.location.updateSettings(
+        mapbox.LocationComponentSettings(
+          enabled: true,
+          puckBearingEnabled: true,
+          puckBearing: mapbox.PuckBearing.HEADING,
+          locationPuck: mapbox.LocationPuck(
+            locationPuck2D: mapbox.LocationPuck2D(topImage: bytes),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Vehicle puck failed: $e');
+    }
+  }
+
+  // Restore the default pulsing blue dot.
+  Future<void> _applyDefaultPuck() async {
+    if (_mapboxMap == null) return;
+    try {
+      await _mapboxMap!.location.updateSettings(
+        mapbox.LocationComponentSettings(
+          enabled: true,
+          pulsingEnabled: true,
+          pulsingColor: AppColors.primary.toARGB32(),
+          showAccuracyRing: true,
+          puckBearingEnabled: false,
+          locationPuck: mapbox.LocationPuck(
+            locationPuck2D: mapbox.LocationPuck2D(),
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Default puck failed: $e');
+    }
+  }
+
+  // Render a custom 3D arrow to a PNG for use as the Mapbox location puck.
+  Uint8List? _arrowPuckBytes;
+  Future<Uint8List> _renderArrowPuckIcon() async {
+    if (_arrowPuckBytes != null) return _arrowPuckBytes!;
+
+    const double size = 120;
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    // Drop shadow
+    final shadowPath = Path()
+      ..moveTo(60, 15)
+      ..lineTo(25, 115)
+      ..lineTo(60, 90)
+      ..lineTo(95, 115)
+      ..close();
+    canvas.drawPath(
+      shadowPath,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.35)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+    );
+
+    // Left half (Lighter Teal)
+    final leftPath = Path()
+      ..moveTo(60, 10)
+      ..lineTo(25, 110)
+      ..lineTo(60, 85)
+      ..close();
+    canvas.drawPath(
+      leftPath,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          const Offset(60, 10),
+          const Offset(25, 110),
+          [const Color(0xFF00B2B4), const Color(0xFF007A7C)],
+        ),
+    );
+
+    // Right half (Darker Teal)
+    final rightPath = Path()
+      ..moveTo(60, 10)
+      ..lineTo(60, 85)
+      ..lineTo(95, 110)
+      ..close();
+    canvas.drawPath(
+      rightPath,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          const Offset(60, 10),
+          const Offset(95, 110),
+          [const Color(0xFF007A7C), const Color(0xFF004C4E)],
+        ),
+    );
+
+    final img =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    _arrowPuckBytes = data!.buffer.asUint8List();
+    return _arrowPuckBytes!;
+  }
+
+  // Render a Material icon to a PNG for use as the Mapbox location puck.
+  final Map<int, Uint8List> _puckCache = {};
+  Future<Uint8List> _renderPuckIcon(IconData icon) async {
+    final cached = _puckCache[icon.codePoint];
+    if (cached != null) return cached;
+
+    const double size = 120;
+    const Offset center = Offset(60, 60);
+    const double radius = 48;
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+
+    // Soft shadow.
+    canvas.drawCircle(
+      const Offset(60, 64),
+      radius,
+      Paint()
+        ..color = Colors.black.withValues(alpha: 0.3)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+    // Brand disc + white ring.
+    canvas.drawCircle(center, radius, Paint()..color = AppColors.primary);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 6
+        ..color = Colors.white,
+    );
+    // The icon glyph, centered.
+    final tp = TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontSize: 56,
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          color: Colors.white,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+
+    final img =
+        await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final data = await img.toByteData(format: ui.ImageByteFormat.png);
+    final bytes = data!.buffer.asUint8List();
+    _puckCache[icon.codePoint] = bytes;
+    return bytes;
   }
 
   // ─── Check proximity to places ───
@@ -875,14 +1048,16 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                   child: _buildSearchBar(),
                 ),
                 const SizedBox(width: 10),
-                // ── Open in Google Maps button ──
+                // ── Clearly-labelled "Google Maps" switch (single entry point) ──
+                // A labelled pill so users understand it switches to the familiar
+                // Google Maps view, instead of an unlabelled icon.
                 GestureDetector(
                   onTap: _launchExternalMapNav,
                   child: Container(
-                    width: 44,
                     height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      shape: BoxShape.circle,
+                      borderRadius: BorderRadius.circular(100),
                       gradient: const LinearGradient(
                         colors: [Color(0xFF4285F4), Color(0xFF34A853)],
                         begin: Alignment.topLeft,
@@ -898,10 +1073,20 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.map_rounded,
-                      color: Colors.white,
-                      size: 20,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.map_rounded, color: Colors.white, size: 18),
+                        SizedBox(width: 6),
+                        Text(
+                          'Google',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -909,111 +1094,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
           ),
 
-          // ── Search Results Dropdown Overlay ──
-          if (_showSearchResults && (_searchResults.isNotEmpty || _isSearching))
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 72,
-              left: 74,
-              right: 20,
-              child: Container(
-                constraints: const BoxConstraints(maxHeight: 280),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.85),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.5),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ui.ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-                    child: _isSearching
-                        ? const Padding(
-                            padding: EdgeInsets.all(20.0),
-                            child: Center(
-                              child: SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  color: Color(0xFF00E5FF),
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ),
-                          )
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            itemCount: _searchResults.length,
-                            separatorBuilder: (context, index) => Divider(
-                              color: Colors.white.withOpacity(0.08),
-                              height: 1,
-                            ),
-                            itemBuilder: (context, index) {
-                              final place = _searchResults[index];
-                              return ListTile(
-                                dense: true,
-                                leading: const Icon(
-                                  Icons.place_rounded,
-                                  color: Color(0xFF00E5FF),
-                                  size: 18,
-                                ),
-                                title: Text(
-                                  place.name,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                                subtitle: place.address != null
-                                    ? Text(
-                                        place.address!,
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.6),
-                                          fontSize: 11,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      )
-                                    : null,
-                                trailing: place.distanceM != null
-                                    ? Text(
-                                        place.distanceM! < 1000
-                                            ? '${place.distanceM!.toInt()} m'
-                                            : '${(place.distanceM! / 1000).toStringAsFixed(1)} km',
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.4),
-                                          fontSize: 10,
-                                        ),
-                                      )
-                                    : null,
-                                onTap: () {
-                                  setState(() {
-                                    _destLat = place.latitude;
-                                    _destLng = place.longitude;
-                                    _destinationNameOverride = place.name;
-                                    _showSearchResults = false;
-                                    _searchController.text = place.name;
-                                  });
-                                  FocusScope.of(context).unfocus();
-                                  _fetchRoute();
-                                  _addMarkers();
-                                  _fitRouteBounds();
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                ),
-              ),
-            ),
+          // (Search results overlay removed — the top bar is location-only now.)
+
           // ── Active Navigation HUD Banner ──
           if (_isActivelyNavigating)
             Positioned(
@@ -1100,7 +1182,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                         const SizedBox(width: 10),
                         // Close button to exit navigation
                         GestureDetector(
-                          onTap: () => setState(() => _isActivelyNavigating = false),
+                          onTap: _exitFollowNavigation,
                           child: Container(
                             padding: const EdgeInsets.all(6),
                             decoration: BoxDecoration(
@@ -1235,46 +1317,67 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
 
 
-          // ── Right side buttons ──
+          // ── Right side buttons (uniform 52px circles, evenly spaced) ──
           Positioned(
             bottom: bottomOffset,
             right: 20,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Auto Tour
-                _buildCircleButton(
-                  icon: _isAutoTouring ? Icons.stop_rounded : Icons.explore_rounded,
-                  onTap: _isAutoTouring ? () => setState(() => _isAutoTouring = false) : _startAutoTour,
-                  bgColor: _isAutoTouring ? Colors.red : const Color(0xFF7C4DFF),
-                  iconColor: Colors.white,
-                  glow: true,
-                ),
-                const SizedBox(height: 12),
-                // Map Style Toggle
-                _buildCircleButton(
-                  icon: _styleIcons[_styleIndex],
-                  onTap: _toggleMapStyle,
-                  bgColor: Colors.black.withValues(alpha: 0.7),
-                  iconColor: Colors.white,
-                  label: _styleLabels[_styleIndex],
-                ),
-                const SizedBox(height: 12),
-                // Fit Route
-                if (_routeLoaded)
+                // While actively navigating, the top turn-by-turn banner is
+                // shown — hide the browse-only controls so the stack stays low
+                // and never overlaps that banner. Keep only Recenter + Stop.
+                if (!_isActivelyNavigating) ...[
+                  // Auto Tour
                   _buildCircleButton(
-                    icon: Icons.route_rounded,
-                    onTap: _fitRouteBounds,
-                    bgColor: Colors.black.withValues(alpha: 0.7),
-                    iconColor: const Color(0xFF00E5FF),
+                    icon: _isAutoTouring ? Icons.stop_rounded : Icons.explore_rounded,
+                    onTap: _isAutoTouring ? () => setState(() => _isAutoTouring = false) : _startAutoTour,
+                    bgColor: _isAutoTouring ? Colors.red : const Color(0xFF7C4DFF),
+                    iconColor: Colors.white,
+                    glow: true,
                   ),
-                const SizedBox(height: 12),
-                // My Location
+                  const SizedBox(height: 12),
+                  // Map Style Toggle (icon-only so the column stays aligned)
+                  _buildCircleButton(
+                    icon: _styleIcons[_styleIndex],
+                    onTap: _toggleMapStyle,
+                    bgColor: Colors.black.withValues(alpha: 0.7),
+                    iconColor: Colors.white,
+                  ),
+                  const SizedBox(height: 12),
+                  // Fit Route
+                  if (_routeLoaded) ...[
+                    _buildCircleButton(
+                      icon: Icons.route_rounded,
+                      onTap: _fitRouteBounds,
+                      bgColor: Colors.black.withValues(alpha: 0.7),
+                      iconColor: const Color(0xFF00E5FF),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ],
+                // Recenter — just shows where I am (north-up overview)
                 _buildCircleButton(
                   icon: Icons.my_location_rounded,
-                  onTap: _flyToUser,
-                  bgColor: const Color(0xFF00E5FF),
-                  iconColor: Colors.black,
+                  onTap: _recenterOnUser,
+                  bgColor: Colors.black.withValues(alpha: 0.7),
+                  iconColor: const Color(0xFF00E5FF),
+                ),
+                const SizedBox(height: 12),
+                // Navigate — 3D follow mode; puck becomes a car/person by travel mode.
+                // Tap again to stop following.
+                _buildCircleButton(
+                  icon: _isActivelyNavigating
+                      ? Icons.close_rounded
+                      : Icons.navigation_rounded,
+                  onTap: _isActivelyNavigating
+                      ? _exitFollowNavigation
+                      : _enterFollowNavigation,
+                  bgColor: _isActivelyNavigating
+                      ? Colors.red
+                      : const Color(0xFF00E5FF),
+                  iconColor:
+                      _isActivelyNavigating ? Colors.white : Colors.black,
                   glow: true,
                 ),
               ],
@@ -1440,32 +1543,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                   ],
                 ),
               ),
-              // Destination icon
-              GestureDetector(
-                onTap: _flyToUserWithBearing,
-                child: Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.navigation_rounded,
-                    color: Colors.black,
-                    size: 28,
-                  ),
-                ),
-              ),
+              // (The navigate arrow moved to the right-side button stack so the
+              // recenter and navigate actions are distinct and aligned.)
             ],
           ),
           const SizedBox(height: 20),
@@ -1488,6 +1567,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                           _currentStepIndex = 0;
                         });
                         _fetchRoute();
+                        if (_isActivelyNavigating) _applyVehiclePuck();
                       }
                     },
                     child: AnimatedContainer(
@@ -1534,6 +1614,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                           _currentStepIndex = 0;
                         });
                         _fetchRoute();
+                        if (_isActivelyNavigating) _applyVehiclePuck();
                       }
                     },
                     child: AnimatedContainer(
@@ -1609,12 +1690,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
             const SizedBox(height: 12),
              GestureDetector(
-              onTap: () {
-                setState(() {
-                  _isActivelyNavigating = true;
-                });
-                _flyToUserWithBearing();
-              },
+              onTap: _enterFollowNavigation,
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1646,44 +1722,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 ),
               ),
             ),
-            const SizedBox(height: 10),
-            // ── Open in Google Maps ──
-            GestureDetector(
-              onTap: _launchExternalMapNav,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  color: Colors.white.withValues(alpha: 0.08),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.map_rounded,
-                        color: Color(0xFF4285F4), size: 20),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Open in Google Maps',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.open_in_new_rounded,
-                      color: Colors.white.withValues(alpha: 0.5),
-                      size: 14,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            // The "Open in Google Maps" button was removed here — switching to
+            // the Google Maps view is now done from the single top-right button.
           ],
         ],
       ),
@@ -1745,9 +1785,13 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
   }
 
+  // Top bar shows the user's CURRENT LOCATION only (no search) — per client
+  // request. It's a clean, non-editable pill so it can't be mistaken for an
+  // empty search box.
   Widget _buildSearchBar() {
     return Container(
       height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.75),
         borderRadius: BorderRadius.circular(100),
@@ -1760,36 +1804,40 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           ),
         ],
       ),
-      child: TextField(
-        controller: _searchController,
-        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
-        decoration: InputDecoration(
-          hintText: _searchController.text.isEmpty && _currentNeighborhood.isNotEmpty
-              ? 'Current: $_currentNeighborhood'
-              : 'Search any place...',
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w500),
-          prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 18),
-          suffixIcon: _searchController.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    setState(() {
-                      _searchResults = [];
-                      _showSearchResults = false;
-                    });
-                  },
-                )
-              : null,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-        ),
-        onChanged: (val) {
-          _performSearch(val);
-        },
-        onSubmitted: (val) {
-          _performSearch(val);
-        },
+      child: Row(
+        children: [
+          const Icon(Icons.location_on_rounded, color: Color(0xFF00E5FF), size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'CURRENT LOCATION',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.5),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                Text(
+                  _currentNeighborhood,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    height: 1.1,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
