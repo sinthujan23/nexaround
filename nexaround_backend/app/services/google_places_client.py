@@ -13,16 +13,40 @@ from app.services.settings_service import SettingsService
 _BASE = "https://maps.googleapis.com/maps/api"
 
 
-# Mirrors the Flutter-side mapping in google_places_service.dart so the
-# behavior stays identical for callers during the cut-over.
-CATEGORY_TYPE_MAP: dict[str, str] = {
-    "Attractions": "tourist_attraction",
-    "Food & Drink": "restaurant",
-    "Hotels": "lodging",
-    "Shopping": "shopping_mall",
-    "Experiences": "amusement_park",
-    "Transport": "transit_station",
-    "Medical": "hospital",
+# Expanded Google Place types map to retrieve a much wider and richer set of places
+# for each application category, resolving the issue of sparse results.
+CATEGORY_TYPES_MAP: dict[str, list[str]] = {
+    "Attractions": [
+        "tourist_attraction", "museum", "art_gallery", "historical_landmark",
+        "place_of_worship", "church", "hindu_temple", "mosque", "synagogue",
+        "buddhist_temple", "amusement_park", "aquarium", "cultural_center"
+    ],
+    "Food & Drink": [
+        "restaurant", "cafe", "coffee_shop", "bar", "bakery", "fast_food_restaurant",
+        "ice_cream_shop", "food_court", "pub", "wine_bar", "meal_takeaway", "meal_delivery"
+    ],
+    "Hotels": [
+        "lodging", "hotel", "motel", "resort_hotel", "guest_house", "hostel",
+        "bed_and_breakfast"
+    ],
+    "Shopping": [
+        "shopping_mall", "department_store", "clothing_store", "supermarket",
+        "grocery_store", "convenience_store", "gift_shop", "book_store",
+        "electronics_store", "jewelry_store", "shoe_store", "store"
+    ],
+    "Experiences": [
+        "amusement_park", "aquarium", "zoo", "museum", "art_gallery"
+    ],
+    "Transport": [
+        "transit_station", "bus_station", "train_station", "subway_station",
+        "light_rail_station", "airport", "taxi_stand"
+    ],
+    "Medical": [
+        "hospital", "pharmacy", "medical_clinic", "dentist"
+    ],
+    "Beach": [
+        "beach", "park", "national_park", "campground", "hiking_area", "garden", "zoo"
+    ],
 }
 
 # Genuine food categories Google returns. Used to filter the broader
@@ -55,12 +79,8 @@ async def nearby_search(
     eff_radius = float(min(max(radius, 1), 50000))
 
     included_types = []
-    if category == "Food & Drink":
-        included_types = ["restaurant"]
-    elif category == "Beach":
-        included_types = ["beach"]
-    elif category and category in CATEGORY_TYPE_MAP:
-        included_types = [CATEGORY_TYPE_MAP[category]]
+    if category and category in CATEGORY_TYPES_MAP:
+        included_types = CATEGORY_TYPES_MAP[category]
 
     async with async_session() as db:
         settings_service = SettingsService(db)
@@ -210,11 +230,18 @@ def to_place_dict(
 
 def _resolve_category_from_types(types: list[str]) -> str:
     t = set(types)
-    if "lodging" in t: return "Hotels"
-    if t & {"restaurant", "food", "cafe", "bar"}: return "Food & Drink"
-    if t & {"park", "campground", "natural_feature"}: return "Nature"
-    if t & {"tourist_attraction", "museum"}: return "Attractions"
-    if t & {"shopping_mall", "store"}: return "Shopping"
+    if t & {"lodging", "hotel", "motel", "resort_hotel", "hostel", "guest_house", "bed_and_breakfast"}:
+        return "Hotels"
+    if t & {"restaurant", "food", "cafe", "bar", "coffee_shop", "bakery", "fast_food_restaurant", "food_court", "pub", "wine_bar"}:
+        return "Food & Drink"
+    if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo"}:
+        return "Nature"
+    if t & {"hospital", "pharmacy", "medical_clinic", "dentist"}:
+        return "Medical"
+    if t & {"tourist_attraction", "museum", "art_gallery", "historical_landmark", "place_of_worship", "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "amusement_park", "aquarium", "cultural_center"}:
+        return "Attractions"
+    if t & {"shopping_mall", "store", "department_store", "clothing_store", "supermarket", "grocery_store", "convenience_store", "gift_shop", "book_store", "electronics_store", "jewelry_store", "shoe_store"}:
+        return "Shopping"
     return "Attractions"
 
 

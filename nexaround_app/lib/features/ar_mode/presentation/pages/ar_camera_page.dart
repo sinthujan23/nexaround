@@ -173,7 +173,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // the live fetch and the on-screen cull honor it so the user controls how far
   // out attractions / medical (and all categories) are shown.
   int _rangeKm = 10;
-  static const List<int> _rangeSteps = [2, 5, 10, 20, 50];
+  static const List<int> _rangeSteps = [2, 5, 10];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -184,6 +184,20 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Medical', 'label': 'Medical', 'icon': Icons.medical_services_rounded},
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
+
+  int _maxRangeForCategory(String filter) {
+    if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
+      return 50;
+    }
+    return 10;
+  }
+
+  List<int> _rangeStepsForCategory(String filter) {
+    if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
+      return const [2, 5, 10, 20, 50];
+    }
+    return const [2, 5, 10];
+  }
 
   bool _matchesFilter(_ArLandmark lm, String filter) {
     if (filter == 'All') return true;
@@ -1137,10 +1151,21 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       ];
 
       for (final radius in activeRadii) {
-        debugPrint('🔍 AR: Searching radius $radius m across categories...');
+        // Capping categories: only Attractions (Historical) and Medical can go beyond 10km (10000m).
+        // Food, Shopping, Hotels, and 'null' (All) are capped at 10km.
+        final currentCategories = categoriesToFetch.where((cat) {
+          if (radius > 10000) {
+            return cat == 'Attractions' || cat == 'Medical';
+          }
+          return true;
+        }).toList();
+
+        if (currentCategories.isEmpty) continue;
+
+        debugPrint('🔍 AR: Searching radius $radius m across categories: $currentCategories...');
         
         final List<List<dynamic>> results = await Future.wait(
-          categoriesToFetch.map((cat) => GooglePlacesService.fetchNearbyPlaces(
+          currentCategories.map((cat) => GooglePlacesService.fetchNearbyPlaces(
             latitude: pos.latitude,
             longitude: pos.longitude,
             radius: radius,
@@ -1194,9 +1219,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
       }
 
-      // Dedicated Beach Query up to 10km specifically
+      // Dedicated Beach Query up to the selected range specifically
       try {
-        debugPrint('🏖 AR: Querying Beaches up to 10km specifically...');
+        debugPrint('🏖 AR: Querying Beaches up to ${_rangeKm}km specifically...');
         final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
           latitude: pos.latitude,
           longitude: pos.longitude,
@@ -2491,8 +2516,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     return GestureDetector(
       onTap: () {
         HapticFeedback.selectionClick();
-        final idx = _rangeSteps.indexOf(_rangeKm);
-        final next = _rangeSteps[(idx + 1) % _rangeSteps.length];
+        final steps = _rangeStepsForCategory(_selectedFilter);
+        final idx = steps.indexOf(_rangeKm);
+        final next = steps[idx == -1 ? 0 : (idx + 1) % steps.length];
         setState(() {
           _rangeKm = next;
           _capCache.clear();
@@ -2751,7 +2777,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
               return GestureDetector(
                 onTap: () {
-                  setState(() => _selectedFilter = id);
+                  setState(() {
+                    _selectedFilter = id;
+                    final maxKm = _maxRangeForCategory(id);
+                    if (_rangeKm > maxKm) {
+                      _rangeKm = maxKm;
+                    }
+                  });
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
