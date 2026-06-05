@@ -19,6 +19,9 @@ async def get_nearby(
     category: Optional[str],
     radius: int,
 ) -> PlacesNearbyResponse:
+    # Canonicalize once at the entry point so the cache key, the Google call,
+    # and the filter_food decision below all agree on the same category value.
+    category = google_places_client.canonical_category(category)
     key = place_cache_service.build_key(latitude, longitude, category, radius)
 
     cached = await place_cache_service.get_cached(key)

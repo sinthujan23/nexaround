@@ -321,6 +321,35 @@ class CacheService {
     await _prefs.setBool('notifications_enabled', value);
   }
 
+  // User Preferences Local Storage
+  static Future<void> saveUserPreferences(Map<String, dynamic> preferences) async {
+    await _prefs.setString('user_preferences_json', json.encode(preferences));
+  }
+
+  static Map<String, dynamic> getUserPreferences() {
+    final str = _prefs.getString('user_preferences_json');
+    if (str == null) return {};
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // Coordinates caching for nearby places to avoid redundant api queries
+  static Future<void> saveLastFetchCoords(double lat, double lng) async {
+    await _prefs.setDouble('last_fetch_lat', lat);
+    await _prefs.setDouble('last_fetch_lng', lng);
+  }
+
+  static double? getLastFetchLat() {
+    return _prefs.getDouble('last_fetch_lat');
+  }
+
+  static double? getLastFetchLng() {
+    return _prefs.getDouble('last_fetch_lng');
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

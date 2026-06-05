@@ -57,6 +57,58 @@ _FOOD_TYPE_WHITELIST = {
 }
 
 
+# Aliases → canonical CATEGORY_TYPES_MAP keys. Different UI surfaces send
+# different vocabularies: the AR navigation tiles use short lowercase ids
+# ('food', 'historical'), the chat chips/datasource use full names
+# ('Food & Drink'). Without normalization an unrecognized label falls through
+# to an UNFILTERED nearby search — that's how banks/ATMs ended up under "Food".
+# Keys here MUST be lowercase (lookup is done on category.lower()).
+_CATEGORY_ALIASES: dict[str, str] = {
+    "food": "Food & Drink",
+    "food & drink": "Food & Drink",
+    "food and drink": "Food & Drink",
+    "drink": "Food & Drink",
+    "restaurant": "Food & Drink",
+    "restaurants": "Food & Drink",
+    "shop": "Shopping",
+    "shops": "Shopping",
+    "historical": "Attractions",
+    "historical sites": "Attractions",
+    "history": "Attractions",
+    "attraction": "Attractions",
+    "hotel": "Hotels",
+    "stay": "Hotels",
+    "lodging": "Hotels",
+    "service": "Experiences",
+    "services": "Experiences",
+    "experience": "Experiences",
+}
+
+
+# Case-insensitive index of the canonical keys so 'shopping' resolves to
+# 'Shopping', 'attractions' to 'Attractions', etc. without an alias entry each.
+_CANONICAL_BY_LOWER: dict[str, str] = {k.lower(): k for k in CATEGORY_TYPES_MAP}
+
+
+def canonical_category(category: Optional[str]) -> Optional[str]:
+    """Map any UI category label to a canonical CATEGORY_TYPES_MAP key.
+
+    Resolution order: exact canonical match → case-insensitive canonical match
+    ('shopping' → 'Shopping') → known synonym alias ('historical' →
+    'Attractions'). Anything unknown is returned unchanged (still safe — just
+    unfiltered). Idempotent, so it's safe to call repeatedly along the path.
+    """
+    if not category:
+        return category
+    key = category.strip()
+    if key in CATEGORY_TYPES_MAP:
+        return key
+    lower = key.lower()
+    if lower in _CANONICAL_BY_LOWER:
+        return _CANONICAL_BY_LOWER[lower]
+    return _CATEGORY_ALIASES.get(lower, key)
+
+
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371000.0
     dlat = math.radians(lat2 - lat1)
@@ -78,6 +130,9 @@ async def nearby_search(
     # Cap radius between 1 and 50000 meters for the new Places API
     eff_radius = float(min(max(radius, 1), 50000))
 
+    # Normalize any UI label (e.g. AR tile 'food') to a canonical key so the
+    # type filter is actually applied instead of silently searching everything.
+    category = canonical_category(category)
     included_types = []
     if category and category in CATEGORY_TYPES_MAP:
         included_types = CATEGORY_TYPES_MAP[category]
@@ -95,7 +150,7 @@ async def nearby_search(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
     }
 
     body = {
@@ -145,7 +200,7 @@ async def text_search(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.rating,places.userRatingCount"
     }
 
     body = {
@@ -205,6 +260,14 @@ def to_place_dict(
     types = list(place.get("types") or [])
     resolved_category = category_name or _resolve_category_from_types(types)
 
+    photos = place.get("photos") or []
+    photo_urls = []
+    if photos and photo_url_builder:
+        for ph in photos:
+            ref = ph.get("name")
+            if ref:
+                photo_urls.append(photo_url_builder(ref))
+
     return {
         "id": place.get("id") or "",
         "name": display_name,
@@ -217,9 +280,9 @@ def to_place_dict(
         "opening_hours": {},
         "entry_fee": 0.0,
         "currency": "USD",
-        "rating": 0.0,
-        "review_count": 0,
-        "photo_urls": [],
+        "rating": float(place.get("rating") or 4.0),
+        "review_count": int(place.get("userRatingCount") or 0),
+        "photo_urls": photo_urls,
         "tags": types,
         "geofence_radius_m": 100,
         "distance_m": _haversine_m(origin_lat, origin_lng, plat, plng),
@@ -251,13 +314,25 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key")
 
-    params = {
-        "maxwidth": maxwidth,
-        "photo_reference": photo_reference,
-        "key": google_maps_key,
-    }
     async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        resp = await client.get(f"{_BASE}/place/photo", params=params)
+        if photo_reference.startswith("places/"):
+            # New Places API Photo endpoint
+            url = f"https://places.googleapis.com/v1/{photo_reference}/media"
+            params = {
+                "key": google_maps_key,
+                "maxWidthPx": maxwidth,
+            }
+            resp = await client.get(url, params=params)
+        else:
+            # Legacy Places API Photo endpoint
+            url = f"{_BASE}/place/photo"
+            params = {
+                "maxwidth": maxwidth,
+                "photo_reference": photo_reference,
+                "key": google_maps_key,
+            }
+            resp = await client.get(url, params=params)
+            
         resp.raise_for_status()
         ctype = resp.headers.get("content-type", "image/jpeg")
         return resp.content, ctype

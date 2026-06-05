@@ -12,7 +12,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
+import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
+import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -60,7 +62,29 @@ class _ProfilePageState extends State<ProfilePage> {
                                 attraction.name, 
                                 attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛', 
                                 attraction.rating, 
-                                attraction.categoryName ?? 'Attraction'
+                                attraction.categoryName ?? 'Attraction',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => AttractionDetailPage(
+                                        id: attraction.id,
+                                        name: attraction.name,
+                                        category: attraction.categoryName ?? 'Attraction',
+                                        rating: attraction.rating,
+                                        distance: attraction.distanceM != null 
+                                            ? '${(attraction.distanceM! / 1000).toStringAsFixed(1)} km' 
+                                            : '0.0 km',
+                                        emoji: attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛',
+                                        imageUrl: attraction.photoUrls.isNotEmpty 
+                                            ? attraction.photoUrls.first 
+                                            : null,
+                                        latitude: attraction.latitude,
+                                        longitude: attraction.longitude,
+                                      ),
+                                    ),
+                                  );
+                                },
                               );
                             }),
                         ]);
@@ -212,7 +236,6 @@ class _ProfilePageState extends State<ProfilePage> {
     return ValueListenableBuilder<int>(
       valueListenable: CacheService.statsNotifier,
       builder: (context, _, __) {
-        final savedCount = CacheService.getSavedPlaceJsons().length;
         final visited = CacheService.getPlacesVisited();
         return Row(
           children: [
@@ -220,7 +243,13 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(width: 10),
             _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
             const SizedBox(width: 10),
-            _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen),
+            ValueListenableBuilder<int>(
+              valueListenable: CacheService.savedPlacesNotifier,
+              builder: (context, _, __) {
+                final savedCount = CacheService.getSavedPlaceJsons().length;
+                return _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen);
+              },
+            ),
             const SizedBox(width: 10),
             _buildStat('--', 'Avg\nRating', AppColors.warning),
           ],
@@ -269,33 +298,36 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildSavedPlace(String name, String emoji, double rating, String type) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          Text(emoji, style: const TextStyle(fontSize: 26)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                Row(
-                  children: [
-                    const Icon(Icons.star_rounded, size: 12, color: AppColors.warning),
-                    const SizedBox(width: 3),
-                    Text('$rating', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                    const SizedBox(width: 8),
-                    Text(type, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                  ],
-                ),
-              ],
+  Widget _buildSavedPlace(String name, String emoji, double rating, String type, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        child: Row(
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 26)),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, size: 12, color: AppColors.warning),
+                      const SizedBox(width: 3),
+                      Text('$rating', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                      const SizedBox(width: 8),
+                      Text(type, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const Icon(Icons.bookmark_rounded, size: 18, color: AppColors.primary),
-        ],
+            const Icon(Icons.bookmark_rounded, size: 18, color: AppColors.primary),
+          ],
+        ),
       ),
     );
   }
@@ -415,62 +447,153 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void _showCurrencyPicker(BuildContext context, dynamic user) {
-    final currencies = [
-      {'code': 'USD', 'name': 'US Dollar', 'symbol': r'$'},
-      {'code': 'EUR', 'name': 'Euro', 'symbol': '€'},
-      {'code': 'GBP', 'name': 'British Pound', 'symbol': '£'},
-      {'code': 'LKR', 'name': 'Sri Lankan Rupee', 'symbol': 'රු'},
-      {'code': 'INR', 'name': 'Indian Rupee', 'symbol': '₹'},
-      {'code': 'JPY', 'name': 'Japanese Yen', 'symbol': '¥'},
-    ];
-
+    String searchQuery = '';
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Select Currency', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-            const SizedBox(height: 20),
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: currencies.length,
-                itemBuilder: (context, index) {
-                  final c = currencies[index];
-                  final isSelected = (user.preferences['currency'] ?? 'USD') == c['code'];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(child: Text(c['symbol']!, style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textSecondary, fontWeight: FontWeight.bold))),
-                    ),
-                    title: Text(c['name']!, style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textPrimary, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500)),
-                    trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
-                    onTap: () {
-                      final newPrefs = Map<String, dynamic>.from(user.preferences);
-                      newPrefs['currency'] = c['code'];
-                      context.read<AuthBloc>().add(UpdateUserPreferences(newPrefs));
-                      Navigator.pop(context);
-                    },
-                  );
-                },
-              ),
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          final filtered = CurrencyService.supportedCurrencies.where((c) {
+            final query = searchQuery.toLowerCase();
+            return c['code']!.toLowerCase().contains(query) ||
+                c['name']!.toLowerCase().contains(query);
+          }).toList();
+          
+          return Container(
+            height: MediaQuery.of(context).size.height * 0.75,
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
             ),
-          ],
-        ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: AppColors.textMuted.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Select Currency',
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  style: const TextStyle(color: Colors.black),
+                  onChanged: (val) {
+                    setState(() {
+                      searchQuery = val;
+                    });
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search currency code or name...',
+                    hintStyle: const TextStyle(color: AppColors.textMuted),
+                    prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textTertiary),
+                    filled: true,
+                    fillColor: AppColors.surfaceVariant,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Expanded(
+                  child: filtered.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No currencies found',
+                            style: TextStyle(color: AppColors.textTertiary, fontSize: 15),
+                          ),
+                        )
+                      : ListView.builder(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.only(bottom: 24),
+                          itemCount: filtered.length,
+                          itemBuilder: (context, index) {
+                            final c = filtered[index];
+                            final isSelected = (user.preferences['currency'] ?? 'USD') == c['code'];
+                            return ListTile(
+                              contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                              leading: Container(
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    c['flag']!,
+                                    style: const TextStyle(fontSize: 20),
+                                  ),
+                                ),
+                              ),
+                              title: Row(
+                                children: [
+                                  Text(
+                                    c['code']!,
+                                    style: TextStyle(
+                                      color: isSelected ? AppColors.primary : AppColors.textPrimary,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '(${c['symbol']})',
+                                    style: const TextStyle(
+                                      color: AppColors.textTertiary,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              subtitle: Text(
+                                c['name']!,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              trailing: isSelected ? const Icon(Icons.check_circle_rounded, color: AppColors.primary) : null,
+                              onTap: () {
+                                final newPrefs = Map<String, dynamic>.from(user.preferences);
+                                newPrefs['currency'] = c['code'];
+                                context.read<AuthBloc>().add(UpdateUserPreferences(newPrefs));
+                                Navigator.pop(context);
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }

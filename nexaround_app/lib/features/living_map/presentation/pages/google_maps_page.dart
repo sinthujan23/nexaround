@@ -58,13 +58,18 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   double _remainingDistanceM = 0;
   double _remainingDurationSec = 0;
 
-  // Current location label shown in the top bar (no search on this page).
+  // Current location label shown in the top bar.
   String _currentLocationName = 'Locating...';
 
-  // Destination (fixed — passed in from the Mapbox view)
+  // Destination
   late double _destLat;
   late double _destLng;
   String? _destName;
+
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
+  List<Map<String, dynamic>> _suggestions = [];
+  Timer? _debounceTimer;
 
   // Animation
   late AnimationController _fabAnimController;
@@ -76,6 +81,14 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     _destLat = widget.initialLat;
     _destLng = widget.initialLng;
     _destName = widget.destinationName;
+    _searchController = TextEditingController(text: widget.destinationName ?? '');
+    _searchController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _searchFocusNode = FocusNode();
+    _searchFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
 
     _fabAnimController = AnimationController(
       vsync: this,
@@ -91,6 +104,9 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   @override
   void dispose() {
+    _searchFocusNode.dispose();
+    _debounceTimer?.cancel();
+    _searchController.dispose();
     _navSub?.cancel();
     _compassSub?.cancel();
     _fabAnimController.dispose();
@@ -611,30 +627,33 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
             ),
 
           // ── Bottom card: route preview OR live-navigation bar ──
-          if (_isNavigating)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildNavBottomBar(bottomPad),
-            )
-          else if (_routeLoaded)
-            Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: _buildRouteCard(bottomPad),
-            ),
+          if (!_searchFocusNode.hasFocus) ...[
+            if (_isNavigating)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildNavBottomBar(bottomPad),
+              )
+            else if (_routeLoaded)
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: _buildRouteCard(bottomPad),
+              ),
+          ],
 
           // ── Right FAB Stack ──
-          Positioned(
-            right: 16,
-            bottom: (_isNavigating ? 190 : (_routeLoaded ? 210 : 80)) + bottomPad,
-            child: ScaleTransition(
-              scale: _fabAnim,
-              child: _buildFabStack(),
+          if (!_searchFocusNode.hasFocus)
+            Positioned(
+              right: 16,
+              bottom: (_isNavigating ? 190 : (_routeLoaded ? 210 : 80)) + bottomPad,
+              child: ScaleTransition(
+                scale: _fabAnim,
+                child: _buildFabStack(),
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -781,8 +800,105 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     );
   }
 
+  void _clearDestinationAndRoute() {
+    setState(() {
+      _destName = '';
+      _routeLoaded = false;
+      _polylines.clear();
+      _destLat = _userLat ?? widget.initialLat;
+      _destLng = _userLng ?? widget.initialLng;
+      _markers.removeWhere((m) => m.markerId.value == 'dest');
+    });
+  }
+
+  Future<void> _onSearchSubmitted(String query) async {
+    _searchFocusNode.unfocus();
+    if (query.trim().isEmpty) {
+      _clearDestinationAndRoute();
+      return;
+    }
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: _userLat ?? _destLat,
+        longitude: _userLng ?? _destLng,
+      );
+      if (results.isNotEmpty) {
+        final place = results.first;
+        setState(() {
+          _destLat = place.latitude;
+          _destLng = place.longitude;
+          _destName = place.name;
+          _searchController.text = place.name;
+        });
+        _addDestinationMarker();
+        await _fetchRoute();
+        _animateCameraToDestination();
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No results found for "$query"'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Google Maps Search error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error searching for location'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _onSearchTextChanged(String text) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (text.trim().isEmpty) {
+        setState(() => _suggestions = []);
+        return;
+      }
+      final suggestions = await GooglePlacesService.getAutocompleteSuggestions(
+        input: text,
+        latitude: _userLat ?? _destLat,
+        longitude: _userLng ?? _destLng,
+      );
+      if (mounted) {
+        setState(() => _suggestions = suggestions);
+      }
+    });
+  }
+
+  Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {
+    _searchFocusNode.unfocus();
+    setState(() {
+      _suggestions = [];
+      _routeLoaded = false;
+    });
+    final placeId = suggestion['place_id'] as String;
+    final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
+    if (placeDetails != null) {
+      setState(() {
+        _destLat = placeDetails.latitude;
+        _destLng = placeDetails.longitude;
+        _destName = placeDetails.name;
+        _searchController.text = placeDetails.name;
+      });
+      _addDestinationMarker();
+      await _fetchRoute();
+      _animateCameraToDestination();
+    }
+  }
+
   Widget _buildTopBar() {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Back button
         GestureDetector(
@@ -807,59 +923,120 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           ),
         ),
         const SizedBox(width: 10),
-        // Current location (no search on this page — matches the Mapbox view)
+        // Search bar
         Expanded(
-          child: Container(
-            height: 44,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(100),
-              border: Border.all(color: const Color(0x14000000)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.12),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                height: 44,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(100),
+                  border: Border.all(color: const Color(0x14000000)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.12),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.location_on_rounded,
-                    color: Color(0xFF4285F4), size: 18),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'CURRENT LOCATION',
-                        style: TextStyle(
-                          color: Color(0xFF5F6368),
-                          fontSize: 8,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      Text(
-                        _currentLocationName,
+                child: Row(
+                  children: [
+                    const Icon(Icons.search_rounded,
+                        color: Color(0xFF4285F4), size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _searchFocusNode,
+                        onChanged: _onSearchTextChanged,
                         style: const TextStyle(
                           color: Color(0xFF202124),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          height: 1.1,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        decoration: InputDecoration(
+                          hintText: 'Search location...',
+                          hintStyle: TextStyle(
+                            color: const Color(0xFF202124).withValues(alpha: 0.4),
+                            fontSize: 13,
+                          ),
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                          filled: false,
+                        ),
+                        textInputAction: TextInputAction.search,
+                        onSubmitted: _onSearchSubmitted,
+                      ),
+                    ),
+                    if (_searchController.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          _searchController.clear();
+                          setState(() => _suggestions = []);
+                          _clearDestinationAndRoute();
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Color(0xFF5F6368),
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (_suggestions.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 250),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0x14000000), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.15),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: _suggestions.length,
+                    itemBuilder: (context, index) {
+                      final item = _suggestions[index];
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.location_on_rounded, color: Color(0xFF4285F4), size: 16),
+                        title: Text(
+                          item['main_text'] ?? '',
+                          style: const TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        subtitle: Text(
+                          item['description'] ?? '',
+                          style: TextStyle(color: const Color(0xFF5F6368), fontSize: 11),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onTap: () => _onSuggestionTapped(item),
+                      );
+                    },
+                  ),
                 ),
               ],
-            ),
+            ],
           ),
         ),
         const SizedBox(width: 10),

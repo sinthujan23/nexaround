@@ -519,7 +519,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         _buildTopBar(),
         Positioned(
           right: 16,
-          bottom: 250,
+          bottom: 296,
           child: FloatingActionButton.small(
             heroTag: 'recenter',
             backgroundColor: Colors.white,

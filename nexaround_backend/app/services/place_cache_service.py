@@ -41,7 +41,10 @@ def _snap(value: float) -> str:
 
 def build_key(lat: float, lng: float, category: Optional[str], radius: int) -> str:
     cat = (category or "all").replace(" ", "_").replace("&", "and").lower()
-    return f"places:nearby:{_snap(lat)}:{_snap(lng)}:{cat}:r{radius}"
+    # The :v2 namespace invalidates pre-fix entries that were cached from
+    # unfiltered searches (e.g. banks stored under an unrecognized 'food'/
+    # 'shopping' label). Old keys simply expire on their own TTL.
+    return f"places:nearby:v2:{_snap(lat)}:{_snap(lng)}:{cat}:r{radius}"
 
 
 async def get_cached(key: str) -> Optional[list[dict]]:

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
+import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
+
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
 /// planner's result step and the saved-odyssey detail page.
@@ -279,7 +281,8 @@ class OdysseyPlanView extends StatelessWidget {
   }
 
   Widget _activityRow(int dayIndex, int activityIndex, OdysseyActivity act) {
-    final bool editable = onSwapActivity != null;
+    final bool isCompleted = odyssey.status == 'completed';
+    final bool editable = onSwapActivity != null && !isCompleted;
     final bool checkable = onToggleVisited != null;
     final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
     return Padding(
@@ -289,7 +292,7 @@ class OdysseyPlanView extends StatelessWidget {
         children: [
           if (checkable) ...[
             GestureDetector(
-              onTap: () => onToggleVisited!(dayIndex, activityIndex),
+              onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
               behavior: HitTestBehavior.opaque,
               child: Padding(
                 padding: const EdgeInsets.only(top: 1, right: 8),
@@ -348,8 +351,9 @@ class OdysseyPlanView extends StatelessWidget {
           ),
           if (act.cost.isNotEmpty) ...[
             const SizedBox(width: 8),
-            Text(
-              act.cost,
+            ConvertedCurrencyText(
+              rawText: act.cost,
+              originalCurrency: odyssey.currency,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,

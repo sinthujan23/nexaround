@@ -173,7 +173,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // the live fetch and the on-screen cull honor it so the user controls how far
   // out attractions / medical (and all categories) are shown.
   int _rangeKm = 10;
-  static const List<int> _rangeSteps = [2, 5, 10];
+  static const List<int> _rangeSteps = [5, 10];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -185,7 +185,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
+  /// Only these three categories expose the km range selector and react to it;
+  /// the rest are fixed at their 10 km max (no range button shown).
+  bool _categoryHasRange(String filter) =>
+      filter == 'Medical' || filter == 'Nature' || filter == 'Historical';
+
   int _maxRangeForCategory(String filter) {
+    // Only Historical, Medical and Nature reach far out (50 km); everything
+    // else (All / Food / Shopping / Hotels / Others) is capped at 10 km.
     if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
       return 50;
     }
@@ -193,10 +200,20 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   List<int> _rangeStepsForCategory(String filter) {
+    // Steps start at 5 km (2 km removed). Historical / Medical / Nature can be
+    // widened to 50 km; the rest stop at 10 km.
     if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
-      return const [2, 5, 10, 20, 50];
+      return const [5, 10, 20, 50];
     }
-    return const [2, 5, 10];
+    return const [5, 10];
+  }
+
+  /// Places to display for the selected range. 5 km stays light (~20); 10 km and
+  /// beyond show all the real places found (up to the AR marker ceiling) so the
+  /// view is rich and not artificially limited.
+  int _maxPlacesForRange(int km) {
+    if (km <= 5) return 20;
+    return _maxVisibleMarkers;
   }
 
   bool _matchesFilter(_ArLandmark lm, String filter) {
@@ -342,35 +359,95 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     'light_rail_station', 'airport', 'taxi_stand',
   };
 
+  // ── Strong NAME keywords per bucket. Used as a fallback/override when Google's
+  // types are sparse or generic (very common locally), so a place is classified
+  // by what it actually is — not just the query bucket it came from. Keep these
+  // specific to avoid false positives (e.g. no bare 'food'/'inn'/'garden'). ──
+  static const List<String> _medicalNameKw = [
+    'hospital', 'clinic', 'pharmacy', 'medical', 'dental', 'dentist',
+    'nursing home', 'dispensary', 'maternity', 'ayurved', 'healthcare',
+    'health centre', 'health center',
+  ];
+  static const List<String> _natureNameKw = [
+    'beach', 'waterfall', 'water fall', 'falls', 'river', 'lake', 'lagoon',
+    'reservoir', 'national park', 'forest', 'botanical', 'wildlife',
+    'sanctuary', 'nature reserve', 'mountain', 'hiking',
+  ];
+  static const List<String> _historicalNameKw = [
+    'temple', 'kovil', 'church', 'mosque', 'shrine', 'museum', 'fort',
+    'monument', 'heritage', 'historic', 'palace', 'ruins', 'stupa', 'dagoba',
+    'dagaba', 'vihara', 'monastery', 'ancient', 'cultural',
+  ];
+  static const List<String> _foodNameKw = [
+    'restaurant', 'cafe', 'café', 'bakery', 'bake house', 'grill', 'kitchen',
+    'diner', 'eatery', 'pizzeria', 'pizza', 'coffee', 'tea shop', 'biriyani',
+    'kottu', 'hoppers',
+  ];
+  static const List<String> _shoppingNameKw = [
+    'mall', 'supermarket', 'super market', 'food city', 'market', 'boutique',
+    'showroom', 'bazaar', 'emporium', 'shopping', 'store',
+  ];
+  static const List<String> _hotelNameKw = [
+    'hotel', 'resort', 'guest house', 'guesthouse', 'villa', 'lodge',
+    'rest house', 'bungalow', 'homestay', 'hostel',
+  ];
+
+  bool _nameHas(String name, List<String> kws) => kws.any((k) => name.contains(k));
+
   bool _isFoodType(String t) => _foodTypes.contains(t) || t.endsWith('_restaurant');
   bool _isShoppingType(String t) => _shoppingTypes.contains(t) || t.endsWith('_store');
 
-  /// Bucket a landmark into a single display category using its REAL Google
-  /// types first. A place only lands in a tourist bucket when its actual type
-  /// fits; otherwise it falls through to Others — so categories stay clean
-  /// (no colleges under Food, no banks under Historical, etc.).
+  /// Bucket a landmark into a single display category. We use the place's REAL
+  /// Google types first (authoritative), then fall back to strong NAME keywords
+  /// — essential locally where Google often returns only generic types. Priority
+  /// (safety & specificity): Medical → Nature → Historical → Food → Shopping →
+  /// Hotels → Others. Nature name-keywords intentionally beat a generic
+  /// `tourist_attraction` type so a waterfall/beach/river lands in Nature, not
+  /// History. Institutional/service places are routed to Others so they never
+  /// leak into a tourist filter.
   String _displayCategoryKey(_ArLandmark lm) {
     final types = lm.tags.map((t) => t.toLowerCase().trim()).toSet()
       ..removeWhere((t) => t.isEmpty);
+    final name = lm.name.toLowerCase();
 
-    // No real types (curated DB / older cache entries) → fall back to the
-    // legacy category-name keyword match so those still bucket sensibly.
-    if (types.isEmpty) return _legacyCategoryKey(lm);
+    bool typeIn(Set<String> s) => types.any((t) => s.contains(t));
+    bool nameKw(List<String> k) => _nameHas(name, k);
 
-    bool hasAny(Set<String> s) => types.any((t) => s.contains(t));
+    final isFoodType = types.any(_isFoodType);
+    final isShoppingType = types.any(_isShoppingType);
+    final isHotelType = typeIn(_hotelTypes);
 
-    // Medical wins outright (safety category, unambiguous types).
-    if (hasAny(_medicalTypes)) return 'hospital';
-    // Strong sightseeing / nature signals beat everything non-medical.
-    if (hasAny(_natureTypes)) return 'beach';
-    if (hasAny(_historicalTypes)) return 'historical';
-    // Institutional / service / transport → Others, BEFORE food/shopping/hotel
-    // so a college-with-a-cafe or a fuel-station-with-a-shop can't slip in.
-    if (hasAny(_excludedTypes)) return 'others';
-    if (types.any(_isFoodType)) return 'food';
-    if (types.any(_isShoppingType)) return 'shopping';
-    if (hasAny(_hotelTypes)) return 'hotel';
-    return 'others';
+    // ── 1) Decisive Google TYPES win — a place's real type beats any word in its
+    //       name, so "Lake View Restaurant" is Food and "Beach Hotel" is Hotel. ──
+    if (typeIn(_medicalTypes)) return 'hospital';
+    if (typeIn(_natureTypes)) return 'beach';
+    if (typeIn(_historicalTypes)) {
+      // The generic `tourist_attraction` type covers both heritage AND scenery,
+      // so refine it by name: a beach/falls/river/lake/mountain → Nature.
+      if (types.contains('tourist_attraction') && nameKw(_natureNameKw)) return 'beach';
+      return 'historical';
+    }
+    // Institutional / service / transport → Others, unless it genuinely also
+    // carries a food/shopping/hotel type (e.g. a real cafe beside a campus).
+    if (typeIn(_excludedTypes) && !isFoodType && !isShoppingType && !isHotelType) {
+      return 'others';
+    }
+    if (isFoodType) return 'food';
+    if (isShoppingType) return 'shopping';
+    if (isHotelType) return 'hotel';
+
+    // ── 2) No decisive type (Google gave only generic types, or none) → strong
+    //       NAME keywords. Commercial words are checked before scenery words so
+    //       "River Side Cafe" is Food while "Pasikuda Beach" is Nature. ──
+    if (nameKw(_medicalNameKw)) return 'hospital';
+    if (nameKw(_foodNameKw)) return 'food';
+    if (nameKw(_hotelNameKw)) return 'hotel';
+    if (nameKw(_shoppingNameKw)) return 'shopping';
+    if (nameKw(_natureNameKw)) return 'beach';
+    if (nameKw(_historicalNameKw)) return 'historical';
+
+    // Curated DB / sparse cache with neither types nor a keyword hit.
+    return _legacyCategoryKey(lm);
   }
 
   /// Fallback bucketing for places with no Google types (curated DB / cache),
@@ -1010,18 +1087,20 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
-  static const int _maxVisibleMarkers = 60;
+  // Upper bound on total places gathered/shown. Google returns max 20 per query
+  // (no pagination), so the app merges ~6 category queries across tiers to reach
+  // this many unique places. Kept generous so dense areas look populated and the
+  // count grows with range; only what fits the screen is drawn at once (the rest
+  // sit on the radar / appear as you pan).
+  static const int _maxVisibleMarkers = 100;
   // How many place cards are drawn on screen at once. Kept low so the vertically
   // stacked cards (see [_buildLandmarkMarker]) never overlap each other — the
   // most-centred places win the visible slots.
   static const int _maxVisibleOnScreen = 5;
-  // Search radii, widest-first fallback. Start at 1 km — that single tier already
-  // covers the close places too, so we skip the old 100/200/500 m micro-tiers and
-  // their extra API calls. We only expand to 2/5/10 km when 1 km comes back too
-  // sparse (see the early-break on [_minPlacesBeforeStop] in the fetch loop).
+  // Search radii, widest-first. We query each tier up to the user-selected range
+  // so the full radius is searched, stopping only once we've gathered enough to
+  // fill the AR view (see the cap in the fetch loop).
   static const List<int> _searchRadii = [1000, 2000, 5000, 10000];
-  // Once a radius tier has collected at least this many places, stop widening.
-  static const int _minPlacesBeforeStop = 12;
 
   void _loadCachedPlaces({geo.Position? position}) {
     try {
@@ -1079,11 +1158,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           }
         }
 
-        // Sort by distance
+        // Sort by distance, then cap to the same range-scaled count as the live
+        // fetch so the cached pre-fill matches (closest N for the radius).
         cachedLandmarks.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        final cappedCached = cachedLandmarks.take(_maxPlacesForRange(_rangeKm)).toList();
 
         setState(() {
-          _landmarks = cachedLandmarks;
+          _landmarks = cappedCached;
           if (_currentPosition == null) {
             _currentPosition = pos;
           }
@@ -1151,14 +1232,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       ];
 
       for (final radius in activeRadii) {
-        // Capping categories: only Attractions (Historical) and Medical can go beyond 10km (10000m).
-        // Food, Shopping, Hotels, and 'null' (All) are capped at 10km.
-        final currentCategories = categoriesToFetch.where((cat) {
-          if (radius > 10000) {
-            return cat == 'Attractions' || cat == 'Medical';
-          }
-          return true;
-        }).toList();
+        // Beyond 10 km only the far-reaching categories are worth querying
+        // (Historical → Attractions, and Medical); Nature/beaches are covered
+        // by the dedicated Beach query below. Saves API cost on Food/Shopping.
+        final currentCategories = radius > 10000
+            ? categoriesToFetch.where((c) => c == 'Attractions' || c == 'Medical').toList()
+            : categoriesToFetch;
 
         if (currentCategories.isEmpty) continue;
 
@@ -1212,9 +1291,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
 
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
-        // 1 km first; only widen to the next tier when this one came back sparse.
-        if (collected.length >= _minPlacesBeforeStop) {
-          debugPrint('📍 AR: Found ${collected.length} places (>= $_minPlacesBeforeStop) at $radius m. Stopping radius expansion to save API cost.');
+        // Stop widening once we have enough for the selected range's display
+        // cap — keeps small ranges cheap and lets larger ranges gather more.
+        if (collected.length >= _maxPlacesForRange(_rangeKm)) {
+          debugPrint('📍 AR: Reached ${collected.length} places at $radius m for ${_rangeKm}km; stopping.');
           break;
         }
       }
@@ -1347,14 +1427,16 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         // Sort non-beaches by distance and truncate
         nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
         
-        final maxNonBeaches = _maxVisibleMarkers - uniqueDirectionBeaches.length;
-        final truncatedNonBeaches = nonBeaches.take(maxNonBeaches > 40 ? maxNonBeaches : 40).toList();
-        
-        // Combine them and sort the final list by distance
-        final finalCollected = [...truncatedNonBeaches, ...uniqueDirectionBeaches];
-        finalCollected.sort((a, b) => a.distanceM.compareTo(b.distanceM));
-        
-        collected = finalCollected;
+        // Combine beaches + non-beaches, keep only those within the selected
+        // range, sort by distance, then show the CLOSEST N where N scales with
+        // the range — so 2 km feels light and 50 km full (a clean, viable count).
+        final int rangeCap = _maxPlacesForRange(_rangeKm);
+        final finalCollected = [...nonBeaches, ...uniqueDirectionBeaches]
+            .where((l) => l.distanceM <= _rangeKm * 1000)
+            .toList()
+          ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+        collected = finalCollected.take(rangeCap).toList();
 
         if (mounted) {
           setState(() {
@@ -2400,9 +2482,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                       letterSpacing: 2,
                     ),
                   ),
-                  const SizedBox(width: 18),
-                  // ── KM RANGE CYCLE CIRCLE (beside AR LIVE) ──
-                  _buildKmRangePicker(),
+                  // ── KM RANGE CYCLE CIRCLE — only for range-enabled categories
+                  // (Historical / Medical / Nature); hidden for the rest. ──
+                  if (_categoryHasRange(_selectedFilter)) ...[
+                    const SizedBox(width: 18),
+                    _buildKmRangePicker(),
+                  ],
                   const Spacer(),
                   // Combined XP + Compass pill
                   ClipRRect(
@@ -2777,13 +2862,23 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
               return GestureDetector(
                 onTap: () {
+                  final prevRange = _rangeKm;
                   setState(() {
                     _selectedFilter = id;
                     final maxKm = _maxRangeForCategory(id);
-                    if (_rangeKm > maxKm) {
+                    if (!_categoryHasRange(id)) {
+                      // Non-range categories are fixed at their 10 km max.
+                      _rangeKm = maxKm;
+                    } else if (_rangeKm > maxKm) {
                       _rangeKm = maxKm;
                     }
                   });
+                  // Re-fetch only if the effective range actually changed.
+                  if (_rangeKm != prevRange) {
+                    _capCache.clear();
+                    _lastFetchTime = null;
+                    _fetchLivePlaces();
+                  }
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
@@ -3041,7 +3136,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     // and push the first card slightly higher for a cleaner look.
     final double topStart = MediaQuery.of(context).padding.top + 160;
     const double rowHeight = 104.0;
-    const double cardW = 170.0;
+    const double cardW = 120.0;
 
     double topPos = topStart + (currentSlot * rowHeight);
     double leftPos = (screenW * dx) - (cardW / 2);
@@ -3111,15 +3206,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   ),
                   child: Row(
                     children: [
-                      // Thumbnail image
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: SizedBox(
-                          width: 40, height: 40,
-                          child: _buildMarkerImage(landmark),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
                       // Rating + Distance
                       Expanded(
                         child: Column(
@@ -3362,7 +3448,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
     const double topY = 185.0; // Adjusted from 140.0 to prevent overlapping with the top category selection bar
     final double bottomY = screenH * 0.55;
-    const double cardW = 165;
+    const double cardW = 125;
     const double cardH = 60;
     const double gap = 8;
 
@@ -3477,17 +3563,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   ),
                   child: Row(
                     children: [
-                      // Thumbnail
-                      PlaceImageHelper.buildPlaceImage(
-                        imagePath: lm.imagePath,
-                        category: lm.category,
-                        name: lm.name,
-                        width: 46,
-                        height: 46,
-                        fit: BoxFit.cover,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      const SizedBox(width: 6),
                       // Name / rating / distance
                       Expanded(
                         child: Column(
@@ -3529,24 +3604,41 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // ── SMALL WHITE DIRECTION BADGE (no arrow) ──
+                      // ── DIRECTION BADGE — cyan/blue chip with arrow + cardinal ──
                       Container(
-                        width: 28,
-                        height: 28,
+                        width: 30,
+                        height: 30,
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Center(
-                          child: Text(
-                            cardinal,
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.3,
-                            ),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF00E5FF), Color(0xFF2E9BFF)],
                           ),
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF00E5FF).withOpacity(0.45),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(arrowIcon, size: 11, color: Colors.white),
+                            Text(
+                              cardinal,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.3,
+                                height: 1.0,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -4525,7 +4617,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: GestureDetector(
-            onTap: () => HomePage.homeKey.currentState?.switchToNeva('Tell me more about $name'),
+            onTap: () => _openAskNevaForResult(result),
             child: Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 13),
@@ -4776,9 +4868,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           child: GestureDetector(
             onTap: () {
               if (_arDiscoveryResult != null) {
-                HomePage.homeKey.currentState?.switchToNeva(
-                  'Tell me more about ${_arDiscoveryResult!['name']}',
-                );
+                _openAskNevaForResult(_arDiscoveryResult!);
               }
             },
             child: Container(
@@ -4974,15 +5064,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       return Icons.place_rounded;
     }
   }
-
-  Widget _buildMarkerImage(_ArLandmark landmark) {
-    return PlaceImageHelper.buildPlaceImage(
-      imagePath: landmark.imagePath, 
-      category: landmark.category, 
-      name: landmark.name,
-    );
-  }
-
 
   Widget _buildMetaBadge(IconData icon, String text, Color color) {
     return Row(
@@ -5214,7 +5295,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                       icon: Icons.restaurant_rounded,
                                       label: 'FOOD',
                                       color: Colors.redAccent,
-                                      categoryId: 'food',
+                                      categoryId: 'Food & Drink',
                                       prettyLabel: 'Food',
                                     ),
                                     _buildNearbyTile(
@@ -5222,7 +5303,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                       icon: Icons.shopping_bag_rounded,
                                       label: 'SHOP',
                                       color: Colors.greenAccent.shade700,
-                                      categoryId: 'shopping',
+                                      categoryId: 'Shopping',
                                       prettyLabel: 'Shopping',
                                     ),
                                   ],
@@ -5236,7 +5317,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                       icon: Icons.account_balance_rounded,
                                       label: 'HISTORY',
                                       color: Colors.blueAccent,
-                                      categoryId: 'historical',
+                                      categoryId: 'Attractions',
                                       prettyLabel: 'Historical Sites',
                                     ),
                                     _buildNearbyTile(
@@ -5244,7 +5325,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                       icon: Icons.hotel_rounded,
                                       label: 'HOTELS',
                                       color: Colors.purpleAccent,
-                                      categoryId: 'hotel',
+                                      categoryId: 'Hotels',
                                       prettyLabel: 'Hotels',
                                     ),
                                   ],
@@ -5487,6 +5568,61 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Builds a concise, natural-sounding question (reads well as a chat bubble)
+  /// that still carries the key facts, so Neva returns genuinely useful details
+  /// about THIS place instead of a thin "tell me more about X".
+  String _askNevaPromptFor(Map<String, dynamic> result) {
+    final name = (result['name'] ?? 'this place').toString();
+    final category = (result['category'] ?? 'place').toString().toLowerCase();
+    final distance = (result['distance'] ?? 'nearby').toString();
+
+    final extras = <String>[];
+    void add(dynamic value) {
+      final v = value?.toString().trim() ?? '';
+      if (v.isNotEmpty) extras.add(v);
+    }
+
+    add(result['tagline']);
+    add(result['hidden_history']);
+    add(result['surprising_fact']);
+    add(result['insider_tip']);
+    final extraNote =
+        extras.isEmpty ? '' : ' Things I\'ve already heard: ${extras.join('; ')}.';
+
+    return 'Tell me the important things about "$name" — it\'s a $category spot about '
+        '$distance from me right now. What\'s it known for, is it worth a stop, '
+        'and any quick tip?$extraNote';
+  }
+
+  /// Minimal place context (name + coordinates) so the Neva chat is
+  /// geographically grounded and can offer the "nearby" category chips.
+  Map<String, dynamic>? _placeContextFrom(Map<String, dynamic> result) {
+    final lat = result['latitude'] ?? _currentPosition?.latitude;
+    final lng = result['longitude'] ?? _currentPosition?.longitude;
+    if (lat is! num || lng is! num) return null;
+    return {
+      'name': result['name'] ?? 'this place',
+      'category': result['category'] ?? 'Place',
+      'latitude': lat,
+      'longitude': lng,
+    };
+  }
+
+  /// Opens Neva for an AR discovery result. Uses Navigator.push (a fresh page
+  /// whose initState reliably sends the prompt) — the same proven path the
+  /// NEARBY tiles use, instead of the flaky IndexedStack tab-switch.
+  void _openAskNevaForResult(Map<String, dynamic> result) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AiChatPage(
+          initialPrompt: _askNevaPromptFor(result),
+          placeContext: _placeContextFrom(result),
+        ),
       ),
     );
   }

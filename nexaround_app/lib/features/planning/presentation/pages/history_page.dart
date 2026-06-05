@@ -5,6 +5,7 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
+import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 /// Read-back of everything the traveler has finished: completed Odyssey trips
 /// (status == 'completed', pulled from the backend) and completed Mini Tours
@@ -26,6 +27,12 @@ class _HistoryPageState extends State<HistoryPage> {
   @override
   void initState() {
     super.initState();
+    // Render the last cached list instantly; the network refresh updates it.
+    final cached = _repo.getCachedOdysseys();
+    _completedTrips = cached.where((o) => o.status == 'completed').toList();
+    _miniTours = CacheService.getMiniTourHistory();
+    _loading = _completedTrips.isEmpty && _miniTours.isEmpty;
+    
     _load();
     OdysseyRepository.revision.addListener(_load);
     CacheService.historyNotifier.addListener(_onHistoryChanged);
@@ -249,14 +256,13 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    o.destination.isNotEmpty
-                        ? '${o.destination} · ${o.statsLabel}'
-                        : o.statsLabel,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12.5, color: Colors.black54),
+                  ConvertedCurrencyText(
+                    amount: o.budget,
+                    originalCurrency: o.currency,
+                    prefix: o.destination.isNotEmpty
+                        ? '${o.destination} · ${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '
+                        : '${o.days} ${o.days == 1 ? 'Day' : 'Days'} · ',
+                    style: const TextStyle(fontSize: 12.5, color: Colors.black54),
                   ),
                 ],
               ),

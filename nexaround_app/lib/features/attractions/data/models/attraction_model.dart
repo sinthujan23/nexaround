@@ -70,8 +70,14 @@ class AttractionModel extends AttractionEntity {
       currency: json['currency'] as String? ?? 'USD',
       rating: (json['rating'] as num? ?? 0.0).toDouble(),
       reviewCount: json['review_count'] as int? ?? 0,
-      photoUrls: (json['photo_urls'] as List<dynamic>?)?.cast<String>() ?? [],
-      tags: (json['tags'] as List<dynamic>?)?.cast<String>() ?? [],
+      photoUrls: (json['photo_urls'] as List<dynamic>?)
+          ?.where((e) => e != null)
+          .map((e) => e.toString())
+          .toList() ?? [],
+      tags: (json['tags'] as List<dynamic>?)
+          ?.where((e) => e != null)
+          .map((e) => e.toString())
+          .toList() ?? [],
       geofenceRadiusM: json['geofence_radius_m'] as int? ?? 100,
       distanceM: json['distance_m'] != null ? (json['distance_m'] as num).toDouble() : null,
       isActive: json['is_active'] as bool? ?? true,

@@ -80,7 +80,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   // Destination can be overridden (e.g. when navigating to a tapped place).
   String? _destinationNameOverride;
 
-  String? get _destinationName => _destinationNameOverride ?? widget.destinationName;
+  String? get _destinationName {
+    if (_destinationNameOverride == '') return null;
+    return _destinationNameOverride ?? widget.destinationName;
+  }
+
+  late final TextEditingController _searchController;
+  late final FocusNode _searchFocusNode;
+  List<Map<String, dynamic>> _suggestions = [];
+  Timer? _debounceTimer;
 
   // Animation
   late AnimationController _pulseController;
@@ -100,6 +108,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     super.initState();
     _destLat = widget.initialLat;
     _destLng = widget.initialLng;
+    _searchController = TextEditingController(text: widget.destinationName ?? '');
+    _searchController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _searchFocusNode = FocusNode();
+    _searchFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
+
     if (widget.initialCategory != null) {
       _selectedCategory = widget.initialCategory!;
       if (!_categories.contains(_selectedCategory) && _selectedCategory != 'Transport') {
@@ -126,6 +143,9 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   @override
   void dispose() {
+    _searchFocusNode.dispose();
+    _debounceTimer?.cancel();
+    _searchController.dispose();
     _compassSub?.cancel();
     _pulseController.dispose();
     _alertController.dispose();
@@ -944,8 +964,18 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   }
 
   // ─── Fly to a specific place ───
-  void _flyToPlace(AttractionModel place, int index) {
-    setState(() => _selectedCardIndex = index);
+  Future<void> _flyToPlace(AttractionModel place, int index) async {
+    setState(() {
+      _selectedCardIndex = index;
+      _destLat = place.latitude;
+      _destLng = place.longitude;
+      _destinationNameOverride = place.name;
+      _searchController.text = place.name;
+    });
+
+    await _fetchRoute();
+    _addMarkers();
+
     _mapboxMap?.flyTo(
       mapbox.CameraOptions(
         center: mapbox.Point(
@@ -1024,8 +1054,13 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             top: MediaQuery.of(context).padding.top + 20,
             left: 20,
             right: 20,
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
                   child: Container(
@@ -1090,6 +1125,9 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                     ),
                   ),
                 ),
+                  ],
+                ),
+                _buildSuggestions(),
               ],
             ),
           ),
@@ -1289,7 +1327,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
 
           // ── Discovery Place Cards ──
-          if (hasCards)
+          if (hasCards && !_searchFocusNode.hasFocus)
             Positioned(
               bottom: navCardHeight + bottomPad + 8,
               left: 0,
@@ -1307,7 +1345,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
 
           // ── Navigation Info Card ──
-          if (_routeLoaded)
+          if (_routeLoaded && !_searchFocusNode.hasFocus)
             Positioned(
               bottom: 0,
               left: 0,
@@ -1318,71 +1356,72 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
 
           // ── Right side buttons (uniform 52px circles, evenly spaced) ──
-          Positioned(
-            bottom: bottomOffset,
-            right: 20,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // While actively navigating, the top turn-by-turn banner is
-                // shown — hide the browse-only controls so the stack stays low
-                // and never overlaps that banner. Keep only Recenter + Stop.
-                if (!_isActivelyNavigating) ...[
-                  // Auto Tour
-                  _buildCircleButton(
-                    icon: _isAutoTouring ? Icons.stop_rounded : Icons.explore_rounded,
-                    onTap: _isAutoTouring ? () => setState(() => _isAutoTouring = false) : _startAutoTour,
-                    bgColor: _isAutoTouring ? Colors.red : const Color(0xFF7C4DFF),
-                    iconColor: Colors.white,
-                    glow: true,
-                  ),
-                  const SizedBox(height: 12),
-                  // Map Style Toggle (icon-only so the column stays aligned)
-                  _buildCircleButton(
-                    icon: _styleIcons[_styleIndex],
-                    onTap: _toggleMapStyle,
-                    bgColor: Colors.black.withValues(alpha: 0.7),
-                    iconColor: Colors.white,
-                  ),
-                  const SizedBox(height: 12),
-                  // Fit Route
-                  if (_routeLoaded) ...[
+          if (!_searchFocusNode.hasFocus)
+            Positioned(
+              bottom: bottomOffset,
+              right: 20,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // While actively navigating, the top turn-by-turn banner is
+                  // shown — hide the browse-only controls so the stack stays low
+                  // and never overlaps that banner. Keep only Recenter + Stop.
+                  if (!_isActivelyNavigating) ...[
+                    // Auto Tour
                     _buildCircleButton(
-                      icon: Icons.route_rounded,
-                      onTap: _fitRouteBounds,
-                      bgColor: Colors.black.withValues(alpha: 0.7),
-                      iconColor: const Color(0xFF00E5FF),
+                      icon: _isAutoTouring ? Icons.stop_rounded : Icons.explore_rounded,
+                      onTap: _isAutoTouring ? () => setState(() => _isAutoTouring = false) : _startAutoTour,
+                      bgColor: _isAutoTouring ? Colors.red : const Color(0xFF7C4DFF),
+                      iconColor: Colors.white,
+                      glow: true,
                     ),
                     const SizedBox(height: 12),
+                    // Map Style Toggle (icon-only so the column stays aligned)
+                    _buildCircleButton(
+                      icon: _styleIcons[_styleIndex],
+                      onTap: _toggleMapStyle,
+                      bgColor: Colors.black.withValues(alpha: 0.7),
+                      iconColor: Colors.white,
+                    ),
+                    const SizedBox(height: 12),
+                    // Fit Route
+                    if (_routeLoaded) ...[
+                      _buildCircleButton(
+                        icon: Icons.route_rounded,
+                        onTap: _fitRouteBounds,
+                        bgColor: Colors.black.withValues(alpha: 0.7),
+                        iconColor: const Color(0xFF00E5FF),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                   ],
+                  // Recenter — just shows where I am (north-up overview)
+                  _buildCircleButton(
+                    icon: Icons.my_location_rounded,
+                    onTap: _recenterOnUser,
+                    bgColor: Colors.black.withValues(alpha: 0.7),
+                    iconColor: const Color(0xFF00E5FF),
+                  ),
+                  const SizedBox(height: 12),
+                  // Navigate — 3D follow mode; puck becomes a car/person by travel mode.
+                  // Tap again to stop following.
+                  _buildCircleButton(
+                    icon: _isActivelyNavigating
+                        ? Icons.close_rounded
+                        : Icons.navigation_rounded,
+                    onTap: _isActivelyNavigating
+                        ? _exitFollowNavigation
+                        : _enterFollowNavigation,
+                    bgColor: _isActivelyNavigating
+                        ? Colors.red
+                        : const Color(0xFF00E5FF),
+                    iconColor:
+                        _isActivelyNavigating ? Colors.white : Colors.black,
+                    glow: true,
+                  ),
                 ],
-                // Recenter — just shows where I am (north-up overview)
-                _buildCircleButton(
-                  icon: Icons.my_location_rounded,
-                  onTap: _recenterOnUser,
-                  bgColor: Colors.black.withValues(alpha: 0.7),
-                  iconColor: const Color(0xFF00E5FF),
-                ),
-                const SizedBox(height: 12),
-                // Navigate — 3D follow mode; puck becomes a car/person by travel mode.
-                // Tap again to stop following.
-                _buildCircleButton(
-                  icon: _isActivelyNavigating
-                      ? Icons.close_rounded
-                      : Icons.navigation_rounded,
-                  onTap: _isActivelyNavigating
-                      ? _exitFollowNavigation
-                      : _enterFollowNavigation,
-                  bgColor: _isActivelyNavigating
-                      ? Colors.red
-                      : const Color(0xFF00E5FF),
-                  iconColor:
-                      _isActivelyNavigating ? Colors.white : Colors.black,
-                  glow: true,
-                ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -1785,59 +1824,237 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
   }
 
-  // Top bar shows the user's CURRENT LOCATION only (no search) — per client
-  // request. It's a clean, non-editable pill so it can't be mistaken for an
-  // empty search box.
-  Widget _buildSearchBar() {
-    return Container(
-      height: 44,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.75),
-        borderRadius: BorderRadius.circular(100),
-        border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+  Future<void> _clearDestinationAndRoute() async {
+    setState(() {
+      _destinationNameOverride = '';
+      _routeLoaded = false;
+      _routeCoordinates = [];
+      _destLat = _userLat ?? widget.initialLat;
+      _destLng = _userLng ?? widget.initialLng;
+      _isLoading = true;
+    });
+
+    try {
+      if (_mapboxMap != null) {
+        final layerExists = await _mapboxMap!.style.styleLayerExists('route-line');
+        if (layerExists) await _mapboxMap!.style.removeStyleLayer('route-line');
+        final glowExists = await _mapboxMap!.style.styleLayerExists('route-glow');
+        if (glowExists) await _mapboxMap!.style.removeStyleLayer('route-glow');
+        final srcExists = await _mapboxMap!.style.styleSourceExists('route-source');
+        if (srcExists) await _mapboxMap!.style.removeStyleSource('route-source');
+      }
+    } catch (e) {
+      debugPrint('Error clearing route: $e');
+    }
+
+    await _fetchPlaces();
+  }
+
+  Future<void> _onSearchSubmitted(String query) async {
+    _searchFocusNode.unfocus();
+    if (query.trim().isEmpty) {
+      await _clearDestinationAndRoute();
+      return;
+    }
+    setState(() => _isLoading = true);
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: _userLat ?? _destLat,
+        longitude: _userLng ?? _destLng,
+      );
+      if (results.isNotEmpty) {
+        final place = results.first;
+        setState(() {
+          _destLat = place.latitude;
+          _destLng = place.longitude;
+          _destinationNameOverride = place.name;
+          _searchController.text = place.name;
+          _places = [];
+        });
+        await _fetchRoute();
+        _fitRouteBounds();
+        _addMarkers();
+      } else {
+        setState(() => _isLoading = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No results found for "$query"'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Search error: $e');
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error searching for location'),
+            backgroundColor: Colors.redAccent,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.location_on_rounded, color: Color(0xFF00E5FF), size: 18),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'CURRENT LOCATION',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
-                ),
-                Text(
-                  _currentNeighborhood,
+        );
+      }
+    }
+  }
+
+  void _onSearchTextChanged(String text) {
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (text.trim().isEmpty) {
+        setState(() => _suggestions = []);
+        return;
+      }
+      final suggestions = await GooglePlacesService.getAutocompleteSuggestions(
+        input: text,
+        latitude: _userLat ?? _destLat,
+        longitude: _userLng ?? _destLng,
+      );
+      if (mounted) {
+        setState(() => _suggestions = suggestions);
+      }
+    });
+  }
+
+  Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {
+    _searchFocusNode.unfocus();
+    setState(() {
+      _suggestions = [];
+      _isLoading = true;
+    });
+    final placeId = suggestion['place_id'] as String;
+    final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
+    if (placeDetails != null) {
+      setState(() {
+        _destLat = placeDetails.latitude;
+        _destLng = placeDetails.longitude;
+        _destinationNameOverride = placeDetails.name;
+        _searchController.text = placeDetails.name;
+        _places = [];
+      });
+      await _fetchRoute();
+      _fitRouteBounds();
+      _addMarkers();
+    } else {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Widget _buildSearchBar() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          height: 44,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.75),
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onChanged: _onSearchTextChanged,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    height: 1.1,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  decoration: InputDecoration(
+                    hintText: 'Search location...',
+                    hintStyle: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 13,
+                    ),
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    filled: false,
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: _onSearchSubmitted,
                 ),
-              ],
-            ),
+              ),
+              if (_searchController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    _searchController.clear();
+                    setState(() => _suggestions = []);
+                    _clearDestinationAndRoute();
+                  },
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 4),
+                    child: Icon(
+                      Icons.close_rounded,
+                      color: Colors.white54,
+                      size: 16,
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+
+  /// Autocomplete dropdown — rendered full-width BELOW the whole search row (not
+  /// inside the narrow search field), so long place names show clearly on one
+  /// line instead of wrapping.
+  Widget _buildSuggestions() {
+    if (_suggestions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Container(
+        constraints: const BoxConstraints(maxHeight: 250),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.85),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 1),
+        ),
+        child: ListView.builder(
+          shrinkWrap: true,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          itemCount: _suggestions.length,
+          itemBuilder: (context, index) {
+            final item = _suggestions[index];
+            return ListTile(
+              dense: true,
+              leading: const Icon(Icons.location_on_rounded, color: Color(0xFF00E5FF), size: 16),
+              title: Text(
+                item['main_text'] ?? '',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                item['description'] ?? '',
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onTap: () => _onSuggestionTapped(item),
+            );
+          },
+        ),
       ),
     );
   }

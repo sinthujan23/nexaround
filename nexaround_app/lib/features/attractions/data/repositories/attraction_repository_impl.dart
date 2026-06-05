@@ -19,6 +19,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     String? categoryName,
     int limit = 50,
     String sort = 'proximity',
+    bool useLegacy = false,
   }) async {
     try {
       final results = await _remoteDatasource.getNearbyAttractions(
@@ -29,6 +30,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
         categoryName: categoryName,
         limit: limit,
         sort: sort,
+        useLegacy: useLegacy,
       );
       return Right(results);
     } on DioException catch (e) {

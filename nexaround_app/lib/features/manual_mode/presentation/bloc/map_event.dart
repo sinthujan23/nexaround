@@ -14,6 +14,7 @@ class FetchNearbyAttractions extends MapEvent {
   final double radius;
   final String? categoryId;
   final String? categoryName;
+  final bool useLegacy;
 
   const FetchNearbyAttractions({
     required this.latitude,
@@ -21,10 +22,11 @@ class FetchNearbyAttractions extends MapEvent {
     this.radius = 50000.0,
     this.categoryId,
     this.categoryName,
+    this.useLegacy = false,
   });
 
   @override
-  List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName];
+  List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName, useLegacy];
 }
 
 class FetchCategories extends MapEvent {

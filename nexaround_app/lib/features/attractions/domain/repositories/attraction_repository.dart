@@ -11,6 +11,7 @@ abstract class AttractionRepository {
     String? categoryName,
     int limit,
     String sort,
+    bool useLegacy = false,
   });
 
   Future<Either<Failure, List<CategoryEntity>>> getCategories();

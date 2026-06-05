@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -24,6 +25,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
+import 'package:nexaround_app/features/food_radar/presentation/pages/discover_page.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'dart:async';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
@@ -201,6 +203,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         context.read<MapBloc>().add(FetchNearbyAttractions(
           latitude: position.latitude,
           longitude: position.longitude,
+          useLegacy: true,
         ));
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
@@ -222,6 +225,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       context.read<MapBloc>().add(FetchNearbyAttractions(
         latitude: 6.9271,
         longitude: 79.8612,
+        useLegacy: true,
       ));
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
@@ -259,6 +263,14 @@ class _LivingMapPageState extends State<LivingMapPage>
         setState(() => _loadingMiniTour = false);
       }
     }
+  }
+
+  int _getDiscoverTabIndex(String category) {
+    final cat = category.toLowerCase();
+    if (cat.contains('food')) return 0;
+    if (cat.contains('attraction') || cat.contains('experience')) return 1;
+    if (cat.contains('shop')) return 2;
+    return 0; // Default to food
   }
 
   @override
@@ -387,7 +399,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader('✨  Nearby Places', 'Explore'),
+                            child: _buildSectionHeader('✨  Nearby Places', null),
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
@@ -396,7 +408,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                     List<AttractionEntity> trendingPlaces = [];
                     if (_selectedCategory != 'All') {
-                      trendingPlaces = state.attractions.take(5).toList();
+                      trendingPlaces = state.attractions.take(10).toList();
                     } else {
                       final Map<String, AttractionEntity> categoryMap = {};
                       for (var place in state.attractions) {
@@ -421,19 +433,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                               '🔥  Trending Near You', 
                               'See all',
                               onTap: () {
-                                if (_userLatitude != null && _userLongitude != null) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => SmartTourismMapPage(
-                                        initialLat: _userLatitude!,
-                                        initialLng: _userLongitude!,
-                                        destinationName: _currentLocationName,
-                                        initialCategory: _selectedCategory,
-                                      ),
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => DiscoverPage(
+                                      initialTab: _getDiscoverTabIndex(_selectedCategory),
                                     ),
-                                  );
-                                }
+                                  ),
+                                );
                               },
                             ),
                           ),
@@ -448,22 +455,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
                               '✨  Nearby Places', 
-                              'Explore',
-                              onTap: () {
-                                if (_userLatitude != null && _userLongitude != null) {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => SmartTourismMapPage(
-                                        initialLat: _userLatitude!,
-                                        initialLng: _userLongitude!,
-                                        destinationName: _currentLocationName,
-                                        initialCategory: _selectedCategory,
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
+                              null,
                             ),
                           ),
                         ),
@@ -1301,6 +1293,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   longitude: position.longitude,
                   categoryId: catId,
                   categoryName: catName == 'All' ? null : catName,
+                  useLegacy: true,
                 ));
               }
             },
@@ -1335,7 +1328,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildSectionHeader(String title, String action, {VoidCallback? onTap}) {
+  Widget _buildSectionHeader(String title, String? action, {VoidCallback? onTap}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1347,22 +1340,23 @@ class _LivingMapPageState extends State<LivingMapPage>
             color: AppColors.textPrimary,
           ),
         ),
-        GestureDetector(
-          onTap: onTap ?? () {},
-          child: ShaderMask(
-            shaderCallback: (b) => AppColors.primaryGradient.createShader(
-              Rect.fromLTWH(0, 0, b.width, b.height),
-            ),
-            child: Text(
-              action,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+        if (action != null && action.isNotEmpty)
+          GestureDetector(
+            onTap: onTap ?? () {},
+            child: ShaderMask(
+              shaderCallback: (b) => AppColors.primaryGradient.createShader(
+                Rect.fromLTWH(0, 0, b.width, b.height),
+              ),
+              child: Text(
+                action,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -1373,7 +1367,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: min(attractions.length, 5),
+        itemCount: min(attractions.length, 10),
         itemBuilder: (context, index) {
           final p = attractions[index];
           return _buildPlaceCard(p, index);
@@ -1454,14 +1448,25 @@ class _LivingMapPageState extends State<LivingMapPage>
             Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24),
-                image: DecorationImage(
-                  image: _getImageProvider(
-                  place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                  place.categoryName ?? 'Attraction',
-                  place.name,
-                ),
-                  fit: BoxFit.cover,
-                ),
+                image: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
+                    ? DecorationImage(
+                        image: _getNetworkImageProvider(place.photoUrls.first)!,
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+                gradient: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
+                    ? null
+                    : LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          AppColors.surfaceVariant.withOpacity(0.95),
+                          AppColors.surface.withOpacity(0.7),
+                        ],
+                      ),
+                border: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
+                    ? null
+                    : Border.all(color: AppColors.border.withOpacity(0.5)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.2),
@@ -1473,15 +1478,24 @@ class _LivingMapPageState extends State<LivingMapPage>
               child: Container(
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(24),
-                  gradient: LinearGradient(
-                    begin: Alignment.bottomCenter,
-                    end: Alignment.topCenter,
-                    colors: [
-                      Colors.black.withOpacity(0.9),
-                      Colors.black.withOpacity(0.3),
-                      Colors.transparent,
-                    ],
-                  ),
+                  gradient: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
+                      ? LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.9),
+                            Colors.black.withOpacity(0.3),
+                            Colors.transparent,
+                          ],
+                        )
+                      : LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.35),
+                            Colors.transparent,
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -1620,7 +1634,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(16),
-              child: place.photoUrls.isNotEmpty
+              child: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
                   ? CachedNetworkImage(
                       imageUrl: place.photoUrls.first,
                       width: 52,
@@ -1898,6 +1912,20 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   ImageProvider _getImageProvider(String? url, String category, String name) {
     return PlaceImageHelper.getImageProvider(url, category, name);
+  }
+
+  ImageProvider? _getNetworkImageProvider(String? url) {
+    if (url == null || url.isEmpty || url == 'null') return null;
+    String resolvedUrl = url;
+    if (resolvedUrl.startsWith('/')) {
+      resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
+    }
+    return CachedNetworkImageProvider(resolvedUrl);
+  }
+
+  bool _shouldShowImageForPlace(AttractionEntity place) {
+    final cat = (place.categoryName ?? '').toLowerCase();
+    return cat.contains('attraction') || cat.contains('food') || cat.contains('restaurant') || cat.contains('cafe') || cat.contains('dining') || cat.contains('meal');
   }
 
   Widget _buildEmojiThumbnail(String? category) {

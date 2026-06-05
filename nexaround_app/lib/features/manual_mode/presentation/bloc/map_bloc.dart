@@ -103,6 +103,30 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // If we don't have all categories loaded yet, perform a complete batch fetch first.
     // Check status to prevent infinite loading loops if the API returns an empty list.
     if (state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty) {
+      // Check proximity cache first (within 1km) to skip network requests entirely and reduce cost
+      final lastLat = CacheService.getLastFetchLat();
+      final lastLng = CacheService.getLastFetchLng();
+      if (lastLat != null && lastLng != null) {
+        final double distM = geo.Geolocator.distanceBetween(
+          event.latitude,
+          event.longitude,
+          lastLat,
+          lastLng,
+        );
+        if (distM < 1000) {
+          final cachedModels = _getFilteredCache(event.latitude, event.longitude);
+          if (cachedModels.isNotEmpty) {
+            emit(state.copyWith(
+              status: MapStatus.success,
+              attractions: cachedModels,
+              allAttractions: cachedModels,
+              selectedCategoryId: event.categoryId,
+            ));
+            return; // Bypass network request entirely
+          }
+        }
+      }
+
       // Load and emit local cache first for instant feedback (zero latency) if it is nearby
       final cachedModels = _getFilteredCache(event.latitude, event.longitude);
       if (cachedModels.isNotEmpty) {
@@ -140,6 +164,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               longitude: event.longitude,
               radius: radius.toDouble(),
               categoryName: cat,
+              useLegacy: event.useLegacy,
             ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r));
           }));
 
@@ -170,16 +195,18 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           }
         }
 
-        finalAttractions.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+        final attractionsList = finalAttractions.toList();
+        attractionsList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
         // Save successfully loaded network attractions to local persistent cache
-        final attractionJsons = finalAttractions.map((a) => _attractionEntityToJson(a)).toList();
+        final attractionJsons = attractionsList.map((a) => _attractionEntityToJson(a)).toList();
         CacheService.cacheAttractions(attractionJsons);
+        await CacheService.saveLastFetchCoords(event.latitude, event.longitude);
 
         emit(state.copyWith(
           status: MapStatus.success,
-          attractions: finalAttractions,
-          allAttractions: finalAttractions,
+          attractions: attractionsList,
+          allAttractions: attractionsList,
           selectedCategoryId: event.categoryId,
         ));
       } catch (e) {

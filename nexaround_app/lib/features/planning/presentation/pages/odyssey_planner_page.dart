@@ -168,16 +168,20 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          _buildProgressIndicator(),
-          Expanded(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 400),
-              child: _buildCurrentStep(),
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          children: [
+            _buildProgressIndicator(),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 400),
+                child: _buildCurrentStep(),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
       bottomNavigationBar: _buildBottomAction(),
     );

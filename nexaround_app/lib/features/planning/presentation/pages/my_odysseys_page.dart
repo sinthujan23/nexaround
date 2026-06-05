@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detai
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
+import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -344,8 +345,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.black),
             ),
             const SizedBox(height: 4),
-            Text(
-              odyssey.statsLabel,
+            ConvertedCurrencyText(
+              amount: odyssey.budget,
+              originalCurrency: odyssey.currency,
+              prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),

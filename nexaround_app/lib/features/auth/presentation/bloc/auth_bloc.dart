@@ -1,8 +1,11 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/domain/repositories/auth_repository.dart';
+import 'package:nexaround_app/features/auth/domain/entities/user.dart';
 import 'auth_event.dart';
 import 'auth_state.dart';
 import 'package:nexaround_app/core/services/social_auth_service.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -16,6 +19,23 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthAppleLoginRequested>(_onAppleLogin);
     on<AuthLogoutRequested>(_onLogout);
     on<UpdateUserPreferences>(_onUpdatePreferences);
+  }
+
+  UserEntity _mergeWithLocalPrefs(UserEntity user) {
+    final localPrefs = CacheService.getUserPreferences();
+    final Map<String, dynamic> mergedPrefs = {...user.preferences, ...localPrefs};
+    CacheService.saveUserPreferences(mergedPrefs);
+    return UserModel(
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      preferences: mergedPrefs,
+      language: user.language,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      createdAt: user.createdAt,
+    );
   }
 
   Future<void> _onGoogleLogin(
@@ -42,7 +62,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       result.fold(
         (failure) => emit(AuthError(failure.message)),
         (tokens) => emit(AuthAuthenticated(
-          user: tokens.user,
+          user: _mergeWithLocalPrefs(tokens.user),
           accessToken: tokens.accessToken,
         )),
       );
@@ -69,7 +89,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       result.fold(
         (failure) => emit(AuthError(failure.message)),
         (tokens) => emit(AuthAuthenticated(
-          user: tokens.user,
+          user: _mergeWithLocalPrefs(tokens.user),
           accessToken: tokens.accessToken,
         )),
       );
@@ -84,13 +104,49 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     if (state is AuthAuthenticated) {
       final currentAuth = state as AuthAuthenticated;
+      
+      // Save locally first to guarantee immediate responsiveness and offline persistence
+      await CacheService.saveUserPreferences(event.preferences);
+      
+      final updatedUser = UserModel(
+        id: currentAuth.user.id,
+        email: currentAuth.user.email,
+        displayName: currentAuth.user.displayName,
+        avatarUrl: currentAuth.user.avatarUrl,
+        preferences: event.preferences,
+        language: currentAuth.user.language,
+        isActive: currentAuth.user.isActive,
+        isVerified: currentAuth.user.isVerified,
+        createdAt: currentAuth.user.createdAt,
+      );
+
+      emit(AuthAuthenticated(
+        user: updatedUser,
+        accessToken: currentAuth.accessToken,
+      ));
+
+      // Attempt remote save in background
       final result = await _authRepository.updatePreferences(event.preferences);
       result.fold(
-        (failure) => null, // Keep existing state on failure
-        (updatedUser) => emit(AuthAuthenticated(
-          user: updatedUser,
-          accessToken: currentAuth.accessToken,
-        )),
+        (failure) => null, 
+        (serverUpdatedUser) {
+          final Map<String, dynamic> mergedPrefs = {...serverUpdatedUser.preferences, ...event.preferences};
+          final finalUser = UserModel(
+            id: serverUpdatedUser.id,
+            email: serverUpdatedUser.email,
+            displayName: serverUpdatedUser.displayName,
+            avatarUrl: serverUpdatedUser.avatarUrl,
+            preferences: mergedPrefs,
+            language: serverUpdatedUser.language,
+            isActive: serverUpdatedUser.isActive,
+            isVerified: serverUpdatedUser.isVerified,
+            createdAt: serverUpdatedUser.createdAt,
+          );
+          emit(AuthAuthenticated(
+            user: finalUser,
+            accessToken: currentAuth.accessToken,
+          ));
+        },
       );
     }
   }
@@ -104,7 +160,10 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       final result = await _authRepository.getCurrentUser();
       result.fold(
         (failure) => emit(const AuthUnauthenticated()),
-        (user) => emit(AuthAuthenticated(user: user, accessToken: '')),
+        (user) => emit(AuthAuthenticated(
+          user: _mergeWithLocalPrefs(user),
+          accessToken: '',
+        )),
       );
     } else {
       emit(const AuthUnauthenticated());
@@ -123,7 +182,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     result.fold(
       (failure) => emit(AuthError(failure.message)),
       (tokens) => emit(AuthAuthenticated(
-        user: tokens.user,
+        user: _mergeWithLocalPrefs(tokens.user),
         accessToken: tokens.accessToken,
       )),
     );
@@ -142,7 +201,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     result.fold(
       (failure) => emit(AuthError(failure.message)),
       (tokens) => emit(AuthAuthenticated(
-        user: tokens.user,
+        user: _mergeWithLocalPrefs(tokens.user),
         accessToken: tokens.accessToken,
       )),
     );

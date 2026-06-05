@@ -590,7 +590,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
             'name': widget.name,
             'category_name': widget.category,
             'rating': widget.rating,
-            'photo_urls': [widget.imageUrl],
+            'photo_urls': widget.imageUrl != null ? [widget.imageUrl!] : <String>[],
             'latitude': widget.latitude ?? 0.0,
             'longitude': widget.longitude ?? 0.0,
             'created_at': DateTime.now().toIso8601String(),

@@ -36,6 +36,7 @@ class HomePage extends StatefulWidget {
 class HomePageState extends State<HomePage> with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   String? _pendingPrompt;
+  Map<String, dynamic>? _pendingPlaceContext;
   @override
   void initState() {
     super.initState();
@@ -77,10 +78,11 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   }
 
 
-  void switchToNeva(String? prompt) {
+  void switchToNeva(String? prompt, {Map<String, dynamic>? placeContext}) {
     setState(() {
       _selectedIndex = 2; // AI Chat Tab
       _pendingPrompt = prompt;
+      _pendingPlaceContext = placeContext;
     });
   }
 
@@ -107,7 +109,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     final pages = [
       const LivingMapPage(),
       ArCameraPage(isActive: _selectedIndex == 1),
-      AiChatPage(initialPrompt: _pendingPrompt),
+      AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
       const DiscoverPage(),
       const MyOdysseysPage(),
       const ProfilePage(),

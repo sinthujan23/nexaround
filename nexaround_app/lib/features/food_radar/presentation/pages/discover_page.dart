@@ -8,6 +8,8 @@ import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
+import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
+
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_state.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_event.dart';
@@ -34,14 +36,15 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 
 class DiscoverPage extends StatefulWidget {
-  const DiscoverPage({super.key});
+  final int initialTab;
+  const DiscoverPage({super.key, this.initialTab = 0});
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
 class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMixin {
-  int _selectedTab = 0;
+  late int _selectedTab;
   late AnimationController _radarController;
   Position? _currentPosition;
 
@@ -55,12 +58,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   Map<String, dynamic>? _emergencyInfo;
   bool _isLoadingEmergency = false;
 
+  // Selected sub-categories for filtering
+  String? _selectedFoodCategory;
+  String? _selectedExperienceCategory;
+  String? _selectedShoppingCategory;
+
   final List<String> _tabs = ['Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
 
   @override
   void initState() {
     super.initState();
+    _selectedTab = widget.initialTab;
     _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
+    _loadEmergencyCache();
+    context.read<BudgetBloc>().add(FetchBudget());
     _initLocationAndFetch();
   }
 
@@ -69,7 +80,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       Position position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
       setState(() => _currentPosition = position);
-      _fetchForTab(0); // Fetch food initially
+      _fetchForTab(_selectedTab);
+      if (_selectedTab == 4) _fetchEmergencyData();
     } catch (e) {
       debugPrint('Error getting location: $e');
     }
@@ -228,6 +240,21 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                 child: Row(
                   children: [
+                    if (Navigator.of(context).canPop()) ...[
+                      GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: AppColors.surfaceVariant,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 16),
+                        ),
+                      ),
+                    ],
                     ShaderMask(
                       shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                       child: const Text(
@@ -263,8 +290,16 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       final isActive = _selectedTab == index;
                       return GestureDetector(
                         onTap: () {
-                          setState(() => _selectedTab = index);
+                          setState(() {
+                            _selectedTab = index;
+                            _selectedFoodCategory = null;
+                            _selectedExperienceCategory = null;
+                            _selectedShoppingCategory = null;
+                          });
                           _fetchForTab(index);
+                          if (index == 3) {
+                            context.read<BudgetBloc>().add(FetchBudget());
+                          }
                           if (index == 4) _fetchEmergencyData();
                         },
                         child: AnimatedContainer(
@@ -312,6 +347,21 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       return cat.contains('food') || cat.contains('restaurant') || cat.contains('cafe') || 
                              cat.contains('dining') || cat.contains('meal') || name.contains('restaurant') || name.contains('cafe');
                     }).toList();
+                    if (_selectedFoodCategory != null) {
+                      _foodList = _foodList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedFoodCategory == 'Street Food') {
+                          return cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || cat.contains('snack') || name.contains('street') || name.contains('burger') || name.contains('kiosk');
+                        } else if (_selectedFoodCategory == 'Fine Dining') {
+                          final isCafeOrStreet = cat.contains('cafe') || cat.contains('coffee') || cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || name.contains('cafe') || name.contains('street');
+                          return !isCafeOrStreet && (cat.contains('dining') || cat.contains('restaurant') || cat.contains('bistro') || cat.contains('hotel') || name.contains('fine') || name.contains('restaurant') || name.contains('hotel') || name.contains('grill'));
+                        } else if (_selectedFoodCategory == 'Cafés') {
+                          return cat.contains('cafe') || cat.contains('coffee') || cat.contains('tea') || cat.contains('bakery') || cat.contains('dessert') || name.contains('cafe') || name.contains('coffee') || name.contains('bakery');
+                        }
+                        return true;
+                      }).toList();
+                    }
                     _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Experiences List
@@ -323,6 +373,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                              cat.contains('temple') || cat.contains('art') || cat.contains('zoo') ||
                              name.contains('temple') || name.contains('park') || name.contains('museum');
                     }).toList();
+                    if (_selectedExperienceCategory != null) {
+                      _experienceList = _experienceList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedExperienceCategory == 'Museums') {
+                          return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery');
+                        } else if (_selectedExperienceCategory == 'Parks') {
+                          return cat.contains('park') || cat.contains('nature') || cat.contains('garden') || name.contains('park') || name.contains('garden');
+                        } else if (_selectedExperienceCategory == 'Culture') {
+                          return cat.contains('culture') || cat.contains('landmark') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument');
+                        }
+                        return true;
+                      }).toList();
+                    }
                     _experienceList.sort((a, b) {
                       int ratingComp = b.rating.compareTo(a.rating);
                       if (ratingComp != 0) return ratingComp;
@@ -335,6 +399,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       return cat.contains('shop') || cat.contains('mall') || cat.contains('market') || 
                              cat.contains('store') || cat.contains('fashion');
                     }).toList();
+                    if (_selectedShoppingCategory != null) {
+                      _shoppingList = _shoppingList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedShoppingCategory == 'Fashion') {
+                          return cat.contains('clothing') || cat.contains('fashion') || cat.contains('shoe') || cat.contains('apparel') || cat.contains('boutique') || name.contains('fashion') || name.contains('clothing') || name.contains('store');
+                        } else if (_selectedShoppingCategory == 'Tech') {
+                          return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
+                        } else if (_selectedShoppingCategory == 'Local') {
+                          return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
+                        }
+                        return true;
+                      }).toList();
+                    }
                     _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     return Column(
@@ -584,11 +662,32 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 14),
         Row(
           children: [
-            _buildFoodCategory('🍜', 'Street Food', const Color(0xFFFFEAEA)),
+            _buildFoodCategory(
+              '🍜',
+              'Street Food',
+              _selectedFoodCategory == 'Street Food',
+              () => setState(() {
+                _selectedFoodCategory = _selectedFoodCategory == 'Street Food' ? null : 'Street Food';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('🍽', 'Fine Dining', const Color(0xFFEAF2FF)),
+            _buildFoodCategory(
+              '🍽',
+              'Fine Dining',
+              _selectedFoodCategory == 'Fine Dining',
+              () => setState(() {
+                _selectedFoodCategory = _selectedFoodCategory == 'Fine Dining' ? null : 'Fine Dining';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('☕', 'Cafés', const Color(0xFFFFF8EA)),
+            _buildFoodCategory(
+              '☕',
+              'Cafés',
+              _selectedFoodCategory == 'Cafés',
+              () => setState(() {
+                _selectedFoodCategory = _selectedFoodCategory == 'Cafés' ? null : 'Cafés';
+              }),
+            ),
           ],
         ),
         const SizedBox(height: 28),
@@ -707,10 +806,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: PlaceImageHelper.buildPlaceImage(
-            imagePath: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-            category: place.categoryName ?? 'Food',
-            name: place.name,
+          child: Container(
+            color: AppColors.primary.withOpacity(0.1),
+            child: Center(
+              child: Icon(
+                _getFoodIcon(place.categoryName ?? 'Food', place.name, place.id.hashCode),
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
           ),
         ),
       )
@@ -719,35 +823,84 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildFoodCategory(String emoji, String label, Color color) {
+  IconData _getFoodIcon(String category, String name, int index) {
+    final cat = category.toLowerCase();
+    final nm = name.toLowerCase();
+    if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+      return Icons.coffee_rounded;
+    }
+    if (cat.contains('street') || cat.contains('fast') || nm.contains('burger') || nm.contains('pizza')) {
+      return Icons.local_pizza_rounded;
+    }
+    return Icons.restaurant_rounded;
+  }
+
+  IconData _getExperienceIcon(String category, String name, int index) {
+    final cat = category.toLowerCase();
+    final nm = name.toLowerCase();
+    if (cat.contains('museum') || cat.contains('gallery') || nm.contains('museum') || nm.contains('gallery')) {
+      return Icons.museum_rounded;
+    }
+    if (cat.contains('park') || cat.contains('garden') || nm.contains('park') || nm.contains('garden')) {
+      return Icons.park_rounded;
+    }
+    return Icons.attractions_rounded;
+  }
+
+  IconData _getShoppingIcon(String category, String name, int index) {
+    final cat = category.toLowerCase();
+    final nm = name.toLowerCase();
+    if (cat.contains('clothing') || cat.contains('fashion') || nm.contains('fashion') || nm.contains('boutique')) {
+      return Icons.shopping_bag_rounded;
+    }
+    if (cat.contains('market') || cat.contains('local') || nm.contains('market') || nm.contains('bazaar')) {
+      return Icons.storefront_rounded;
+    }
+    return Icons.shopping_cart_rounded;
+  }
+
+  Widget _buildFoodCategory(String emoji, String label, bool isSelected, VoidCallback onTap) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Text(emoji, style: const TextStyle(fontSize: 28)),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-                color: Colors.black87,
-                letterSpacing: 0.5,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          decoration: BoxDecoration(
+            color: isSelected ? AppColors.brandGreen : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: isSelected ? Colors.transparent : AppColors.border, width: 1.5),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: AppColors.brandGreen.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.02),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+          ),
+          child: Column(
+            children: [
+              Text(emoji, style: const TextStyle(fontSize: 28)),
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: isSelected ? Colors.white : AppColors.textPrimary,
+                  letterSpacing: 0.5,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -783,14 +936,14 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             height: 70,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              color: AppColors.surfaceVariant,
+              color: AppColors.primary.withOpacity(0.1),
+              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: PlaceImageHelper.buildPlaceImage(
-                imagePath: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
-                category: a.categoryName ?? 'Food',
-                name: a.name,
+            child: Center(
+              child: Icon(
+                _getFoodIcon(a.categoryName ?? 'Food', a.name, index),
+                color: AppColors.primary,
+                size: 28,
               ),
             ),
           ),
@@ -890,11 +1043,32 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 14),
         Row(
           children: [
-            _buildFoodCategory('🏛', 'Museums', const Color(0xFFEAF2FF)),
+            _buildFoodCategory(
+              '🏛',
+              'Museums',
+              _selectedExperienceCategory == 'Museums',
+              () => setState(() {
+                _selectedExperienceCategory = _selectedExperienceCategory == 'Museums' ? null : 'Museums';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('🌳', 'Parks', const Color(0xFFEAFFAA)),
+            _buildFoodCategory(
+              '🌳',
+              'Parks',
+              _selectedExperienceCategory == 'Parks',
+              () => setState(() {
+                _selectedExperienceCategory = _selectedExperienceCategory == 'Parks' ? null : 'Parks';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('🗿', 'Culture', const Color(0xFFF2EAFF)),
+            _buildFoodCategory(
+              '🗿',
+              'Culture',
+              _selectedExperienceCategory == 'Culture',
+              () => setState(() {
+                _selectedExperienceCategory = _selectedExperienceCategory == 'Culture' ? null : 'Culture';
+              }),
+            ),
           ],
         ),
         const SizedBox(height: 32),
@@ -1039,19 +1213,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
       child: Row(
         children: [
-          // Thumbnail
+          // Thumbnail (Icon Container, No Image)
           Container(
             width: 90,
             height: 90,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              image: DecorationImage(
-                image: _getImageProvider(
-                  a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
-                  a.categoryName ?? 'Food',
-                  a.name,
-                ),
-                fit: BoxFit.cover,
+              color: AppColors.secondary.withOpacity(0.1),
+              border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
+            ),
+            child: Center(
+              child: Icon(
+                _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
+                color: AppColors.secondary,
+                size: 36,
               ),
             ),
           ),
@@ -1127,11 +1302,32 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 14),
         Row(
           children: [
-            _buildFoodCategory('👕', 'Fashion', const Color(0xFFF2EAFF)),
+            _buildFoodCategory(
+              '👕',
+              'Fashion',
+              _selectedShoppingCategory == 'Fashion',
+              () => setState(() {
+                _selectedShoppingCategory = _selectedShoppingCategory == 'Fashion' ? null : 'Fashion';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('💻', 'Tech', const Color(0xFFEAF2FF)),
+            _buildFoodCategory(
+              '💻',
+              'Tech',
+              _selectedShoppingCategory == 'Tech',
+              () => setState(() {
+                _selectedShoppingCategory = _selectedShoppingCategory == 'Tech' ? null : 'Tech';
+              }),
+            ),
             const SizedBox(width: 10),
-            _buildFoodCategory('🏺', 'Local', const Color(0xFFFFF8EA)),
+            _buildFoodCategory(
+              '🏺',
+              'Local',
+              _selectedShoppingCategory == 'Local',
+              () => setState(() {
+                _selectedShoppingCategory = _selectedShoppingCategory == 'Local' ? null : 'Local';
+              }),
+            ),
           ],
         ),
         const SizedBox(height: 28),
@@ -1176,7 +1372,22 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
-            const Text('🛍', style: const TextStyle(fontSize: 28)),
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.brandGreen.withOpacity(0.1),
+                border: Border.all(color: AppColors.brandGreen.withOpacity(0.2)),
+              ),
+              child: Center(
+                child: Icon(
+                  _getShoppingIcon(shop.categoryName ?? 'Shopping', shop.name, index),
+                  color: AppColors.brandGreen,
+                  size: 24,
+                ),
+              ),
+            ),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -1475,7 +1686,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                               return _buildTransaction(
                                 e.description ?? e.category,
                                 _getCategoryEmoji(e.category),
-                                '-${budget.currency} ${formatAmount(e.amount)}',
+                                ConvertedCurrencyText(
+                                  amount: e.amount,
+                                  originalCurrency: budget.currency,
+                                  prefix: '-',
+                                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.error, fontSize: 14),
+                                ),
                                 DateFormat('MMM d, hh:mm a').format(e.spentAt),
                               );
                             },
@@ -1551,21 +1767,36 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               const SizedBox(height: 16),
               ShaderMask(
                 shaderCallback: (b) => (budget.isOverBudget ? const LinearGradient(colors: [AppColors.error, AppColors.error]) : AppColors.primaryGradient).createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
-                child: Text(
-                  '${budget.currency} ${formatAmount(budget.spentAmount)}',
+                child: ConvertedCurrencyText(
+                  amount: budget.spentAmount,
+                  originalCurrency: budget.currency,
                   style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                 ),
               ),
               if (budget.isOverBudget)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '+${budget.currency} ${formatAmount(budget.overAmount)} OVER BUDGET',
+                  child: ConvertedCurrencyText(
+                    amount: budget.overAmount,
+                    originalCurrency: budget.currency,
+                    prefix: '+',
+                    suffix: ' OVER BUDGET',
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.error),
                   ),
                 ),
               const SizedBox(height: 12),
-              Text('of ${budget.currency} ${formatAmount(budget.totalAmount)} total budget', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('of ', style: TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+                  ConvertedCurrencyText(
+                    amount: budget.totalAmount,
+                    originalCurrency: budget.currency,
+                    suffix: ' total budget',
+                    style: const TextStyle(fontSize: 13, color: AppColors.textTertiary),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               // Progress bar
               ClipRRect(
@@ -1644,7 +1875,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           ...budget.expenses.take(10).map((e) => _buildTransaction(
                 e.description ?? e.category,
                 _getCategoryEmoji(e.category),
-                '-${budget.currency} ${formatAmount(e.amount)}',
+                ConvertedCurrencyText(
+                  amount: e.amount,
+                  originalCurrency: budget.currency,
+                  prefix: '-',
+                  style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.error, fontSize: 14),
+                ),
                 DateFormat('hh:mm a').format(e.spentAt),
               )),
         
@@ -1666,10 +1902,54 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
     return Column(
       children: [
-        _buildBudgetCategory('🍽', 'Food', '${budget.currency} ${formatAmount(totals['Food']!)}', (totals['Food']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.accent, 0),
-        _buildBudgetCategory('🚕', 'Transport', '${budget.currency} ${formatAmount(totals['Transport']!)}', (totals['Transport']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.secondary, 1),
-        _buildBudgetCategory('🛍', 'Shopping', '${budget.currency} ${formatAmount(totals['Shopping']!)}', (totals['Shopping']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.warning, 2),
-        _buildBudgetCategory('🎫', 'Activities', '${budget.currency} ${formatAmount(totals['Activities']!)}', (totals['Activities']! / budget.totalAmount).clamp(0.0, 1.0), AppColors.neonGreen, 3),
+        _buildBudgetCategory(
+          '🍽',
+          'Food',
+          ConvertedCurrencyText(
+            amount: totals['Food']!,
+            originalCurrency: budget.currency,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13),
+          ),
+          budget.totalAmount == 0 ? 0.0 : (totals['Food']! / budget.totalAmount).clamp(0.0, 1.0),
+          AppColors.accent,
+          0,
+        ),
+        _buildBudgetCategory(
+          '🚕',
+          'Transport',
+          ConvertedCurrencyText(
+            amount: totals['Transport']!,
+            originalCurrency: budget.currency,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13),
+          ),
+          budget.totalAmount == 0 ? 0.0 : (totals['Transport']! / budget.totalAmount).clamp(0.0, 1.0),
+          AppColors.secondary,
+          1,
+        ),
+        _buildBudgetCategory(
+          '🛍',
+          'Shopping',
+          ConvertedCurrencyText(
+            amount: totals['Shopping']!,
+            originalCurrency: budget.currency,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13),
+          ),
+          budget.totalAmount == 0 ? 0.0 : (totals['Shopping']! / budget.totalAmount).clamp(0.0, 1.0),
+          AppColors.warning,
+          2,
+        ),
+        _buildBudgetCategory(
+          '🎫',
+          'Activities',
+          ConvertedCurrencyText(
+            amount: totals['Activities']!,
+            originalCurrency: budget.currency,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13),
+          ),
+          budget.totalAmount == 0 ? 0.0 : (totals['Activities']! / budget.totalAmount).clamp(0.0, 1.0),
+          AppColors.neonGreen,
+          3,
+        ),
       ],
     );
   }
@@ -1699,9 +1979,22 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             ],
           ),
           const SizedBox(height: 12),
-          const Text(
-            'Based on your spending, you are doing great! Try to limit food expenses to LKR 2,000 for the next 2 days to stay within budget.',
-            style: TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.5),
+          RichText(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, height: 1.5, fontFamily: 'Outfit'),
+              children: [
+                const TextSpan(text: 'Based on your spending, you are doing great! Try to limit food expenses to '),
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: ConvertedCurrencyText(
+                    amount: 2000,
+                    originalCurrency: 'LKR',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                  ),
+                ),
+                const TextSpan(text: ' for the next 2 days to stay within budget.'),
+              ],
+            ),
           ),
         ],
       ),
@@ -1713,6 +2006,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     final amountController = TextEditingController();
     final daysController = TextEditingController(text: '1');
     final budgetBloc = context.read<BudgetBloc>();
+
+    final authState = context.read<AuthBloc>().state;
+    String userCurrency = 'USD';
+    if (authState is AuthAuthenticated) {
+      userCurrency = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
+    }
 
     showModalBottomSheet(
       context: context,
@@ -1752,7 +2051,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.black, fontSize: 18),
                   decoration: InputDecoration(
-                    labelText: 'Total Amount (LKR)',
+                    labelText: 'Total Amount ($userCurrency)',
                     labelStyle: const TextStyle(color: AppColors.textTertiary),
                     prefixIcon: const Icon(Icons.payments_rounded, color: AppColors.primary),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
@@ -1819,6 +2118,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     final budgetBloc = context.read<BudgetBloc>();
     String selectedCategory = 'Food';
 
+    String budgetCurrency = 'USD';
+    if (budgetBloc.state is BudgetLoaded) {
+      budgetCurrency = (budgetBloc.state as BudgetLoaded).budget.currency;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1843,7 +2147,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   keyboardType: TextInputType.number,
                   style: const TextStyle(color: Colors.black, fontSize: 18),
                   decoration: InputDecoration(
-                    labelText: 'Amount (LKR)',
+                    labelText: 'Amount ($budgetCurrency)',
                     labelStyle: const TextStyle(color: AppColors.textTertiary),
                     prefixIcon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
                     enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: AppColors.border)),
@@ -1900,7 +2204,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Expense of ${formatAmount(amount)} LKR added successfully!'),
+                            content: Text('Expense of $budgetCurrency ${formatAmount(amount)} added successfully!'),
                             backgroundColor: Colors.green,
                             behavior: SnackBarBehavior.floating,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1924,7 +2228,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildBudgetCategory(String emoji, String title, String amount, double progress, Color color, int index) {
+  Widget _buildBudgetCategory(String emoji, String title, Widget amountWidget, double progress, Color color, int index) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -1949,7 +2253,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(title, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                    Text(amount, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.textPrimary, fontSize: 13)),
+                    amountWidget,
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -1970,7 +2274,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     ).animate(delay: (index * 100).milliseconds).fade().slideX(begin: 0.05, end: 0);
   }
 
-  Widget _buildTransaction(String title, String emoji, String amount, String time) {
+  Widget _buildTransaction(String title, String emoji, Widget amountWidget, String time) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
@@ -1992,7 +2296,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               ],
             ),
           ),
-          Text(amount, style: const TextStyle(fontWeight: FontWeight.w700, color: AppColors.error, fontSize: 14)),
+          amountWidget,
         ],
       ),
     );

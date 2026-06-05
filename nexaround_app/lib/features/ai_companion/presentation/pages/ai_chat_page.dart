@@ -6,6 +6,7 @@ import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
@@ -44,6 +45,11 @@ class _AiChatPageState extends State<AiChatPage> {
   bool _showSuggestions = true;
   bool _isFetchingPlaces = false;
   String? _activeCategoryChip;
+  // Resolved once so Neva can tailor answers to where the user actually is.
+  String? _userArea;
+  double? _userLat;
+  double? _userLng;
+  bool _locationResolved = false;
   final GeminiService _geminiService = GeminiService();
 
   static const List<Map<String, dynamic>> _nearbyCategories = [
@@ -58,17 +64,34 @@ class _AiChatPageState extends State<AiChatPage> {
   }
 
   static const String _nevaSystemPrompt = '''
-You are Neva, the intelligent female AI travel companion of the NexAround app. Your personality:
+You are Neva — a warm, witty, and effortlessly stylish FEMALE travel companion inside the NexAround app. Think of yourself as the user's smartest, most well-travelled girlfriend, the one who always knows the loveliest spots.
 
-- **Who you are**: A warm, witty, and deeply knowledgeable female travel companion. Think of yourself as the user\'s smartest, most well-travelled best friend.
-- **Tone**: Friendly, conversational, and encouraging. Use light humour when appropriate. Never robotic or formal.
-- **Expertise**: You are an expert in travel, local culture, food, history, hidden gems, safety tips, budgeting, and itinerary planning.
-- **How you respond**: Keep answers concise and engaging. Use emojis sparingly but naturally (1-2 max per message). Break up long info with short paragraphs.
-- **What you never do**: Never list nearby places unless the user explicitly asks. Never give generic, copy-paste travel blog answers. Always be specific and personalised.
-- **Your goal**: Make every traveller feel like they have a brilliant local friend guiding them, not a search engine.
-- **App context**: You are part of NexAround, a smart tourism app. You can help with place recommendations, travel tips, itinerary ideas, local food, cultural insights, safety advice, and budget guidance.
+VOICE & PERSONALITY:
+- Speak in the first person as a woman — confident, charming, caring, and a little playful. Like texting a close friend, never robotic or formal.
+- You're an expert in travel, local food, culture, history, hidden gems, safety, budgeting, and itineraries — but you share it like a friend, not a search engine.
 
-Always stay in character as Neva. Never say you are an AI language model or mention Gemini/Google.
+HOW TO FORMAT EVERY REPLY (this controls how beautiful it looks in the app, so follow it):
+- Open with ONE short, friendly sentence.
+- When you give options or tips, use a clean bullet list. Start each line with "* ", put the key phrase in **bold**, then a short, vivid description. Example:
+  * **Cozy wine bar** — perfect for a relaxed, romantic evening. 🍷
+  * **Lively rooftop** — great music and a buzzing crowd. ✨
+- Keep it skimmable: short lines, no big walls of text.
+- Use tasteful, feminine emojis NATURALLY — 1 to 3 per message, never one on every single line. Favourites: ✨🌸💫🌙💖🥂☕🛍️🗺️🌿. Never force them.
+- Do NOT use markdown headings (#), tables, or code blocks — only short text, **bold**, and "* " bullets.
+- When it feels natural, end with a warm, inviting question.
+
+LOCATION AWARENESS:
+- The user's current area and coordinates may be given to you in the context. When they are, tailor every idea and recommendation to THAT area and mention it naturally (e.g. "Since you're around Colombo, ...").
+- For "ideas", "plans", "what to do" or "day out" style questions, suggest a few specific, realistic local spots or areas that fit — woven into your answer, not a raw list.
+- Never ask the user where they are when their location is already provided in the context.
+- If you don't recognise a specific place by name, never reply that you don't know it — give your best, genuinely useful take based on its category and the area, confidently and warmly.
+
+WHAT YOU NEVER DO:
+- Don't dump a long raw list of places unprompted — weave a few specific suggestions in naturally instead.
+- Never give generic, copy-paste travel-blog answers — always be specific and personal.
+- Never say you are an AI language model or mention Gemini/Google. You are simply Neva.
+
+Your goal: make every traveller feel they have a brilliant, caring local friend who's got their back. 💖
 ''';
 
   final List<String> _quickPrompts = [
@@ -82,6 +105,8 @@ Always stay in character as Neva. Never say you are an AI language model or ment
   @override
   void initState() {
     super.initState();
+    // Kick off location resolution early so the very first answer is local.
+    _resolveUserLocation();
     _messages.add(_ChatMessage(
       text: "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
       isUser: false,
@@ -98,6 +123,33 @@ Always stay in character as Neva. Never say you are an AI language model or ment
     // user sees results immediately rather than having to tap a chip.
     if (widget.autoFetchCategoryId != null && _hasPlaceContext) {
       Future.delayed(const Duration(milliseconds: 400), () {
+        if (!mounted) return;
+        _fetchNearbyForCategory(
+          widget.autoFetchCategoryId!,
+          widget.autoFetchCategoryLabel ?? widget.autoFetchCategoryId!,
+        );
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AiChatPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The Neva tab lives inside the home IndexedStack, so this page stays
+    // mounted and initState runs only once. When the AR "Ask Neva More" flow
+    // pushes a fresh prompt/place into the already-live page, deliver it here
+    // (otherwise the user would just see the default greeting).
+    if (widget.initialPrompt != null &&
+        widget.initialPrompt != oldWidget.initialPrompt) {
+      _showSuggestions = false;
+      Future.delayed(const Duration(milliseconds: 300), () {
+        if (mounted) _sendMessage(widget.initialPrompt!);
+      });
+    }
+    if (widget.autoFetchCategoryId != null &&
+        widget.autoFetchCategoryId != oldWidget.autoFetchCategoryId &&
+        _hasPlaceContext) {
+      Future.delayed(const Duration(milliseconds: 300), () {
         if (!mounted) return;
         _fetchNearbyForCategory(
           widget.autoFetchCategoryId!,
@@ -170,6 +222,53 @@ Always stay in character as Neva. Never say you are an AI language model or ment
     }
   }
 
+  /// Resolves the user's current area + coordinates so Neva can tailor answers
+  /// to where they actually are (e.g. "a day out with my gf" → ideas in their
+  /// city). Best-effort: if location is unavailable she just answers generally.
+  Future<void> _resolveUserLocation() async {
+    if (_locationResolved) return;
+
+    // If this chat was opened for a specific place (AR flow), anchor to it.
+    final ctx = widget.placeContext;
+    if (ctx != null && ctx['latitude'] is num && ctx['longitude'] is num) {
+      _userLat = (ctx['latitude'] as num).toDouble();
+      _userLng = (ctx['longitude'] as num).toDouble();
+      final ctxName = (ctx['name'] as String?)?.trim();
+      _userArea = (ctxName != null && ctxName.isNotEmpty)
+          ? ctxName
+          : await GooglePlacesService.reverseGeocode(_userLat!, _userLng!);
+      _locationResolved = true;
+      return;
+    }
+
+    try {
+      final pos = await PermissionService.getSafePosition();
+      if (pos == null) return; // not granted / unavailable — retry on next send
+      _userLat = pos.latitude;
+      _userLng = pos.longitude;
+      _userArea = await GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude);
+      _locationResolved = true;
+    } catch (e) {
+      debugPrint('Neva location resolve failed: $e');
+    }
+  }
+
+  /// Location hint passed to Gemini so answers are grounded to the user's area.
+  String? _locationContext() {
+    final parts = <String>[];
+    if (_userArea != null && _userArea!.isNotEmpty && _userArea != 'Nearby') {
+      parts.add('The user is currently in/near $_userArea.');
+    }
+    if (_userLat != null && _userLng != null) {
+      parts.add(
+          'Their coordinates are ${_userLat!.toStringAsFixed(5)}, ${_userLng!.toStringAsFixed(5)}.');
+    }
+    if (parts.isEmpty) return null;
+    parts.add(
+        'Tailor your suggestions to this area and mention it naturally. Do not ask the user where they are.');
+    return parts.join(' ');
+  }
+
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -181,10 +280,15 @@ Always stay in character as Neva. Never say you are an AI language model or ment
     _controller.clear();
     _scrollToBottom();
 
+    // Make sure Neva knows where the user is so the answer is local.
+    if (!_locationResolved) await _resolveUserLocation();
+
     try {
       final response = await _geminiService.getResponse(
         text,
         systemInstruction: _nevaSystemPrompt,
+        context: _locationContext(),
+        temperature: 0.85,
       );
 
       if (mounted) {
@@ -342,33 +446,13 @@ Always stay in character as Neva. Never say you are an AI language model or ment
     final topPadding = MediaQuery.of(context).padding.top;
     
     return Container(
-      padding: EdgeInsets.fromLTRB(16, topPadding > 0 ? topPadding + 10 : 24, 16, 16),
+      padding: EdgeInsets.fromLTRB(24, topPadding > 0 ? topPadding + 10 : 24, 24, 16),
       decoration: BoxDecoration(
         color: AppColors.background,
         border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
       ),
       child: Row(
         children: [
-          GestureDetector(
-            onTap: () {
-              final route = ModalRoute.of(context);
-              if (route != null && !route.isFirst) {
-                Navigator.pop(context);
-              } else {
-                HomePage.homeKey.currentState?.switchToExplore();
-              }
-            },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.black12),
-              ),
-              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 16),
-            ),
-          ),
-          const SizedBox(width: 12),
           _buildNevaAvatar(48),
           const SizedBox(width: 12),
           Expanded(
@@ -385,12 +469,6 @@ Always stay in character as Neva. Never say you are an AI language model or ment
                 ),
               ],
             ),
-          ),
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.black12)),
-            child: const Icon(Icons.emergency_rounded, color: Colors.black, size: 20),
           ),
         ],
       ),
@@ -432,14 +510,23 @@ Always stay in character as Neva. Never say you are an AI language model or ment
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
                     border: !isUser ? Border.all(color: Colors.black.withOpacity(0.03)) : null,
                   ),
-                  child: Text(
-                    message.text,
-                    style: TextStyle(
-                      fontSize: 15,
-                      color: isUser ? Colors.white : Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
+                  child: isUser
+                      ? Text(
+                          message.text,
+                          style: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.white,
+                            height: 1.5,
+                          ),
+                        )
+                      : _NevaFormattedText(
+                          message.text,
+                          baseStyle: const TextStyle(
+                            fontSize: 15,
+                            color: Colors.black87,
+                            height: 1.5,
+                          ),
+                        ),
                 ),
                 if (message.places != null && message.places!.isNotEmpty) ...[
                   const SizedBox(height: 10),
@@ -731,4 +818,141 @@ class _ChatMessage {
     this.places,
     this.placesCategoryLabel,
   });
+}
+
+/// Renders Neva's replies with light Markdown so the chat looks polished
+/// instead of showing raw `**` / `*` characters. Supports **bold**, *italic*,
+/// `code`, bullet lists ("* ", "- ", "• "), numbered lists ("1. ") and strips
+/// stray "#" headings — exactly the formatting Neva is prompted to produce.
+class _NevaFormattedText extends StatelessWidget {
+  final String text;
+  final TextStyle baseStyle;
+
+  const _NevaFormattedText(this.text, {required this.baseStyle});
+
+  // Inline emphasis, longest markers first so **bold** wins over *italic*.
+  static final RegExp _inlineRe =
+      RegExp(r'(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*]+)\*)|(`([^`]+)`)');
+
+  List<InlineSpan> _inline(String content) {
+    final spans = <InlineSpan>[];
+    var i = 0;
+    for (final m in _inlineRe.allMatches(content)) {
+      if (m.start > i) {
+        spans.add(TextSpan(text: content.substring(i, m.start)));
+      }
+      if (m.group(2) != null || m.group(4) != null) {
+        spans.add(TextSpan(
+          text: m.group(2) ?? m.group(4),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ));
+      } else if (m.group(6) != null) {
+        spans.add(TextSpan(
+          text: m.group(6),
+          style: const TextStyle(fontStyle: FontStyle.italic),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: m.group(8),
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: (baseStyle.fontSize ?? 15) - 1,
+          ),
+        ));
+      }
+      i = m.end;
+    }
+    if (i < content.length) spans.add(TextSpan(text: content.substring(i)));
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = text.replaceAll('\r\n', '\n').trim().split('\n');
+    final bulletRe = RegExp(r'^\s*[-*•]\s+(.*)$');
+    final numberRe = RegExp(r'^\s*(\d+)[.)]\s+(.*)$');
+    final headingRe = RegExp(r'^\s*#{1,6}\s+(.*)$');
+    final children = <Widget>[];
+
+    for (final raw in lines) {
+      final line = raw.trimRight();
+      if (line.trim().isEmpty) {
+        if (children.isNotEmpty) children.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      final heading = headingRe.firstMatch(line);
+      if (heading != null) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text.rich(TextSpan(
+            style: baseStyle.copyWith(
+              fontWeight: FontWeight.w800,
+              fontSize: (baseStyle.fontSize ?? 15) + 1,
+            ),
+            children: _inline(heading.group(1)!),
+          )),
+        ));
+        continue;
+      }
+
+      final bullet = bulletRe.firstMatch(line);
+      if (bullet != null) {
+        children.add(_row(
+          marker: '•',
+          markerStyle: baseStyle.copyWith(
+            fontWeight: FontWeight.w900,
+            color: AppColors.primary,
+          ),
+          content: bullet.group(1)!,
+        ));
+        continue;
+      }
+
+      final number = numberRe.firstMatch(line);
+      if (number != null) {
+        children.add(_row(
+          marker: '${number.group(1)}.',
+          markerStyle: baseStyle.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.primary,
+          ),
+          content: number.group(2)!,
+        ));
+        continue;
+      }
+
+      children.add(Text.rich(TextSpan(style: baseStyle, children: _inline(line))));
+    }
+
+    if (children.isEmpty) children.add(Text(text, style: baseStyle));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
+  Widget _row({
+    required String marker,
+    required TextStyle markerStyle,
+    required String content,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1, left: 2, right: 8),
+            child: Text(marker, style: markerStyle),
+          ),
+          Expanded(
+            child: Text.rich(TextSpan(style: baseStyle, children: _inline(content))),
+          ),
+        ],
+      ),
+    );
+  }
 }

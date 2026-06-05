@@ -15,6 +15,7 @@ class AttractionRemoteDatasource {
     String? categoryName,
     int limit = 50,
     String sort = 'proximity',
+    bool useLegacy = false,
   }) async {
     // If categoryName is provided directly, use it. Otherwise fallback to heuristic.
     String? resolvedCategoryName = categoryName;
@@ -28,12 +29,19 @@ class AttractionRemoteDatasource {
     }
 
     try {
-      final entities = await GooglePlacesService.fetchNearbyPlaces(
-        latitude: latitude,
-        longitude: longitude,
-        categoryName: resolvedCategoryName,
-        radius: radius.toInt(),
-      );
+      final entities = useLegacy
+          ? await GooglePlacesService.fetchNearbyPlacesLegacy(
+              latitude: latitude,
+              longitude: longitude,
+              categoryName: resolvedCategoryName,
+              radius: radius.toInt(),
+            )
+          : await GooglePlacesService.fetchNearbyPlaces(
+              latitude: latitude,
+              longitude: longitude,
+              categoryName: resolvedCategoryName,
+              radius: radius.toInt(),
+            );
       
       final models = entities.map((e) => e as AttractionModel).toList();
       print('Fetched ${models.length} places from Google');

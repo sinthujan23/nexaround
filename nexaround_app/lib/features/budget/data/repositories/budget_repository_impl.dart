@@ -82,7 +82,9 @@ class BudgetRepositoryImpl implements BudgetRepository {
           'currency': currency,
         },
       );
-      return BudgetModel.fromJson(response.data);
+      final budget = BudgetModel.fromJson(response.data);
+      await _cacheBudget(budget);
+      return budget;
     } catch (e) {
       rethrow;
     }
@@ -92,7 +94,10 @@ class BudgetRepositoryImpl implements BudgetRepository {
   Future<Budget> closeBudget() async {
     try {
       final response = await _dio.post('/api/v1/budget/close');
-      return BudgetModel.fromJson(response.data);
+      final budget = BudgetModel.fromJson(response.data);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_budgetCacheKey);
+      return budget;
     } catch (e) {
       rethrow;
     }
