@@ -38,6 +38,8 @@ void main() async {
 
   // Initialize Cache Service
   await CacheService.init();
+  // Clear attractions cache on app startup to force a fresh fetch from Google Places
+  await CacheService.cacheAttractions([]);
 
   // Firebase + push notifications (FCM). Non-fatal if it fails so the app
   // still runs without notifications.

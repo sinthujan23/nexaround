@@ -29,19 +29,13 @@ class AttractionRemoteDatasource {
     }
 
     try {
-      final entities = useLegacy
-          ? await GooglePlacesService.fetchNearbyPlacesLegacy(
-              latitude: latitude,
-              longitude: longitude,
-              categoryName: resolvedCategoryName,
-              radius: radius.toInt(),
-            )
-          : await GooglePlacesService.fetchNearbyPlaces(
-              latitude: latitude,
-              longitude: longitude,
-              categoryName: resolvedCategoryName,
-              radius: radius.toInt(),
-            );
+      final entities = await GooglePlacesService.fetchNearbyPlaces(
+        latitude: latitude,
+        longitude: longitude,
+        categoryName: resolvedCategoryName,
+        radius: radius.toInt(),
+        useLegacy: useLegacy,
+      );
       
       final models = entities.map((e) => e as AttractionModel).toList();
       print('Fetched ${models.length} places from Google');

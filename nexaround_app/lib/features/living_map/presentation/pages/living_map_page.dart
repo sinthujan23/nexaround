@@ -241,6 +241,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         longitude: lng,
         radius: 2500,
         categoryName: 'Attractions',
+        useLegacy: true,
       );
       
       final usable = places
@@ -1442,63 +1443,87 @@ class _LivingMapPageState extends State<LivingMapPage>
       child: Container(
         width: 200,
         margin: const EdgeInsets.only(right: 16),
-        child: Stack(
-          children: [
-            // Card background image + overlay
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                image: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
-                    ? DecorationImage(
-                        image: _getNetworkImageProvider(place.photoUrls.first)!,
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-                gradient: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
-                    ? null
-                    : LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          AppColors.surfaceVariant.withOpacity(0.95),
-                          AppColors.surface.withOpacity(0.7),
-                        ],
-                      ),
-                border: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
-                    ? null
-                    : Border.all(color: AppColors.border.withOpacity(0.5)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.2),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  gradient: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
-                      ? LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // Background Image or Fallback
+              Positioned.fill(
+                child: (() {
+                  final hasImage = place.photoUrls.isNotEmpty;
+                  final imageUrl = hasImage ? place.photoUrls.first : null;
+                  final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
+                      ? '${ApiConstants.baseUrl}$imageUrl'
+                      : imageUrl;
+
+                  Widget buildFallbackBackground() {
+                    return Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
                           colors: [
-                            Colors.black.withOpacity(0.9),
-                            Colors.black.withOpacity(0.3),
-                            Colors.transparent,
-                          ],
-                        )
-                      : LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Colors.black.withOpacity(0.35),
-                            Colors.transparent,
+                            AppColors.primary.withOpacity(0.3),
+                            AppColors.surfaceVariant,
                           ],
                         ),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Center(
+                        child: Opacity(
+                          opacity: 0.15,
+                          child: Icon(
+                            _getCategoryIcon(place.categoryName ?? 'Attraction', place.name),
+                            size: 100,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return resolvedUrl != null && resolvedUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: resolvedUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
+                            ),
+                          ),
+                          errorWidget: (_, __, ___) => buildFallbackBackground(),
+                        )
+                      : buildFallbackBackground();
+                })(),
+              ),
+              // Gradient Overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.black.withOpacity(0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
 
             // Content
             Padding(
@@ -1551,7 +1576,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
                       const SizedBox(width: 4),
                       Text(
-                        place.rating.toString(),
+                        '${place.rating} (${place.reviewCount})',
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -1594,8 +1619,9 @@ class _LivingMapPageState extends State<LivingMapPage>
             ),
           ],
         ),
-      ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0),
-    );
+      ),
+    ),
+  ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
   }
 
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions) {
@@ -1668,7 +1694,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     children: [
                       Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
                       const SizedBox(width: 3),
-                      Text('${place.rating}', style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
+                      Text('${place.rating} (${place.reviewCount})', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
                       const SizedBox(width: 10),
                       Text('${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                     ],
@@ -1910,6 +1936,45 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  IconData _getCategoryIcon(String category, String name) {
+    final cat = category.toLowerCase();
+    final nm = name.toLowerCase();
+    
+    if (cat.contains('food') || cat.contains('drink') || cat.contains('restaurant') || cat.contains('cafe') || nm.contains('cafe') || nm.contains('restaurant')) {
+      if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+        return Icons.coffee_rounded;
+      }
+      if (cat.contains('street') || cat.contains('fast') || nm.contains('burger') || nm.contains('pizza')) {
+        return Icons.local_pizza_rounded;
+      }
+      return Icons.restaurant_rounded;
+    }
+    
+    if (cat.contains('shop') || cat.contains('mall') || cat.contains('market') || cat.contains('store')) {
+      if (cat.contains('clothing') || cat.contains('fashion') || nm.contains('fashion') || nm.contains('boutique')) {
+        return Icons.shopping_bag_rounded;
+      }
+      if (cat.contains('market') || cat.contains('local') || nm.contains('market') || nm.contains('bazaar')) {
+        return Icons.storefront_rounded;
+      }
+      return Icons.shopping_cart_rounded;
+    }
+    
+    if (cat.contains('hotel') || cat.contains('accommodation') || cat.contains('stay') || cat.contains('lodging')) {
+      return Icons.hotel_rounded;
+    }
+    
+    if (cat.contains('park') || cat.contains('nature') || cat.contains('garden') || cat.contains('forest') || cat.contains('beach')) {
+      return Icons.park_rounded;
+    }
+    
+    if (cat.contains('museum') || cat.contains('gallery') || nm.contains('museum') || nm.contains('gallery')) {
+      return Icons.museum_rounded;
+    }
+    
+    return Icons.attractions_rounded;
+  }
+
   ImageProvider _getImageProvider(String? url, String category, String name) {
     return PlaceImageHelper.getImageProvider(url, category, name);
   }
@@ -1924,8 +1989,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   bool _shouldShowImageForPlace(AttractionEntity place) {
-    final cat = (place.categoryName ?? '').toLowerCase();
-    return cat.contains('attraction') || cat.contains('food') || cat.contains('restaurant') || cat.contains('cafe') || cat.contains('dining') || cat.contains('meal');
+    return true;
   }
 
   Widget _buildEmojiThumbnail(String? category) {

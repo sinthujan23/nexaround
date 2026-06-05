@@ -100,6 +100,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
         categoryName: category,
+        useLegacy: index == 1,
       ));
     }
   }
@@ -1109,39 +1110,83 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       child: Container(
         width: 260,
         margin: const EdgeInsets.only(right: 16),
-      child: Stack(
-        children: [
-          // Background Image
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(24),
-              image: DecorationImage(
-                image: _getImageProvider(
-                  place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                  place.categoryName ?? 'Attraction',
-                  place.name,
-                ),
-                fit: BoxFit.cover,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8)),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // Background Image or Fallback
+              Positioned.fill(
+                child: (() {
+                  final hasImage = place.photoUrls.isNotEmpty;
+                  final imageUrl = hasImage ? place.photoUrls.first : null;
+                  final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
+                      ? '${ApiConstants.baseUrl}$imageUrl'
+                      : imageUrl;
+
+                  Widget buildFallbackBackground() {
+                    return Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.secondary.withOpacity(0.3),
+                            AppColors.surfaceVariant,
+                          ],
+                        ),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Center(
+                        child: Opacity(
+                          opacity: 0.15,
+                          child: Icon(
+                            _getExperienceIcon(place.categoryName ?? 'Attraction', place.name, index),
+                            size: 120,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return resolvedUrl != null && resolvedUrl.isNotEmpty
+                      ? CachedNetworkImage(
+                          imageUrl: resolvedUrl,
+                          fit: BoxFit.cover,
+                          placeholder: (_, __) => Container(
+                            color: AppColors.surfaceVariant,
+                            child: const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
+                            ),
+                          ),
+                          errorWidget: (_, __, ___) => buildFallbackBackground(),
+                        )
+                      : buildFallbackBackground();
+                })(),
               ),
-              boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8)),
-              ],
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24),
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Colors.black.withOpacity(0.9),
-                    Colors.black.withOpacity(0.2),
-                    Colors.transparent,
-                  ],
+              // Gradient Overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.black.withOpacity(0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
           
           // Content
           Padding(
@@ -1172,7 +1217,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   children: [
                     const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
                     const SizedBox(width: 4),
-                    Text('${place.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                    Text('${place.rating} (${place.reviewCount})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(width: 12),
                     Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                     const SizedBox(width: 3),
@@ -1187,8 +1232,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           ),
         ],
       ),
-      ),
-    );
+    ),
+  ),
+);
   }
 
   Widget _buildExperienceCard(AttractionEntity a, int index) {
@@ -1213,22 +1259,51 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
       child: Row(
         children: [
-          // Thumbnail (Icon Container, No Image)
-          Container(
-            width: 90,
-            height: 90,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              color: AppColors.secondary.withOpacity(0.1),
-              border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
-            ),
-            child: Center(
-              child: Icon(
-                _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
-                color: AppColors.secondary,
-                size: 36,
-              ),
-            ),
+          // Thumbnail (Network Image / Fallback Icon Container)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: a.photoUrls.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: a.photoUrls.first.startsWith('/')
+                        ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
+                        : a.photoUrls.first,
+                    width: 90,
+                    height: 90,
+                    fit: BoxFit.cover,
+                    placeholder: (_, __) => Container(
+                      width: 90,
+                      height: 90,
+                      color: AppColors.surfaceVariant,
+                      child: const Icon(Icons.image_rounded, size: 24, color: AppColors.textMuted),
+                    ),
+                    errorWidget: (_, __, ___) => Container(
+                      width: 90,
+                      height: 90,
+                      color: AppColors.secondary.withOpacity(0.1),
+                      child: Center(
+                        child: Icon(
+                          _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
+                          color: AppColors.secondary,
+                          size: 36,
+                        ),
+                      ),
+                    ),
+                  )
+                : Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      color: AppColors.secondary.withOpacity(0.1),
+                      border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
+                        color: AppColors.secondary,
+                        size: 36,
+                      ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 16),
           
@@ -1268,10 +1343,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 Row(
                   children: [
                     Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                    Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    Text(' ${a.rating} (${a.reviewCount})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                     const SizedBox(width: 10),
                     Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
-                    Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
                   ],
                 ),
                 const SizedBox(height: 6),

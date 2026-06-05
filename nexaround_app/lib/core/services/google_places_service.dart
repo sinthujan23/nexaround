@@ -51,12 +51,13 @@ class GooglePlacesService {
     }
   }
 
-  /// Fetch nearby places from backend cached Places API (New)
+  /// Fetch nearby places from backend cached Places API
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
     required double longitude,
     String? categoryName,
     int radius = 5000,
+    bool useLegacy = false,
   }) async {
     try {
       final response = await ApiClient.instance.get(
@@ -66,6 +67,7 @@ class GooglePlacesService {
           'lng': longitude,
           'category': categoryName,
           'radius': radius,
+          'use_legacy': useLegacy,
         },
       );
 
