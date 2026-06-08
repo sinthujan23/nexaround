@@ -2,9 +2,10 @@ version: "3.9"
 
 services:
   api:
-    build: 
+    build:
       context: .
       dockerfile: ./docker/Dockerfile
+    restart: unless-stopped
     ports:
       - "8010:8000"
     environment:
@@ -24,6 +25,7 @@ services:
 
   db:
     image: postgis/postgis:16-3.4
+    restart: unless-stopped
     environment:
       POSTGRES_DB: nexaround
       POSTGRES_USER: nexaround
@@ -35,8 +37,12 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    restart: unless-stopped
+    # No host port published: the api reaches redis over the compose network
+    # (REDIS_URL=redis://redis:6379/0). Publishing 6379 on the host collides
+    # with the host-level redis-server that starts at boot.
+    expose:
+      - "6379"
 
 volumes:
   pgdata:

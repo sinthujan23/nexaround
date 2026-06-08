@@ -18,11 +18,14 @@ async def get_nearby(
     longitude: float,
     category: Optional[str],
     radius: int,
+    use_legacy: bool = False,
 ) -> PlacesNearbyResponse:
     # Canonicalize once at the entry point so the cache key, the Google call,
     # and the filter_food decision below all agree on the same category value.
     category = google_places_client.canonical_category(category)
     key = place_cache_service.build_key(latitude, longitude, category, radius)
+    if use_legacy:
+        key = f"{key}:legacy"
 
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
@@ -32,21 +35,33 @@ async def get_nearby(
             source="cache",
         )
 
-    raw = await google_places_client.nearby_search(
-        latitude=latitude,
-        longitude=longitude,
-        category=category,
-        radius=radius,
-    )
-    if category == "Food & Drink":
-        raw = google_places_client.filter_food(raw)
-    elif category != "Beach":
-        raw = raw[:40]
+    if use_legacy:
+        raw = await google_places_client.nearby_search_legacy(
+            latitude=latitude,
+            longitude=longitude,
+            category=category,
+            radius=radius,
+        )
+        place_dicts = [
+            google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
+            for p in raw
+        ]
+    else:
+        raw = await google_places_client.nearby_search(
+            latitude=latitude,
+            longitude=longitude,
+            category=category,
+            radius=radius,
+        )
+        if category == "Food & Drink":
+            raw = google_places_client.filter_food(raw)
+        elif category != "Beach":
+            raw = raw[:40]
 
-    place_dicts = [
-        google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
-        for p in raw
-    ]
+        place_dicts = [
+            google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+            for p in raw
+        ]
     place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
 
     await place_cache_service.set_cached(key, place_dicts)

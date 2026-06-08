@@ -44,9 +44,17 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Medical": [
         "hospital", "pharmacy", "medical_clinic", "dentist"
     ],
-    "Beach": [
-        "beach", "park", "national_park", "campground", "hiking_area", "garden", "zoo"
-    ],
+}
+
+CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
+    "Attractions": "tourist_attraction",
+    "Food & Drink": "restaurant",
+    "Hotels": "lodging",
+    "Shopping": "shopping_mall",
+    "Experiences": "amusement_park",
+    "Transport": "transit_station",
+    "Medical": "hospital",
+    "Beach": "park",
 }
 
 # Genuine food categories Google returns. Used to filter the broader
@@ -119,6 +127,21 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def _unsupported_types(resp) -> set[str]:
+    """Parse a Places API (New) 400 'Unsupported types: X, Y.' error body into
+    the set of offending type strings, so the caller can strip them and retry.
+    Returns an empty set if the message isn't a recognizable type error."""
+    try:
+        msg = (resp.json().get("error", {}) or {}).get("message", "") or ""
+    except Exception:
+        msg = resp.text or ""
+    marker = "Unsupported types:"
+    if marker not in msg:
+        return set()
+    tail = msg.split(marker, 1)[1].strip().rstrip(".")
+    return {t.strip() for t in tail.split(",") if t.strip()}
+
+
 async def nearby_search(
     *,
     latitude: float,
@@ -166,11 +189,40 @@ async def nearby_search(
         }
     }
 
+    # Work on a mutable copy so the self-heal loop below can prune types.
+    included_types = list(included_types)
     if included_types:
-        body["includedTypes"] = included_types
+        body["includedTypes"] = list(included_types)
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post("https://places.googleapis.com/v1/places:searchNearby", json=body, headers=headers)
+        # Self-heal: the Places API (New) rejects the WHOLE request with 400 if
+        # any single includedType isn't supported (e.g. legacy 'place_of_worship').
+        # Strip the type(s) Google names and retry, so the valid types still
+        # return results instead of the category coming back empty.
+        resp = None
+        for _attempt in range(len(included_types) + 1):
+            resp = await client.post(
+                "https://places.googleapis.com/v1/places:searchNearby",
+                json=body,
+                headers=headers,
+            )
+            if resp.status_code == 200:
+                break
+
+            bad = _unsupported_types(resp) if resp.status_code == 400 else set()
+            if not bad:
+                break  # not a recoverable type error — fall through to raise
+
+            included_types = [t for t in included_types if t not in bad]
+            print(f"⚠️ Dropping unsupported includedTypes {sorted(bad)}; "
+                  f"retrying with {len(included_types)} type(s)")
+            if included_types:
+                body["includedTypes"] = list(included_types)
+            else:
+                # All types were unsupported — fall back to an untyped nearby
+                # search rather than failing the whole category.
+                body.pop("includedTypes", None)
+
         if resp.status_code != 200:
             # Log Google's verbatim error (API-not-enabled / billing disabled /
             # key restriction) so the cause is visible in server logs instead of
@@ -308,6 +360,98 @@ def _resolve_category_from_types(types: list[str]) -> str:
     return "Attractions"
 
 
+async def nearby_search_legacy(
+    *,
+    latitude: float,
+    longitude: float,
+    category: Optional[str],
+    radius: int,
+) -> list[dict]:
+    """Call Google Nearby Search (Legacy). Returns the raw places list (unfiltered)."""
+    # Cap radius between 1 and 50000 meters for legacy Places API
+    eff_radius = float(min(max(radius, 1), 50000))
+
+    # Normalize category name to a canonical key so the type filter is mapped correctly
+    category = canonical_category(category)
+    legacy_type = CATEGORY_LEGACY_TYPE_MAP.get(category) if category else None
+
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
+        return []
+
+    params = {
+        "location": f"{latitude},{longitude}",
+        "radius": eff_radius,
+        "key": google_maps_key,
+    }
+
+    if legacy_type:
+        params["type"] = legacy_type
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        resp = await client.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json", params=params)
+        if resp.status_code != 200:
+            print(f"❌ Google nearbysearch legacy HTTP {resp.status_code}: {resp.text[:600]}")
+            resp.raise_for_status()
+        data = resp.json()
+
+    return data.get("results", [])
+
+
+def to_place_dict_legacy(
+    place: dict,
+    origin_lat: float,
+    origin_lng: float,
+    category_name: Optional[str],
+    photo_url_builder,
+) -> dict:
+    """Convert a raw Google place (Legacy API format) into the dict that matches PlaceResponse."""
+    from datetime import datetime, timezone
+
+    geom = place.get("geometry") or {}
+    loc = geom.get("location") or {}
+    plat = float(loc.get("lat", 0.0))
+    plng = float(loc.get("lng", 0.0))
+
+    display_name = place.get("name") or "Unknown"
+    types = list(place.get("types") or [])
+    resolved_category = category_name or _resolve_category_from_types(types)
+
+    photos = place.get("photos") or []
+    photo_urls = []
+    if photos and photo_url_builder:
+        for ph in photos:
+            ref = ph.get("photo_reference")
+            if ref:
+                photo_urls.append(photo_url_builder(ref))
+
+    return {
+        "id": place.get("place_id") or "",
+        "name": display_name,
+        "description": place.get("vicinity") or "",
+        "latitude": plat,
+        "longitude": plng,
+        "category_id": None,
+        "category_name": resolved_category,
+        "address": place.get("vicinity") or "",
+        "opening_hours": {},
+        "entry_fee": 0.0,
+        "currency": "USD",
+        "rating": float(place.get("rating") or 4.0),
+        "review_count": int(place.get("user_ratings_total") or 0),
+        "photo_urls": photo_urls,
+        "tags": types,
+        "geofence_radius_m": 100,
+        "distance_m": _haversine_m(origin_lat, origin_lng, plat, plng),
+        "is_active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[bytes, str]:
     """Download a Place Photo. Returns (bytes, content_type)."""
     async with async_session() as db:
@@ -328,7 +472,7 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
             url = f"{_BASE}/place/photo"
             params = {
                 "maxwidth": maxwidth,
-                "photo_reference": photo_reference,
+                "photoreference": photo_reference,
                 "key": google_maps_key,
             }
             resp = await client.get(url, params=params)
