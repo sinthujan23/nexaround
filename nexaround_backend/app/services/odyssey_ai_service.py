@@ -6,14 +6,27 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 `[meta, day, day, ...]` where `meta` carries the trip-level fields and each
 `day` carries its activities.
 """
+import asyncio
 import json
 import logging
 import httpx
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "gemini-2.5-flash"
-_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{_MODEL}:generateContent"
+# Gemini Flash models rotate through transient 503 "high demand" — WHICH model
+# is overloaded changes minute to minute, so retrying one model isn't enough.
+# Try a chain: a 503 on one model falls through to another that's healthy now.
+_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-flash-latest",
+    "gemini-2.5-pro",
+]
+_MODEL = _MODELS[0]  # kept for any external reference / logging
+
+
+def _model_url(model: str) -> str:
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _SYSTEM = (
     "You are NexAround's expert local travel designer for Sri Lanka and beyond. "
@@ -273,10 +286,27 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
         "generationConfig": generation_config,
     }
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+    # Odyssey is a one-shot background job, so a single 503 would permanently
+    # fail it. Rotate through the model chain twice (with a short backoff
+    # between passes) so a model that's overloaded right now is bypassed for
+    # one that's currently healthy.
+    data = None
+    attempts = _MODELS * 2
     async with httpx.AsyncClient(timeout=90.0) as client:
-        resp = await client.post(_URL, json=body, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
+        for i, model in enumerate(attempts):
+            resp = await client.post(_model_url(model), json=body, headers=headers)
+            if resp.status_code in (429, 500, 503) and i < len(attempts) - 1:
+                logger.warning(
+                    "Gemini %s for %s — falling through to next model",
+                    resp.status_code, model,
+                )
+                # Brief pause once we've cycled the whole chain once.
+                if (i + 1) % len(_MODELS) == 0:
+                    await asyncio.sleep(2)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+            break
 
     candidates = data.get("candidates") or []
     if not candidates:

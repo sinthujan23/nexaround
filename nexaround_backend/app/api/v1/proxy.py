@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -35,18 +36,31 @@ async def proxy_gemini_generate(
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-    
-    await settings.log_api_request("gemini", "/v1beta/models/gemini-2.5-flash:generateContent", current_user.id)
-    
+    # Gemini Flash models rotate through transient 503 "high demand" — which one
+    # is overloaded changes minute to minute. Try a chain so a 503 on one model
+    # falls through to another that's currently healthy, keeping Neva responsive.
+    models = [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-flash-latest",
+        "gemini-2.5-pro",
+    ]
+    await settings.log_api_request("gemini", "/v1beta/models/gemini-flash:generateContent", current_user.id)
+
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.post(
-                url,
-                json=payload,
-                headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-                timeout=60.0
-            )
+            resp = None
+            for i, model in enumerate(models):
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+                resp = await client.post(
+                    url,
+                    json=payload,
+                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+                    timeout=60.0
+                )
+                if resp.status_code in (429, 500, 503) and i < len(models) - 1:
+                    continue
+                break
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
