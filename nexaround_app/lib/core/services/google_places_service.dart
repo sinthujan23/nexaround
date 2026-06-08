@@ -250,15 +250,14 @@ class GooglePlacesService {
     String profile = 'driving',
   }) async {
     try {
-      final path =
-          '${ApiConstants.mapboxProxy}/$originLng,$originLat;$destLng,$destLat';
+      // Use Google Directions so the distance/route matches what users see in
+      // Google Maps (Mapbox was returning longer, less-accurate routes locally).
       final response = await ApiClient.instance.get(
-        path,
+        '${ApiConstants.googleMapsProxy}/directions/json',
         queryParameters: {
-          'geometries': 'geojson',
-          'overview': 'full',
-          'steps': 'false',
-          'profile': profile,
+          'origin': '$originLat,$originLng',
+          'destination': '$destLat,$destLng',
+          'mode': profile, // driving | walking | bicycling | transit
         },
       );
       final data = response.data as Map<String, dynamic>?;
@@ -268,15 +267,18 @@ class GooglePlacesService {
       if (routes == null || routes.isEmpty) return null;
 
       final route = routes[0] as Map<String, dynamic>;
-      final durationSec = (route['duration'] as num).toDouble();
-      final distanceM = (route['distance'] as num).toDouble();
-      final rawCoords = (route['geometry']['coordinates'] as List);
-      final points = rawCoords
-          .map<LatLng>((c) => LatLng(
-                (c[1] as num).toDouble(),
-                (c[0] as num).toDouble(),
-              ))
-          .toList();
+      final legs = route['legs'] as List?;
+      if (legs == null || legs.isEmpty) return null;
+      final leg = legs[0] as Map<String, dynamic>;
+
+      final distanceM =
+          ((leg['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+      final durationSec =
+          ((leg['duration'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+      final encoded = (route['overview_polyline'] as Map?)?['points'] as String?;
+      final points = (encoded != null && encoded.isNotEmpty)
+          ? _decodePolyline(encoded)
+          : <LatLng>[];
 
       return {
         'polyline': points,
@@ -287,6 +289,32 @@ class GooglePlacesService {
       debugPrint('getDirections error: $e');
       return null;
     }
+  }
+
+  /// Decodes a Google "encoded polyline" string into LatLng points so the route
+  /// line drawn on the map matches the Google Directions geometry.
+  static List<LatLng> _decodePolyline(String encoded) {
+    final points = <LatLng>[];
+    int index = 0, lat = 0, lng = 0;
+    while (index < encoded.length) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      points.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return points;
   }
 
   /// Get place suggestions/autocomplete from Google Places API via secure proxy

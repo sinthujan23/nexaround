@@ -171,19 +171,62 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       body: GestureDetector(
         onTap: () => FocusScope.of(context).unfocus(),
         behavior: HitTestBehavior.opaque,
-        child: Column(
+        child: Stack(
           children: [
-            _buildProgressIndicator(),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 400),
-                child: _buildCurrentStep(),
-              ),
+            Column(
+              children: [
+                _buildProgressIndicator(),
+                Expanded(
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 400),
+                    child: _buildCurrentStep(),
+                  ),
+                ),
+              ],
             ),
+            // iOS number pads have no "return"/Done key, so the keyboard can't be
+            // dismissed and the Continue button stays hidden behind it. Show a
+            // "Done" bar above the keyboard (iOS only — Android's keyboard already
+            // has an enter key) so users can close it and reach Continue.
+            if (Theme.of(context).platform == TargetPlatform.iOS &&
+                MediaQuery.of(context).viewInsets.bottom > 0)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildKeyboardDoneBar(),
+              ),
           ],
         ),
       ),
       bottomNavigationBar: _buildBottomAction(),
+    );
+  }
+
+  /// A "Done" accessory bar shown above the iOS keyboard (which lacks a return
+  /// key on number pads). Tapping it dismisses the keyboard.
+  Widget _buildKeyboardDoneBar() {
+    return Material(
+      color: const Color(0xFFF2F2F7),
+      child: Container(
+        height: 44,
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: Colors.black.withOpacity(0.12))),
+        ),
+        child: TextButton(
+          onPressed: () => FocusScope.of(context).unfocus(),
+          child: const Text(
+            'Done',
+            style: TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -423,12 +466,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Widget _buildBudgetStep() {
-    return Padding(
+    return LayoutBuilder(
       key: const ValueKey('budget'),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
           const Text(
             'What is your\naffordable limit?',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
@@ -488,10 +537,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               trackHeight: 8,
             ),
             child: Slider(
-              value: _budget.clamp(10000.0, 500000.0),
-              min: 10000,
+              value: _budget.clamp(1000.0, 500000.0),
+              min: 1000,
               max: 500000,
-              divisions: 49,
+              divisions: 499,
               onChanged: (val) {
                 setState(() {
                   _budget = val;
@@ -501,8 +550,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             ),
           ),
           const SizedBox(height: 40),
-        ],
-      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 

@@ -464,7 +464,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     return CameraPosition(
       target: ahead,
       zoom: _travelMode == 'walking' ? 20.0 : 19.5,
-      tilt: 67.5,
+      tilt: 0.0,
       bearing: bearing,
     );
   }
@@ -549,7 +549,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         CameraPosition(
           target: LatLng(_destLat, _destLng),
           zoom: 15.5,
-          tilt: 55,
+          tilt: 0,
         ),
       ),
     );
@@ -590,7 +590,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
             initialCameraPosition: CameraPosition(
               target: LatLng(widget.initialLat, widget.initialLng),
               zoom: 14.0,
-              tilt: 55.0,
+              tilt: 0.0,
             ),
             markers: _markers,
             polylines: _polylines,
@@ -602,7 +602,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
             zoomControlsEnabled: false,
             compassEnabled: false,
             mapToolbarEnabled: false,
-            buildingsEnabled: true,
+            buildingsEnabled: false,
+            tiltGesturesEnabled: false,
             trafficEnabled: false,
             padding: EdgeInsets.only(
               top: topPad + 80,
@@ -1274,7 +1275,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                   CameraPosition(
                     target: LatLng(_userLat!, _userLng!),
                     zoom: 17,
-                    tilt: 50,
+                    tilt: 0,
                   ),
                 ),
               );

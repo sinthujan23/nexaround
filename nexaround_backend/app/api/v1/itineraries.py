@@ -46,6 +46,7 @@ async def generate_odyssey(
         currency=data.currency,
         days=data.days,
         nights=data.days - 1 if data.days > 1 else 0,
+        travelers=data.travelers,
     )
     placeholder = Itinerary(
         user_id=current_user.id,
@@ -64,6 +65,7 @@ async def generate_odyssey(
         data.budget,
         data.days,
         data.currency,
+        data.travelers,
     )
     return saved
 
@@ -76,6 +78,7 @@ async def _run_odyssey_generation(
     budget: float,
     days: int,
     currency: str,
+    travelers: int = 1,
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -99,6 +102,7 @@ async def _run_odyssey_generation(
                 budget=budget,
                 days=days,
                 currency=currency,
+                travelers=travelers,
                 api_key=api_key,
             )
             itin.title = title

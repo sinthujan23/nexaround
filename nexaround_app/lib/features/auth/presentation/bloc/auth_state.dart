@@ -23,7 +23,7 @@ class AuthAuthenticated extends AuthState {
   const AuthAuthenticated({required this.user, required this.accessToken});
 
   @override
-  List<Object?> get props => [user.id, accessToken];
+  List<Object?> get props => [user, accessToken];
 }
 
 class AuthUnauthenticated extends AuthState {

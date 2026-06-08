@@ -226,38 +226,43 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   Future<void> _fetchRoute() async {
     if (_userLat == null || _userLng == null) return;
     try {
-      final path = '${ApiConstants.mapboxProxy}/$_userLng,$_userLat;$_destLng,$_destLat';
-
+      // Google Directions (via the secure proxy) so the distance/route matches
+      // Google Maps instead of Mapbox's longer, less-accurate local routing.
       final response = await ApiClient.instance.get(
-        path,
+        '${ApiConstants.googleMapsProxy}/directions/json',
         queryParameters: {
-          'geometries': 'geojson',
-          'overview': 'full',
-          'steps': 'true',
-          'profile': _navigationProfile,
+          'origin': '$_userLat,$_userLng',
+          'destination': '$_destLat,$_destLng',
+          'mode': _navigationProfile, // driving | walking | bicycling | transit
         },
       );
       final data = response.data;
 
-      if (data['routes'] != null && (data['routes'] as List).isNotEmpty) {
-        final route = data['routes'][0];
-        final durationSec = (route['duration'] as num).toDouble();
-        final distanceM = (route['distance'] as num).toDouble();
-        final coords = (route['geometry']['coordinates'] as List)
-            .map<List<double>>(
-                (c) => [c[0].toDouble(), c[1].toDouble()])
-            .toList();
+      if (data != null &&
+          data['routes'] != null &&
+          (data['routes'] as List).isNotEmpty) {
+        final route = data['routes'][0] as Map;
+        final legsList = route['legs'] as List?;
+        if (legsList == null || legsList.isEmpty) return;
+        final leg = legsList[0] as Map;
+
+        final durationSec =
+            ((leg['duration'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+        final distanceM =
+            ((leg['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+
+        final encoded = (route['overview_polyline'] as Map?)?['points'] as String?;
+        final coords = (encoded != null && encoded.isNotEmpty)
+            ? _decodePolylineLngLat(encoded)
+            : <List<double>>[];
 
         final List<String> parsedSteps = [];
-        final legs = route['legs'] as List?;
-        if (legs != null && legs.isNotEmpty) {
-          final stepsRaw = legs[0]['steps'] as List?;
-          if (stepsRaw != null) {
-            for (final step in stepsRaw) {
-              final maneuver = step['maneuver'] as Map?;
-              if (maneuver != null && maneuver['instruction'] != null) {
-                parsedSteps.add(maneuver['instruction'] as String);
-              }
+        final stepsRaw = leg['steps'] as List?;
+        if (stepsRaw != null) {
+          for (final step in stepsRaw) {
+            final html = (step as Map)['html_instructions'] as String?;
+            if (html != null && html.isNotEmpty) {
+              parsedSteps.add(_stripHtml(html));
             }
           }
         }
@@ -283,6 +288,38 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       debugPrint('Route fetch error: $e');
     }
   }
+
+  /// Decodes a Google "encoded polyline" into [lng, lat] pairs (GeoJSON order)
+  /// for drawing on the Mapbox map.
+  List<List<double>> _decodePolylineLngLat(String encoded) {
+    final coords = <List<double>>[];
+    int index = 0, lat = 0, lng = 0;
+    while (index < encoded.length) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(index++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : (result >> 1);
+      coords.add([lng / 1e5, lat / 1e5]);
+    }
+    return coords;
+  }
+
+  /// Strips HTML tags from Google's turn-by-turn instructions.
+  String _stripHtml(String html) => html
+      .replaceAll(RegExp(r'<[^>]*>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
 
   // ─── Map Created ───
   void _onMapCreated(mapbox.MapboxMap map) async {

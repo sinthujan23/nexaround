@@ -1,4 +1,6 @@
-class UserEntity {
+import 'package:equatable/equatable.dart';
+
+class UserEntity extends Equatable {
   final String id;
   final String email;
   final String displayName;
@@ -20,6 +22,19 @@ class UserEntity {
     this.isVerified = false,
     required this.createdAt,
   });
+
+  @override
+  List<Object?> get props => [
+        id,
+        email,
+        displayName,
+        avatarUrl,
+        preferences,
+        language,
+        isActive,
+        isVerified,
+        createdAt,
+      ];
 }
 
 class AuthTokens {

@@ -129,6 +129,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Set when a live fetch threw (network / backend error) rather than simply
   // returning zero results. Drives the retry prompt instead of "no places".
   bool _placesFetchError = false;
+  // Tracks which "category:range" combos we've already pulled famous far-away
+  // places for (via Text Search), so we don't re-query on every rebuild.
+  final Set<String> _famousFarKeys = {};
 
   /// User's manual choice for the "Your Location" pill, overriding auto-pick.
   /// Cleared on every fresh place fetch so it doesn't stick after you walk
@@ -172,8 +175,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // User-selectable search range (km). The slider snaps to [_rangeSteps]; both
   // the live fetch and the on-screen cull honor it so the user controls how far
   // out attractions / medical (and all categories) are shown.
-  int _rangeKm = 10;
-  static const List<int> _rangeSteps = [5, 10];
+  int _rangeKm = 2;
+  static const List<int> _rangeSteps = [2, 5, 10];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -187,12 +190,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   /// Only these three categories expose the km range selector and react to it;
   /// the rest are fixed at their 10 km max (no range button shown).
-  bool _categoryHasRange(String filter) =>
-      filter == 'Medical' || filter == 'Nature' || filter == 'Historical';
+  bool _categoryHasRange(String filter) => true;
 
   int _maxRangeForCategory(String filter) {
-    // Only Historical, Medical and Nature reach far out (50 km); everything
-    // else (All / Food / Shopping / Hotels / Others) is capped at 10 km.
     if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
       return 50;
     }
@@ -200,20 +200,117 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   List<int> _rangeStepsForCategory(String filter) {
-    // Steps start at 5 km (2 km removed). Historical / Medical / Nature can be
-    // widened to 50 km; the rest stop at 10 km.
     if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
-      return const [5, 10, 20, 50];
+      return const [2, 5, 10, 20, 50];
     }
-    return const [5, 10];
+    return const [2, 5, 10];
   }
 
-  /// Places to display for the selected range. 5 km stays light (~20); 10 km and
-  /// beyond show all the real places found (up to the AR marker ceiling) so the
-  /// view is rich and not artificially limited.
-  int _maxPlacesForRange(int km) {
-    if (km <= 5) return 20;
-    return _maxVisibleMarkers;
+  /// The live fetch keeps every place within range (up to the marker ceiling);
+  /// the per-range CURATION (all within 2 km + famous beyond) happens in
+  /// [_placesForFilter], so widening the radius adds famous spots, not clutter.
+  int _maxPlacesForRange(int km) => _maxVisibleMarkers;
+
+  /// How many "famous" (top-rated) places to show BEYOND the 2 km base ring.
+  /// Grows with the selected range so extending the radius surfaces more.
+  int _famousCountForRange(int km) {
+    if (km <= 2) return 0;
+    if (km <= 5) return 12;
+    if (km <= 10) return 20;
+    if (km <= 20) return 28;
+    return 36;
+  }
+
+  /// Text-search query used to surface FAMOUS far-away places per category
+  /// (Nearby Search misses distant landmarks). Null → skip (e.g. Others).
+  String? _famousFarQuery(String filter) {
+    switch (filter) {
+      case 'Food':
+        return 'best restaurants and cafes';
+      case 'Shopping':
+        return 'shopping malls and markets';
+      case 'Historical':
+        return 'famous tourist attractions, temples, museums and landmarks';
+      case 'Nature':
+        return 'beaches, waterfalls, national parks and nature spots';
+      case 'Hotels':
+        return 'best hotels and resorts';
+      case 'Medical':
+        return 'hospitals and clinics';
+      case 'All':
+        return 'popular places to visit';
+    }
+    return null;
+  }
+
+  /// Option A: when the range is extended past the 2 km base, pull prominent
+  /// (famous) far-away places for the selected category via Google Text Search,
+  /// which ranks by prominence across the whole area — so distant landmarks the
+  /// proximity-ranked Nearby Search omits actually appear. Cached per
+  /// category+range; appended to [_landmarks] so the closest-N cap can't trim
+  /// them.
+  Future<void> _loadFamousFarForSelection() async {
+    final filter = _selectedFilter;
+    final rangeKm = _rangeKm;
+    if (rangeKm <= 2) return;
+    final query = _famousFarQuery(filter);
+    if (query == null) return;
+    final key = '$filter:$rangeKm';
+    if (_famousFarKeys.contains(key)) return;
+    _famousFarKeys.add(key);
+
+    final pos = _currentPosition;
+    if (pos == null) {
+      _famousFarKeys.remove(key);
+      return;
+    }
+
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+      );
+      final double maxRangeM = (rangeKm * 1000).toDouble();
+      final existing = _landmarks.map((l) => l.name).toSet();
+      final additions = <_ArLandmark>[];
+      for (final p in results) {
+        final d = (p.distanceM ?? 0).toDouble();
+        if (d <= 2000 || d > maxRangeM) continue; // far ring only
+        if (existing.contains(p.name) ||
+            additions.any((l) => l.name == p.name)) {
+          continue;
+        }
+        final bearing = _calculateBearing(
+            pos.latitude, pos.longitude, p.latitude, p.longitude);
+        final distStr =
+            d < 1000 ? '${d.toInt()} m' : '${(d / 1000).toStringAsFixed(1)} km';
+        additions.add(_ArLandmark(
+          p.name,
+          p.photoUrls.isNotEmpty
+              ? p.photoUrls.first
+              : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+          p.rating,
+          distStr,
+          bearing,
+          p.description ?? 'A famous spot worth the trip.',
+          p.categoryName?.toUpperCase() ?? 'ATTRACTION',
+          d,
+          p.latitude,
+          p.longitude,
+          p.tags,
+        ));
+      }
+      if (additions.isNotEmpty && mounted) {
+        setState(() {
+          _landmarks = [..._landmarks, ...additions];
+          _capCache.clear();
+        });
+      }
+    } catch (e) {
+      debugPrint('Famous-far fetch failed: $e');
+      _famousFarKeys.remove(key); // allow a retry later
+    }
   }
 
   bool _matchesFilter(_ArLandmark lm, String filter) {
@@ -285,23 +382,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     return false;
   }
 
-  // ── Category display policy (client rules) ──────────────────────────
-  //  • No fixed "max per category" — proximity alone decides how many show.
-  //  • Normal categories (food, hotels, others) show ONLY when extremely
-  //    close (within [_extremelyCloseM]). This keeps the list short without
-  //    an arbitrary count cap.
-  //  • LONG-RANGE categories — attractions, hospitals, beaches, shopping —
-  //    may show at any distance (their numbers are already limited when
-  //    fetched).
-  static const double _extremelyCloseM = 300;
-
-  // Buckets allowed to appear at long range. In this app the backend maps
-  // "Medical" → Google `hospital` and "Beach" → `beach`. Shopping is included
-  // because malls/markets/supermarkets are destinations people travel to, and
-  // they're almost always farther than [_extremelyCloseM]: capping them to 300m
-  // left the Shopping filter showing only the rotate/nav hint with no place
-  // labels (client report), since matched shops got stripped by proximity.
-  static const Set<String> _longRangeKeys = {'hospital', 'beach', 'historical', 'shopping'};
+  // ── Category display policy ─────────────────────────────────────────
+  // Inside the 2 km base ring every place shows; beyond it only the famous
+  // (top-rated) ones do, scaled by the selected range. See [_placesForFilter].
 
   // ── Real Google Place-type sets (New Places API) ────────────────────
   // Classification keys off the place's ACTUAL types (lm.tags), NOT its
@@ -462,20 +545,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     return 'others';
   }
 
-  /// Keep a landmark only if it is extremely close, OR it belongs to a
-  /// long-range category (attraction / hospital / beach) that is allowed at
-  /// any distance. No count cap — proximity does the limiting.
-  List<_ArLandmark> _filterByProximity(List<_ArLandmark> sortedByDistance) {
-    final result = <_ArLandmark>[];
-    for (final lm in sortedByDistance) {
-      final key = _displayCategoryKey(lm);
-      if (_longRangeKeys.contains(key) || lm.distanceM <= _extremelyCloseM) {
-        result.add(lm);
-      }
-    }
-    return result;
-  }
-
   // Memoize the filtered lists per filter. The result only depends on
   // [_landmarks] and the proximity rule, NOT on heading — yet build() runs on
   // every compass tick. Caching against the current landmark snapshot keeps
@@ -516,13 +585,26 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
     final bucket = _filterBucketKey[filter];
     final double maxRangeM = (_rangeKm * 1000).toDouble();
+    const double baseRingM = 2000; // 2 km base ring.
+
     final matches = _landmarks
         .where((lm) =>
             lm.distanceM <= maxRangeM &&
             (filter == 'All' || _displayCategoryKey(lm) == bucket))
+        .toList();
+
+    // Inside 2 km → show ALL places. Beyond 2 km → only the famous (top-rated)
+    // ones, capped to a count that grows with the selected range — so the base
+    // view is complete and widening the radius adds notable spots, not clutter.
+    final near = matches.where((lm) => lm.distanceM <= baseRingM).toList();
+    final far = matches
+        .where((lm) => lm.distanceM > baseRingM && lm.rating >= 3.8)
         .toList()
+      ..sort((a, b) => b.rating.compareTo(a.rating));
+    final farFamous = far.take(_famousCountForRange(_rangeKm)).toList();
+
+    final result = [...near, ...farFamous]
       ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-    final result = _filterByProximity(matches);
     _capCache[filter] = result;
     return result;
   }
@@ -1448,6 +1530,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             _userPickedLocationName = null;
           });
         }
+
+        // Option A: surface famous far-away places (Text Search) for the current
+        // category/range — Nearby Search alone misses distant landmarks.
+        _famousFarKeys.clear();
+        _loadFamousFarForSelection();
 
         // Cache the newly fetched places to the persistent cache so other screens can use them
         try {
@@ -2746,6 +2833,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildRangeSlider(),
 
+          // Notice banner when range > 2km - shown in all modes except mapping/navigating/neva/detail
+          if (!_minimalHud && !_isMapping && !_isNavigating && _nevaSearchResult == null && !_showInfoCard && _rangeKm > 2)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 114,
+              left: 20,
+              right: 20,
+              child: Center(child: _buildApiLimitNotice()),
+            ),
+
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null)
             Positioned(
@@ -2827,9 +2923,41 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   // ═══════════════════════════════════════
-  // AR RANGE SLIDER - now replaced by the inline KM picker in _buildTopHUD
-  // Kept as a no-op so existing call-sites in build() don't break.
-  // ═══════════════════════════════════════
+  Widget _buildApiLimitNotice() {
+    if (_rangeKm <= 2) return const SizedBox.shrink();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.65),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.amber.withOpacity(0.3), width: 1.2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.amber, size: 14),
+              const SizedBox(width: 8),
+              const Flexible(
+                child: Text(
+                  'Showing most popular/important places due to range limits.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0);
+  }
+
   Widget _buildRangeSlider() => const SizedBox.shrink();
 
   // ═══════════════════════════════════════
@@ -2866,18 +2994,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   setState(() {
                     _selectedFilter = id;
                     final maxKm = _maxRangeForCategory(id);
-                    if (!_categoryHasRange(id)) {
-                      // Non-range categories are fixed at their 10 km max.
-                      _rangeKm = maxKm;
-                    } else if (_rangeKm > maxKm) {
+                    if (_rangeKm > maxKm) {
                       _rangeKm = maxKm;
                     }
                   });
-                  // Re-fetch only if the effective range actually changed.
+                  // Re-fetch only if the effective range actually changed;
+                  // otherwise just pull the new category's famous far places.
                   if (_rangeKm != prevRange) {
                     _capCache.clear();
                     _lastFetchTime = null;
                     _fetchLivePlaces();
+                  } else {
+                    _loadFamousFarForSelection();
                   }
                 },
                 child: AnimatedContainer(
@@ -3516,7 +3644,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       final lm = p.landmark;
 
       final cardinal = _cardinalFromHeading(p.bearing);
-      final arrowIcon = _arrowIconForCardinal(cardinal);
 
       // All cards use the same neutral dark style — no blue lock highlight
       const Color cardBg = Colors.black;
@@ -3604,41 +3731,32 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // ── DIRECTION BADGE — cyan/blue chip with arrow + cardinal ──
+                      // ── DIRECTION BADGE — white chip with cardinal ──
                       Container(
                         width: 30,
                         height: 30,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF00E5FF), Color(0xFF2E9BFF)],
-                          ),
+                          color: Colors.white,
                           borderRadius: BorderRadius.circular(9),
-                          border: Border.all(color: Colors.white.withOpacity(0.25)),
+                          border: Border.all(color: Colors.black.withOpacity(0.06)),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF00E5FF).withOpacity(0.45),
-                              blurRadius: 8,
+                              color: Colors.black.withOpacity(0.25),
+                              blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(arrowIcon, size: 11, color: Colors.white),
-                            Text(
-                              cardinal,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 8,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 0.3,
-                                height: 1.0,
-                              ),
+                        child: Center(
+                          child: Text(
+                            cardinal,
+                            style: const TextStyle(
+                              color: Colors.black87,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.3,
                             ),
-                          ],
+                          ),
                         ),
                       ),
                     ],
@@ -5572,44 +5690,33 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
-  /// Builds a concise, natural-sounding question (reads well as a chat bubble)
-  /// that still carries the key facts, so Neva returns genuinely useful details
-  /// about THIS place instead of a thin "tell me more about X".
+  /// Builds the "fully-Gemini" elaboration prompt for an AR discovery result —
+  /// just the place name (+ a category hint) goes to Gemini, no Google data.
   String _askNevaPromptFor(Map<String, dynamic> result) {
     final name = (result['name'] ?? 'this place').toString();
-    final category = (result['category'] ?? 'place').toString().toLowerCase();
-    final distance = (result['distance'] ?? 'nearby').toString();
-
-    final extras = <String>[];
-    void add(dynamic value) {
-      final v = value?.toString().trim() ?? '';
-      if (v.isNotEmpty) extras.add(v);
-    }
-
-    add(result['tagline']);
-    add(result['hidden_history']);
-    add(result['surprising_fact']);
-    add(result['insider_tip']);
-    final extraNote =
-        extras.isEmpty ? '' : ' Things I\'ve already heard: ${extras.join('; ')}.';
-
-    return 'Tell me the important things about "$name" — it\'s a $category spot about '
-        '$distance from me right now. What\'s it known for, is it worth a stop, '
-        'and any quick tip?$extraNote';
+    final category = (result['category'] ?? '').toString();
+    return _elaboratePrompt(name, category);
   }
 
-  /// Minimal place context (name + coordinates) so the Neva chat is
-  /// geographically grounded and can offer the "nearby" category chips.
-  Map<String, dynamic>? _placeContextFrom(Map<String, dynamic> result) {
-    final lat = result['latitude'] ?? _currentPosition?.latitude;
-    final lng = result['longitude'] ?? _currentPosition?.longitude;
-    if (lat is! num || lng is! num) return null;
-    return {
-      'name': result['name'] ?? 'this place',
-      'category': result['category'] ?? 'Place',
-      'latitude': lat,
-      'longitude': lng,
-    };
+  /// Shared Ask-Neva place-elaboration prompt. Given a place NAME, Neva (Gemini)
+  /// describes what it is, the important things, a short review, and an estimated
+  /// rating — entirely from Gemini's own knowledge (no Google Places lookup).
+  String _elaboratePrompt(String name, String category) {
+    final cat = category.trim().toLowerCase();
+    final hint = (cat.isEmpty ||
+            cat == 'place' ||
+            cat == 'landmark' ||
+            cat == 'detected')
+        ? ''
+        : ' (a $cat)';
+    return 'Tell me about "$name"$hint. As my travel companion, give me a clear, '
+        'engaging elaboration:\n'
+        '• What it is and why it\'s notable — the important things to know.\n'
+        '• Highlights: what to see or do there, plus a quick tip.\n'
+        '• A short, honest review of what visitors generally feel about it.\n'
+        '• Your best estimated rating out of 5 — show it as "⭐ 4.3 / 5".\n'
+        'Be specific. If you\'re not sure about this exact place, give your best '
+        'local-style take and mention that briefly.';
   }
 
   /// Opens Neva for an AR discovery result. Uses Navigator.push (a fresh page
@@ -5621,7 +5728,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       MaterialPageRoute(
         builder: (_) => AiChatPage(
           initialPrompt: _askNevaPromptFor(result),
-          placeContext: _placeContextFrom(result),
         ),
       ),
     );
@@ -5634,13 +5740,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       context,
       MaterialPageRoute(
         builder: (_) => AiChatPage(
-          initialPrompt: 'Tell me more about ${landmark.name}.',
-          placeContext: {
-            'name': landmark.name,
-            'category': landmark.category,
-            'latitude': landmark.lat,
-            'longitude': landmark.lng,
-          },
+          initialPrompt: _elaboratePrompt(landmark.name, landmark.category),
         ),
       ),
     );

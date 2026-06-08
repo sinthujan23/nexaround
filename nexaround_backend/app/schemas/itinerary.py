@@ -38,6 +38,7 @@ class OdysseyGenerateRequest(BaseModel):
     budget: float = 50000
     days: int = 3
     currency: str = "USD"
+    travelers: int = 1
 
 class OdysseySwapRequest(BaseModel):
     """Request body for swapping a single activity in a saved Odyssey for an

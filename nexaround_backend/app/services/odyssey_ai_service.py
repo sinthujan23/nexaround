@@ -33,6 +33,7 @@ def build_meta_item(
     currency: str,
     days: int,
     nights: int,
+    travelers: int = 1,
     summary: str = "",
     budget_split: str = "",
     visa: str = "",
@@ -48,6 +49,7 @@ def build_meta_item(
         "currency": currency,
         "days": days,
         "nights": nights,
+        "travelers": travelers,
         "summary": summary,
         "budget_split": budget_split,
         "visa": visa,
@@ -62,6 +64,7 @@ async def generate_odyssey(
     budget: float,
     days: int,
     currency: str,
+    travelers: int = 1,
     api_key: str,
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary.
@@ -70,7 +73,7 @@ async def generate_odyssey(
     unparseable response, or an empty plan) so the caller can mark the itinerary
     'failed'.
     """
-    prompt = _build_prompt(destination, mood, budget, days, currency)
+    prompt = _build_prompt(destination, mood, budget, days, currency, travelers)
     # thinking_budget=0 disables gemini-2.5-flash's hidden "thinking" tokens, which
     # otherwise count against maxOutputTokens and were truncating the plan's JSON
     # mid-output (finishReason MAX_TOKENS) -> _parse_json raised "did not return a
@@ -90,6 +93,7 @@ async def generate_odyssey(
         currency=str(plan.get("currency") or currency),
         days=g_days,
         nights=nights,
+        travelers=travelers,
         summary=str(plan.get("summary") or ""),
         budget_split=str(plan.get("budget_split") or ""),
         visa=str(plan.get("visa") or plan.get("visa_status") or ""),
@@ -210,14 +214,16 @@ Return ONLY a JSON object with this exact shape (no markdown, no commentary):
 """
 
 
-def _build_prompt(destination: str, mood: str, budget: float, days: int, currency: str) -> str:
+def _build_prompt(destination: str, mood: str, budget: float, days: int, currency: str, travelers: int = 1) -> str:
     nights = days - 1 if days > 1 else 0
-    return f"""Design a {days}-day travel Odyssey.
+    per_person = int(budget / travelers) if travelers > 0 else int(budget)
+    return f"""Design a {days}-day travel Odyssey for a group of {travelers} traveler(s).
 
 Trip brief:
 - Destination: {destination}
 - Travel style / mood: {mood}
-- Total budget: {int(budget)} {currency} (this is the hard cap for the whole trip)
+- Group size: {travelers} traveler(s)
+- Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
 
 Return ONLY a JSON object with EXACTLY this shape:
@@ -243,8 +249,9 @@ Return ONLY a JSON object with EXACTLY this shape:
 }}
 
 Rules:
+- Plan for {travelers} traveler(s): size accommodation, meals and tickets for the group, and make every activity "cost" the TOTAL for all {travelers}.
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
-- Keep the SUM of all activity costs within the {int(budget)} {currency} budget.
+- Keep the SUM of all activity costs within the {int(budget)} {currency} budget (this covers all {travelers} travelers).
 - Use real, recognisable places near "{destination}".
 - Be concise; tips under ~12 words.
 """

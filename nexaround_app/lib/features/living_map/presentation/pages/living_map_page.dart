@@ -1193,6 +1193,37 @@ class _LivingMapPageState extends State<LivingMapPage>
             ),
             const SizedBox(height: 12),
             _odysseyRouteLine(),
+            const SizedBox(height: 12),
+            // View all generated trip plans → Plans section (My Odysseys tab).
+            // Its own tap handler so it doesn't trigger the card's "build" action.
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => HomePage.homeKey.currentState?.switchToPlans(),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'VIEW MY PLANS',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 11,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ),
       ),
