@@ -16,6 +16,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -321,6 +322,23 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
 
+  void _disableOrnaments() {
+    final map = _mapboxMap;
+    if (map == null) return;
+    map.compass.updateSettings(
+      mapbox.CompassSettings(enabled: false),
+    );
+    map.logo.updateSettings(
+      mapbox.LogoSettings(enabled: false),
+    );
+    map.attribution.updateSettings(
+      mapbox.AttributionSettings(enabled: false),
+    );
+    map.scaleBar.updateSettings(
+      mapbox.ScaleBarSettings(enabled: false),
+    );
+  }
+
   // ─── Map Created ───
   void _onMapCreated(mapbox.MapboxMap map) async {
     _mapboxMap = map;
@@ -337,18 +355,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     );
 
     // Hide default Mapbox ornaments for a clean, custom UI
-    map.compass.updateSettings(
-      mapbox.CompassSettings(enabled: false),
-    );
-    map.logo.updateSettings(
-      mapbox.LogoSettings(enabled: false),
-    );
-    map.attribution.updateSettings(
-      mapbox.AttributionSettings(enabled: false),
-    );
-    map.scaleBar.updateSettings(
-      mapbox.ScaleBarSettings(enabled: false),
-    );
+    _disableOrnaments();
 
     // Wait for style to fully load before adding layers
     await Future.delayed(const Duration(milliseconds: 800));
@@ -961,9 +968,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   void _toggleMapStyle() {
     setState(() => _styleIndex = (_styleIndex + 1) % _styles.length);
     _mapboxMap?.style.setStyleURI(_styles[_styleIndex]);
-    // Re-add 3D buildings after style change
+    // Re-add 3D buildings and ensure ornaments remain disabled after style change
     Future.delayed(const Duration(milliseconds: 1200), () {
       _add3DBuildingLayer();
+      _disableOrnaments();
       if (_routeLoaded) _drawRoute();
     });
   }
@@ -1395,11 +1403,17 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           // ── Right side buttons (uniform 52px circles, evenly spaced) ──
           if (!_searchFocusNode.hasFocus)
             Positioned(
+              top: MediaQuery.of(context).padding.top + 76,
               bottom: bottomOffset,
               right: 20,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              // Bound the stack between the top bar and the bottom card, and let
+              // it scroll if it's tall — so the top button never overlaps the
+              // "Google" button. reverse keeps the main controls (bottom) visible.
+              child: SingleChildScrollView(
+                reverse: true,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   // While actively navigating, the top turn-by-turn banner is
                   // shown — hide the browse-only controls so the stack stays low
                   // and never overlaps that banner. Keep only Recenter + Stop.
@@ -1431,6 +1445,22 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                       ),
                       const SizedBox(height: 12),
                     ],
+                    // ── Booking.com — find hotels near the destination ──
+                    _buildCircleButton(
+                      imagePath: 'assets/images/booking_logo.jpg',
+                      onTap: _openBooking,
+                      bgColor: const Color(0xFF003580), // Booking.com blue
+                      iconColor: Colors.white,
+                    ),
+                    const SizedBox(height: 12),
+                    // ── Uber — request a ride to the destination ──
+                    _buildCircleButton(
+                      imagePath: 'assets/images/uber_logo.png',
+                      onTap: _openUber,
+                      bgColor: Colors.black,
+                      iconColor: Colors.white,
+                    ),
+                    const SizedBox(height: 12),
                   ],
                   // Recenter — just shows where I am (north-up overview)
                   _buildCircleButton(
@@ -1457,6 +1487,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                     glow: true,
                   ),
                 ],
+              ),
               ),
             ),
         ],
@@ -1569,6 +1600,60 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         ),
       ),
     );
+  }
+
+  /// Optional Booking.com affiliate id. Paste your `aid` here (free to sign up)
+  /// to earn commission on hotel bookings; leave empty for plain links.
+  static const String _bookingAffiliateId = '';
+
+  /// Opens Booking.com hotel search for the current destination/area via a deep
+  /// link (no API key) — uses the installed app if present, else the website.
+  Future<void> _openBooking() async {
+    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
+    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
+    final name = _destinationName;
+    final params = <String, String>{
+      if (name != null && name.trim().isNotEmpty) 'ss': name.trim(),
+      'latitude': lat.toStringAsFixed(6),
+      'longitude': lng.toStringAsFixed(6),
+      if (_bookingAffiliateId.isNotEmpty) 'aid': _bookingAffiliateId,
+    };
+    await _launchExternalUrl(
+      Uri.https('www.booking.com', '/searchresults.html', params),
+    );
+  }
+
+  /// Opens Uber with the drop-off pre-set to the current destination via a deep
+  /// link (no API key) — falls back to Uber's site / store if the app is absent.
+  Future<void> _openUber() async {
+    final double dLat = _destLat != 0 ? _destLat : widget.initialLat;
+    final double dLng = _destLng != 0 ? _destLng : widget.initialLng;
+    final name = _destinationName ?? 'Destination';
+    final params = <String, String>{
+      'action': 'setPickup',
+      'pickup': 'my_location',
+      'dropoff[latitude]': dLat.toStringAsFixed(6),
+      'dropoff[longitude]': dLng.toStringAsFixed(6),
+      'dropoff[nickname]': name,
+    };
+    await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
+  }
+
+  Future<void> _launchExternalUrl(Uri uri) async {
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't open the app or website.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Couldn't open link: $e")),
+        );
+      }
+    }
   }
 
   // ─── Navigation Bottom Card ───
@@ -1808,7 +1893,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   // ─── Circle Button Widget ───
   Widget _buildCircleButton({
-    required IconData icon,
+    IconData? icon,
+    String? imagePath,
     required VoidCallback onTap,
     required Color bgColor,
     required Color iconColor,
@@ -1843,7 +1929,16 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                       )
                     ],
             ),
-            child: Icon(icon, color: iconColor, size: 24),
+            child: ClipOval(
+              child: imagePath != null
+                  ? Image.asset(
+                      imagePath,
+                      width: 52,
+                      height: 52,
+                      fit: BoxFit.cover,
+                    )
+                  : Icon(icon, color: iconColor, size: 24),
+            ),
           ),
           if (label != null) ...[
             const SizedBox(height: 4),

@@ -7,6 +7,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class GoogleMapsPage extends StatefulWidget {
   final double initialLat;
@@ -1295,12 +1296,80 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
               }
             },
           ),
+        const SizedBox(height: 10),
+        // Booking.com — find hotels near the destination
+        _buildFab(
+          imagePath: 'assets/images/booking_logo.jpg',
+          color: const Color(0xFF003580), // Booking.com blue
+          onTap: _openBooking,
+        ),
+        const SizedBox(height: 10),
+        // Uber — request a ride to the destination
+        _buildFab(
+          imagePath: 'assets/images/uber_logo.png',
+          color: Colors.black,
+          onTap: _openUber,
+        ),
       ],
     );
   }
 
+  /// Optional Booking.com affiliate id (free to sign up) → earn commission.
+  static const String _bookingAffiliateId = '';
+
+  /// Opens Booking.com hotel search for the destination/area via a deep link
+  /// (no API key) — uses the installed app if present, else the website.
+  Future<void> _openBooking() async {
+    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
+    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
+    final name = _destName;
+    final params = <String, String>{
+      if (name != null && name.trim().isNotEmpty) 'ss': name.trim(),
+      'latitude': lat.toStringAsFixed(6),
+      'longitude': lng.toStringAsFixed(6),
+      if (_bookingAffiliateId.isNotEmpty) 'aid': _bookingAffiliateId,
+    };
+    await _launchExternalUrl(
+      Uri.https('www.booking.com', '/searchresults.html', params),
+    );
+  }
+
+  /// Opens Uber with the drop-off pre-set to the destination via a deep link
+  /// (no API key) — falls back to Uber's site / store if the app is absent.
+  Future<void> _openUber() async {
+    final double dLat = _destLat != 0 ? _destLat : widget.initialLat;
+    final double dLng = _destLng != 0 ? _destLng : widget.initialLng;
+    final name = _destName ?? 'Destination';
+    final params = <String, String>{
+      'action': 'setPickup',
+      'pickup': 'my_location',
+      'dropoff[latitude]': dLat.toStringAsFixed(6),
+      'dropoff[longitude]': dLng.toStringAsFixed(6),
+      'dropoff[nickname]': name,
+    };
+    await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
+  }
+
+  Future<void> _launchExternalUrl(Uri uri) async {
+    try {
+      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Couldn't open the app or website.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Couldn't open link: $e")),
+        );
+      }
+    }
+  }
+
   Widget _buildFab({
-    required IconData icon,
+    IconData? icon,
+    String? imagePath,
     required Color color,
     required VoidCallback onTap,
   }) {
@@ -1322,7 +1391,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
             ),
           ],
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
+        child: ClipOval(
+          child: imagePath != null
+              ? Image.asset(
+                  imagePath,
+                  width: 48,
+                  height: 48,
+                  fit: BoxFit.cover,
+                )
+              : Icon(icon, color: Colors.white, size: 22),
+        ),
       ),
     );
   }

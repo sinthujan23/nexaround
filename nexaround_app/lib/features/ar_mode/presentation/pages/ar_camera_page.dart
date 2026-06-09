@@ -176,7 +176,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // the live fetch and the on-screen cull honor it so the user controls how far
   // out attractions / medical (and all categories) are shown.
   int _rangeKm = 2;
-  static const List<int> _rangeSteps = [2, 5, 10];
+  static const List<int> _rangeSteps = [2, 5, 10, 25, 50];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -188,38 +188,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
-  /// Only these three categories expose the km range selector and react to it;
-  /// the rest are fixed at their 10 km max (no range button shown).
+  /// Every category exposes the km range selector (2 → 5 → 10 → 25 → 50 km).
   bool _categoryHasRange(String filter) => true;
 
-  int _maxRangeForCategory(String filter) {
-    if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
-      return 50;
-    }
-    return 10;
-  }
+  int _maxRangeForCategory(String filter) => 50;
 
-  List<int> _rangeStepsForCategory(String filter) {
-    if (filter == 'Medical' || filter == 'Nature' || filter == 'Historical') {
-      return const [2, 5, 10, 20, 50];
-    }
-    return const [2, 5, 10];
-  }
+  List<int> _rangeStepsForCategory(String filter) => const [2, 5, 10, 25, 50];
 
-  /// The live fetch keeps every place within range (up to the marker ceiling);
-  /// the per-range CURATION (all within 2 km + famous beyond) happens in
-  /// [_placesForFilter], so widening the radius adds famous spots, not clutter.
+  /// The live fetch keeps every place within range (up to the marker ceiling).
+  /// [_placesForFilter] then shows all of them within the selected distance,
+  /// nearest first — so widening the dial genuinely reveals farther places.
   int _maxPlacesForRange(int km) => _maxVisibleMarkers;
-
-  /// How many "famous" (top-rated) places to show BEYOND the 2 km base ring.
-  /// Grows with the selected range so extending the radius surfaces more.
-  int _famousCountForRange(int km) {
-    if (km <= 2) return 0;
-    if (km <= 5) return 12;
-    if (km <= 10) return 20;
-    if (km <= 20) return 28;
-    return 36;
-  }
 
   /// Text-search query used to surface FAMOUS far-away places per category
   /// (Nearby Search misses distant landmarks). Null → skip (e.g. Others).
@@ -585,26 +564,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
     final bucket = _filterBucketKey[filter];
     final double maxRangeM = (_rangeKm * 1000).toDouble();
-    const double baseRingM = 2000; // 2 km base ring.
 
+    // Show EVERY place within the selected distance, nearest first (capped so the
+    // view stays usable). Widening the dial genuinely reveals farther places.
     final matches = _landmarks
         .where((lm) =>
             lm.distanceM <= maxRangeM &&
             (filter == 'All' || _displayCategoryKey(lm) == bucket))
-        .toList();
-
-    // Inside 2 km → show ALL places. Beyond 2 km → only the famous (top-rated)
-    // ones, capped to a count that grows with the selected range — so the base
-    // view is complete and widening the radius adds notable spots, not clutter.
-    final near = matches.where((lm) => lm.distanceM <= baseRingM).toList();
-    final far = matches
-        .where((lm) => lm.distanceM > baseRingM && lm.rating >= 3.8)
         .toList()
-      ..sort((a, b) => b.rating.compareTo(a.rating));
-    final farFamous = far.take(_famousCountForRange(_rangeKm)).toList();
-
-    final result = [...near, ...farFamous]
       ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+    final result = matches.take(_maxVisibleMarkers).toList();
     _capCache[filter] = result;
     return result;
   }
