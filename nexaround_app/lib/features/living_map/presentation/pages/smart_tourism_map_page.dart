@@ -359,6 +359,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
     // Wait for style to fully load before adding layers
     await Future.delayed(const Duration(milliseconds: 800));
+    _disableOrnaments(); // Ensure ornaments remain hidden after style loading
 
     // Add 3D building extrusion layer
     await _add3DBuildingLayer();
@@ -1400,96 +1401,103 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
 
 
-          // ── Right side buttons (uniform 52px circles, evenly spaced) ──
+          // ── Right side buttons (sleek 48px circles, stacked dynamically) ──
           if (!_searchFocusNode.hasFocus)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 76,
-              bottom: bottomOffset,
-              right: 20,
-              // Bound the stack between the top bar and the bottom card, and let
-              // it scroll if it's tall — so the top button never overlaps the
-              // "Google" button. reverse keeps the main controls (bottom) visible.
-              child: SingleChildScrollView(
-                reverse: true,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                  // While actively navigating, the top turn-by-turn banner is
-                  // shown — hide the browse-only controls so the stack stays low
-                  // and never overlaps that banner. Keep only Recenter + Stop.
-                  if (!_isActivelyNavigating) ...[
-                    // Auto Tour
-                    _buildCircleButton(
-                      icon: _isAutoTouring ? Icons.stop_rounded : Icons.explore_rounded,
-                      onTap: _isAutoTouring ? () => setState(() => _isAutoTouring = false) : _startAutoTour,
-                      bgColor: _isAutoTouring ? Colors.red : const Color(0xFF7C4DFF),
-                      iconColor: Colors.white,
-                      glow: true,
+            _isActivelyNavigating
+                ? Positioned(
+                    bottom: bottomOffset,
+                    right: 20,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildCircleButton(
+                          icon: Icons.my_location_rounded,
+                          onTap: _recenterOnUser,
+                          bgColor: Colors.black.withValues(alpha: 0.7),
+                          iconColor: const Color(0xFF00E5FF),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildCircleButton(
+                          icon: Icons.close_rounded,
+                          onTap: _exitFollowNavigation,
+                          bgColor: Colors.red,
+                          iconColor: Colors.white,
+                          glow: true,
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 12),
-                    // Map Style Toggle (icon-only so the column stays aligned)
-                    _buildCircleButton(
-                      icon: _styleIcons[_styleIndex],
-                      onTap: _toggleMapStyle,
-                      bgColor: Colors.black.withValues(alpha: 0.7),
-                      iconColor: Colors.white,
-                    ),
-                    const SizedBox(height: 12),
-                    // Fit Route
-                    if (_routeLoaded) ...[
-                      _buildCircleButton(
-                        icon: Icons.route_rounded,
-                        onTap: _fitRouteBounds,
-                        bgColor: Colors.black.withValues(alpha: 0.7),
-                        iconColor: const Color(0xFF00E5FF),
+                  )
+                : Positioned(
+                    top: MediaQuery.of(context).padding.top + 130, // Positioned completely under the Google button and its shadow
+                    bottom: cardAreaHeight + (navCardHeight > 0 ? (navCardHeight - 80.0) : 0.0) + bottomPad + 16, // Shifted 80px down to prevent button clipping
+                    right: 20,
+                    child: SingleChildScrollView(
+                      reverse: false,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildCircleButton(
+                            icon: _isAutoTouring
+                                ? Icons.stop_rounded
+                                : Icons.explore_rounded,
+                            onTap: _isAutoTouring
+                                ? () => setState(() => _isAutoTouring = false)
+                                : _startAutoTour,
+                            bgColor: _isAutoTouring
+                                ? Colors.red
+                                : const Color(0xFF7C4DFF),
+                            iconColor: Colors.white,
+                            glow: true,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCircleButton(
+                            icon: _styleIcons[_styleIndex],
+                            onTap: _toggleMapStyle,
+                            bgColor: Colors.black.withValues(alpha: 0.7),
+                            iconColor: Colors.white,
+                          ),
+                          const SizedBox(height: 8),
+                          if (_routeLoaded) ...[
+                            _buildCircleButton(
+                              icon: Icons.route_rounded,
+                              onTap: _fitRouteBounds,
+                              bgColor: Colors.black.withValues(alpha: 0.7),
+                              iconColor: const Color(0xFF00E5FF),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          _buildCircleButton(
+                            imagePath: 'assets/images/booking_logo.jpg',
+                            onTap: _openBooking,
+                            bgColor: Colors.white, // Changed to white to match standard white icon background without blue border ring
+                            iconColor: Colors.white,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCircleButton(
+                            imagePath: 'assets/images/uber_logo.png',
+                            onTap: _openUber,
+                            bgColor: Colors.black,
+                            iconColor: Colors.white,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCircleButton(
+                            icon: Icons.my_location_rounded,
+                            onTap: _recenterOnUser,
+                            bgColor: Colors.black.withValues(alpha: 0.7),
+                            iconColor: const Color(0xFF00E5FF),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCircleButton(
+                            icon: Icons.navigation_rounded,
+                            onTap: _enterFollowNavigation,
+                            bgColor: const Color(0xFF00E5FF),
+                            iconColor: Colors.black,
+                            glow: true,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                    ],
-                    // ── Booking.com — find hotels near the destination ──
-                    _buildCircleButton(
-                      imagePath: 'assets/images/booking_logo.jpg',
-                      onTap: _openBooking,
-                      bgColor: const Color(0xFF003580), // Booking.com blue
-                      iconColor: Colors.white,
                     ),
-                    const SizedBox(height: 12),
-                    // ── Uber — request a ride to the destination ──
-                    _buildCircleButton(
-                      imagePath: 'assets/images/uber_logo.png',
-                      onTap: _openUber,
-                      bgColor: Colors.black,
-                      iconColor: Colors.white,
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  // Recenter — just shows where I am (north-up overview)
-                  _buildCircleButton(
-                    icon: Icons.my_location_rounded,
-                    onTap: _recenterOnUser,
-                    bgColor: Colors.black.withValues(alpha: 0.7),
-                    iconColor: const Color(0xFF00E5FF),
                   ),
-                  const SizedBox(height: 12),
-                  // Navigate — 3D follow mode; puck becomes a car/person by travel mode.
-                  // Tap again to stop following.
-                  _buildCircleButton(
-                    icon: _isActivelyNavigating
-                        ? Icons.close_rounded
-                        : Icons.navigation_rounded,
-                    onTap: _isActivelyNavigating
-                        ? _exitFollowNavigation
-                        : _enterFollowNavigation,
-                    bgColor: _isActivelyNavigating
-                        ? Colors.red
-                        : const Color(0xFF00E5FF),
-                    iconColor:
-                        _isActivelyNavigating ? Colors.white : Colors.black,
-                    glow: true,
-                  ),
-                ],
-              ),
-              ),
-            ),
         ],
       ),
     );
@@ -1907,8 +1915,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 48, // Increased back to 48 for better visibility/reach
+            height: 48, // Increased back to 48 for better visibility/reach
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: bgColor,
@@ -1917,27 +1925,27 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                   ? [
                       BoxShadow(
                         color: bgColor.withValues(alpha: 0.5),
-                        blurRadius: 16,
-                        offset: const Offset(0, 4),
+                        blurRadius: 14,
+                        offset: const Offset(0, 3),
                       )
                     ]
                   : [
                       BoxShadow(
                         color: Colors.black.withValues(alpha: 0.3),
-                        blurRadius: 8,
+                        blurRadius: 7,
                         offset: const Offset(0, 2),
                       )
                     ],
             ),
             child: ClipOval(
               child: imagePath != null
-                  ? Image.asset(
-                      imagePath,
-                      width: 52,
-                      height: 52,
-                      fit: BoxFit.cover,
+                  ? Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: ClipOval(
+                        child: Image.asset(imagePath, fit: BoxFit.cover),
+                      ),
                     )
-                  : Icon(icon, color: iconColor, size: 24),
+                  : Icon(icon, color: iconColor, size: 22), // Set icon size to 22px
             ),
           ),
           if (label != null) ...[

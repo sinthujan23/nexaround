@@ -73,7 +73,12 @@ class GeminiService {
       }
     } catch (e) {
       print('❌ Gemini Proxy Exception: $e');
-      return "An unexpected error occurred while talking to Neva: $e";
+      if (e is DioException) {
+        if (e.response?.statusCode == 429) {
+          return "I'm taking a quick breath! 🌸 We've reached the limit of questions we can ask right now. Let's wait a minute and try again, or check if the Gemini API key has active billing! ✨";
+        }
+      }
+      return "An unexpected error occurred while talking to Neva. Please check if the Gemini API key is active!";
     }
   }
 
@@ -154,7 +159,13 @@ If you cannot confidently identify the place, set "identified" to false and desc
       }
     } catch (e) {
       print('❌ Gemini Proxy Vision Exception: $e');
-      return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "Error: $e", "fun_fact": "", "tips": ""}';
+      String errorMsg = "Error: $e";
+      if (e is DioException) {
+        if (e.response?.statusCode == 429) {
+          errorMsg = "Rate limit reached. Please wait a minute or check your Gemini API key's billing status.";
+        }
+      }
+      return '{"identified": false, "name": "Unknown", "category": "Unknown", "confidence": 0, "description": "$errorMsg", "fun_fact": "", "tips": ""}';
     }
   }
 }

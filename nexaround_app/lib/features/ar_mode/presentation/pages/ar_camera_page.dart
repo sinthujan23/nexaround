@@ -119,6 +119,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   StreamSubscription<geo.Position>? _positionSubscription;
   double _heading = 0.0;
   double? _rawHeading; // last raw reading from sensor (pre-smoothing)
+  double _lastRenderedHeading = 0.0; // last heading used to trigger a rebuild
   double? _compassAccuracy; // 0..360°, lower = more reliable
   List<_ArLandmark> _landmarks = [];
   bool _isFetchingPlaces = false;
@@ -132,6 +133,10 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Tracks which "category:range" combos we've already pulled famous far-away
   // places for (via Text Search), so we don't re-query on every rebuild.
   final Set<String> _famousFarKeys = {};
+
+  // Client-side session cache for range results
+  final Map<int, List<_ArLandmark>> _sessionRangeLandmarks = {};
+  geo.Position? _lastFetchPosition;
 
   /// User's manual choice for the "Your Location" pill, overriding auto-pick.
   /// Cleared on every fresh place fetch so it doesn't stick after you walk
@@ -200,6 +205,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   /// nearest first — so widening the dial genuinely reveals farther places.
   int _maxPlacesForRange(int km) => _maxVisibleMarkers;
 
+  double _getMinRangeM(int currentRangeKm, String filter) {
+    final steps = _rangeStepsForCategory(filter);
+    final idx = steps.indexOf(currentRangeKm);
+    if (idx <= 0) return 0.0;
+    return (steps[idx - 1] * 1000).toDouble();
+  }
+
   /// Text-search query used to surface FAMOUS far-away places per category
   /// (Nearby Search misses distant landmarks). Null → skip (e.g. Others).
   String? _famousFarQuery(String filter) {
@@ -250,12 +262,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         latitude: pos.latitude,
         longitude: pos.longitude,
       );
+      final double minRangeM = _getMinRangeM(rangeKm, filter);
       final double maxRangeM = (rangeKm * 1000).toDouble();
       final existing = _landmarks.map((l) => l.name).toSet();
       final additions = <_ArLandmark>[];
       for (final p in results) {
         final d = (p.distanceM ?? 0).toDouble();
-        if (d <= 2000 || d > maxRangeM) continue; // far ring only
+        if (d <= minRangeM || d > maxRangeM) continue; // far ring only
         if (existing.contains(p.name) ||
             additions.any((l) => l.name == p.name)) {
           continue;
@@ -563,12 +576,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     if (cached != null) return cached;
 
     final bucket = _filterBucketKey[filter];
+    final double minRangeM = _getMinRangeM(_rangeKm, filter);
     final double maxRangeM = (_rangeKm * 1000).toDouble();
 
-    // Show EVERY place within the selected distance, nearest first (capped so the
+    // Show EVERY place within the selected range interval, nearest first (capped so the
     // view stays usable). Widening the dial genuinely reveals farther places.
     final matches = _landmarks
         .where((lm) =>
+            lm.distanceM > minRangeM &&
             lm.distanceM <= maxRangeM &&
             (filter == 'All' || _displayCategoryKey(lm) == bucket))
         .toList()
@@ -684,19 +699,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           : _smoothHeading(_heading, raw, _headingSmoothing);
 
       _rawHeading = raw;
+      _heading = newHeading; // ALWAYS update the smoothed heading state
       final double? prevAccuracy = _compassAccuracy;
       _compassAccuracy = event.accuracy;
 
       // Throttle: skip the (expensive) full rebuild when the heading barely
-      // moved. The compass jitters constantly while stationary, so without this
-      // the whole AR tree redraws 20-50x/sec for no visible change.
-      double delta = (newHeading - _heading).abs();
+      // moved since the last render checkpoint. The compass jitters constantly
+      // while stationary, so without this the whole AR tree redraws 20-50x/sec.
+      double delta = (newHeading - _lastRenderedHeading).abs();
       if (delta > 180) delta = 360 - delta; // shortest angle across 0°/360°
       final bool accuracyChanged = (prevAccuracy ?? -1) != (_compassAccuracy ?? -1);
       if (!firstReading && delta < _headingRebuildThresholdDegrees && !accuracyChanged) {
-        return; // value already stored above; no rebuild needed
+        return; // value already updated; skip triggering a rebuild
       }
-      setState(() => _heading = newHeading);
+      
+      _lastRenderedHeading = newHeading;
+      setState(() {});
     });
 
     _positionSubscription = geo.Geolocator.getPositionStream(
@@ -1174,8 +1192,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           
           if (lat != null && lng != null) {
             final distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
-            // Only keep cached places within the user-selected range.
-            if (distanceM > _rangeKm * 1000) continue;
+            // Only keep cached places within the user-selected range interval.
+            final double minRangeM = _getMinRangeM(_rangeKm, 'All');
+            if (distanceM <= minRangeM || distanceM > _rangeKm * 1000) continue;
 
             final name = jsonMap['name'] as String? ?? 'Discovery';
             final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
@@ -1249,18 +1268,64 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       debugPrint('🔍 AR: Fetch throttled (cooldown active), ignoring call.');
       return;
     }
-    _isFetchingPlaces = true;
+    if (mounted) {
+      setState(() {
+        _isFetchingPlaces = true;
+      });
+    }
     _lastFetchTime = now;
 
     try {
       final pos = await PermissionService.getSafePosition();
       if (pos == null) return;
-      
+
+      // Check distance moved since last successful API fetch
+      if (_lastFetchPosition != null) {
+        final double distanceMoved = geo.Geolocator.distanceBetween(
+          _lastFetchPosition!.latitude, _lastFetchPosition!.longitude,
+          pos.latitude, pos.longitude,
+        );
+        // If user moved more than 100m, clear the session cache to trigger fresh requests
+        if (distanceMoved > 100.0) {
+          _sessionRangeLandmarks.clear();
+        }
+      }
+
+      // Serve from session cache if available (instant cycle load)
+      if (_sessionRangeLandmarks.containsKey(_rangeKm)) {
+        var cachedForRange = _sessionRangeLandmarks[_rangeKm]!;
+        debugPrint('🚀 AR: Range $_rangeKm km served instantly from session cache.');
+        
+        // Recalculate dynamic distance/bearing for cached items using current position
+        cachedForRange = cachedForRange.map((lm) {
+          if (lm.lat == null || lm.lng == null) return lm;
+          final double rawDistM = geo.Geolocator.distanceBetween(
+            pos.latitude, pos.longitude, lm.lat!, lm.lng!
+          );
+          final bearing = _calculateBearing(pos.latitude, pos.longitude, lm.lat!, lm.lng!);
+          final distKm = rawDistM / 1000;
+          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+          return lm.copyWith(
+            distance: distStr,
+            distanceM: rawDistM,
+            bearing: bearing,
+          );
+        }).toList();
+
+        setState(() {
+          _landmarks = cachedForRange;
+          _placesFetchError = false;
+          _hasCompletedInitialFetch = true;
+          _isFetchingPlaces = false;
+        });
+        return;
+      }
+
       // Load relevant cached places immediately to show them first
       if (_landmarks.isEmpty) {
         _loadCachedPlaces(position: pos);
       }
-      
+
       List<_ArLandmark> collected = [];
       List<AttractionEntity> allPlaces = []; // to save to cache later
       // True if any category call failed with a real error (vs. empty result).
@@ -1345,8 +1410,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
         // Stop widening once we have enough for the selected range's display
         // cap — keeps small ranges cheap and lets larger ranges gather more.
-        if (collected.length >= _maxPlacesForRange(_rangeKm)) {
-          debugPrint('📍 AR: Reached ${collected.length} places at $radius m for ${_rangeKm}km; stopping.');
+        final double minRangeM = _getMinRangeM(_rangeKm, 'All');
+        final int inIntervalCount = collected
+            .where((l) => l.distanceM > minRangeM && l.distanceM <= maxRangeM)
+            .length;
+        if (inIntervalCount >= _maxPlacesForRange(_rangeKm)) {
+          debugPrint('📍 AR: Reached $inIntervalCount places in interval for ${_rangeKm}km; stopping.');
           break;
         }
       }
@@ -1480,11 +1549,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
         
         // Combine beaches + non-beaches, keep only those within the selected
-        // range, sort by distance, then show the CLOSEST N where N scales with
+        // range interval, sort by distance, then show the CLOSEST N where N scales with
         // the range — so 2 km feels light and 50 km full (a clean, viable count).
+        final double minRangeM = _getMinRangeM(_rangeKm, 'All');
         final int rangeCap = _maxPlacesForRange(_rangeKm);
         final finalCollected = [...nonBeaches, ...uniqueDirectionBeaches]
-            .where((l) => l.distanceM <= _rangeKm * 1000)
+            .where((l) => l.distanceM > minRangeM && l.distanceM <= _rangeKm * 1000)
             .toList()
           ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
@@ -1494,6 +1564,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           setState(() {
             _landmarks = collected;
             _currentPosition = pos;
+            _lastFetchPosition = pos; // Update last fetch position
+            _sessionRangeLandmarks[_rangeKm] = collected; // Save to session cache
             _placesFetchError = false;
             // Fresh fetch means user likely moved; drop any manual override so
             // the smart picker is in charge again.
@@ -2713,6 +2785,46 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
+  Widget _buildFetchingPlacesPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.brandGreen,
+        borderRadius: BorderRadius.circular(100),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandGreen.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'LOADING ${_rangeKm}KM PLACES...',
+            style: const TextStyle(
+              color: Colors.white, 
+              fontSize: 10, 
+              fontWeight: FontWeight.w900, 
+              letterSpacing: 1.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // ── SCAN LINE PAINTER ──
   Widget _buildScanLines() {
     return Positioned.fill(
@@ -2813,7 +2925,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             ),
 
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
-          if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null)
+          if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null && !_isFetchingPlaces)
             Positioned(
               // Anchored below the range slider relative to the notch so it
               // never overlaps the slider or the floating place labels.
@@ -2821,6 +2933,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               left: 0,
               right: 0,
               child: Center(child: _buildXPBadge()),
+            ),
+
+          // Dynamic Loading Indicator for Range/Places Fetching
+          if (_isFetchingPlaces)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 154,
+              left: 0,
+              right: 0,
+              child: Center(child: _buildFetchingPlacesPill()),
             ),
 
           // Tap-triggered place detail card (compact bottom card) - Consolidated Explore & Navigation Page!

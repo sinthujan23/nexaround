@@ -446,13 +446,33 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     final topPadding = MediaQuery.of(context).padding.top;
     
     return Container(
-      padding: EdgeInsets.fromLTRB(24, topPadding > 0 ? topPadding + 10 : 24, 24, 16),
+      padding: EdgeInsets.fromLTRB(16, topPadding > 0 ? topPadding + 10 : 24, 24, 16),
       decoration: BoxDecoration(
         color: AppColors.background,
         border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
       ),
       child: Row(
         children: [
+          if (Navigator.canPop(context)) ...[
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withOpacity(0.05),
+                  border: Border.all(color: Colors.black12),
+                ),
+                child: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: Colors.black87,
+                  size: 16,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           _buildNevaAvatar(48),
           const SizedBox(width: 12),
           Expanded(

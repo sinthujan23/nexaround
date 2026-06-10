@@ -650,7 +650,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           if (!_searchFocusNode.hasFocus)
             Positioned(
               right: 16,
-              bottom: (_isNavigating ? 190 : (_routeLoaded ? 210 : 80)) + bottomPad,
+              bottom: (_isNavigating ? 250 : (_routeLoaded ? 300 : 90)) + bottomPad,
               child: ScaleTransition(
                 scale: _fabAnim,
                 child: _buildFabStack(),
@@ -1300,7 +1300,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         // Booking.com — find hotels near the destination
         _buildFab(
           imagePath: 'assets/images/booking_logo.jpg',
-          color: const Color(0xFF003580), // Booking.com blue
+          color: Colors.white, // logo is blue-on-white
           onTap: _openBooking,
         ),
         const SizedBox(height: 10),
@@ -1393,11 +1393,9 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         ),
         child: ClipOval(
           child: imagePath != null
-              ? Image.asset(
-                  imagePath,
-                  width: 48,
-                  height: 48,
-                  fit: BoxFit.cover,
+              ? Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Image.asset(imagePath, fit: BoxFit.contain),
                 )
               : Icon(icon, color: Colors.white, size: 22),
         ),
