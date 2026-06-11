@@ -25,6 +25,8 @@ import 'package:nexaround_app/features/living_map/presentation/pages/smart_touri
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -181,6 +183,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // the live fetch and the on-screen cull honor it so the user controls how far
   // out attractions / medical (and all categories) are shown.
   int _rangeKm = 2;
+  bool _showRangeHint = false;
+  Timer? _rangeHintTimer;
   static const List<int> _rangeSteps = [2, 5, 10, 25, 50];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
@@ -845,6 +849,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   void dispose() {
     _compassSubscription?.cancel();
     _positionSubscription?.cancel();
+    _rangeHintTimer?.cancel();
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
@@ -1349,12 +1354,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       ];
 
       for (final radius in activeRadii) {
-        // Beyond 10 km only the far-reaching categories are worth querying
-        // (Historical → Attractions, and Medical); Nature/beaches are covered
-        // by the dedicated Beach query below. Saves API cost on Food/Shopping.
-        final currentCategories = radius > 10000
-            ? categoriesToFetch.where((c) => c == 'Attractions' || c == 'Medical').toList()
-            : categoriesToFetch;
+        final currentCategories = categoriesToFetch;
 
         if (currentCategories.isEmpty) continue;
 
@@ -2724,8 +2724,62 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
-  /// Single circular tap-to-cycle KM range button beside "AR LIVE".
-  /// Each tap advances to the next step: 2→5→10→20→50→2→…
+  String _getRangeText(int val) {
+    switch (val) {
+      case 2: return '0-2 kms';
+      case 5: return '2-5 kms';
+      case 10: return '5-10 kms';
+      case 25: return '10-25 kms';
+      case 50: return '25-50 kms';
+      default: return '0-2 kms';
+    }
+  }
+
+  Widget _buildRangeInfoBanner() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.65),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.35), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF00E5FF).withOpacity(0.1),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.radar_rounded,
+                color: Color(0xFF00E5FF),
+                size: 13,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Showing places in ${_getRangeText(_rangeKm)}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Single rectangular tap-to-cycle KM range button beside "AR LIVE".
+  /// Each tap advances to the next step: 2→5→10→25→50→2→…
   Widget _buildKmRangePicker() {
     return GestureDetector(
       onTap: () {
@@ -2736,52 +2790,49 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         setState(() {
           _rangeKm = next;
           _capCache.clear();
+          _showRangeHint = true;
         });
+
+        _rangeHintTimer?.cancel();
+        _rangeHintTimer = Timer(const Duration(milliseconds: 2500), () {
+          if (mounted) {
+            setState(() {
+              _showRangeHint = false;
+            });
+          }
+        });
+
         _lastFetchTime = null;
         _fetchLivePlaces();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        width: 50,
-        height: 50,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          shape: BoxShape.circle,
+          borderRadius: BorderRadius.circular(8),
           color: AppColors.brandGreen,
           border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
           boxShadow: [
             BoxShadow(
               color: AppColors.brandGreen.withOpacity(0.55),
-              blurRadius: 10,
-              spreadRadius: 1,
+              blurRadius: 8,
+              offset: const Offset(0, 2),
             ),
           ],
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              '$_rangeKm',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w900,
-                height: 1.0,
-              ),
+        child: Center(
+          child: Text(
+            _getRangeText(_rangeKm),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
             ),
-            Text(
-              'km',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.75),
-                fontSize: 7,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-                height: 1.1,
-              ),
-            ),
-          ],
+          ),
         ),
       ).animate(onPlay: (c) => c.repeat(reverse: true))
-        .scaleXY(begin: 1.0, end: 1.05, duration: 1200.ms, curve: Curves.easeInOut),
+        .scaleXY(begin: 1.0, end: 1.04, duration: 1200.ms, curve: Curves.easeInOut),
     );
   }
 
@@ -2950,6 +3001,20 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           else if (_showInfoCard && _selectedLandmark >= 0 && _selectedLandmark < _landmarks.length)
             _buildInfoCard(_landmarks[_selectedLandmark]),
 
+          // Temporary Range Info overlay toast
+          if (_categoryHasRange(_selectedFilter) && _showRangeHint)
+            Positioned(
+              bottom: 120,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: _buildRangeInfoBanner()
+                    .animate()
+                    .fade(duration: 200.ms)
+                    .scale(begin: const Offset(0.95, 0.95), end: const Offset(1.0, 1.0), curve: Curves.easeOutBack),
+              ),
+            ),
+
           // Redesigned persistent Bottom Navigation Row (which includes Home, Location Pill, and Maps)
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null)
             _buildBottomNavigationRow(),
@@ -3034,7 +3099,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
               const SizedBox(width: 8),
               const Flexible(
                 child: Text(
-                  'Showing most popular/important places due to range limits.',
+                  'Showing the most popular places within the selected range.',
                   style: TextStyle(
                     color: Colors.white70,
                     fontSize: 10,
@@ -3765,94 +3830,107 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   clipBehavior: Clip.none,
                   children: [
                     Container(
-                  width: cardW,
-                  height: cardH,
-                  padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
-                  decoration: BoxDecoration(
-                    color: cardBg,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: borderColor,
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      // Name / rating / distance
-                      Expanded(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              lm.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                height: 1.1,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
+                      width: cardW,
+                      height: cardH,
+                      padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+                      decoration: BoxDecoration(
+                        color: cardBg,
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: borderColor,
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.35), blurRadius: 12, offset: const Offset(0, 4)),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          // Name / rating / distance
+                          Expanded(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Icon(Icons.star_rounded, color: Colors.amber, size: 10),
-                                const SizedBox(width: 2),
                                 Text(
-                                  '${lm.rating}',
-                                  style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                                  lm.name,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.1,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Row(
+                                  children: [
+                                    const Icon(Icons.star_rounded, color: Colors.amber, size: 10),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      '${lm.rating}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w700),
+                                    ),
+                                    Text(
+                                      ' · ${lm.distance}',
+                                      style: TextStyle(
+                                        color: Colors.white.withOpacity(0.7),
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (_selectedFilter == 'All') ...[
+                                  const SizedBox(height: 1),
+                                  Text(
+                                    lm.category.toUpperCase(),
+                                    style: const TextStyle(
+                                      color: Color(0xFF00E5FF),
+                                      fontSize: 7.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.2,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // ── DIRECTION BADGE — white chip with cardinal ──
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(color: Colors.black.withOpacity(0.06)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.25),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 1),
-                            Text(
-                              lm.distance,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.7),
-                                fontSize: 9,
-                                fontWeight: FontWeight.w600,
+                            child: Center(
+                              child: Text(
+                                cardinal,
+                                style: const TextStyle(
+                                  color: Colors.black87,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.3,
+                                ),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      // ── DIRECTION BADGE — white chip with cardinal ──
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(9),
-                          border: Border.all(color: Colors.black.withOpacity(0.06)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.25),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            cardinal,
-                            style: const TextStyle(
-                              color: Colors.black87,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.3,
-                            ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
+                    ),
 
                   ],
                 ),
@@ -4248,24 +4326,25 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       final locStr = (landmark.lat != null && landmark.lng != null)
           ? ' at ${landmark.lat!.toStringAsFixed(4)}, ${landmark.lng!.toStringAsFixed(4)}'
           : '';
-      final placePrompt =
-          'You are a deeply knowledgeable local historian and insider guide. '
-          'The user is standing near "${landmark.name}" (a ${landmark.category} rated ${landmark.rating}/5$locStr). '
-          'Provide RARE, UNIQUE, NON-GENERIC facts that most people and tourists would NEVER know. '
-          'Do NOT give generic descriptions like "popular restaurant" or "well-known temple". '
-          'Instead dig deep: hidden history, surprising origin stories, local legends, architectural secrets, '
-          'famous incidents, cultural significance, what locals call it, secret menu items, '
-          'best-kept secrets, or little-known connections to famous people/events.\n\n'
-          'Return ONLY this JSON (no prose, no code fences):\n'
-          '{"tagline":"<=12 words, a surprising hook that grabs attention",'
-          '"hidden_history":"2-3 sentences about the origin story or historical significance most people miss",'
-          '"surprising_fact":"1 jaw-dropping fact that would make someone say wow",'
-          '"local_secret":"something only locals know — a hidden feature, secret spot, or insider knowledge",'
-          '"best_time":"when is the absolute best time to visit and why (be specific)",'
-          '"top_positive":"a specific glowing praise point as if from a real review",'
-          '"top_negative":"a specific honest criticism as if from a real review",'
-          '"insider_tip":"<=20 words — a practical local tip that guidebooks never mention"}\n'
-          'Be hyper-specific to THIS exact place. Never be vague or generic.';
+      final placePrompt = _elaboratePrompt(landmark.name, landmark.category);
+
+      const String nevaSystemPrompt = '''
+You are Neva — a warm, witty, and effortlessly stylish FEMALE travel companion inside the NexAround app. Think of yourself as the user's smartest, most well-travelled girlfriend, the one who always knows the loveliest spots.
+
+VOICE & PERSONALITY:
+- Speak in the first person as a woman — confident, charming, caring, and a little playful. Like texting a close friend, never robotic or formal.
+- You're an expert in travel, local food, culture, history, hidden gems, safety, budgeting, and itineraries — but you share it like a friend, not a search engine.
+
+HOW TO FORMAT EVERY REPLY:
+- Open with ONE short, friendly sentence.
+- When you give options or tips, use a clean bullet list. Start each line with "* ", put the key phrase in **bold**, then a short, vivid description. Example:
+  * **Cozy wine bar** — perfect for a relaxed, romantic evening. 🍷
+  * **Lively rooftop** — great music and a buzzing crowd. ✨
+- Keep it skimmable: short lines, no big walls of text.
+- Use tasteful, feminine emojis NATURALLY — 1 to 3 per message.
+- Do NOT use markdown headings (#), tables, or code blocks — only short text, **bold**, and "* " bullets.
+- When it feels natural, end with a warm, inviting question.
+''';
 
       debugPrint('🔍 NEVA: Starting search for ${landmark.name}');
 
@@ -4273,60 +4352,26 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       final response = await geminiService
           .getResponse(
             placePrompt,
-            temperature: 0.5,
-            maxOutputTokens: 512,
-            responseMimeType: 'application/json',
+            systemInstruction: nevaSystemPrompt,
+            temperature: 0.85,
           )
           .timeout(const Duration(seconds: 12));
 
       debugPrint('🔍 NEVA: Got response: ${response.substring(0, response.length.clamp(0, 100))}...');
-
-      Map<String, dynamic> parsed = {};
-      if (response.isNotEmpty) {
-        // Strip markdown fences Gemini sometimes adds even in JSON mode
-        var cleaned = response.trim();
-        if (cleaned.startsWith('```')) {
-          cleaned = cleaned.replaceFirst(RegExp(r'^```(?:json)?\s*', caseSensitive: false), '');
-          final fenceEnd = cleaned.lastIndexOf('```');
-          if (fenceEnd >= 0) cleaned = cleaned.substring(0, fenceEnd);
-          cleaned = cleaned.trim();
-        }
-        final jsonStart = cleaned.indexOf('{');
-        final jsonEnd = cleaned.lastIndexOf('}') + 1;
-        if (jsonStart >= 0 && jsonEnd > jsonStart) {
-          try {
-            final decoded = jsonDecode(cleaned.substring(jsonStart, jsonEnd));
-            if (decoded is Map) parsed = Map<String, dynamic>.from(decoded);
-          } catch (e) {
-            debugPrint('🔍 NEVA: JSON parse failed: $e');
-          }
-        }
-      }
 
       final nevaResult = <String, dynamic>{
         'name': landmark.name,
         'category': landmark.category,
         'distance': landmark.distance,
         'rating': landmark.rating,
-        'tagline': parsed['tagline'] ?? '',
-        'hidden_history': parsed['hidden_history'] ?? '',
-        'surprising_fact': parsed['surprising_fact'] ?? '',
-        'local_secret': parsed['local_secret'] ?? '',
-        'best_time': parsed['best_time'] ?? '',
-        'top_positive': parsed['top_positive'] ?? '',
-        'top_negative': parsed['top_negative'] ?? '',
-        'insider_tip': parsed['insider_tip'] ?? '',
         'description': response,
-        'confidence': parsed.isEmpty ? 0.7 : 0.9,
+        'confidence': 0.9,
       };
 
-      // Cache only if Gemini gave us useful structured content
-      if (parsed.isNotEmpty) {
-        if (_nevaPlaceCache.length >= _nevaCacheMaxEntries) {
-          _nevaPlaceCache.remove(_nevaPlaceCache.keys.first);
-        }
-        _nevaPlaceCache[cacheKey] = nevaResult;
+      if (_nevaPlaceCache.length >= _nevaCacheMaxEntries) {
+        _nevaPlaceCache.remove(_nevaPlaceCache.keys.first);
       }
+      _nevaPlaceCache[cacheKey] = nevaResult;
 
       if (!mounted) return;
       setState(() {
@@ -4653,14 +4698,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final category = result['category'] ?? 'Place';
     final distance = result['distance'] ?? 'Nearby';
     final rating = (result['rating'] ?? 0.0) as double;
-    final tagline = result['tagline'] ?? '';
-    final hiddenHistory = result['hidden_history'] ?? '';
-    final surprisingFact = result['surprising_fact'] ?? '';
-    final localSecret = result['local_secret'] ?? '';
-    final bestTime = result['best_time'] ?? '';
-    final topPositive = result['top_positive'] ?? '';
-    final topNegative = result['top_negative'] ?? '';
-    final insiderTip = result['insider_tip'] ?? '';
 
     return ListView(
       padding: const EdgeInsets.only(top: 52, bottom: 20),
@@ -4719,132 +4756,167 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             delay: 300.ms,
           ),
 
-        // ── Bubble 3: tagline hook ────────────────────────────
-        if (tagline.isNotEmpty)
+        // ── Bubble 3: Detailed Conversational Description ─────
+        if ((result['description'] as String?)?.isNotEmpty == true)
           _nevaBubble(
-            child: Text('\"$tagline\"',
-              style: const TextStyle(color: Colors.black87, fontSize: 14, fontStyle: FontStyle.italic, height: 1.5)),
+            child: _NevaFormattedText(
+              result['description'],
+              baseStyle: const TextStyle(color: Colors.black87, fontSize: 14, height: 1.5),
+            ),
             delay: 600.ms,
           ),
 
-        // ── Bubble 4: Hidden History ──────────────────────────
-        if (hiddenHistory.isNotEmpty)
-          _nevaBubble(
-            child: _bubbleHighlight(Icons.menu_book_rounded, 'Hidden History', hiddenHistory, const Color(0xFF8B5CF6)),
-            delay: 900.ms,
-          ),
+        const SizedBox(height: 20),
 
-        // ── Bubble 5: Surprising Fact ─────────────────────────
-        if (surprisingFact.isNotEmpty)
-          _nevaBubble(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('🤯', style: TextStyle(fontSize: 15)),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(color: Colors.black87, fontSize: 13, height: 1.5),
-                      children: [
-                        const TextSpan(text: 'Did you know?  ', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFE11D48))),
-                        TextSpan(text: surprisingFact),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            delay: 1200.ms,
-          ),
-
-        // ── Bubble 6: Local Secret ────────────────────────────
-        if (localSecret.isNotEmpty)
-          _nevaBubble(
-            child: _bubbleHighlight(Icons.lock_open_rounded, 'Local Secret', localSecret, const Color(0xFF059669)),
-            delay: 1500.ms,
-          ),
-
-        // ── Bubble 7: Best Time to Visit ──────────────────────
-        if (bestTime.isNotEmpty)
-          _nevaBubble(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('🕐', style: TextStyle(fontSize: 15)),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(color: Colors.black87, fontSize: 13, height: 1.5),
-                      children: [
-                        const TextSpan(text: 'Best time  ', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0284C7))),
-                        TextSpan(text: bestTime),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            delay: 1800.ms,
-          ),
-
-        // ── Bubble 8: positive review ─────────────────────────
-        if (topPositive.isNotEmpty)
-          _nevaBubble(
-            child: _bubbleReview(true, topPositive),
-            delay: 2100.ms,
-          ),
-
-        // ── Bubble 9: negative review ─────────────────────────
-        if (topNegative.isNotEmpty)
-          _nevaBubble(
-            child: _bubbleReview(false, topNegative),
-            delay: 2400.ms,
-          ),
-
-        // ── Bubble 10: insider tip ────────────────────────────
-        if (insiderTip.isNotEmpty)
-          _nevaBubble(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('💡', style: TextStyle(fontSize: 15)),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(insiderTip,
-                    style: const TextStyle(color: Colors.black87, fontSize: 13, height: 1.5)),
-                ),
-              ],
-            ),
-            delay: 2700.ms,
-          ),
-
-        const SizedBox(height: 12),
-
-        // ── Ask more button ───────────────────────────────────
+        // ── Quick Action Buttons (Google Maps, Uber, Booking) ──
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: GestureDetector(
-            onTap: () => _openAskNevaForResult(result),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(16),
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00E5FF), Color(0xFF7C3AED)],
-                ),
-              ),
-              child: const Row(
+          child: Builder(
+            builder: (context) {
+              double? lat;
+              double? lng;
+              if (_frozenLandmark != null && _frozenLandmark!.name == name) {
+                lat = _frozenLandmark!.lat;
+                lng = _frozenLandmark!.lng;
+              }
+              if (lat == null || lng == null) {
+                try {
+                  final match = _landmarks.firstWhere((l) => l.name == name);
+                  lat = match.lat;
+                  lng = match.lng;
+                } catch (_) {}
+              }
+              lat ??= result['latitude'] as double?;
+              lng ??= result['longitude'] as double?;
+
+              final mapsUrl = (lat != null && lng != null)
+                  ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
+                  : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(name)}';
+
+              final double finalLat = lat ?? _currentPosition?.latitude ?? 6.9271;
+              final double finalLng = lng ?? _currentPosition?.longitude ?? 79.8612;
+
+              final uberUri = Uri.https('m.uber.com', '/ul/', {
+                'action': 'setPickup',
+                'pickup': 'my_location',
+                'dropoff[latitude]': finalLat.toStringAsFixed(6),
+                'dropoff[longitude]': finalLng.toStringAsFixed(6),
+                'dropoff[nickname]': name,
+              });
+
+              final bookingUri = Uri.https('www.booking.com', '/searchresults.html', {
+                'ss': name.trim(),
+                'latitude': finalLat.toStringAsFixed(6),
+                'longitude': finalLng.toStringAsFixed(6),
+              });
+
+              Widget circleActionButton({
+                Widget? child,
+                IconData? icon,
+                String? imagePath,
+                required Color color,
+                required VoidCallback onTap,
+                required int index,
+              }) {
+                return GestureDetector(
+                  onTap: onTap,
+                  child: Container(
+                    width: 48,
+                    height: 48,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: color,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: child ?? (imagePath != null
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(24),
+                              child: Image.asset(
+                                imagePath,
+                                width: 28,
+                                height: 28,
+                                fit: BoxFit.cover,
+                              ),
+                            )
+                          : Icon(icon, color: Colors.white, size: 24)),
+                    ),
+                  ),
+                ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                 .moveY(
+                   begin: -2,
+                   end: 2,
+                   duration: (1400 + (index * 200)).ms,
+                   curve: Curves.easeInOut,
+                 );
+              }
+
+              return Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.auto_awesome, color: Colors.white, size: 15),
-                  SizedBox(width: 8),
-                  Text('Ask Neva More', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13, letterSpacing: 0.5)),
+                  circleActionButton(
+                    icon: Icons.explore_rounded,
+                    color: const Color(0xFF00C6FF),
+                    index: 0,
+                    onTap: () async {
+                      if (lat != null && lng != null) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GoogleMapsPage(
+                              initialLat: lat!,
+                              initialLng: lng!,
+                              destinationName: name,
+                            ),
+                          ),
+                        );
+                      } else {
+                        try {
+                          await launchUrl(Uri.parse(mapsUrl), mode: LaunchMode.externalApplication);
+                        } catch (_) {}
+                      }
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  circleActionButton(
+                    imagePath: 'assets/images/uber_logo.png',
+                    color: Colors.black,
+                    index: 1,
+                    onTap: () async {
+                      try {
+                        await launchUrl(uberUri, mode: LaunchMode.externalApplication);
+                      } catch (_) {}
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  circleActionButton(
+                    imagePath: 'assets/images/booking_logo.jpg',
+                    color: Colors.white,
+                    index: 2,
+                    onTap: () async {
+                      try {
+                        await launchUrl(bookingUri, mode: LaunchMode.externalApplication);
+                      } catch (_) {}
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  circleActionButton(
+                    child: _buildNevaAvatar(44),
+                    color: Colors.transparent,
+                    index: 3,
+                    onTap: () {
+                      _openAskNevaForResult(result);
+                    },
+                  ),
                 ],
-              ),
-            ),
+              ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0);
+            },
           ),
         ),
       ],
@@ -5819,6 +5891,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       MaterialPageRoute(
         builder: (_) => AiChatPage(
           initialPrompt: _askNevaPromptFor(result),
+          placeContext: result,
         ),
       ),
     );
@@ -5832,6 +5905,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       MaterialPageRoute(
         builder: (_) => AiChatPage(
           initialPrompt: _elaboratePrompt(landmark.name, landmark.category),
+          placeContext: {
+            'name': landmark.name,
+            'category': landmark.category,
+            'latitude': landmark.lat,
+            'longitude': landmark.lng,
+          },
         ),
       ),
     );
@@ -7592,6 +7671,138 @@ extension _ArCameraNavigation on _ArCameraPageState {
                   ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _NevaFormattedText extends StatelessWidget {
+  final String text;
+  final TextStyle baseStyle;
+
+  const _NevaFormattedText(this.text, {required this.baseStyle});
+
+  static final RegExp _inlineRe =
+      RegExp(r'(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*]+)\*)|(`([^`]+)`)');
+
+  List<InlineSpan> _inline(String content) {
+    final spans = <InlineSpan>[];
+    var i = 0;
+    for (final m in _inlineRe.allMatches(content)) {
+      if (m.start > i) {
+        spans.add(TextSpan(text: content.substring(i, m.start)));
+      }
+      if (m.group(2) != null || m.group(4) != null) {
+        spans.add(TextSpan(
+          text: m.group(2) ?? m.group(4),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ));
+      } else if (m.group(6) != null) {
+        spans.add(TextSpan(
+          text: m.group(6),
+          style: const TextStyle(fontStyle: FontStyle.italic),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: m.group(8),
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: (baseStyle.fontSize ?? 15) - 1,
+          ),
+        ));
+      }
+      i = m.end;
+    }
+    if (i < content.length) spans.add(TextSpan(text: content.substring(i)));
+    return spans;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = text.replaceAll('\r\n', '\n').trim().split('\n');
+    final bulletRe = RegExp(r'^\s*[-*•]\s+(.*)$');
+    final numberRe = RegExp(r'^\s*(\d+)[.)]\s+(.*)$');
+    final headingRe = RegExp(r'^\s*#{1,6}\s+(.*)$');
+    final children = <Widget>[];
+
+    for (final raw in lines) {
+      final line = raw.trimRight();
+      if (line.trim().isEmpty) {
+        if (children.isNotEmpty) children.add(const SizedBox(height: 8));
+        continue;
+      }
+
+      final heading = headingRe.firstMatch(line);
+      if (heading != null) {
+        children.add(Padding(
+          padding: const EdgeInsets.only(bottom: 2),
+          child: Text.rich(TextSpan(
+            style: baseStyle.copyWith(
+              fontWeight: FontWeight.w800,
+              fontSize: (baseStyle.fontSize ?? 15) + 1,
+            ),
+            children: _inline(heading.group(1)!),
+          )),
+        ));
+        continue;
+      }
+
+      final bullet = bulletRe.firstMatch(line);
+      if (bullet != null) {
+        children.add(_row(
+          marker: '•',
+          markerStyle: baseStyle.copyWith(
+            fontWeight: FontWeight.w900,
+            color: AppColors.primary,
+          ),
+          content: bullet.group(1)!,
+        ));
+        continue;
+      }
+
+      final number = numberRe.firstMatch(line);
+      if (number != null) {
+        children.add(_row(
+          marker: '${number.group(1)}.',
+          markerStyle: baseStyle.copyWith(
+            fontWeight: FontWeight.w800,
+            color: AppColors.primary,
+          ),
+          content: number.group(2)!,
+        ));
+        continue;
+      }
+
+      children.add(Text.rich(TextSpan(style: baseStyle, children: _inline(line))));
+    }
+
+    if (children.isEmpty) children.add(Text(text, style: baseStyle));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: children,
+    );
+  }
+
+  Widget _row({
+    required String marker,
+    required TextStyle markerStyle,
+    required String content,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1, left: 2, right: 8),
+            child: Text(marker, style: markerStyle),
+          ),
+          Expanded(
+            child: Text.rich(TextSpan(style: baseStyle, children: _inline(content))),
+          ),
+        ],
       ),
     );
   }

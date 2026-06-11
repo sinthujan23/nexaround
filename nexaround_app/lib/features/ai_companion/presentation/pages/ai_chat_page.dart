@@ -9,6 +9,8 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
@@ -376,6 +378,8 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               children: [
                 if (_hasPlaceContext) ...[
                   const SizedBox(height: 12),
+                  _buildQuickActions(),
+                  const SizedBox(height: 12),
                   _buildNearbyChips(),
                 ],
                 if (_showSuggestions) ...[
@@ -669,6 +673,137 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildQuickActions() {
+    final ctx = widget.placeContext;
+    if (ctx == null) return const SizedBox.shrink();
+
+    final name = ctx['name'] ?? 'Unknown Place';
+    final lat = ctx['latitude'];
+    final lng = ctx['longitude'];
+
+    final mapsUrl = (lat != null && lng != null)
+        ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
+        : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(name)}';
+
+    final double finalLat = (lat as num?)?.toDouble() ?? _userLat ?? 6.9271;
+    final double finalLng = (lng as num?)?.toDouble() ?? _userLng ?? 79.8612;
+
+    final uberUri = Uri.https('m.uber.com', '/ul/', {
+      'action': 'setPickup',
+      'pickup': 'my_location',
+      'dropoff[latitude]': finalLat.toStringAsFixed(6),
+      'dropoff[longitude]': finalLng.toStringAsFixed(6),
+      'dropoff[nickname]': name,
+    });
+
+    final bookingUri = Uri.https('www.booking.com', '/searchresults.html', {
+      'ss': name.trim(),
+      'latitude': finalLat.toStringAsFixed(6),
+      'longitude': finalLng.toStringAsFixed(6),
+    });
+
+    Widget circleActionButton({
+      Widget? child,
+      IconData? icon,
+      String? imagePath,
+      required Color color,
+      required VoidCallback onTap,
+      required int index,
+    }) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Center(
+            child: child ?? (imagePath != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(24),
+                    child: Image.asset(
+                      imagePath,
+                      width: 28,
+                      height: 28,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : Icon(icon, color: Colors.white, size: 24)),
+          ),
+        ),
+      ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+       .moveY(
+         begin: -2,
+         end: 2,
+         duration: (1400 + (index * 200)).ms,
+         curve: Curves.easeInOut,
+       );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          circleActionButton(
+            icon: Icons.explore_rounded,
+            color: const Color(0xFF00C6FF),
+            index: 0,
+            onTap: () async {
+              if (lat != null && lng != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GoogleMapsPage(
+                      initialLat: (lat as num).toDouble(),
+                      initialLng: (lng as num).toDouble(),
+                      destinationName: name,
+                    ),
+                  ),
+                );
+              } else {
+                try {
+                  await launchUrl(Uri.parse(mapsUrl), mode: LaunchMode.externalApplication);
+                } catch (_) {}
+              }
+            },
+          ),
+          const SizedBox(width: 16),
+          circleActionButton(
+            imagePath: 'assets/images/uber_logo.png',
+            color: Colors.black,
+            index: 1,
+            onTap: () async {
+              try {
+                await launchUrl(uberUri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            },
+          ),
+          const SizedBox(width: 16),
+          circleActionButton(
+            imagePath: 'assets/images/booking_logo.jpg',
+            color: Colors.white,
+            index: 2,
+            onTap: () async {
+              try {
+                await launchUrl(bookingUri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            },
+          ),
+        ],
+      ),
     );
   }
 

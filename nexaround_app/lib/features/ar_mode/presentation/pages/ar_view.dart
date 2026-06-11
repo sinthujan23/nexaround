@@ -1005,6 +1005,7 @@ class _ArViewState extends State<ArView> with TickerProviderStateMixin {
     }).toList();
   }
 
+
   // ─── Detail Sheet ─────────────────────────────────────
   Widget _buildDetailSheet(ArState state) {
     final point = state.selectedAttraction!;

@@ -99,8 +99,10 @@ async def get_nearby(
             limit=100
         )
 
-        # If we have a healthy list of attractions (e.g. >= 10), return them directly!
-        if len(nearby_db_attractions) >= 10:
+        # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
+        # adequately (e.g. at least one is in the outer 30% of the radius, or the radius is small <= 2000m)
+        has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
+        if len(nearby_db_attractions) >= 10 and has_adequate_coverage:
             place_dicts = [
                 attraction_to_place_dict(attr, dist)
                 for attr, dist in nearby_db_attractions
