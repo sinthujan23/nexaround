@@ -175,9 +175,12 @@ async def nearby_search(
         "X-Goog-Api-Key": google_maps_key,
         "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
     }
-    # Use more results for larger radii so wide-area searches (25–50km) return
-    # enough places to actually populate the AR view.
-    max_results = 20 if eff_radius <= 10000 else 40
+    # Nearby Search (New) hard-caps maxResultCount at 20 — requesting more (this
+    # used to ask for 40 on radius > 10km) makes Google reject the WHOLE request
+    # with 400 INVALID_ARGUMENT, which surfaced here as a 500. That silently
+    # broke every wide-radius search (25–50km AR ring, etc.). Always request the
+    # API maximum of 20.
+    max_results = 20
 
     body = {
         "maxResultCount": max_results,

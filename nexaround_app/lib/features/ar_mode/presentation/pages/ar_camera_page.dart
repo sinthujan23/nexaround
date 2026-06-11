@@ -1252,6 +1252,147 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
   }
 
+  /// Great-circle destination point: the lat/lng you reach starting at
+  /// ([lat],[lng]) and travelling [distanceM] metres along compass [bearingDeg].
+  /// Used to place far-ring search centres out on the annulus around the user.
+  List<double> _offsetLatLng(
+      double lat, double lng, double bearingDeg, double distanceM) {
+    const double earthR = 6371000.0;
+    final double angDist = distanceM / earthR;
+    final double brng = bearingDeg * pi / 180.0;
+    final double lat1 = lat * pi / 180.0;
+    final double lng1 = lng * pi / 180.0;
+    final double lat2 = asin(
+        sin(lat1) * cos(angDist) + cos(lat1) * sin(angDist) * cos(brng));
+    final double lng2 = lng1 +
+        atan2(sin(brng) * sin(angDist) * cos(lat1),
+            cos(angDist) - sin(lat1) * sin(lat2));
+    return [lat2 * 180.0 / pi, ((lng2 * 180.0 / pi + 540.0) % 360.0) - 180.0];
+  }
+
+  /// Far-ring sampling (only fires for the 25 km / 50 km dial).
+  ///
+  /// A single user-centred Nearby Search ranks by popularity/proximity and
+  /// almost never returns anything in the outer annulus, so the 10–25 km and
+  /// 25–50 km rings came back empty. Here we place several search centres ON the
+  /// annulus mid-radius (count scaled to the ring so the circles overlap) and run
+  /// a small-radius Nearby Search at each — every result then genuinely sits
+  /// inside the target ring. Distances
+  /// are recomputed from the REAL user position, because the backend reports
+  /// distance relative to each offset query centre, not the user.
+  Future<void> _sampleFarRing(
+      geo.Position pos, List<_ArLandmark> collected) async {
+    if (_rangeKm < 25) return; // 2/5/10 km ranges are unchanged
+
+    final double minRangeM = _getMinRangeM(_rangeKm, 'All');
+    final double maxRangeM = (_rangeKm * 1000).toDouble();
+    final double midM = (minRangeM + maxRangeM) / 2;
+    // Half the ring width would cover the annulus radially, BUT it's capped at
+    // 10 km: the backend's Nearby Search (New) allows maxResultCount ≤ 20 and
+    // requests 40 for any radius > 10 km, which Google rejects (400 → surfaces
+    // as a 500), so every wider offset query was failing and the ring stayed
+    // empty. A 10 km circle at the ring mid-radius still covers the bulk of the
+    // band (≈27.5–47.5 km of the 25–50 km ring — where all the real towns sit),
+    // and live testing returns 16–27 in-band places per direction.
+    final int sampleRadius =
+        min(((maxRangeM - minRangeM) / 2).round(), 10000);
+
+    // Enough centres that adjacent sample circles OVERLAP all the way around the
+    // ring. A fixed count leaves angular gaps on the wider 50 km ring — its
+    // circumference grows with the radius but the circles don't, so 8 centres
+    // that overlap at 25 km no longer touch at 50 km. Scale the count with the
+    // ring; the 0.85 factor forces a little overlap so nothing slips between.
+    final int centreCount =
+        (pi * midM / (sampleRadius * 0.85)).ceil().clamp(8, 16);
+    final List<double> bearings = [
+      for (int i = 0; i < centreCount; i++) (360.0 / centreCount) * i,
+    ];
+
+    // Run the SAME category set the main tier-loop uses at each offset centre.
+    // The 10–25 km ring is populated almost entirely by these typed queries
+    // (its results are HISTORICAL/MEDICAL/etc. — i.e. the Attractions, Medical…
+    // buckets), not by an untyped search, which the New Places API ranks
+    // generically and returns far fewer of. Mirroring them here makes the far
+    // ring fill with the same kinds of places. Cost is intentionally high
+    // (centres × categories) — the user chose coverage over API cost.
+    const List<String?> sampleCategories = [
+      null,
+      'Food & Drink',
+      'Shopping',
+      'Attractions',
+      'Hotels',
+      'Medical',
+    ];
+
+    try {
+      debugPrint(
+          '🛰 AR: Far-ring sampling ${minRangeM ~/ 1000}–${maxRangeM ~/ 1000}km '
+          'across $centreCount centres × ${sampleCategories.length} categories '
+          '(centre r=${sampleRadius}m)...');
+
+      // Bearings sequential, categories parallel per centre — keeps the in-flight
+      // request count bounded (≈6 at a time) so the backend isn't flooded, which
+      // would otherwise surface as failed calls and an empty ring.
+      final List<AttractionEntity> places = [];
+      for (final b in bearings) {
+        final c = _offsetLatLng(pos.latitude, pos.longitude, b, midM);
+        final List<List<AttractionEntity>> perCat = await Future.wait(
+          sampleCategories.map((cat) => GooglePlacesService.fetchNearbyPlaces(
+                latitude: c[0],
+                longitude: c[1],
+                radius: sampleRadius,
+                categoryName: cat,
+              ).catchError((err) {
+                debugPrint(
+                    'AR far-ring sample (bearing ${b.toStringAsFixed(0)}, $cat) failed: $err');
+                return <AttractionEntity>[];
+              })),
+        );
+        places.addAll(perCat.expand((x) => x));
+      }
+
+      int added = 0;
+      for (final p in places) {
+        if (collected.any((l) => l.name == p.name)) continue;
+
+        // Distance vs. the USER, not the offset centre the backend measured from.
+        final double rawDistM = geo.Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, p.latitude, p.longitude,
+        );
+        if (rawDistM <= minRangeM || rawDistM > maxRangeM) continue; // annulus only
+
+        final double bearing = _calculateBearing(
+          pos.latitude, pos.longitude, p.latitude, p.longitude,
+        );
+        final double distKm = rawDistM / 1000;
+        final String distStr =
+            distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+
+        collected.add(_ArLandmark(
+          p.name,
+          p.photoUrls.isNotEmpty
+              ? p.photoUrls.first
+              : (p.categoryName == 'Nature'
+                  ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop'
+                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop'),
+          p.rating,
+          distStr,
+          bearing,
+          p.description ?? 'A notable place worth the trip.',
+          p.categoryName?.toUpperCase() ?? 'ATTRACTION',
+          rawDistM,
+          p.latitude,
+          p.longitude,
+          p.tags,
+        ));
+        added++;
+      }
+      debugPrint('🛰 AR: Far-ring sampling added $added places to the ring.');
+    } catch (e) {
+      debugPrint('AR far-ring sampling failed: $e');
+    }
+  }
+
   Future<void> _fetchLivePlaces() async {
     if (!_isLocationGranted) {
       // No location → we can't search. Stop the "scanning" spinner so the UI
@@ -1519,6 +1660,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           debugPrint('AR long-range fetch failed for ${q['category']}: $e');
         }
       }
+
+      // Far-ring sampling: a single user-centred query can't reach the outer
+      // annulus, so the 25 km (10–25) and 50 km (25–50) rings come back empty.
+      // This places search centres ON the annulus and back-fills them. No-op
+      // for the 2/5/10 km ranges, so their behaviour is unchanged.
+      await _sampleFarRing(pos, collected);
 
       if (collected.isNotEmpty) {
         // Separate beaches and non-beaches to ensure beaches are never truncated
