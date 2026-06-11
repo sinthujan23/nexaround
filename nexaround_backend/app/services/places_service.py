@@ -90,13 +90,16 @@ async def get_nearby(
                 category_id = cat_obj.id
 
         # Query database attractions
+        # Use a higher limit for wide-area searches so 25–50km results aren't
+        # truncated to only the closest 100.
+        db_limit = 100 if radius <= 10000 else 200
         repo = AttractionRepository(session)
         nearby_db_attractions = await repo.get_nearby(
             latitude=latitude,
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
-            limit=100
+            limit=db_limit
         )
 
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
@@ -201,7 +204,7 @@ async def get_nearby(
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
-            limit=100
+            limit=db_limit
         )
 
         place_dicts = [

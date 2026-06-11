@@ -1212,7 +1212,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     Icon(Icons.list_alt_rounded, color: Colors.white, size: 16),
                     SizedBox(width: 8),
                     Text(
-                      'VIEW MY PLANS',
+                      'VIEW MY ODYSSEYS',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,

@@ -175,9 +175,12 @@ async def nearby_search(
         "X-Goog-Api-Key": google_maps_key,
         "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
     }
+    # Use more results for larger radii so wide-area searches (25–50km) return
+    # enough places to actually populate the AR view.
+    max_results = 20 if eff_radius <= 10000 else 40
 
     body = {
-        "maxResultCount": 20,
+        "maxResultCount": max_results,
         "locationRestriction": {
             "circle": {
                 "center": {

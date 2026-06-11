@@ -1175,7 +1175,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Search radii, widest-first. We query each tier up to the user-selected range
   // so the full radius is searched, stopping only once we've gathered enough to
   // fill the AR view (see the cap in the fetch loop).
-  static const List<int> _searchRadii = [1000, 2000, 5000, 10000];
+  static const List<int> _searchRadii = [1000, 2000, 5000, 10000, 25000, 50000];
 
   void _loadCachedPlaces({geo.Position? position}) {
     try {
@@ -1410,13 +1410,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
         // Stop widening once we have enough for the selected range's display
         // cap — keeps small ranges cheap and lets larger ranges gather more.
-        final double minRangeM = _getMinRangeM(_rangeKm, 'All');
-        final int inIntervalCount = collected
-            .where((l) => l.distanceM > minRangeM && l.distanceM <= maxRangeM)
-            .length;
-        if (inIntervalCount >= _maxPlacesForRange(_rangeKm)) {
-          debugPrint('📍 AR: Reached $inIntervalCount places in interval for ${_rangeKm}km; stopping.');
-          break;
+        // For large ranges (≥25km) we NEVER early-break so the far tier always
+        // fires and distant landmarks actually appear.
+        if (_rangeKm < 25) {
+          final double minRangeM = _getMinRangeM(_rangeKm, 'All');
+          final int inIntervalCount = collected
+              .where((l) => l.distanceM > minRangeM && l.distanceM <= maxRangeM)
+              .length;
+          if (inIntervalCount >= _maxPlacesForRange(_rangeKm)) {
+            debugPrint('📍 AR: Reached $inIntervalCount places in interval for ${_rangeKm}km; stopping.');
+            break;
+          }
         }
       }
 
@@ -3002,7 +3006,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             _buildInfoCard(_landmarks[_selectedLandmark]),
 
           // Temporary Range Info overlay toast
-          if (_categoryHasRange(_selectedFilter) && _showRangeHint)
+          if (false)
             Positioned(
               bottom: 120,
               left: 20,
@@ -3640,7 +3644,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                       border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 0.8),
                                     ),
                                     child: Text(
-                                      pointedLandmark.category.toUpperCase(),
+                                      () {
+                                        final key = _displayCategoryKey(pointedLandmark);
+                                        switch (key) {
+                                          case 'food': return 'FOOD & DRINK';
+                                          case 'shopping': return 'SHOPPING';
+                                          case 'historical': return 'HISTORICAL';
+                                          case 'beach': return 'NATURE';
+                                          case 'hotel': return 'HOTELS';
+                                          case 'hospital': return 'MEDICAL';
+                                          default: return pointedLandmark.category.toUpperCase();
+                                        }
+                                      }(),
                                       style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
                                     ),
                                   ),
@@ -3882,20 +3897,29 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                                     ),
                                   ],
                                 ),
-                                if (_selectedFilter == 'All') ...[
-                                  const SizedBox(height: 1),
-                                  Text(
-                                    lm.category.toUpperCase(),
-                                    style: const TextStyle(
-                                      color: Color(0xFF00E5FF),
-                                      fontSize: 7.5,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 0.2,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                const SizedBox(height: 1),
+                                Text(
+                                  () {
+                                    final key = _displayCategoryKey(lm);
+                                    switch (key) {
+                                      case 'food': return 'FOOD & DRINK';
+                                      case 'shopping': return 'SHOPPING';
+                                      case 'historical': return 'HISTORICAL';
+                                      case 'beach': return 'NATURE';
+                                      case 'hotel': return 'HOTELS';
+                                      case 'hospital': return 'MEDICAL';
+                                      default: return lm.category.toUpperCase();
+                                    }
+                                  }(),
+                                  style: const TextStyle(
+                                    color: Color(0xFF00E5FF),
+                                    fontSize: 7.5,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 0.2,
                                   ),
-                                ],
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ],
                             ),
                           ),
@@ -5395,7 +5419,7 @@ HOW TO FORMAT EVERY REPLY:
               child: Container(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF070B14).withOpacity(0.92), // Futuristic deep space blue-black
+                  color: const Color(0xFF070B14).withOpacity(0.65), // Futuristic deep space blue-black
                   borderRadius: BorderRadius.circular(28),
                   border: Border.all(color: const Color(0xFF00E5FF).withOpacity(0.25), width: 1.2), // Glowing neon blue border
                   boxShadow: [
@@ -5477,17 +5501,48 @@ HOW TO FORMAT EVERY REPLY:
                                   ),
                                   const SizedBox(width: 10),
                                   Expanded(
-                                    child: Text(
-                                      landmark.name,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w900,
-                                        height: 1.15,
-                                        letterSpacing: -0.3,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Category badge/chip
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.primary.withOpacity(0.15),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(color: AppColors.primary.withOpacity(0.3), width: 0.8),
+                                          ),
+                                          child: Text(
+                                            () {
+                                              final key = _displayCategoryKey(landmark);
+                                              switch (key) {
+                                                case 'food': return 'FOOD & DRINK';
+                                                case 'shopping': return 'SHOPPING';
+                                                case 'historical': return 'HISTORICAL';
+                                                case 'beach': return 'NATURE';
+                                                case 'hotel': return 'HOTELS';
+                                                case 'hospital': return 'MEDICAL';
+                                                default: return landmark.category.toUpperCase();
+                                              }
+                                            }(),
+                                            style: TextStyle(color: AppColors.primary, fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          landmark.name,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w900,
+                                            height: 1.15,
+                                            letterSpacing: -0.3,
+                                          ),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -5520,25 +5575,123 @@ HOW TO FORMAT EVERY REPLY:
                               ),
                               const SizedBox(height: 10),
                               // MORE INFO — opens Ask Neva
-                              GestureDetector(
-                                onTap: () => _openAskNevaFor(landmark),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                                  decoration: BoxDecoration(
-                                    color: Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-                                  ),
-                                  child: const Text(
-                                    'MORE INFO',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w900,
-                                      letterSpacing: 1.4,
+                              Row(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () => _openAskNevaFor(landmark),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                                      decoration: BoxDecoration(
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
+                                      ),
+                                      child: const Text(
+                                        'MORE INFO',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 1.4,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  () {
+                                    final double finalLat = landmark.lat ?? _currentPosition?.latitude ?? 6.9271;
+                                    final double finalLng = landmark.lng ?? _currentPosition?.longitude ?? 79.8612;
+                                    final String name = landmark.name;
+
+                                    final uberUri = Uri.https('m.uber.com', '/ul/', {
+                                      'action': 'setPickup',
+                                      'pickup': 'my_location',
+                                      'dropoff[latitude]': finalLat.toStringAsFixed(6),
+                                      'dropoff[longitude]': finalLng.toStringAsFixed(6),
+                                      'dropoff[nickname]': name,
+                                    });
+
+                                    final bookingUri = Uri.https('www.booking.com', '/searchresults.html', {
+                                      'ss': name.trim(),
+                                      'latitude': finalLat.toStringAsFixed(6),
+                                      'longitude': finalLng.toStringAsFixed(6),
+                                    });
+
+                                    Widget miniCircleActionButton({
+                                      required String imagePath,
+                                      required Color color,
+                                      required VoidCallback onTap,
+                                      required int index,
+                                    }) {
+                                      return GestureDetector(
+                                        onTap: onTap,
+                                        child: Container(
+                                          width: 38,
+                                          height: 38,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: color,
+                                            border: Border.all(
+                                              color: Colors.white.withOpacity(0.35),
+                                              width: 1,
+                                            ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.15),
+                                                blurRadius: 6,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Center(
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(19),
+                                              child: Image.asset(
+                                                imagePath,
+                                                width: 22,
+                                                height: 22,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+                                       .moveY(
+                                         begin: -1.5,
+                                         end: 1.5,
+                                         duration: (1400 + (index * 200)).ms,
+                                         curve: Curves.easeInOut,
+                                       );
+                                    }
+
+                                    return Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        miniCircleActionButton(
+                                          imagePath: 'assets/images/uber_logo.png',
+                                          color: Colors.black,
+                                          index: 0,
+                                          onTap: () async {
+                                            try {
+                                              await launchUrl(uberUri, mode: LaunchMode.externalApplication);
+                                            } catch (_) {}
+                                          },
+                                        ),
+                                        const SizedBox(width: 8),
+                                        miniCircleActionButton(
+                                          imagePath: 'assets/images/booking_logo.jpg',
+                                          color: Colors.white,
+                                          index: 1,
+                                          onTap: () async {
+                                            try {
+                                              await launchUrl(bookingUri, mode: LaunchMode.externalApplication);
+                                            } catch (_) {}
+                                          },
+                                        ),
+                                      ],
+                                    );
+                                  }(),
+                                ],
                               ),
                             ],
                           ),
