@@ -476,6 +476,73 @@ async def list_broadcasts(
     ]
 
 
+@router.get("/engagement/broadcasts/{broadcast_id}/recipients")
+async def broadcast_recipients(
+    broadcast_id: str,
+    search: Optional[str] = Query(None, description="Filter by user name or email"),
+    status_filter: Optional[str] = Query(None, alias="status", description="sent|failed|no_token"),
+    limit: int = Query(200, ge=1, le=1000),
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Per-recipient delivery breakdown for one broadcast, with user search.
+
+    Powers the admin's broadcast-detail popup: who received the push, who
+    failed, and who had no device registered."""
+    from app.models.notification import Notification
+
+    try:
+        bid = uuid.UUID(broadcast_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid broadcast id")
+
+    # Summary counts by push_status over ALL recipients (ignores the search box).
+    summary_rows = await db.execute(
+        select(Notification.push_status, func.count(Notification.id))
+        .where(Notification.broadcast_id == bid)
+        .group_by(Notification.push_status)
+    )
+    counts = {"sent": 0, "failed": 0, "no_token": 0, "pending": 0}
+    for st, n in summary_rows.all():
+        counts[st or "pending"] = n
+    total = sum(counts.values())
+
+    # Recipient list = notifications joined to users, with optional filters.
+    q = (
+        select(
+            User.id, User.display_name, User.email,
+            Notification.push_status, Notification.is_read,
+        )
+        .join(Notification, Notification.user_id == User.id)
+        .where(Notification.broadcast_id == bid)
+    )
+    if status_filter in ("sent", "failed", "no_token", "pending"):
+        q = q.where(Notification.push_status == status_filter)
+    if search and search.strip():
+        like = f"%{search.strip()}%"
+        q = q.where(User.display_name.ilike(like) | User.email.ilike(like))
+    q = q.order_by(Notification.push_status, User.email).limit(limit)
+
+    rows = await db.execute(q)
+    recipients = [
+        {
+            "user_id": str(uid),
+            "name": name or "—",
+            "email": email,
+            "push_status": st or "pending",
+            "is_read": bool(is_read),
+        }
+        for uid, name, email, st, is_read in rows.all()
+    ]
+
+    return {
+        "broadcast_id": str(bid),
+        "total_recipients": total,
+        "summary": counts,
+        "recipients": recipients,
+    }
+
+
 @router.get("/settings", response_model=SettingsResponse)
 async def get_admin_settings(
     db: AsyncSession = Depends(get_db),

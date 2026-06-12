@@ -7,7 +7,7 @@ session is already closed by the time it runs).
 import logging
 import uuid as _uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import async_session
@@ -36,22 +36,44 @@ async def send_broadcast(*, title: str, body: str, target_audience: str = "all")
         # One inbox row per user (the app's bell icon) + collect device tokens.
         all_tokens: list = []
         token_owner: dict = {}
+        user_tokens: dict = {}  # user_id -> [their device tokens]
         for u in users:
             db.add(Notification(
                 user_id=u.id, title=title, body=body,
                 type="broadcast", broadcast_id=bc.id,
             ))
-            for t in (u.preferences or {}).get("fcm_tokens") or []:
-                if t:
-                    all_tokens.append(t)
-                    token_owner[t] = u
+            toks = [t for t in ((u.preferences or {}).get("fcm_tokens") or []) if t]
+            user_tokens[u.id] = toks
+            for t in toks:
+                all_tokens.append(t)
+                token_owner[t] = u
         await db.commit()
 
         # Push to all devices (efficient multicast). data lets the app deep-link.
-        success, failure, unregistered = await fcm_service.send_multicast(
+        success, failure, unregistered, token_status = await fcm_service.send_multicast(
             db, all_tokens, title, body,
             data={"type": "broadcast", "broadcast_id": str(bc.id)},
         )
+
+        # Attribute a per-user push outcome so the admin recipient view can show
+        # exactly who received it. A user counts as 'sent' if ANY of their
+        # devices was delivered to; 'no_token' if they had no device registered.
+        by_status: dict = {"sent": [], "failed": [], "no_token": []}
+        for u in users:
+            toks = user_tokens.get(u.id) or []
+            if not toks:
+                by_status["no_token"].append(u.id)
+            elif any(token_status.get(t) == "sent" for t in toks):
+                by_status["sent"].append(u.id)
+            else:
+                by_status["failed"].append(u.id)
+        for st, uids in by_status.items():
+            if uids:
+                await db.execute(
+                    update(Notification)
+                    .where(Notification.broadcast_id == bc.id, Notification.user_id.in_(uids))
+                    .values(push_status=st)
+                )
 
         # Prune tokens FCM reported as dead so we stop paying to send to them.
         if unregistered:
