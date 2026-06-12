@@ -65,6 +65,16 @@ import GoogleMaps
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 
+  // Forward incoming remote notifications to Firebase Messaging (required when swizzling is disabled).
+  override func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable : Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) {
+    Messaging.messaging().appDidReceiveMessage(userInfo)
+    super.application(application, didReceiveRemoteNotification: userInfo, fetchCompletionHandler: completionHandler)
+  }
+
   // Forward APNs registration failures for better debugging.
   override func application(
     _ application: UIApplication,
