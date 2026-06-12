@@ -11,6 +11,7 @@ import 'dart:convert';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
@@ -408,6 +409,42 @@ class _ProfilePageState extends State<ProfilePage> {
             final current = CacheService.areNotificationsEnabled();
             await CacheService.setNotificationsEnabled(!current);
             setState(() {});
+          },
+        ),
+        _buildMenuItem(
+          Icons.bug_report_rounded, 
+          'FCM Debug Status', 
+          NotificationService.instance.debugStatus,
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                backgroundColor: AppColors.surface,
+                title: const Text('FCM Diagnostics', style: TextStyle(color: AppColors.textPrimary)),
+                content: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Status:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      Text(NotificationService.instance.debugStatus, style: const TextStyle(color: AppColors.textSecondary)),
+                      const SizedBox(height: 12),
+                      const Text('FCM Token:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      SelectableText(
+                        NotificationService.instance.token ?? 'None',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+            );
           },
         ),
         _buildMenuItem(

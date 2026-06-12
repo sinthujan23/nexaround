@@ -15,6 +15,9 @@ class NotificationService {
   final FirebaseMessaging _fm = FirebaseMessaging.instance;
   String? _token;
   bool _initialized = false;
+  String debugStatus = 'Initializing...';
+
+  String? get token => _token;
 
   /// Set by the app shell to route a notification tap (e.g. open Blueprints).
   void Function(Map<String, dynamic> data)? onOpen;
@@ -23,6 +26,7 @@ class NotificationService {
     if (_initialized) return;
     _initialized = true;
     try {
+      debugStatus = 'Requesting permissions...';
       await _fm.requestPermission(alert: true, badge: true, sound: true);
       // iOS: also surface heads-up notifications while the app is foregrounded.
       await _fm.setForegroundNotificationPresentationOptions(
@@ -36,6 +40,7 @@ class NotificationService {
       FirebaseMessaging.onMessageOpenedApp.listen(_opened);
       _fm.onTokenRefresh.listen((t) {
         _token = t;
+        debugStatus = 'Token refreshed: $t';
         syncToken();
       });
 
@@ -43,6 +48,7 @@ class NotificationService {
       // plugin registers for remote notifications during requestPermission).
       // Wait briefly for it. Android has no APNs step.
       if (Platform.isIOS) {
+        debugStatus = 'Fetching APNs token...';
         String? apns = await _fm.getAPNSToken();
         for (int i = 0; i < 10 && apns == null; i++) {
           await Future.delayed(const Duration(seconds: 1));
@@ -50,14 +56,24 @@ class NotificationService {
         }
         debugPrint('📲 APNs token: $apns');
         if (apns == null) {
+          debugStatus = 'APNs token is NULL (check Certs/Provisioning Profile)';
           debugPrint('⚠️ WARNING: APNs token is null! APNs certificate (.p8/.p12) might be missing in Firebase Console or Push Notifications capability is missing in Provisioning Profile.');
+        } else {
+          debugStatus = 'APNs token: ${apns.length > 10 ? apns.substring(0, 10) : apns}...';
         }
       }
 
       try {
+        debugStatus = 'Fetching FCM token...';
         _token = await _fm.getToken();
         debugPrint('📲 FCM token: $_token');
+        if (_token != null) {
+          debugStatus = 'FCM Token: ${_token!.length > 15 ? _token!.substring(0, 15) : _token!}...';
+        } else {
+          debugStatus = 'FCM Token is NULL';
+        }
       } catch (e, stack) {
+        debugStatus = 'FCM getToken failed: $e';
         debugPrint('❌ FCM getToken failed: $e\n$stack');
         debugPrint('💡 Suggestion: If on iOS, make sure APNs key/certificates are uploaded to Firebase Console, Bundle ID matches, and Push Notifications capability is enabled in Xcode/Developer Portal.');
       }
@@ -66,6 +82,7 @@ class NotificationService {
       final initial = await _fm.getInitialMessage();
       if (initial != null) _opened(initial);
     } catch (e) {
+      debugStatus = 'Init failed: $e';
       debugPrint('Notification init failed: $e');
     }
   }

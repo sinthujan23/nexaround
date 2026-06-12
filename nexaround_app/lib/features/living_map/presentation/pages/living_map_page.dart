@@ -375,32 +375,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                   ),
       
-                  // Categories
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 28, bottom: 8),
-                      child: _buildCategoryScroller(state.categories),
-                    ),
-                  ),
-      
                   // Computed lists
                   ...() {
                     if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
                       return [
-                        // Trending Shimmer
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                            child: _buildSectionHeader('🔥  Trending Near You', 'See all'),
-                          ),
-                        ),
-                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
-                        
                         // Nearby Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader('✨  Nearby Places', null),
+                            child: _buildSectionHeader('✨  Near You', null),
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
@@ -439,60 +422,19 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                     final publicAttractions = state.attractions.where(isPublicSpot).toList();
 
-                    // "Trending Near You" = the highest TRENDING SCORE, not just
-                    // the first N places. The score blends rating (quality),
-                    // review count (buzz / social proof, log-scaled) and
-                    // proximity ("around me") — see [_trendingScore]. Sorted on a
-                    // copy so the proximity order used by "Nearby Places" below
-                    // stays intact. Works for both "All" and a picked category
-                    // (state.attractions is already category-filtered then).
-                    final List<AttractionEntity> trendingPlaces =
-                        (List<AttractionEntity>.from(publicAttractions)
-                              ..sort((a, b) =>
-                                  _trendingScore(b).compareTo(_trendingScore(a))))
-                            .take(10)
-                            .toList();
-
-                    final trendingIds = trendingPlaces.map((e) => e.id).toSet();
-                    final nearbyPlaces = publicAttractions.where((e) => !trendingIds.contains(e.id)).toList();
-
                     return [
-                      // Trending Section
-                      if (trendingPlaces.isNotEmpty) ...[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
-                            child: _buildSectionHeader(
-                              '🔥  Trending Near You', 
-                              'See all',
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => DiscoverPage(
-                                      initialTab: _getDiscoverTabIndex(_selectedCategory),
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces)),
-                      ],
-
-                      // Nearby Places
-                      if (nearbyPlaces.isNotEmpty) ...[
+                      // Near You
+                      if (publicAttractions.isNotEmpty) ...[
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              '✨  Nearby Places', 
+                              '✨  Near You', 
                               null,
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(child: _buildHiddenGemCards(nearbyPlaces)),
+                        SliverToBoxAdapter(child: _buildHiddenGemCards(publicAttractions)),
                       ],
                     ];
                   }(),
@@ -1740,6 +1682,55 @@ class _LivingMapPageState extends State<LivingMapPage>
     return 'assets/images/cat_nature.png'; // default
   }
 
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'Food':
+        return Colors.orange.withOpacity(0.08);
+      case 'Attractions':
+        return Colors.teal.withOpacity(0.08);
+      case 'Shopping':
+        return Colors.blue.withOpacity(0.08);
+      case 'Medical':
+        return Colors.red.withOpacity(0.08);
+      default:
+        return Colors.white.withOpacity(0.08);
+    }
+  }
+
+  Color _getCategoryBorderColor(String category) {
+    switch (category) {
+      case 'Food':
+        return Colors.orange.withOpacity(0.2);
+      case 'Attractions':
+        return Colors.teal.withOpacity(0.2);
+      case 'Shopping':
+        return Colors.blue.withOpacity(0.2);
+      case 'Medical':
+        return Colors.red.withOpacity(0.2);
+      default:
+        return Colors.white.withOpacity(0.2);
+    }
+  }
+
+  String _getDirectionString(double? userLat, double? userLng, double placeLat, double placeLng) {
+    if (userLat == null || userLng == null) return '';
+    final latDiff = placeLat - userLat;
+    final lngDiff = placeLng - userLng;
+    
+    // Simple 8-point compass calculation
+    final angle = atan2(lngDiff, latDiff) * 180 / pi;
+    final normalizedAngle = (angle + 360) % 360;
+    
+    if (normalizedAngle >= 337.5 || normalizedAngle < 22.5) return 'N';
+    if (normalizedAngle >= 22.5 && normalizedAngle < 67.5) return 'NE';
+    if (normalizedAngle >= 67.5 && normalizedAngle < 112.5) return 'E';
+    if (normalizedAngle >= 112.5 && normalizedAngle < 157.5) return 'SE';
+    if (normalizedAngle >= 157.5 && normalizedAngle < 202.5) return 'S';
+    if (normalizedAngle >= 202.5 && normalizedAngle < 247.5) return 'SW';
+    if (normalizedAngle >= 247.5 && normalizedAngle < 292.5) return 'W';
+    return 'NW';
+  }
+
   Widget _buildCategoryCard(String categoryName, List<AttractionEntity> places, int index) {
     return Stack(
       clipBehavior: Clip.none,
@@ -1749,38 +1740,46 @@ class _LivingMapPageState extends State<LivingMapPage>
           margin: const EdgeInsets.only(bottom: 24, top: 12), // Margin to allow top/bottom pop-out
           width: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.75),
+            color: Colors.white.withOpacity(0.06), // Frosted glass style
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: Colors.black.withOpacity(0.06),
-              width: 0.8,
+              color: _getCategoryBorderColor(categoryName),
+              width: 1.0,
+            ),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.12),
+                _getCategoryColor(categoryName),
+              ],
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 15,
+                offset: const Offset(0, 8),
               ),
             ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(24),
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Category Header Badge (Dark theme style, no icon here)
+                    // Category Header Badge
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.white.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.black.withOpacity(0.08),
+                          color: _getCategoryBorderColor(categoryName),
                           width: 0.6,
                         ),
                       ),
@@ -1795,9 +1794,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Places list (Add right padding to prevent text overlapping with the protruding icon)
+                    // Places list
                     Padding(
-                      padding: const EdgeInsets.only(right: 24),
+                      padding: const EdgeInsets.only(right: 32), // Added padding to avoid overlapping the protruding icon
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: () {
@@ -1811,6 +1810,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                           final finalPlaces = displayList.take(5).toList();
 
                           return finalPlaces.map((place) {
+                            final distText = '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km';
+                            final dirText = _getDirectionString(_userLatitude, _userLongitude, place.latitude, place.longitude);
+
                             return GestureDetector(
                               onTap: () => Navigator.push(
                                 context,
@@ -1820,7 +1822,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                     name: place.name,
                                     category: place.categoryName ?? 'Attraction',
                                     rating: place.rating,
-                                    distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                                    distance: distText,
                                     emoji: '📍',
                                     imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
                                     latitude: place.latitude,
@@ -1830,32 +1832,72 @@ class _LivingMapPageState extends State<LivingMapPage>
                               ),
                               behavior: HitTestBehavior.opaque,
                               child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                padding: const EdgeInsets.symmetric(vertical: 8),
                                 child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Padding(
                                       padding: const EdgeInsets.only(top: 2),
                                       child: Icon(
                                         Icons.location_on_rounded,
-                                        size: 12,
-                                        color: AppColors.brandGreen.withOpacity(0.7),
+                                        size: 14,
+                                        color: AppColors.brandGreen.withOpacity(0.8),
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         place.name,
                                         style: const TextStyle(
                                           color: AppColors.textPrimary,
-                                          fontSize: 11.5,
+                                          fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          height: 1.25,
                                         ),
-                                        maxLines: 2,
+                                        maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
+                                    const SizedBox(width: 12),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(
+                                          color: Colors.white.withOpacity(0.1),
+                                          width: 0.5,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        distText,
+                                        style: const TextStyle(
+                                          color: AppColors.textSecondary,
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                    if (dirText.isNotEmpty) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                        decoration: BoxDecoration(
+                                          color: _getCategoryBorderColor(categoryName).withOpacity(0.15),
+                                          borderRadius: BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: _getCategoryBorderColor(categoryName).withOpacity(0.3),
+                                            width: 0.5,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          dirText,
+                                          style: TextStyle(
+                                            color: _getCategoryBorderColor(categoryName).withOpacity(0.9),
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),
@@ -1870,7 +1912,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             ),
           ),
         ),
-        // 3D Pop-out Category Icon positioned at the top right, protruding out of the card
+        // 3D Pop-out Category Icon
         Positioned(
           top: -2,
           right: -4,
@@ -1893,46 +1935,23 @@ class _LivingMapPageState extends State<LivingMapPage>
     for (final place in attractions) {
       String category = place.categoryName ?? 'Places';
       final catLower = category.toLowerCase();
-      final nameLower = place.name.toLowerCase();
-      final descLower = (place.description ?? '').toLowerCase();
-      final histLower = (place.history ?? '').toLowerCase();
 
-      final isHistorical = catLower.contains('historic') ||
-                           catLower.contains('history') ||
-                           catLower.contains('museum') ||
-                           nameLower.contains('museum') ||
-                           nameLower.contains('fort') ||
-                           nameLower.contains('palace') ||
-                           nameLower.contains('monument') ||
-                           nameLower.contains('temple') ||
-                           nameLower.contains('church') ||
-                           nameLower.contains('mosque') ||
-                           place.tags.any((t) => ['historic', 'history', 'monument', 'heritage', 'temple', 'church', 'mosque', 'palace', 'fort'].contains(t.toLowerCase())) ||
-                           histLower.isNotEmpty;
-
-      if (isHistorical) {
-        category = 'Historical';
-      } else if (catLower.contains('food') || catLower.contains('drink') || catLower.contains('restaurant') || catLower.contains('cafe')) {
+      if (catLower.contains('food') || catLower.contains('drink') || catLower.contains('restaurant') || catLower.contains('cafe')) {
         category = 'Food';
-      } else if (catLower.contains('nature') || catLower.contains('park') || catLower.contains('garden') || catLower.contains('forest') || catLower.contains('beach')) {
-        category = 'Nature';
-      } else if (catLower.contains('hotel') || catLower.contains('stay') || catLower.contains('accommodation') || catLower.contains('lodging')) {
-        category = 'Hotels';
       } else if (catLower.contains('shop') || catLower.contains('mall') || catLower.contains('market') || catLower.contains('store')) {
         category = 'Shopping';
       } else if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor') || catLower.contains('pharmacy')) {
         category = 'Medical';
       } else {
-        category = 'Places';
+        category = 'Attractions';
       }
       grouped.putIfAbsent(category, () => []).add(place);
     }
     final List<AttractionEntity> genericPlaces = grouped['Places'] ?? [];
     grouped.remove('Places');
 
-    // Ensure all 6 categories have at least 3 places.
-    // If a category has fewer than 3, we fill it from the generic/leftover places list.
-    final orderedCategories = ['Nature', 'Hotels', 'Shopping', 'Historical', 'Food', 'Medical'];
+    // Ensure all 4 categories have at least 3 places.
+    final orderedCategories = ['Food', 'Attractions', 'Shopping', 'Medical'];
     
     // First guarantee every category exists in the map
     for (final cat in orderedCategories) {
@@ -1942,19 +1961,15 @@ class _LivingMapPageState extends State<LivingMapPage>
     // Now populate empty categories with generic places so they have content
     for (final cat in orderedCategories) {
       if (grouped[cat]!.isEmpty && genericPlaces.isNotEmpty) {
-        // Take up to 5 places from the leftovers
         final takeCount = genericPlaces.length >= 5 ? 5 : genericPlaces.length;
         grouped[cat]!.addAll(genericPlaces.sublist(0, takeCount));
-        // Remove them so they are not reused
         genericPlaces.removeRange(0, takeCount);
       }
     }
 
-    // If there are still empty categories (because we ran out of generic places), 
-    // reuse some places from other populated categories so they are never empty
+    // Reuse borrow logic
     for (final cat in orderedCategories) {
       if (grouped[cat]!.isEmpty) {
-        // Find the category with the most items to borrow from
         String? bestCat;
         int maxLen = 0;
         for (final otherCat in orderedCategories) {
@@ -1973,33 +1988,10 @@ class _LivingMapPageState extends State<LivingMapPage>
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
         children: [
-          // Row 1: Nature and Hotels
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildCategoryCard('Nature', grouped['Nature']!, 0)),
-              const SizedBox(width: 16),
-              Expanded(child: _buildCategoryCard('Hotels', grouped['Hotels']!, 1)),
-            ],
-          ),
-          // Row 2: Shopping and Historical
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildCategoryCard('Shopping', grouped['Shopping']!, 2)),
-              const SizedBox(width: 16),
-              Expanded(child: _buildCategoryCard('Historical', grouped['Historical']!, 3)),
-            ],
-          ),
-          // Row 3: Food and Medical
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _buildCategoryCard('Food', grouped['Food']!, 4)),
-              const SizedBox(width: 16),
-              Expanded(child: _buildCategoryCard('Medical', grouped['Medical']!, 5)),
-            ],
-          ),
+          _buildCategoryCard('Food', grouped['Food']!, 0),
+          _buildCategoryCard('Attractions', grouped['Attractions']!, 1),
+          _buildCategoryCard('Shopping', grouped['Shopping']!, 2),
+          _buildCategoryCard('Medical', grouped['Medical']!, 3),
         ],
       ),
     );
