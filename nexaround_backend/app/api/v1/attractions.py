@@ -59,7 +59,16 @@ async def get_attraction(
 ):
     """Get a single attraction by ID."""
     service = AttractionService(db)
-    return await service.get_attraction(attraction_id)
+    result = await service.get_attraction(attraction_id)
+    # Record a place visit — the real source for the admin 'Places Visited'
+    # metric. Best-effort: analytics must never break the detail read.
+    try:
+        from app.models.analytics import PlaceVisit
+        db.add(PlaceVisit(attraction_id=attraction_id))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+    return result
 
 @router.post("/", response_model=AttractionResponse, status_code=status.HTTP_201_CREATED)
 async def create_attraction(

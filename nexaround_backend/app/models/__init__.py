@@ -6,5 +6,7 @@ from app.models.itinerary import Itinerary
 from app.models.media import Media
 from app.models.budget import Budget, Expense
 from app.models.system_setting import SystemSetting, ApiRequestLog
+from app.models.notification import Broadcast, Notification
+from app.models.analytics import PlaceVisit, UserSession
 
-__all__ = ["User", "Attraction", "Category", "Review", "Itinerary", "Media", "Budget", "Expense", "SystemSetting", "ApiRequestLog"]
+__all__ = ["User", "Attraction", "Category", "Review", "Itinerary", "Media", "Budget", "Expense", "SystemSetting", "ApiRequestLog", "Broadcast", "Notification", "PlaceVisit", "UserSession"]

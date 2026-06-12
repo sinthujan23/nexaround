@@ -18,6 +18,9 @@ app = FastAPI(
 
 @app.on_event("startup")
 async def startup():
+    # Import every model module so all tables (incl. broadcasts/notifications/
+    # analytics) are registered on Base.metadata before create_all runs.
+    import app.models  # noqa: F401
     # Create tables if they don't exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

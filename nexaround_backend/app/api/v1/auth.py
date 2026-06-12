@@ -2,6 +2,7 @@ import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, Header, Form
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.services.auth_service import AuthService
@@ -119,3 +120,33 @@ async def register_fcm_token(
     tokens = tokens[:8]           # keep the few most recent devices
     await service.update_preferences(user.id, {"fcm_tokens": tokens})
     return MessageResponse(message="Token registered")
+
+
+class _SessionPing(BaseModel):
+    duration_seconds: int = 0
+
+
+@router.post("/me/session", response_model=MessageResponse)
+async def record_session(
+    data: _SessionPing,
+    authorization: str = Header(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Record a finished foreground session (seconds) — feeds the admin's real
+    DAU and average-session-length metrics. The app posts this when it goes to
+    the background. Auth is best-effort: an expired token still no-ops cleanly
+    instead of erroring, so analytics never breaks the app."""
+    from app.models.analytics import UserSession
+    user_id = None
+    try:
+        token = (authorization or "").replace("Bearer ", "")
+        if token:
+            user = await AuthService(db).get_current_user(token)
+            user_id = user.id
+    except Exception:
+        user_id = None
+    secs = max(0, min(int(data.duration_seconds or 0), 24 * 3600))
+    if secs > 0:
+        db.add(UserSession(user_id=user_id, duration_seconds=secs))
+        await db.commit()
+    return MessageResponse(message="ok")

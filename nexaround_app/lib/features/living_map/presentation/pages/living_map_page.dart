@@ -407,19 +407,19 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ];
                     }
 
-                    List<AttractionEntity> trendingPlaces = [];
-                    if (_selectedCategory != 'All') {
-                      trendingPlaces = state.attractions.take(10).toList();
-                    } else {
-                      final Map<String, AttractionEntity> categoryMap = {};
-                      for (var place in state.attractions) {
-                        final cat = place.categoryName ?? 'Attractions';
-                        if (!categoryMap.containsKey(cat)) {
-                          categoryMap[cat] = place;
-                        }
-                      }
-                      trendingPlaces = categoryMap.values.toList();
-                    }
+                    // "Trending Near You" = the highest TRENDING SCORE, not just
+                    // the first N places. The score blends rating (quality),
+                    // review count (buzz / social proof, log-scaled) and
+                    // proximity ("around me") — see [_trendingScore]. Sorted on a
+                    // copy so the proximity order used by "Nearby Places" below
+                    // stays intact. Works for both "All" and a picked category
+                    // (state.attractions is already category-filtered then).
+                    final List<AttractionEntity> trendingPlaces =
+                        (List<AttractionEntity>.from(state.attractions)
+                              ..sort((a, b) =>
+                                  _trendingScore(b).compareTo(_trendingScore(a))))
+                            .take(10)
+                            .toList();
 
                     final trendingIds = trendingPlaces.map((e) => e.id).toSet();
                     final nearbyPlaces = state.attractions.where((e) => !trendingIds.contains(e.id)).toList();
@@ -1391,6 +1391,26 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
       ],
     );
+  }
+
+  /// Ranks a place for the "Trending Near You" row. A place trends when many
+  /// people rate it highly (social proof) AND it's close by. Pure function of
+  /// already-loaded data — no network calls, so this is instant and free.
+  double _trendingScore(AttractionEntity place) {
+    // Quality: rating (0–5) → 0–1.
+    final double quality = place.rating.clamp(0.0, 5.0) / 5.0;
+
+    // Buzz: review count, log-scaled so 500 reviews ≫ 5 reviews but doesn't
+    // 100× dominate. log10(reviews + 1) / 3 ≈ 1.0 around 1000 reviews.
+    final double buzz =
+        (log(place.reviewCount + 1) / ln10 / 3.0).clamp(0.0, 1.0);
+
+    // Proximity: closer = higher. Full credit at 0 m, none beyond 5 km. When
+    // distance is unknown (null/0) this is 1.0, so quality + buzz decide.
+    final double dist = (place.distanceM ?? 0).toDouble();
+    final double proximity = (1.0 - dist / 5000.0).clamp(0.0, 1.0);
+
+    return quality * 0.40 + buzz * 0.40 + proximity * 0.20;
   }
 
   Widget _buildTrendingCards(List<AttractionEntity> attractions) {

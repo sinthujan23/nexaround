@@ -8,6 +8,7 @@ import 'package:nexaround_app/app/app.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
+import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 
@@ -79,6 +80,9 @@ void main() async {
   } catch (e) {
     debugPrint("Failed to fetch keys from backend: $e");
   }
+
+  // Start session tracking for real engagement metrics (DAU + avg session).
+  SessionTracker.instance.start();
 
   // Force dark status bar for futuristic feel
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

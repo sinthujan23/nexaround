@@ -192,7 +192,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
     {'id': 'Historical', 'label': 'Historical', 'icon': Icons.account_balance_rounded},
     {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
-    {'id': 'Hotels', 'label': 'Hotels', 'icon': Icons.hotel_rounded},
+    {'id': 'Hotels', 'label': 'Hotel', 'icon': Icons.hotel_rounded},
     {'id': 'Medical', 'label': 'Medical', 'icon': Icons.medical_services_rounded},
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
@@ -3014,7 +3014,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           ),
           const SizedBox(width: 10),
           Text(
-            'LOADING ${_rangeKm}KM PLACES...',
+            'LOADING PLACES...',
             style: const TextStyle(
               color: Colors.white, 
               fontSize: 10, 
@@ -3120,7 +3120,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           // Notice banner when range > 2km - shown in all modes except mapping/navigating/neva/detail
           if (!_minimalHud && !_isMapping && !_isNavigating && _nevaSearchResult == null && !_showInfoCard && _rangeKm > 2)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 114,
+              top: MediaQuery.of(context).padding.top + 106,
               left: 20,
               right: 20,
               child: Center(child: _buildApiLimitNotice()),
@@ -3131,7 +3131,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             Positioned(
               // Anchored below the range slider relative to the notch so it
               // never overlaps the slider or the floating place labels.
-              top: MediaQuery.of(context).padding.top + 154,
+              top: MediaQuery.of(context).padding.top + 146,
               left: 0,
               right: 0,
               child: Center(child: _buildXPBadge()),
@@ -3140,7 +3140,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           // Dynamic Loading Indicator for Range/Places Fetching
           if (_isFetchingPlaces)
             Positioned(
-              top: MediaQuery.of(context).padding.top + 154,
+              top: MediaQuery.of(context).padding.top + 146,
               left: 0,
               right: 0,
               child: Center(child: _buildFetchingPlacesPill()),
@@ -3273,7 +3273,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   Widget _buildArFilterBar() {
     final topPadding = MediaQuery.of(context).padding.top;
     return Positioned(
-      top: topPadding + 68,
+      top: topPadding + 60,
       left: 0,
       right: 0,
       child: SizedBox(
@@ -3565,11 +3565,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     // height (name pill + thumbnail card + tether ≈ 97 px) or consecutive cards
     // overlap. 104 leaves a small gap. Combined with [_maxVisibleOnScreen] this
     // keeps every visible label clear of its neighbours.
-    // Notch-relative: clears the top HUD row (~48px) + filter chip bar (40px)
-    // + a comfortable gap so cards never overlap the chips.
-    // The range slider row was removed (now in HUD), so we reclaim that 34px
-    // and push the first card slightly higher for a cleaner look.
-    final double topStart = MediaQuery.of(context).padding.top + 160;
+    // Notch-relative: must clear the top HUD row (~48px), the filter chip bar,
+    // the XP badge AND the "popular places" notice banner below them, with a
+    // comfortable gap — otherwise the first cards render behind the banner
+    // (client report). Starting at +184 keeps every label fully visible below it.
+    final double topStart = MediaQuery.of(context).padding.top + 184;
     const double rowHeight = 104.0;
     const double cardW = 120.0;
 
@@ -3892,7 +3892,14 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final double maxDist = visible.map((l) => l.distanceM).reduce((a, b) => a > b ? a : b);
     if (maxDist <= 1.0) return markers;
 
-    const double topY = 185.0; // Adjusted from 140.0 to prevent overlapping with the top category selection bar
+    // Notch-relative top boundary so the farthest cards clear the HUD, filter
+    // chips and the "popular places" banner on EVERY device. The banner only
+    // shows when _rangeKm > 2 (see _buildApiLimitNotice), so at 0–2 km nothing
+    // sits below the chips — the cards reclaim that space and start just under
+    // the chip bar (+110). For wider ranges the banner is back, so we sit below
+    // it (+158). (Discover mode has no XP/loading pill in this band.)
+    final double topY =
+        MediaQuery.of(context).padding.top + (_rangeKm > 2 ? 158.0 : 110.0);
     final double bottomY = screenH * 0.55;
     const double cardW = 125;
     const double cardH = 60;

@@ -1,7 +1,7 @@
 import uuid
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
-from fastapi import APIRouter, Depends, Header, HTTPException, status, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, status, Query, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
@@ -420,26 +420,60 @@ async def get_engagement_data(
     db: AsyncSession = Depends(get_db),
     _ = Depends(verify_admin_token)
 ):
-    """Aggregate engagement indicators and session durations."""
-    return {
-        "daily_active_users": 845,
-        "avg_session_length": "4m 20s",
-        "places_visited_count": 12450
-    }
+    """Real engagement indicators (DAU, avg session length, places visited),
+    computed from tracked activity — see engagement_service."""
+    from app.services import engagement_service
+    return await engagement_service.get_engagement_stats(db)
 
 
 @router.post("/engagement/announcements")
 async def post_system_announcement(
     data: AnnouncementRequest,
+    background: BackgroundTasks,
     _ = Depends(verify_admin_token)
 ):
-    """Broadcast a system notification to users."""
-    # Log the broadcast mock
-    print(f"[ANNOUNCEMENT BROADCAST] Plan: {data.target_plan} | Title: {data.title} | Msg: {data.message}")
+    """Send a real broadcast: a push notification (FCM) AND an in-app bell-icon
+    message to every targeted user. Delivery runs in the background so the admin
+    gets an instant response; final delivery counts show in Broadcast History."""
+    if not (data.title or "").strip() or not (data.message or "").strip():
+        raise HTTPException(status_code=400, detail="Title and message are required")
+    from app.services import broadcast_service
+    background.add_task(
+        broadcast_service.send_broadcast,
+        title=data.title.strip(),
+        body=data.message.strip(),
+        target_audience=data.target_plan or "all",
+    )
     return {
-        "status": "success",
-        "message": f"Announcement successfully broadcast to all '{data.target_plan}' subscribers."
+        "status": "queued",
+        "message": "Broadcast is being delivered to your audience.",
     }
+
+
+@router.get("/engagement/broadcasts")
+async def list_broadcasts(
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Broadcast History — past sends with their real delivery counts."""
+    from app.models.notification import Broadcast
+    res = await db.execute(
+        select(Broadcast).order_by(desc(Broadcast.created_at)).limit(50)
+    )
+    return [
+        {
+            "id": str(b.id),
+            "title": b.title,
+            "body": b.body,
+            "target_audience": b.target_audience,
+            "recipients_count": b.recipients_count,
+            "devices_sent": b.devices_sent,
+            "devices_failed": b.devices_failed,
+            "status": b.status,
+            "created_at": b.created_at.isoformat(),
+        }
+        for b in res.scalars().all()
+    ]
 
 
 @router.get("/settings", response_model=SettingsResponse)
