@@ -160,23 +160,26 @@ async def send_multicast(
     Uses FCM multicast (``send_each_for_multicast``) in batches of 500 — one API
     round-trip per 500 devices instead of one per device, which is what makes a
     broadcast to thousands of users cheap and fast. Returns
-    ``(success_count, failure_count, unregistered_tokens)`` so the caller can
-    record real delivery stats and prune dead tokens.
+    ``(success_count, failure_count, unregistered_tokens, token_status)`` where
+    ``token_status`` maps each token to 'sent' | 'failed' | 'unregistered', so
+    the caller can record real delivery stats, prune dead tokens, AND attribute
+    per-user delivery outcomes.
     """
     from firebase_admin import messaging
 
     uniq = [t for t in dict.fromkeys(tokens) if t]  # dedup + drop empties
     if not uniq:
-        return 0, 0, []
+        return 0, 0, [], {}
     app = await _resolve_app(db)
     if app is None:
         logger.warning("FCM multicast skipped: no Firebase credential configured")
-        return 0, len(uniq), []
+        return 0, len(uniq), [], {t: "failed" for t in uniq}
 
     data = {k: str(v) for k, v in (data or {}).items()}
     success = 0
     failure = 0
     unregistered: list = []
+    token_status: dict = {}
 
     for i in range(0, len(uniq), 500):
         batch = uniq[i:i + 500]
@@ -197,23 +200,29 @@ async def send_multicast(
         except Exception as e:
             logger.error(f"FCM multicast batch failed: {e}")
             failure += len(batch)
+            for t in batch:
+                token_status[t] = "failed"
             continue
         success += resp.success_count
         failure += resp.failure_count
         for idx, r in enumerate(resp.responses):
             if r.success:
+                token_status[batch[idx]] = "sent"
                 continue
             err = r.exception
             name = type(err).__name__ if err else ""
             msg = str(err) if err else ""
             if "Unregistered" in name or "not a valid FCM" in msg or "not found" in msg.lower():
                 unregistered.append(batch[idx])
+                token_status[batch[idx]] = "unregistered"
+            else:
+                token_status[batch[idx]] = "failed"
 
     logger.info(
         f"FCM multicast '{title}': {success} ok, {failure} failed, "
         f"{len(unregistered)} to prune"
     )
-    return success, failure, unregistered
+    return success, failure, unregistered, token_status
 
 
 async def send_to_tokens(

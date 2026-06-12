@@ -46,6 +46,10 @@ class Notification(Base):
     type: Mapped[str] = mapped_column(String(40), default="broadcast")  # broadcast|system|odyssey
     broadcast_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Per-user PUSH (FCM) delivery outcome for broadcasts, so the admin can see
+    # exactly who received it: pending|sent|failed|no_token. ('sent' = at least
+    # one of the user's devices was delivered to.)
+    push_status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
     )
