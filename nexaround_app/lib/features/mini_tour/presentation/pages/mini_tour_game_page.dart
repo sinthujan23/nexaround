@@ -10,7 +10,9 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// A gamified "Mini Tour": real nearby places are dropped onto a Mapbox map as
 /// flags 🚩 with a checkered finish flag 🏁 on the last stop. The map tracks the
@@ -81,6 +83,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   @override
   void dispose() {
     _posSub?.cancel();
+    _rotationTimer?.cancel();
     super.dispose();
   }
 
@@ -138,14 +141,41 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         places = await GooglePlacesService.fetchNearbyPlaces(
           latitude: centerLat,
           longitude: centerLng,
-          radius: 2500,
+          radius: 3000,
           categoryName: 'Attractions',
         );
       }
 
+      // Filter out private residences and personal markers to keep only public/walkable spots
+      bool isPublicSpot(AttractionEntity place) {
+        final name = place.name.toLowerCase();
+        final desc = (place.description ?? '').toLowerCase();
+        final tags = place.tags.map((t) => t.toLowerCase()).toList();
+        
+        final privateKeywords = [
+          'home', 'house', 'residence', "'s place", 'my place', 'my home', 
+          'private', 'personal', 'apartment', 'flat', 'villa'
+        ];
+        
+        for (final keyword in privateKeywords) {
+          if (name.contains(keyword)) {
+            if (name.contains('museum') || name.contains('historic') || name.contains('heritage') || name.contains('public')) {
+              continue;
+            }
+            return false;
+          }
+        }
+        
+        if (tags.any((t) => t.contains('home') || t.contains('private') || t.contains('residential') || t.contains('personal'))) {
+          return false;
+        }
+        
+        return true;
+      }
+
       // Filter places within 3 km and prefer those with known distance/rating.
       final usable = places
-          .where((p) => p.distanceM != null && p.distanceM! <= 3000)
+          .where((p) => p.distanceM != null && p.distanceM! <= 3000 && isPublicSpot(p))
           .toList()
         ..sort((a, b) {
           // Primary: sort by rating (highest first for famous spots)
@@ -155,22 +185,110 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         });
 
       if (usable.length < 3) {
-        _fail('Not enough famous spots found within 3 km. Try a different area.');
+        _fail('Not enough famous public spots found within 3 km. Try a different area.');
         return;
       }
 
-      _stops = usable
+      // Nearest Neighbor Route Optimization
+      // Starts from the user's initial GPS location (centerLat, centerLng)
+      final List<_TourStop> optimizedStops = [];
+      final List<_TourStop> remaining = usable
           .take(_maxStops)
           .map((p) => _TourStop(name: p.name, lat: p.latitude, lng: p.longitude))
           .toList();
+
+      double currentLat = centerLat;
+      double currentLng = centerLng;
+
+      while (remaining.isNotEmpty) {
+        remaining.sort((a, b) =>
+            _haversine(currentLat, currentLng, a.lat, a.lng)
+                .compareTo(_haversine(currentLat, currentLng, b.lat, b.lng)));
+        final nextStop = remaining.removeAt(0);
+        optimizedStops.add(nextStop);
+        currentLat = nextStop.lat;
+        currentLng = nextStop.lng;
+      }
+
+      _stops = optimizedStops;
 
       if (!mounted) return;
       setState(() => _phase = _Phase.playing);
       _stopsReady = true;
       _maybePlayIntro();
+      _startRotationTimer();
     } catch (e) {
       _fail('Could not start the tour: $e');
     }
+  }
+
+  Timer? _rotationTimer;
+
+  void _startRotationTimer() {
+    _rotationTimer?.cancel();
+    _rotationTimer = Timer.periodic(const Duration(seconds: 20), (timer) async {
+      if (!mounted || _map == null || _stops.isEmpty || _phase != _Phase.playing) return;
+      
+      // Find the next unvisited stop to highlight/orient to
+      final nextIndex = _stops.indexWhere((s) => !s.visited);
+      if (nextIndex == -1) return;
+      final target = _stops[nextIndex];
+
+      if (_userLat == null || _userLng == null) return;
+
+      // Gentle overview zoom out showing user and target
+      final lats = [_userLat!, target.lat];
+      final lngs = [_userLng!, target.lng];
+      final minLat = lats.reduce(math.min);
+      final maxLat = lats.reduce(math.max);
+      final minLng = lngs.reduce(math.min);
+      final maxLng = lngs.reduce(math.max);
+
+      final overviewCamera = await _map!.cameraForCoordinateBounds(
+        mapbox.CoordinateBounds(
+          southwest: mapbox.Point(coordinates: mapbox.Position(minLng, minLat)),
+          northeast: mapbox.Point(coordinates: mapbox.Position(maxLng, maxLat)),
+          infiniteBounds: false,
+        ),
+        mapbox.MbxEdgeInsets(top: 120, left: 60, bottom: 300, right: 60),
+        null,
+        null,
+        14.5,
+        null,
+      );
+
+      if (!mounted) return;
+
+      // 1. Zoom out dynamically
+      await _map!.flyTo(
+        overviewCamera,
+        mapbox.MapAnimationOptions(duration: 2000),
+      );
+
+      // Hold overview briefly
+      await Future.delayed(const Duration(milliseconds: 3000));
+      if (!mounted) return;
+
+      // Calculate bearing towards the destination to rotate map
+      final dLon = (target.lng - _userLng!) * math.pi / 180;
+      final lat1 = _userLat! * math.pi / 180;
+      final lat2 = target.lat * math.pi / 180;
+      final y = math.sin(dLon) * math.cos(lat2);
+      final x = math.cos(lat1) * math.sin(lat2) -
+          math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+      final brng = (math.atan2(y, x) * 180 / math.pi + 360) % 360;
+
+      // 2. Zoom back in, oriented towards target stop
+      await _map!.flyTo(
+        mapbox.CameraOptions(
+          center: mapbox.Point(coordinates: mapbox.Position(_userLng!, _userLat!)),
+          zoom: 16.0,
+          pitch: 35.0, // slight perspective angle for engagement
+          bearing: brng,
+        ),
+        mapbox.MapAnimationOptions(duration: 2000),
+      );
+    });
   }
 
   void _fail(String msg) {
@@ -185,7 +303,11 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   bool get _allVisited => _stops.isNotEmpty && _stops.every((s) => s.visited);
   int get _visitedCount => _stops.where((s) => s.visited).length;
   bool _isFinal(int i) => i == _stops.length - 1;
-  String _emoji(int i, _TourStop s) => s.visited ? '✅' : (_isFinal(i) ? '🏁' : '🚩');
+  String _emoji(int i, _TourStop s) {
+    if (s.visited) return '✅';
+    if (_isFinal(i)) return '🏁';
+    return '${i + 1}';
+  }
 
   double? _distanceTo(_TourStop s) {
     if (_userLat == null || _userLng == null) return null;
@@ -219,6 +341,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     _markers = await map.annotations.createPointAnnotationManager();
     await _refreshMarkers();
     _startTracking();
+    _updateRouteLine();
     // Mark map ready; intro animation (zoom-out → zoom-in) fires once stops
     // are also loaded. If they already are, it fires immediately.
     _mapReady = true;
@@ -309,12 +432,60 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
           changed = true;
         }
       }
+      _updateRouteLine();
       setState(() {}); // refresh live distances in the panel
       if (changed) {
         _refreshMarkers();
         if (_allVisited) _finish();
       }
     });
+  }
+
+  mapbox.PolylineAnnotationManager? _polylineManager;
+
+  Future<void> _updateRouteLine() async {
+    if (_map == null || _userLat == null || _userLng == null || _stops.isEmpty) return;
+
+    final nextIndex = _stops.indexWhere((s) => !s.visited);
+    if (nextIndex == -1) {
+      await _polylineManager?.deleteAll();
+      return;
+    }
+    final activeTarget = _stops[nextIndex];
+
+    try {
+      final routeData = await GooglePlacesService.getDirections(
+        originLat: _userLat!,
+        originLng: _userLng!,
+        destLat: activeTarget.lat,
+        destLng: activeTarget.lng,
+        profile: 'walking',
+      );
+
+      if (routeData == null || !mounted) return;
+
+      final List<LatLng> polylinePoints = (routeData['polyline'] as List?)?.cast<LatLng>() ?? [];
+      if (polylinePoints.isEmpty) return;
+
+      if (_polylineManager == null) {
+        _polylineManager = await _map!.annotations.createPolylineAnnotationManager();
+      }
+
+      await _polylineManager!.deleteAll();
+
+      final List<mapbox.Position> coordinates = polylinePoints
+          .map((pt) => mapbox.Position(pt.longitude, pt.latitude))
+          .toList();
+
+      await _polylineManager!.create(mapbox.PolylineAnnotationOptions(
+        geometry: mapbox.LineString(coordinates: coordinates),
+        lineColor: AppColors.brandGreen.toARGB32(),
+        lineWidth: 5.0,
+        lineOpacity: 0.85,
+      ));
+    } catch (e) {
+      debugPrint('Error updating navigation route line: $e');
+    }
   }
 
   Future<void> _refreshMarkers() async {
@@ -365,7 +536,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         ..color = Colors.black.withValues(alpha: 0.25)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
-    // White disc + brand ring.
+    // White disc + colored ring (red for unvisited index numbers, brandGreen for visited/checkered flags)
+    final isNumber = RegExp(r'^\d+$').hasMatch(emoji);
     canvas.drawCircle(center, radius, Paint()..color = Colors.white);
     canvas.drawCircle(
       center,
@@ -373,15 +545,49 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 3
-        ..color = AppColors.brandGreen,
+        ..color = isNumber ? Colors.red : AppColors.brandGreen,
     );
 
-    // Emoji, centered.
-    final tp = TextPainter(
-      text: TextSpan(text: emoji, style: const TextStyle(fontSize: 46)),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+    // Draw text index or emoji centered
+    if (isNumber) {
+      // Draw flag emoji 🚩 slightly left-offset
+      final flagPainter = TextPainter(
+        text: const TextSpan(
+          text: '🚩',
+          style: TextStyle(fontSize: 28),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      flagPainter.paint(canvas, const Offset(14, 28));
+
+      // Draw number index slightly right-offset, bold
+      final numPainter = TextPainter(
+        text: TextSpan(
+          text: emoji,
+          style: const TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w900,
+            color: Colors.red,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      numPainter.paint(canvas, const Offset(52, 32));
+    } else {
+      final isEmoji = emoji == '✅' || emoji == '🏁';
+      final tp = TextPainter(
+        text: TextSpan(
+          text: emoji,
+          style: TextStyle(
+            fontSize: isEmoji ? 44 : 40,
+            fontWeight: FontWeight.w900,
+            color: isEmoji ? AppColors.brandGreen : Colors.red,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2 - (isEmoji ? 0 : 2)));
+    }
 
     final img =
         await recorder.endRecording().toImage(size.toInt(), size.toInt());
@@ -505,6 +711,15 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   }
 
   Widget _buildGame() {
+    // Determine current active (unvisited) stop
+    final nextIndex = _stops.indexWhere((s) => !s.visited);
+    final _TourStop? activeStop = nextIndex != -1 ? _stops[nextIndex] : null;
+    final double? activeDist = activeStop != null ? _distanceTo(activeStop) : null;
+    final activeDistLabel = activeDist == null
+        ? '—'
+        : (activeDist < 1000 ? '${activeDist.toInt()} m' : '${(activeDist / 1000).toStringAsFixed(1)} km');
+    final activeMinLabel = activeDist == null ? '1' : '${(activeDist / 80).round().clamp(1, 40)}';
+
     return Stack(
       children: [
         mapbox.MapWidget(
@@ -517,6 +732,101 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
           ),
         ),
         _buildTopBar(),
+        
+        // Active Navigation HUD Overlay
+        if (activeStop != null)
+          Positioned(
+            top: 124,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 15,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.directions_walk_rounded,
+                      color: AppColors.brandGreen,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'NEXT: ${activeStop.name}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.8,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$activeDistLabel away · $activeMinLabel min walk',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // Compass dynamic guide indicator pointing to target
+                  Transform.rotate(
+                    angle: () {
+                      if (_userLat == null || _userLng == null) return 0.0;
+                      final dLon = (activeStop.lng - _userLng!) * math.pi / 180;
+                      final lat1 = _userLat! * math.pi / 180;
+                      final lat2 = activeStop.lat * math.pi / 180;
+                      final y = math.sin(dLon) * math.cos(lat2);
+                      final x = math.cos(lat1) * math.sin(lat2) -
+                          math.sin(lat1) * math.cos(lat2) * math.cos(dLon);
+                      return math.atan2(y, x);
+                    }(),
+                    child: Container(
+                      width: 34,
+                      height: 34,
+                      decoration: const BoxDecoration(
+                        color: Colors.black12,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.navigation_rounded,
+                        color: Colors.black54,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ).animate().slideY(begin: -0.2, end: 0).fade(),
+          ),
+
         Positioned(
           right: 16,
           bottom: 296,
@@ -558,7 +868,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Mini Tour · $_area',
+                      'Walk · $_area',
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -594,7 +904,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)),
             ).animate().fade(),
-            const Text('TOUR STOPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2, color: Colors.black54)),
+            const Text('WALK STOPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2, color: Colors.black54)),
             const SizedBox(height: 8),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 200),
@@ -644,7 +954,34 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
             ],
           ),
         ),
-        if (!s.visited)
+        if (!s.visited) ...[
+          IconButton(
+            onPressed: () async {
+              final url = Uri.parse(
+                'https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking',
+              );
+              try {
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                } else {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Could not launch directions map.')),
+                    );
+                  }
+                }
+              } catch (_) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Error launching navigation.')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.directions_walk_rounded, color: AppColors.brandGreen, size: 20),
+            tooltip: 'Navigate to stop',
+          ),
+          const SizedBox(width: 4),
           TextButton(
             onPressed: () => _checkIn(i),
             style: TextButton.styleFrom(
@@ -654,8 +991,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Check in', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-          )
-        else
+          ),
+        ] else
           const Icon(Icons.check_circle_rounded, color: AppColors.neonGreen),
       ],
     );
@@ -670,7 +1007,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
           children: [
             const Text('🏁', style: TextStyle(fontSize: 72)).animate().scale(curve: Curves.easeOutBack, duration: 600.ms),
             const SizedBox(height: 16),
-            const Text('Tour Complete!', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900))
+            const Text('Walk Complete!', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.w900))
                 .animate().fade(delay: 200.ms),
             const SizedBox(height: 24),
             _rewardChip('+$_xpEarned XP', Icons.bolt_rounded),

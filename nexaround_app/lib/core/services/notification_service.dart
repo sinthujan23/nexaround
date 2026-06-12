@@ -44,18 +44,22 @@ class NotificationService {
       // Wait briefly for it. Android has no APNs step.
       if (Platform.isIOS) {
         String? apns = await _fm.getAPNSToken();
-        for (int i = 0; i < 6 && apns == null; i++) {
+        for (int i = 0; i < 10 && apns == null; i++) {
           await Future.delayed(const Duration(seconds: 1));
           apns = await _fm.getAPNSToken();
         }
         debugPrint('📲 APNs token: $apns');
+        if (apns == null) {
+          debugPrint('⚠️ WARNING: APNs token is null! APNs certificate (.p8/.p12) might be missing in Firebase Console or Push Notifications capability is missing in Provisioning Profile.');
+        }
       }
 
       try {
         _token = await _fm.getToken();
         debugPrint('📲 FCM token: $_token');
-      } catch (e) {
-        debugPrint('FCM getToken failed (will retry on refresh): $e');
+      } catch (e, stack) {
+        debugPrint('❌ FCM getToken failed: $e\n$stack');
+        debugPrint('💡 Suggestion: If on iOS, make sure APNs key/certificates are uploaded to Firebase Console, Bundle ID matches, and Push Notifications capability is enabled in Xcode/Developer Portal.');
       }
 
       // App launched from terminated state by tapping a notification.

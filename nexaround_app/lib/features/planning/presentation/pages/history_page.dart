@@ -132,9 +132,9 @@ class _HistoryPageState extends State<HistoryPage> {
                     else
                       ..._completedTrips.map(_tripCard),
                     const SizedBox(height: 24),
-                    _sectionLabel('MINI TOURS', tours.length),
+                    _sectionLabel('COMPLETED WALKS', tours.length),
                     if (tours.isEmpty)
-                      _emptyNote('No mini tours completed yet.')
+                      _emptyNote('No walks completed yet.')
                     else
                       ...tours.map(_miniTourCard),
                   ],
@@ -157,7 +157,7 @@ class _HistoryPageState extends State<HistoryPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Finish an Odyssey trip or a Mini Tour and it’ll show up here.',
+              'Finish an Odyssey trip or complete a Walk and it’ll show up here.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13.5, color: AppColors.textSecondary),
             ),
@@ -276,7 +276,7 @@ class _HistoryPageState extends State<HistoryPage> {
   }
 
   Widget _miniTourCard(Map<String, dynamic> t) {
-    final area = (t['area'] ?? 'Mini Tour').toString();
+    final area = (t['area'] ?? 'Walk').toString();
     final places = (t['places'] as List?)?.length ?? 0;
     final xp = (t['xp'] as num?)?.toInt() ?? 0;
     final date = _fmtDate((t['date'] ?? '').toString());

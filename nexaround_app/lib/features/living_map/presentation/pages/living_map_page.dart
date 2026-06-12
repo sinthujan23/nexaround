@@ -407,6 +407,38 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ];
                     }
 
+                    // Filter out private residences and personal markers to keep only public/walkable spots
+                    bool isPublicSpot(AttractionEntity place) {
+                      final name = place.name.toLowerCase();
+                      final desc = (place.description ?? '').toLowerCase();
+                      final tags = place.tags.map((t) => t.toLowerCase()).toList();
+                      
+                      final privateKeywords = [
+                        'home', 'house', 'residence', "'s place", 'my place', 'my home', 
+                        'private', 'personal', 'apartment', 'flat', 'villa'
+                      ];
+                      
+                      // Check name/description for private indicators
+                      for (final keyword in privateKeywords) {
+                        if (name.contains(keyword)) {
+                          // Allow public historic/museum houses
+                          if (name.contains('museum') || name.contains('historic') || name.contains('heritage') || name.contains('public')) {
+                            continue;
+                          }
+                          return false;
+                        }
+                      }
+                      
+                      // Filter out residential tags
+                      if (tags.any((t) => t.contains('home') || t.contains('private') || t.contains('residential') || t.contains('personal'))) {
+                        return false;
+                      }
+                      
+                      return true;
+                    }
+
+                    final publicAttractions = state.attractions.where(isPublicSpot).toList();
+
                     // "Trending Near You" = the highest TRENDING SCORE, not just
                     // the first N places. The score blends rating (quality),
                     // review count (buzz / social proof, log-scaled) and
@@ -415,14 +447,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                     // stays intact. Works for both "All" and a picked category
                     // (state.attractions is already category-filtered then).
                     final List<AttractionEntity> trendingPlaces =
-                        (List<AttractionEntity>.from(state.attractions)
+                        (List<AttractionEntity>.from(publicAttractions)
                               ..sort((a, b) =>
                                   _trendingScore(b).compareTo(_trendingScore(a))))
                             .take(10)
                             .toList();
 
                     final trendingIds = trendingPlaces.map((e) => e.id).toSet();
-                    final nearbyPlaces = state.attractions.where((e) => !trendingIds.contains(e.id)).toList();
+                    final nearbyPlaces = publicAttractions.where((e) => !trendingIds.contains(e.id)).toList();
 
                     return [
                       // Trending Section
@@ -1459,17 +1491,39 @@ class _LivingMapPageState extends State<LivingMapPage>
       highlightColor: Colors.grey[100]!,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-        child: Column(
-          children: List.generate(3, (index) {
-            return Container(
-              height: 84,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                children: List.generate(2, (index) {
+                  return Container(
+                    height: index == 0 ? 160.0 : 120.0,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  );
+                }),
               ),
-            );
-          }),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                children: List.generate(2, (index) {
+                  return Container(
+                    height: index == 0 ? 130.0 : 150.0,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                  );
+                }),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1675,90 +1729,282 @@ class _LivingMapPageState extends State<LivingMapPage>
   ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
   }
 
+  String _getCategoryImagePath(String category) {
+    final cat = category.toLowerCase();
+    if (cat.contains('nature')) return 'assets/images/cat_nature.png';
+    if (cat.contains('hotel') || cat.contains('stay')) return 'assets/images/cat_hotels.png';
+    if (cat.contains('shop')) return 'assets/images/cat_shopping.png';
+    if (cat.contains('food')) return 'assets/images/cat_food.png';
+    if (cat.contains('medical') || cat.contains('hospital')) return 'assets/images/cat_medical.png';
+    if (cat.contains('historic') || cat.contains('history') || cat.contains('museum')) return 'assets/images/cat_historical.png';
+    return 'assets/images/cat_nature.png'; // default
+  }
+
+  Widget _buildCategoryCard(String categoryName, List<AttractionEntity> places, int index) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        // Card Container
+        Container(
+          margin: const EdgeInsets.only(bottom: 24, top: 12), // Margin to allow top/bottom pop-out
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.75),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: Colors.black.withOpacity(0.06),
+              width: 0.8,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Category Header Badge (Dark theme style, no icon here)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.black.withOpacity(0.08),
+                          width: 0.6,
+                        ),
+                      ),
+                      child: Text(
+                        categoryName,
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Places list (Add right padding to prevent text overlapping with the protruding icon)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: () {
+                          // Make sure we have exactly 5 items to show per box to align heights
+                          final List<AttractionEntity> displayList = [];
+                          if (places.isNotEmpty) {
+                            while (displayList.length < 5) {
+                              displayList.addAll(places);
+                            }
+                          }
+                          final finalPlaces = displayList.take(5).toList();
+
+                          return finalPlaces.map((place) {
+                            return GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AttractionDetailPage(
+                                    id: place.id,
+                                    name: place.name,
+                                    category: place.categoryName ?? 'Attraction',
+                                    rating: place.rating,
+                                    distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                                    emoji: '📍',
+                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                    latitude: place.latitude,
+                                    longitude: place.longitude,
+                                  ),
+                                ),
+                              ),
+                              behavior: HitTestBehavior.opaque,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 6),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Icon(
+                                        Icons.location_on_rounded,
+                                        size: 12,
+                                        color: AppColors.brandGreen.withOpacity(0.7),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        place.name,
+                                        style: const TextStyle(
+                                          color: AppColors.textPrimary,
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.25,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList();
+                        }(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        // 3D Pop-out Category Icon positioned at the top right, protruding out of the card
+        Positioned(
+          top: -2,
+          right: -4,
+          child: Image.asset(
+            _getCategoryImagePath(categoryName),
+            width: 52,
+            height: 52,
+            fit: BoxFit.contain,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions) {
+    if (attractions.isEmpty) return const SizedBox.shrink();
+
+    // Group by category name mapping
+    final Map<String, List<AttractionEntity>> grouped = {};
+    for (final place in attractions) {
+      String category = place.categoryName ?? 'Places';
+      final catLower = category.toLowerCase();
+      final nameLower = place.name.toLowerCase();
+      final descLower = (place.description ?? '').toLowerCase();
+      final histLower = (place.history ?? '').toLowerCase();
+
+      final isHistorical = catLower.contains('historic') ||
+                           catLower.contains('history') ||
+                           catLower.contains('museum') ||
+                           nameLower.contains('museum') ||
+                           nameLower.contains('fort') ||
+                           nameLower.contains('palace') ||
+                           nameLower.contains('monument') ||
+                           nameLower.contains('temple') ||
+                           nameLower.contains('church') ||
+                           nameLower.contains('mosque') ||
+                           place.tags.any((t) => ['historic', 'history', 'monument', 'heritage', 'temple', 'church', 'mosque', 'palace', 'fort'].contains(t.toLowerCase())) ||
+                           histLower.isNotEmpty;
+
+      if (isHistorical) {
+        category = 'Historical';
+      } else if (catLower.contains('food') || catLower.contains('drink') || catLower.contains('restaurant') || catLower.contains('cafe')) {
+        category = 'Food';
+      } else if (catLower.contains('nature') || catLower.contains('park') || catLower.contains('garden') || catLower.contains('forest') || catLower.contains('beach')) {
+        category = 'Nature';
+      } else if (catLower.contains('hotel') || catLower.contains('stay') || catLower.contains('accommodation') || catLower.contains('lodging')) {
+        category = 'Hotels';
+      } else if (catLower.contains('shop') || catLower.contains('mall') || catLower.contains('market') || catLower.contains('store')) {
+        category = 'Shopping';
+      } else if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor') || catLower.contains('pharmacy')) {
+        category = 'Medical';
+      } else {
+        category = 'Places';
+      }
+      grouped.putIfAbsent(category, () => []).add(place);
+    }
+    final List<AttractionEntity> genericPlaces = grouped['Places'] ?? [];
+    grouped.remove('Places');
+
+    // Ensure all 6 categories have at least 3 places.
+    // If a category has fewer than 3, we fill it from the generic/leftover places list.
+    final orderedCategories = ['Nature', 'Hotels', 'Shopping', 'Historical', 'Food', 'Medical'];
+    
+    // First guarantee every category exists in the map
+    for (final cat in orderedCategories) {
+      grouped.putIfAbsent(cat, () => []);
+    }
+
+    // Now populate empty categories with generic places so they have content
+    for (final cat in orderedCategories) {
+      if (grouped[cat]!.isEmpty && genericPlaces.isNotEmpty) {
+        // Take up to 5 places from the leftovers
+        final takeCount = genericPlaces.length >= 5 ? 5 : genericPlaces.length;
+        grouped[cat]!.addAll(genericPlaces.sublist(0, takeCount));
+        // Remove them so they are not reused
+        genericPlaces.removeRange(0, takeCount);
+      }
+    }
+
+    // If there are still empty categories (because we ran out of generic places), 
+    // reuse some places from other populated categories so they are never empty
+    for (final cat in orderedCategories) {
+      if (grouped[cat]!.isEmpty) {
+        // Find the category with the most items to borrow from
+        String? bestCat;
+        int maxLen = 0;
+        for (final otherCat in orderedCategories) {
+          if (otherCat != cat && grouped[otherCat]!.length > maxLen) {
+            maxLen = grouped[otherCat]!.length;
+            bestCat = otherCat;
+          }
+        }
+        if (bestCat != null && grouped[bestCat]!.isNotEmpty) {
+          grouped[cat]!.addAll(grouped[bestCat]!);
+        }
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
-        children: attractions.take(3).toList().asMap().entries.map((entry) {
-          final p = entry.value;
-          final i = entry.key;
-          return _buildGemRow(p, i);
-        }).toList(),
+        children: [
+          // Row 1: Nature and Hotels
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _buildCategoryCard('Nature', grouped['Nature']!, 0)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildCategoryCard('Hotels', grouped['Hotels']!, 1)),
+            ],
+          ),
+          // Row 2: Shopping and Historical
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _buildCategoryCard('Shopping', grouped['Shopping']!, 2)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildCategoryCard('Historical', grouped['Historical']!, 3)),
+            ],
+          ),
+          // Row 3: Food and Medical
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _buildCategoryCard('Food', grouped['Food']!, 4)),
+              const SizedBox(width: 16),
+              Expanded(child: _buildCategoryCard('Medical', grouped['Medical']!, 5)),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildGemRow(AttractionEntity place, int index) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: place.id,
-          name: place.name,
-          category: place.categoryName ?? 'Attraction', 
-          rating: place.rating, 
-          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
-          emoji: '📍', 
-          imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-          latitude: place.latitude,
-          longitude: place.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: (_shouldShowImageForPlace(place) && place.photoUrls.isNotEmpty)
-                  ? CachedNetworkImage(
-                      imageUrl: place.photoUrls.first,
-                      width: 52,
-                      height: 52,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
-                        width: 52,
-                        height: 52,
-                        color: AppColors.surfaceVariant,
-                        child: const Icon(Icons.image_rounded, size: 20, color: AppColors.textMuted),
-                      ),
-                      errorWidget: (_, __, ___) => _buildEmojiThumbnail(place.categoryName),
-                    )
-                  : _buildEmojiThumbnail(place.categoryName),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    place.name,
-                    style: const TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(Icons.star_rounded, size: 13, color: AppColors.warning),
-                      const SizedBox(width: 3),
-                      Text('${place.rating} (${place.reviewCount})', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 10),
-                      Text('${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: AppColors.textTertiary),
-          ],
-        ),
-      ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.05, end: 0),
-    );
-  }
 
   Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {
     if (attractions.isEmpty) return const SizedBox.shrink();
@@ -1781,7 +2027,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
               const SizedBox(width: 12),
               const Text(
-                'Mini Tour Nearby',
+                'Take a walk',
                 style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w700,

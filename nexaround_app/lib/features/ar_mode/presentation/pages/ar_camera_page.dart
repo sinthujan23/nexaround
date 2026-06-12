@@ -2457,7 +2457,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.55),
+          // Brand teal (same accent as ASK NEVA) so it reads as a button, not a
+          // black place label — and distinct from the blue "Your Location" pill.
+          color: AppColors.brandGreen,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.2),
         ),
@@ -2519,7 +2521,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.55),
+          // Brand teal (same accent as ASK NEVA) so it reads as a button, not a
+          // black place label — and distinct from the blue "Your Location" pill.
+          color: AppColors.brandGreen,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white.withOpacity(0.4), width: 1.2),
         ),

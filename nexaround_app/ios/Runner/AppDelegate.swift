@@ -19,6 +19,9 @@ import GoogleMaps
     // backend (admin-managed, stored in the DB) via the method channel registered
     // in didInitializeImplicitFlutterEngine below.
 
+    // Force APNs registration to happen early/on-startup
+    application.registerForRemoteNotifications()
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 

@@ -124,12 +124,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'MINI TOUR',
+                      'TAKE A WALK',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2, color: Colors.white70),
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Nearby flag challenge',
+                      'Nearby walking challenge',
                       style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                     SizedBox(height: 2),
