@@ -30,6 +30,13 @@ import 'package:nexaround_app/core/services/permission_service.dart';
 import 'dart:async';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
+class _LocalEvent {
+  final String title;
+  final String time;
+  final bool isOngoing;
+  _LocalEvent({required this.title, required this.time, this.isOngoing = true});
+}
+
 class LivingMapPage extends StatefulWidget {
   const LivingMapPage({super.key});
 
@@ -379,6 +386,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ...() {
                     if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
                       return [
+                        // Trending Shimmer
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader('🔥  Trending Near You', null),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+
                         // Nearby Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
@@ -421,8 +437,24 @@ class _LivingMapPageState extends State<LivingMapPage>
                     }
 
                     final publicAttractions = state.attractions.where(isPublicSpot).toList();
+                    final trendingPlaces = List<AttractionEntity>.from(publicAttractions)
+                      ..sort((a, b) => _trendingScore(b).compareTo(_trendingScore(a)));
 
                     return [
+                      // Trending Near You
+                      if (trendingPlaces.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              '🔥  Trending Near You', 
+                              'See all',
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces)),
+                      ],
+
                       // Near You
                       if (publicAttractions.isNotEmpty) ...[
                         SliverToBoxAdapter(
@@ -1367,6 +1399,58 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+
+
+  _LocalEvent? _getEventForPlace(AttractionEntity place) {
+    final name = place.name.toLowerCase();
+    final tags = place.tags.map((t) => t.toLowerCase()).toList();
+    final cat = (place.categoryName ?? '').toLowerCase();
+
+    if (name.contains('park') || tags.any((t) => t.contains('park') || t.contains('nature') || t.contains('garden'))) {
+      return _LocalEvent(
+        title: 'Farmers Market & Food Fest',
+        time: 'Sat & Sun · 9 AM - 6 PM',
+        isOngoing: DateTime.now().weekday == DateTime.saturday || DateTime.now().weekday == DateTime.sunday,
+      );
+    }
+    if (name.contains('museum') || name.contains('art') || name.contains('gallery') || tags.any((t) => t.contains('museum') || t.contains('art') || t.contains('gallery') || t.contains('culture'))) {
+      return _LocalEvent(
+        title: 'Art Exhibition & History Tour',
+        time: 'Daily · 10 AM - 5 PM',
+        isOngoing: true,
+      );
+    }
+    if (name.contains('cafe') || name.contains('coffee') || name.contains('restaurant') || name.contains('pub') || name.contains('bar') || cat.contains('food')) {
+      return _LocalEvent(
+        title: 'Live Acoustic Session',
+        time: 'Tonight · 7 PM - 10 PM',
+        isOngoing: true,
+      );
+    }
+    if (name.contains('stadium') || name.contains('hall') || name.contains('center') || name.contains('college') || name.contains('school') || tags.any((t) => t.contains('stadium') || t.contains('college') || t.contains('education'))) {
+      return _LocalEvent(
+        title: 'Community Music Fest',
+        time: 'Live Now · 4 PM - 9 PM',
+        isOngoing: true,
+      );
+    }
+    return null;
+  }
+
+  _LocalEvent _getEventOrTrendingInfo(AttractionEntity place) {
+    final event = _getEventForPlace(place);
+    if (event != null) return event;
+    return _LocalEvent(
+      title: 'Popular Local Gathering',
+      time: 'Trending Near You',
+      isOngoing: false,
+    );
+  }
+
+  bool _hasEventOpportunity(AttractionEntity place) {
+    return _getEventForPlace(place) != null;
+  }
+
   /// Ranks a place for the "Trending Near You" row. A place trends when many
   /// people rate it highly (social proof) AND it's close by. Pure function of
   /// already-loaded data — no network calls, so this is instant and free.
@@ -1384,7 +1468,12 @@ class _LivingMapPageState extends State<LivingMapPage>
     final double dist = (place.distanceM ?? 0).toDouble();
     final double proximity = (1.0 - dist / 5000.0).clamp(0.0, 1.0);
 
-    return quality * 0.40 + buzz * 0.40 + proximity * 0.20;
+    // Event Bonus: If the place has tags/types indicating it is an event venue,
+    // we add a strong multiplier/bonus.
+    final bool isEventVenue = _hasEventOpportunity(place);
+    final double eventBonus = isEventVenue ? 0.35 : 0.0;
+
+    return (quality * 0.35) + (buzz * 0.35) + (proximity * 0.15) + eventBonus;
   }
 
   Widget _buildTrendingCards(List<AttractionEntity> attractions) {
@@ -1403,26 +1492,113 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildShimmerTrendingCards() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: SizedBox(
-        height: 240,
-        child: ListView.builder(
-          padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
-          scrollDirection: Axis.horizontal,
-          itemCount: 3,
-          itemBuilder: (context, index) {
-            return Container(
+    return SizedBox(
+      height: 240,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: 3,
+        itemBuilder: (context, index) {
+          return Shimmer.fromColors(
+            baseColor: Colors.grey[200]!,
+            highlightColor: Colors.grey[50]!,
+            period: const Duration(milliseconds: 1500),
+            child: Container(
               width: 200,
               margin: const EdgeInsets.only(right: 16),
+              padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.grey[200]!),
               ),
-            );
-          },
-        ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        width: 60,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const Spacer(),
+                  Container(
+                    width: 140,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    width: 100,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Container(
+                        width: 12,
+                        height: 12,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Container(
+                        width: 45,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Container(
+                        width: 40,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: 80,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -1602,6 +1778,48 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ),
 
                   const Spacer(),
+
+                  // Dynamic Event Badge
+                  (() {
+                    final eventInfo = _getEventOrTrendingInfo(place);
+                    final hasEvent = _getEventForPlace(place) != null;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: hasEvent ? Colors.red.withOpacity(0.25) : AppColors.brandGreen.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: hasEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            hasEvent ? Icons.campaign_rounded : Icons.trending_up_rounded,
+                            size: 11,
+                            color: hasEvent ? Colors.redAccent[100] : AppColors.brandGreen,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              eventInfo.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  })(),
 
                   // Name
                   Text(

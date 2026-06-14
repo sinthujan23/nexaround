@@ -57,6 +57,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   String _error = '';
   String _area = 'your area';
   List<_TourStop> _stops = [];
+  int? _selectedNavigationIndex;
 
   mapbox.MapboxMap? _map;
   mapbox.PointAnnotationManager? _markers;
@@ -447,11 +448,12 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     if (_map == null || _userLat == null || _userLng == null || _stops.isEmpty) return;
 
     final nextIndex = _stops.indexWhere((s) => !s.visited);
-    if (nextIndex == -1) {
+    final targetIndex = _selectedNavigationIndex ?? (nextIndex != -1 ? nextIndex : 0);
+    if (targetIndex < 0 || targetIndex >= _stops.length) {
       await _polylineManager?.deleteAll();
       return;
     }
-    final activeTarget = _stops[nextIndex];
+    final activeTarget = _stops[targetIndex];
 
     try {
       final routeData = await GooglePlacesService.getDirections(
@@ -610,11 +612,60 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     );
   }
 
+  void _selectStop(int index) {
+    setState(() {
+      _selectedNavigationIndex = index;
+    });
+    _updateRouteLine();
+    _focusOnStop(index);
+  }
+
+  Future<void> _focusOnStop(int index) async {
+    if (_map == null || _userLat == null || _userLng == null || index < 0 || index >= _stops.length) return;
+    final target = _stops[index];
+    final lats = [_userLat!, target.lat];
+    final lngs = [_userLng!, target.lng];
+    final minLat = lats.reduce(math.min);
+    final maxLat = lats.reduce(math.max);
+    final minLng = lngs.reduce(math.min);
+    final maxLng = lngs.reduce(math.max);
+
+    final camera = await _map!.cameraForCoordinateBounds(
+      mapbox.CoordinateBounds(
+        southwest: mapbox.Point(coordinates: mapbox.Position(minLng, minLat)),
+        northeast: mapbox.Point(coordinates: mapbox.Position(maxLng, maxLat)),
+        infiniteBounds: false,
+      ),
+      mapbox.MbxEdgeInsets(top: 150, left: 60, bottom: 320, right: 60),
+      null,
+      null,
+      15.5,
+      null,
+    );
+    await _map!.flyTo(camera, mapbox.MapAnimationOptions(duration: 1200));
+  }
+
   void _checkIn(int i) {
     if (_stops[i].visited) return;
-    setState(() => _stops[i].visited = true);
+    setState(() {
+      _stops[i].visited = true;
+      if (_selectedNavigationIndex == i) {
+        _selectedNavigationIndex = null;
+      }
+    });
     _refreshMarkers();
+    _updateRouteLine();
     if (_allVisited) _finish();
+  }
+
+  void _uncheckIn(int i) {
+    if (!_stops[i].visited) return;
+    setState(() {
+      _stops[i].visited = false;
+      _selectedNavigationIndex = i;
+    });
+    _refreshMarkers();
+    _updateRouteLine();
   }
 
   Future<void> _finish() async {
@@ -711,9 +762,13 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   }
 
   Widget _buildGame() {
-    // Determine current active (unvisited) stop
+    // Determine current active (unvisited) stop, or user's selected stop
     final nextIndex = _stops.indexWhere((s) => !s.visited);
-    final _TourStop? activeStop = nextIndex != -1 ? _stops[nextIndex] : null;
+    final targetIndex = _selectedNavigationIndex ?? (nextIndex != -1 ? nextIndex : 0);
+    final _TourStop? activeStop = _stops.isNotEmpty && targetIndex >= 0 && targetIndex < _stops.length
+        ? _stops[targetIndex]
+        : null;
+    final isSelectedTarget = _selectedNavigationIndex != null && _selectedNavigationIndex != nextIndex;
     final double? activeDist = activeStop != null ? _distanceTo(activeStop) : null;
     final activeDistLabel = activeDist == null
         ? '—'
@@ -773,14 +828,14 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'NEXT: ${activeStop.name}',
+                          isSelectedTarget ? 'NAVIGATING: ${activeStop.name}' : 'NEXT: ${activeStop.name}',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.8,
-                            color: AppColors.brandGreen,
+                            color: isSelectedTarget ? Colors.orange : AppColors.brandGreen,
                           ),
                         ),
                         const SizedBox(height: 2),
@@ -928,73 +983,140 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         ? '—'
         : (dist < 1000 ? '${dist.toInt()} m' : '${(dist / 1000).toStringAsFixed(1)} km');
 
-    return Row(
-      children: [
-        Text(_emoji(i, s), style: const TextStyle(fontSize: 20)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                s.name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: s.visited ? Colors.black38 : Colors.black,
-                  decoration: s.visited ? TextDecoration.lineThrough : null,
-                ),
-              ),
-              Text(
-                s.visited ? 'Visited' : '$distLabel away${_isFinal(i) ? ' · FINISH' : ''}',
-                style: TextStyle(fontSize: 12, color: s.visited ? AppColors.neonGreen : Colors.black54, fontWeight: FontWeight.w600),
-              ),
-            ],
+    final nextIndex = _stops.indexWhere((stop) => !stop.visited);
+    final isSelected = _selectedNavigationIndex == i || 
+        (_selectedNavigationIndex == null && nextIndex == i);
+
+    return InkWell(
+      onTap: () => _selectStop(i),
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.brandGreen.withOpacity(0.08) : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.brandGreen.withOpacity(0.4) : Colors.transparent,
+            width: 1.5,
           ),
         ),
-        if (!s.visited) ...[
-          IconButton(
-            onPressed: () async {
-              final url = Uri.parse(
-                'https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking',
-              );
-              try {
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                } else {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Could not launch directions map.')),
-                    );
-                  }
-                }
-              } catch (_) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Error launching navigation.')),
-                  );
-                }
-              }
-            },
-            icon: const Icon(Icons.directions_walk_rounded, color: AppColors.brandGreen, size: 20),
-            tooltip: 'Navigate to stop',
-          ),
-          const SizedBox(width: 4),
-          TextButton(
-            onPressed: () => _checkIn(i),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Row(
+          children: [
+            Text(_emoji(i, s), style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    s.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: s.visited ? Colors.black38 : Colors.black,
+                      decoration: s.visited ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  Text(
+                    s.visited ? 'Visited' : '$distLabel away${_isFinal(i) ? ' · FINISH' : ''}',
+                    style: TextStyle(fontSize: 12, color: s.visited ? AppColors.neonGreen : Colors.black54, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
             ),
-            child: const Text('Check in', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
-          ),
-        ] else
-          const Icon(Icons.check_circle_rounded, color: AppColors.neonGreen),
-      ],
+            if (!s.visited) ...[
+              IconButton(
+                onPressed: () async {
+                  final url = Uri.parse(
+                    'https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking',
+                  );
+                  try {
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not launch directions map.')),
+                        );
+                      }
+                    }
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Error launching navigation.')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.directions_walk_rounded, color: AppColors.brandGreen, size: 20),
+                tooltip: 'Navigate to stop',
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed: () => _checkIn(i),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Check in', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+              ),
+            ] else ...[
+              IconButton(
+                onPressed: () async {
+                  final url = Uri.parse(
+                    'https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}&travelmode=walking',
+                  );
+                  try {
+                    if (await canLaunchUrl(url)) {
+                      await launchUrl(url, mode: LaunchMode.externalApplication);
+                    } else {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Could not launch directions map.')),
+                        );
+                      }
+                    }
+                  } catch (_) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Error launching navigation.')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.directions_walk_rounded, color: Colors.black38, size: 20),
+                tooltip: 'Navigate to stop',
+              ),
+              const SizedBox(width: 4),
+              TextButton(
+                onPressed: () => _uncheckIn(i),
+                style: TextButton.styleFrom(
+                  backgroundColor: AppColors.neonGreen.withOpacity(0.12),
+                  foregroundColor: AppColors.neonGreen,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(color: AppColors.neonGreen, width: 1),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.check_circle_rounded, size: 14, color: AppColors.neonGreen),
+                    SizedBox(width: 4),
+                    Text('Checked', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
