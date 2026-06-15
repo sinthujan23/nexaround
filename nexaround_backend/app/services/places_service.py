@@ -81,7 +81,7 @@ async def seed_places_from_google_bg(
                 limit=db_limit
             )
             
-            has_adequate_coverage = len(nearby_db_attractions) >= 10 and (radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions))
+            has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
             if has_adequate_coverage:
                 return
 
@@ -316,11 +316,11 @@ async def get_nearby(
 
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
         # adequately (e.g. at least one is in the outer 30% of the radius, or the radius is small <= 2000m)
-        has_adequate_coverage = len(nearby_db_attractions) >= 10 and (radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions))
+        has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
         
-        # Optimize: if database already has a reasonable number of places, return them
+        # Optimize: if database already has a reasonable number of places (e.g. >= 10), return them
         # immediately to prevent user delay, and run the revalidation/seeding from Google in the background.
-        if len(nearby_db_attractions) > 0:
+        if len(nearby_db_attractions) >= 10:
             place_dicts = [
                 attraction_to_place_dict(attr, dist)
                 for attr, dist in nearby_db_attractions
