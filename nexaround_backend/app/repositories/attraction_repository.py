@@ -122,10 +122,13 @@ class AttractionRepository:
         if category_id:
             query = query.where(Attraction.category_id == category_id)
             
-        if sort_by_away:
-            query = query.order_by(desc("distance"))
+        if min_radius_m is not None:
+            query = query.order_by(desc(Attraction.rating), desc("distance") if sort_by_away else "distance")
         else:
-            query = query.order_by("distance")
+            if sort_by_away:
+                query = query.order_by(desc("distance"))
+            else:
+                query = query.order_by("distance")
             
         query = query.limit(limit)
         

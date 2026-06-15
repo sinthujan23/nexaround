@@ -199,19 +199,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
-  /// Every category exposes the km range selector (2 or 15 km).
-  bool _categoryHasRange(String filter) => true;
+  /// Every category exposes the km range selector (except All and Others).
+  bool _categoryHasRange(String filter) {
+    if (filter == 'All' || filter == 'Others') return false;
+    return true;
+  }
 
   int _maxRangeForCategory(String filter) {
-    if (filter == 'All') return 2;
-    return 15;
+    if (filter == 'All' || filter == 'Others') return 2;
+    return 10;
   }
 
   List<int> _rangeStepsForCategory(String filter) {
-    if (filter == 'All') {
+    if (filter == 'All' || filter == 'Others') {
       return const [2];
     }
-    return const [15];
+    return const [2, 10];
   }
 
   /// The live fetch keeps every place within range (up to the marker ceiling).
@@ -2874,7 +2877,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       case 2: return '0-2 kms';
       case 15: return '0-15 kms';
       case 5: return '2-5 kms';
-      case 10: return '5-10 kms';
+      case 10: return '2-10 kms';
       case 25: return '10-25 kms';
       case 50: return '25-50 kms';
       default: return '0-2 kms';
@@ -3282,11 +3285,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   final prevRange = _rangeKm;
                   setState(() {
                     _selectedFilter = id;
-                    if (id == 'All') {
-                      _rangeKm = 2;
-                    } else {
-                      _rangeKm = 15;
-                    }
+                    _rangeKm = 2;
                   });
                   if (_rangeKm != prevRange) {
                     _capCache.clear();
