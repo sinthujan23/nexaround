@@ -220,10 +220,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   int _maxPlacesForRange(int km) => _maxVisibleMarkers;
 
   double _getMinRangeM(int currentRangeKm, String filter) {
-    final steps = _rangeStepsForCategory(filter);
-    final idx = steps.indexOf(currentRangeKm);
-    if (idx <= 0) return 0.0;
-    return (steps[idx - 1] * 1000).toDouble();
+    return 0.0;
   }
 
   /// Text-search query used to surface FAMOUS far-away places per category
