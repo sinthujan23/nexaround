@@ -2926,28 +2926,43 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   /// Single rectangular tap-to-cycle KM range button beside "AR LIVE".
   Widget _buildKmRangePicker() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: AppColors.brandGreen,
-        border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.brandGreen.withOpacity(0.55),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
-        child: Text(
-          _getRangeText(_rangeKm),
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.2,
+    final steps = _rangeStepsForCategory(_selectedFilter);
+    return GestureDetector(
+      onTap: () {
+        if (steps.length <= 1) return;
+        HapticFeedback.selectionClick();
+        final idx = steps.indexOf(_rangeKm);
+        final next = steps[(idx + 1) % steps.length];
+        setState(() {
+          _rangeKm = next;
+          _capCache.clear();
+        });
+        _lastFetchTime = null;
+        _fetchLivePlaces();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          color: AppColors.brandGreen,
+          border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandGreen.withOpacity(0.55),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Text(
+            _getRangeText(_rangeKm),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.2,
+            ),
           ),
         ),
       ),

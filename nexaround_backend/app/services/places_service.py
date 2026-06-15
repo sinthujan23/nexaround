@@ -54,7 +54,7 @@ def get_min_radius(radius: int) -> int:
     elif radius == 10000:
         return 5000
     elif radius == 15000:
-        return 2000
+        return 0
     elif radius == 25000:
         return 10000
     elif radius == 50000:
