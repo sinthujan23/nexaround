@@ -49,15 +49,186 @@ def offset_lat_lng(lat: float, lng: float, bearing_deg: float, distance_m: float
 
 
 def get_min_radius(radius: int) -> int:
-    if radius == 5000:
-        return 2000
-    elif radius == 10000:
-        return 5000
-    elif radius == 25000:
+    # 5km and 10km return 0 so we perform a fast single query at the center
+    # instead of 7-9 slow offset queries.
+    if radius == 25000:
         return 10000
     elif radius == 50000:
         return 25000
     return 0
+
+
+async def seed_places_from_google_bg(
+    latitude: float,
+    longitude: float,
+    category: Optional[str],
+    radius: int,
+    use_legacy: bool,
+    category_id: Optional[int],
+    key: str,
+):
+    """Seed places from Google API in the background to avoid blocking the user request."""
+    try:
+        # We must create a new session since the request's database session will be closed
+        async with async_session() as session:
+            repo = AttractionRepository(session)
+            db_limit = 100 if radius <= 10000 else 200
+            
+            # Fetch the latest set from DB to check if another worker has already seeded
+            nearby_db_attractions = await repo.get_nearby(
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=float(radius),
+                category_id=category_id,
+                limit=db_limit
+            )
+            
+            has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
+            if has_adequate_coverage:
+                return
+
+            min_radius = get_min_radius(radius)
+            if min_radius == 0:
+                if use_legacy:
+                    raw_places = await google_places_client.nearby_search_legacy(
+                        latitude=latitude,
+                        longitude=longitude,
+                        category=category,
+                        radius=radius,
+                    )
+                else:
+                    raw_places = await google_places_client.nearby_search(
+                        latitude=latitude,
+                        longitude=longitude,
+                        category=category,
+                        radius=radius,
+                    )
+            else:
+                mid = (min_radius + radius) / 2.0
+                sample_radius = int((radius - min_radius) / 2.0)
+                num_centers = 4
+                bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
+                offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+                all_queries = [(latitude, longitude, radius)] + [
+                    (olat, olng, sample_radius) for olat, olng in offset_coords
+                ]
+                
+                async def fetch_one(lat: float, lng: float, rad: int) -> list:
+                    try:
+                        if use_legacy:
+                            return await google_places_client.nearby_search_legacy(
+                                latitude=lat,
+                                longitude=lng,
+                                category=category,
+                                radius=rad,
+                            )
+                        else:
+                            return await google_places_client.nearby_search(
+                                latitude=lat,
+                                longitude=lng,
+                                category=category,
+                                radius=rad,
+                            )
+                    except Exception as e:
+                        print(f"⚠️ Error fetching offset nearby search in get_nearby background: {e}")
+                        return []
+                
+                import asyncio
+                results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
+                raw_places = []
+                seen_ids = set()
+                for r_list in results:
+                    for p in r_list:
+                        pid = p.get("id") or p.get("place_id")
+                        if pid and pid not in seen_ids:
+                            seen_ids.add(pid)
+                            raw_places.append(p)
+
+            if use_legacy:
+                place_dicts = [
+                    google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
+                    for p in raw_places
+                ]
+            else:
+                if category == "Food & Drink":
+                    raw_places = google_places_client.filter_food(raw_places)
+                elif category != "Beach":
+                    raw_places = raw_places[:100]
+                place_dicts = [
+                    google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+                    for p in raw_places
+                ]
+
+            for p in place_dicts:
+                p_name = p.get("name")
+                plat = p.get("latitude")
+                plng = p.get("longitude")
+                resolved_category = p.get("category_name")
+
+                if not p_name or plat is None or plng is None:
+                    continue
+
+                existing_attraction = None
+                for attraction, _ in nearby_db_attractions:
+                    alat, alng = get_lat_lng(attraction.location)
+                    dist = _haversine_m(plat, plng, alat, alng)
+                    name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
+                    if dist < 25.0 and name_similarity:
+                        existing_attraction = attraction
+                        break
+
+                if not existing_attraction:
+                    cat_id = None
+                    if resolved_category:
+                        stmt = select(Category).where(Category.name == resolved_category)
+                        res = await session.execute(stmt)
+                        cat_obj = res.scalar_one_or_none()
+                        if not cat_obj:
+                            cat_obj = Category(name=resolved_category, icon="place", color="#607D8B")
+                            session.add(cat_obj)
+                            await session.flush()
+                        cat_id = cat_obj.id
+
+                    new_attr = Attraction(
+                        name=p_name,
+                        description=p.get("description") or "",
+                        location=create_point(plat, plng),
+                        category_id=cat_id,
+                        address=p.get("address") or "",
+                        opening_hours=p.get("opening_hours") or {},
+                        entry_fee=p.get("entry_fee") or 0.0,
+                        currency=p.get("currency") or "USD",
+                        rating=p.get("rating") or 0.0,
+                        review_count=p.get("review_count") or 0,
+                        photo_urls=p.get("photo_urls") or [],
+                        tags=p.get("tags") or [],
+                        geofence_radius_m=100,
+                        is_active=True,
+                    )
+                    session.add(new_attr)
+
+            await session.commit()
+
+            # Re-query the database to get the complete unified set
+            nearby_db_attractions = await repo.get_nearby(
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=float(radius),
+                category_id=category_id,
+                limit=db_limit
+            )
+
+            place_dicts = [
+                attraction_to_place_dict(attr, dist)
+                for attr, dist in nearby_db_attractions
+            ]
+            place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
+
+            await place_cache_service.set_cached(key, place_dicts)
+            print(f"✅ Background seeding complete: cached {len(place_dicts)} places for radius {radius}m.")
+    except Exception as e:
+        print(f"⚠️ Error in seed_places_from_google_bg: {e}")
+
 
 
 def attraction_to_place_dict(attraction: Attraction, distance_m: float) -> dict:
@@ -136,6 +307,36 @@ async def get_nearby(
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
         # adequately (e.g. at least one is in the outer 30% of the radius, or the radius is small <= 2000m)
         has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
+        
+        # Optimize: if database already has a reasonable number of places (e.g. >= 10), return them
+        # immediately to prevent user delay, and run the revalidation/seeding from Google in the background.
+        if len(nearby_db_attractions) >= 10:
+            place_dicts = [
+                attraction_to_place_dict(attr, dist)
+                for attr, dist in nearby_db_attractions
+            ]
+            place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
+            
+            # Revalidate in the background if the coverage is not adequate yet
+            if not has_adequate_coverage:
+                import asyncio
+                asyncio.create_task(seed_places_from_google_bg(
+                    latitude=latitude,
+                    longitude=longitude,
+                    category=category,
+                    radius=radius,
+                    use_legacy=use_legacy,
+                    category_id=category_id,
+                    key=key
+                ))
+            
+            await place_cache_service.set_cached(key, place_dicts)
+            return PlacesNearbyResponse(
+                places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                cached=False,
+                source="database",
+            )
+
         if len(nearby_db_attractions) >= 10 and has_adequate_coverage:
             place_dicts = [
                 attraction_to_place_dict(attr, dist)
@@ -175,8 +376,8 @@ async def get_nearby(
             mid = (min_radius + radius) / 2.0
             sample_radius = int((radius - min_radius) / 2.0)
             
-            # Scale centers: 5km -> 6, 10km -> 8, others -> 8
-            num_centers = 6 if radius == 5000 else 8
+            # Scale centers: reduced from 8 to 4 to speed up search and minimize API costs
+            num_centers = 4
             bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
             offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
             

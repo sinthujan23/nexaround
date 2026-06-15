@@ -247,61 +247,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   /// category+range; appended to [_landmarks] so the closest-N cap can't trim
   /// them.
   Future<void> _eagerPreFetchNextRanges(double lat, double lng) async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
-    if (_isEagerPreFetching) return;
-    _isEagerPreFetching = true;
-    
-    // Run in background
-    Future.microtask(() async {
-      try {
-        final nextRanges = [5, 10, 25, 50];
-        final categories = [null, 'Attractions'];
-        
-        for (final rangeKm in nextRanges) {
-          if (!mounted) return;
-          final maxRangeM = rangeKm * 1000;
-          debugPrint('📥 AR Eager Pre-fetch: Fetching range ${rangeKm}km silently in background...');
-          
-          final List<List<dynamic>> results = await Future.wait(
-            categories.map((cat) => GooglePlacesService.fetchNearbyPlaces(
-              latitude: lat,
-              longitude: lng,
-              radius: maxRangeM,
-              categoryName: cat,
-            ).catchError((err) {
-              debugPrint('AR eager pre-fetch error: $err');
-              return <AttractionEntity>[];
-            }))
-          );
-          
-          final places = results.expand((x) => x).toList();
-          if (places.isNotEmpty) {
-            final attractionJsons = places.map((p) => {
-              'id': p.id,
-              'name': p.name,
-              'description': p.description,
-              'history': p.history,
-              'latitude': p.latitude,
-              'longitude': p.longitude,
-              'category_id': p.categoryId,
-              'category_name': p.categoryName,
-              'address': p.address,
-              'rating': p.rating,
-              'review_count': p.reviewCount,
-              'photo_urls': p.photoUrls,
-              'tags': p.tags,
-              'distance_m': p.distanceM,
-              'created_at': p.createdAt.toIso8601String(),
-            }).toList();
-            
-            await CacheService.mergeAndCacheAttractions(attractionJsons);
-            debugPrint('✅ AR Eager Pre-fetch: Cached ${places.length} places for range ${rangeKm}km');
-          }
-        }
-      } finally {
-        _isEagerPreFetching = false;
-      }
-    });
+    // Disabled to prevent massive Google API quota consumption and background network bottleneck on launch.
+    // The backend's background revalidation/seeding handles fetching ranges efficiently without user-facing delay.
+    return;
   }
 
   Future<void> _loadFamousFarForSelection() async {

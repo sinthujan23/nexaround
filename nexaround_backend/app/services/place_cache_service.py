@@ -54,7 +54,8 @@ async def get_cached(key: str) -> Optional[list[dict]]:
         if raw is None:
             return None
         return json.loads(raw)
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Redis GET error: {e}")
         # Cache is best-effort. A bad redis state must never fail a user request.
         return None
 
@@ -62,5 +63,6 @@ async def get_cached(key: str) -> Optional[list[dict]]:
 async def set_cached(key: str, places: list[dict]) -> None:
     try:
         await _get_client().set(key, json.dumps(places), ex=_TTL_SECONDS)
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ Redis SET error: {e}")
         pass
