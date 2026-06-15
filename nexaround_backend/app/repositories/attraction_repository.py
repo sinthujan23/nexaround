@@ -2,7 +2,7 @@ import uuid
 from typing import List, Optional, Tuple
 from sqlalchemy import select, func, desc, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, aliased
 from geoalchemy2 import Geometry, Geography
 from geoalchemy2.functions import ST_Distance, ST_DWithin
 from app.models.attraction import Attraction
@@ -25,16 +25,45 @@ class AttractionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def find_duplicate_by_coordinates(
+        self, 
+        latitude: float, 
+        longitude: float, 
+        exclude_id: Optional[uuid.UUID] = None
+    ) -> Optional[Attraction]:
+        """Find an existing attraction with the same coordinates (within a very small tolerance)."""
+        stmt = select(Attraction).where(
+            func.abs(func.ST_X(Attraction.location) - longitude) < 0.000001,
+            func.abs(func.ST_Y(Attraction.location) - latitude) < 0.000001
+        )
+        if exclude_id:
+            stmt = stmt.where(Attraction.id != exclude_id)
+        stmt = stmt.limit(1)
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def list_attractions(
         self, 
         skip: int = 0, 
         limit: int = 20, 
         category_id: Optional[uuid.UUID] = None,
-        search_query: Optional[str] = None
-    ) -> Tuple[List[Attraction], int]:
-        """Get a list of attractions with optional filtering and search."""
-        query = select(Attraction).options(selectinload(Attraction.category))
+        search_query: Optional[str] = None,
+        is_active: Optional[bool] = None
+    ) -> Tuple[List[Tuple[Attraction, bool]], int]:
+        """Get a list of attractions with optional filtering, search, and duplicate status."""
+        alias = aliased(Attraction)
         
+        # Subquery to check duplicate coordinates (distance < 0.000001 degrees ~ 11cm)
+        dup_exists = select(1).select_from(alias).where(
+            alias.id != Attraction.id,
+            func.ST_DWithin(alias.location, Attraction.location, 0.000001)
+        ).exists()
+        
+        query = select(Attraction, dup_exists.label("has_duplicate")).options(selectinload(Attraction.category))
+        
+        if is_active is not None:
+            query = query.where(Attraction.is_active == is_active)
+            
         if category_id:
             query = query.where(Attraction.category_id == category_id)
         
@@ -52,7 +81,7 @@ class AttractionRepository:
         
         # Get actual results
         results = await self.db.execute(query.offset(skip).limit(limit))
-        return list(results.scalars().all()), total
+        return [(row[0], bool(row[1])) for row in results.all()], total
 
     async def get_nearby(
         self,
@@ -61,7 +90,9 @@ class AttractionRepository:
         radius_m: float,
         category_id: Optional[uuid.UUID] = None,
         limit: int = 50,
-        sort_by_away: bool = False
+        sort_by_away: bool = False,
+        is_active: Optional[bool] = None,
+        min_radius_m: Optional[float] = None
     ) -> List[Tuple[Attraction, float]]:
         """Get attractions within a certain radius, with distance calculation."""
         center_point = create_point(latitude, longitude)
@@ -82,6 +113,12 @@ class AttractionRepository:
             )
         ).options(selectinload(Attraction.category))
         
+        if min_radius_m is not None:
+            query = query.where(distance_func >= min_radius_m)
+            
+        if is_active is not None:
+            query = query.where(Attraction.is_active == is_active)
+            
         if category_id:
             query = query.where(Attraction.category_id == category_id)
             

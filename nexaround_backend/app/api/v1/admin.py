@@ -318,24 +318,11 @@ async def get_pending_approvals(
     _ = Depends(verify_admin_token)
 ):
     """Get all attractions awaiting approval."""
-    # Custom query to select inactive attractions
-    stmt = select(Attraction).where(Attraction.is_active == False)
-    count_stmt = select(func.count(Attraction.id)).where(Attraction.is_active == False)
-    
-    total_res = await db.execute(count_stmt)
-    total = total_res.scalar_one_or_none() or 0
-
-    results = await db.execute(stmt.offset((page - 1) * page_size).limit(page_size))
-    attractions = results.scalars().all()
-
     service = AttractionService(db)
-    mapped_attractions = [service._map_to_response(a) for a in attractions]
-
-    return AttractionListResponse(
-        attractions=mapped_attractions,
-        total=total,
+    return await service.list_attractions(
         page=page,
-        page_size=page_size
+        page_size=page_size,
+        is_active=False
     )
 
 

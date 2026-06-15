@@ -46,6 +46,7 @@ class AttractionResponse(BaseModel):
     distance_m: Optional[float] = None  # Populated by proximity queries
     is_active: bool = True
     created_at: datetime
+    has_duplicate_coordinates: bool = False
 
     model_config = {"from_attributes": True}
 

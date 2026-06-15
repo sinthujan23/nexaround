@@ -71,6 +71,7 @@ async def seed_places_from_google_bg(
         async with async_session() as session:
             repo = AttractionRepository(session)
             db_limit = 100 if radius <= 10000 else 200
+            min_rad = get_min_radius(radius)
             
             # Fetch the latest set from DB to check if another worker has already seeded
             nearby_db_attractions = await repo.get_nearby(
@@ -78,7 +79,8 @@ async def seed_places_from_google_bg(
                 longitude=longitude,
                 radius_m=float(radius),
                 category_id=category_id,
-                limit=db_limit
+                limit=db_limit,
+                min_radius_m=float(min_rad) if min_rad > 0 else None
             )
             
             has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
@@ -199,6 +201,18 @@ async def seed_places_from_google_bg(
                             await session.flush()
                         cat_id = cat_obj.id
 
+                    # Check duplicate coordinates
+                    dup_coords = False
+                    for (alat, alng), _ in existing_records:
+                        if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
+                            dup_coords = True
+                            break
+                    if not dup_coords:
+                        dup = await repo.find_duplicate_by_coordinates(plat, plng)
+                        if dup:
+                            dup_coords = True
+                    is_active = not dup_coords
+
                     new_attr = Attraction(
                         name=p_name,
                         description=p.get("description") or "",
@@ -213,7 +227,7 @@ async def seed_places_from_google_bg(
                         photo_urls=p.get("photo_urls") or [],
                         tags=p.get("tags") or [],
                         geofence_radius_m=100,
-                        is_active=True,
+                        is_active=is_active,
                     )
                     session.add(new_attr)
 
@@ -305,13 +319,16 @@ async def get_nearby(
         # Use a higher limit for wide-area searches so 25–50km results aren't
         # truncated to only the closest 100.
         db_limit = 100 if radius <= 10000 else 200
+        min_rad = get_min_radius(radius)
         repo = AttractionRepository(session)
         nearby_db_attractions = await repo.get_nearby(
             latitude=latitude,
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
-            limit=db_limit
+            limit=db_limit,
+            is_active=True,
+            min_radius_m=float(min_rad) if min_rad > 0 else None
         )
 
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
@@ -473,6 +490,18 @@ async def get_nearby(
                         await session.flush()
                     cat_id = cat_obj.id
 
+                # Check duplicate coordinates
+                dup_coords = False
+                for (alat, alng), _ in existing_records:
+                    if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
+                        dup_coords = True
+                        break
+                if not dup_coords:
+                    dup = await repo.find_duplicate_by_coordinates(plat, plng)
+                    if dup:
+                        dup_coords = True
+                is_active = not dup_coords
+
                 new_attr = Attraction(
                     name=p_name,
                     description=p.get("description") or "",
@@ -487,19 +516,21 @@ async def get_nearby(
                     photo_urls=p.get("photo_urls") or [],
                     tags=p.get("tags") or [],
                     geofence_radius_m=100,
-                    is_active=True,
+                    is_active=is_active,
                 )
                 session.add(new_attr)
 
         await session.commit()
 
         # Re-query the database to get the complete unified set
+        min_rad = get_min_radius(radius)
         nearby_db_attractions = await repo.get_nearby(
             latitude=latitude,
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
-            limit=db_limit
+            limit=db_limit,
+            min_radius_m=float(min_rad) if min_rad > 0 else None
         )
 
         place_dicts = [
@@ -594,6 +625,19 @@ async def search(
                         await session.flush()
                     cat_id = cat_obj.id
 
+                # Check duplicate coordinates
+                dup_coords = False
+                for attraction, _ in nearby_db_attractions:
+                    alat, alng = get_lat_lng(attraction.location)
+                    if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
+                        dup_coords = True
+                        break
+                if not dup_coords:
+                    dup = await repo.find_duplicate_by_coordinates(plat, plng)
+                    if dup:
+                        dup_coords = True
+                is_active = not dup_coords
+
                 new_attr = Attraction(
                     name=p_name,
                     description=p.get("description") or "",
@@ -608,7 +652,7 @@ async def search(
                     photo_urls=p.get("photo_urls") or [],
                     tags=p.get("tags") or [],
                     geofence_radius_m=100,
-                    is_active=True,
+                    is_active=is_active,
                 )
                 session.add(new_attr)
 

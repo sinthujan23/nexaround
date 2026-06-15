@@ -27,7 +27,8 @@ async def list_attractions(
         page=page, 
         page_size=page_size, 
         category_id=category_id, 
-        search_query=search
+        search_query=search,
+        is_active=True
     )
 
 @router.get("/nearby", response_model=List[AttractionResponse])

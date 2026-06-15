@@ -330,9 +330,14 @@ export default function Approvals() {
                           </div>
                           <div className="list-item-content">
                             <div className="list-item-title">{p.name}</div>
-                            <div className="list-item-meta">
+                            <div className="list-item-meta" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                               <span className="badge badge-ghost" style={{ fontSize: '9px', padding: '2px 6px' }}>{p.category_name || 'General'}</span>
                               <span className="list-item-loc">{locText}</span>
+                              {p.has_duplicate_coordinates && (
+                                <span className="badge badge-red" style={{ fontSize: '9px', padding: '2px 6px', fontWeight: 'bold' }}>
+                                  ⚠️ Duplicate Coordinates
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -379,10 +384,31 @@ export default function Approvals() {
 
           {selectedAttraction && (
             <div className="card correction-panel" style={{ padding: '20px' }}>
-              <div className="correction-title">
+              <div className="correction-title" style={{ marginBottom: '12px' }}>
                 <MapPinIcon size={18} style={{ color: 'var(--accent)' }} />
                 Verify & Correct Location
               </div>
+
+              {selectedAttraction.has_duplicate_coordinates && (
+                <div style={{
+                  background: 'rgba(229,57,53,0.08)',
+                  borderLeft: '4px solid var(--danger)',
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '16px',
+                  fontSize: '13px',
+                  color: 'var(--danger)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  fontWeight: 500,
+                  lineHeight: '1.4'
+                }}>
+                  <span style={{ fontSize: '15px' }}>⚠️</span>
+                  <span><strong>Warning:</strong> Another attraction in the database already exists with these exact coordinates. If approved, this will result in duplicate coordinates. Please review or adjust the coordinates.</span>
+                </div>
+              )}
+
               <form onSubmit={handleSaveChanges} className="correction-form">
                 <div className="form-group">
                   <label className="form-label" style={{ fontSize: '12px' }}>Place Name</label>
