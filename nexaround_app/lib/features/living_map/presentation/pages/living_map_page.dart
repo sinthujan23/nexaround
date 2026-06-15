@@ -289,7 +289,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     _isPreFetching = true;
     debugPrint('🚀 Starting background AR pre-fetching (ranges sequential, categories parallel)...');
     
-    final ranges = [2000, 5000, 10000, 25000, 50000];
+    final ranges = [2000, 15000];
     final categories = [
       null,
       'Food & Drink',
