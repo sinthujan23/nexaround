@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'dart:ui';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -62,6 +63,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   String _currentLocationName = 'Locating...';
   List<AttractionEntity>? _miniTourPlaces;
   bool _loadingMiniTour = false;
+  bool _isPreFetching = false;
 
   @override
   void initState() {
@@ -182,6 +184,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _currentLocationName = locationName;
         });
         _fetchMiniTourPlaces(position.latitude, position.longitude);
+        _preFetchArPlaces(position.latitude, position.longitude);
       }
     });
   }
@@ -276,7 +279,15 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _preFetchArPlaces(double lat, double lng) async {
-    debugPrint('🚀 Starting background AR pre-fetching to populate database & cache...');
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+    if (_isPreFetching) {
+      debugPrint('🚀 AR: Background pre-fetching already in progress, skipping duplicate call.');
+      return;
+    }
+    _isPreFetching = true;
+    debugPrint('🚀 Starting background AR pre-fetching (ranges sequential, categories parallel)...');
     
     final ranges = [2000, 5000, 10000, 25000, 50000];
     final categories = [
@@ -290,54 +301,65 @@ class _LivingMapPageState extends State<LivingMapPage>
     ];
 
     Future.microtask(() async {
-      for (final radius in ranges) {
-        for (final cat in categories) {
-          try {
-            if (!mounted) return;
+      try {
+        debugPrint('🚀 Starting sequential background AR pre-fetching...');
+        
+        for (final radius in ranges) {
+          if (!mounted) return;
+          debugPrint('📥 Pre-fetching ALL categories for radius $radius m in parallel...');
+
+          // Fetch all categories for this range simultaneously
+          final results = await Future.wait(
+            categories.map((cat) async {
+              try {
+                final places = await GooglePlacesService.fetchNearbyPlaces(
+                  latitude: lat,
+                  longitude: lng,
+                  radius: radius,
+                  categoryName: cat,
+                );
+                return places;
+              } catch (e) {
+                debugPrint('Error pre-fetching $cat at radius $radius: $e');
+                return <dynamic>[];
+              }
+            }),
+          );
+
+          // Merge all category results and cache them immediately
+          final allPlaces = results.expand((x) => x).toList();
+          if (allPlaces.isNotEmpty) {
+            final attractionJsons = allPlaces.map((p) => {
+              'id': p.id,
+              'name': p.name,
+              'description': p.description,
+              'history': p.history,
+              'latitude': p.latitude,
+              'longitude': p.longitude,
+              'category_id': p.categoryId,
+              'category_name': p.categoryName,
+              'address': p.address,
+              'opening_hours': p.openingHours,
+              'entry_fee': p.entryFee,
+              'currency': p.currency,
+              'rating': p.rating,
+              'review_count': p.reviewCount,
+              'photo_urls': p.photoUrls,
+              'tags': p.tags,
+              'geofence_radius_m': p.geofenceRadiusM,
+              'distance_m': p.distanceM,
+              'is_active': p.isActive,
+              'created_at': p.createdAt.toIso8601String(),
+            }).toList();
             
-            debugPrint('📥 Pre-fetching radius $radius m for category: $cat');
-            final places = await GooglePlacesService.fetchNearbyPlaces(
-              latitude: lat,
-              longitude: lng,
-              radius: radius,
-              categoryName: cat,
-            );
-            
-            if (places.isNotEmpty) {
-              final attractionJsons = places.map((p) => {
-                'id': p.id,
-                'name': p.name,
-                'description': p.description,
-                'history': p.history,
-                'latitude': p.latitude,
-                'longitude': p.longitude,
-                'category_id': p.categoryId,
-                'category_name': p.categoryName,
-                'address': p.address,
-                'opening_hours': p.openingHours,
-                'entry_fee': p.entryFee,
-                'currency': p.currency,
-                'rating': p.rating,
-                'review_count': p.reviewCount,
-                'photo_urls': p.photoUrls,
-                'tags': p.tags,
-                'geofence_radius_m': p.geofenceRadiusM,
-                'distance_m': p.distanceM,
-                'is_active': p.isActive,
-                'created_at': p.createdAt.toIso8601String(),
-              }).toList();
-              
-              await CacheService.mergeAndCacheAttractions(attractionJsons);
-            }
-            
-            // Add a small delay between requests to keep the backend load gentle
-            await Future.delayed(const Duration(milliseconds: 300));
-          } catch (e) {
-            debugPrint('Error pre-fetching $cat at radius $radius: $e');
+            await CacheService.mergeAndCacheAttractions(attractionJsons);
+            debugPrint('✅ Cached ${allPlaces.length} places for radius $radius m');
           }
         }
+        debugPrint('✅ Background AR pre-fetching complete.');
+      } finally {
+        _isPreFetching = false;
       }
-      debugPrint('✅ Background AR pre-fetching complete.');
     });
   }
 

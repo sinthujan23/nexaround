@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:nexaround_app/core/services/google_directions_service.dart';
 import 'package:flutter/material.dart';
@@ -139,6 +140,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // Client-side session cache for range results
   final Map<int, List<_ArLandmark>> _sessionRangeLandmarks = {};
   geo.Position? _lastFetchPosition;
+  bool _isEagerPreFetching = false;
 
   /// User's manual choice for the "Your Location" pill, overriding auto-pick.
   /// Cleared on every fresh place fetch so it doesn't stick after you walk
@@ -244,6 +246,64 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   /// proximity-ranked Nearby Search omits actually appear. Cached per
   /// category+range; appended to [_landmarks] so the closest-N cap can't trim
   /// them.
+  Future<void> _eagerPreFetchNextRanges(double lat, double lng) async {
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
+    if (_isEagerPreFetching) return;
+    _isEagerPreFetching = true;
+    
+    // Run in background
+    Future.microtask(() async {
+      try {
+        final nextRanges = [5, 10, 25, 50];
+        final categories = [null, 'Attractions'];
+        
+        for (final rangeKm in nextRanges) {
+          if (!mounted) return;
+          final maxRangeM = rangeKm * 1000;
+          debugPrint('📥 AR Eager Pre-fetch: Fetching range ${rangeKm}km silently in background...');
+          
+          final List<List<dynamic>> results = await Future.wait(
+            categories.map((cat) => GooglePlacesService.fetchNearbyPlaces(
+              latitude: lat,
+              longitude: lng,
+              radius: maxRangeM,
+              categoryName: cat,
+            ).catchError((err) {
+              debugPrint('AR eager pre-fetch error: $err');
+              return <AttractionEntity>[];
+            }))
+          );
+          
+          final places = results.expand((x) => x).toList();
+          if (places.isNotEmpty) {
+            final attractionJsons = places.map((p) => {
+              'id': p.id,
+              'name': p.name,
+              'description': p.description,
+              'history': p.history,
+              'latitude': p.latitude,
+              'longitude': p.longitude,
+              'category_id': p.categoryId,
+              'category_name': p.categoryName,
+              'address': p.address,
+              'rating': p.rating,
+              'review_count': p.reviewCount,
+              'photo_urls': p.photoUrls,
+              'tags': p.tags,
+              'distance_m': p.distanceM,
+              'created_at': p.createdAt.toIso8601String(),
+            }).toList();
+            
+            await CacheService.mergeAndCacheAttractions(attractionJsons);
+            debugPrint('✅ AR Eager Pre-fetch: Cached ${places.length} places for range ${rangeKm}km');
+          }
+        }
+      } finally {
+        _isEagerPreFetching = false;
+      }
+    });
+  }
+
   Future<void> _loadFamousFarForSelection() async {
     final filter = _selectedFilter;
     final rangeKm = _rangeKm;
@@ -585,9 +645,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
     // Show EVERY place within the selected range interval, nearest first (capped so the
     // view stays usable). Widening the dial genuinely reveals farther places.
-    final matches = _landmarks
+    var matches = _landmarks
         .where((lm) =>
-            lm.distanceM > minRangeM &&
+            (minRangeM == 0.0 ? lm.distanceM >= 0.0 : lm.distanceM > minRangeM) &&
             lm.distanceM <= maxRangeM &&
             (filter == 'All' || _displayCategoryKey(lm) == bucket))
         .toList()
@@ -1172,10 +1232,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   // stacked cards (see [_buildLandmarkMarker]) never overlap each other — the
   // most-centred places win the visible slots.
   static const int _maxVisibleOnScreen = 5;
-  // Search radii, widest-first. We query each tier up to the user-selected range
-  // so the full radius is searched, stopping only once we've gathered enough to
-  // fill the AR view (see the cap in the fetch loop).
-  static const List<int> _searchRadii = [1000, 2000, 5000, 10000, 25000, 50000];
 
   void _loadCachedPlaces({geo.Position? position}) {
     try {
@@ -1189,6 +1245,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         }
         final double currentLat = pos.latitude;
         final double currentLng = pos.longitude;
+        final double minRangeM = _getMinRangeM(_rangeKm, 'All');
+        final double maxRangeM = (_rangeKm * 1000).toDouble();
 
         final List<_ArLandmark> cachedLandmarks = [];
         for (final jsonMap in cachedJson) {
@@ -1197,9 +1255,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           
           if (lat != null && lng != null) {
             final distanceM = geo.Geolocator.distanceBetween(currentLat, currentLng, lat, lng);
-            // Only keep cached places within the user-selected range interval.
-            final double minRangeM = _getMinRangeM(_rangeKm, 'All');
-            if (distanceM <= minRangeM || distanceM > _rangeKm * 1000) continue;
+            // Load all cached places specifically within the selected range interval (annulus).
+            if (distanceM > maxRangeM || (minRangeM > 0.0 && distanceM <= minRangeM)) continue;
 
             final name = jsonMap['name'] as String? ?? 'Discovery';
             final categoryName = jsonMap['category_name'] as String? ?? 'Attraction';
@@ -1241,6 +1298,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
         setState(() {
           _landmarks = cappedCached;
+          _hasCompletedInitialFetch = true; // Set to true so scanning spinner disappears immediately!
           if (_currentPosition == null) {
             _currentPosition = pos;
           }
@@ -1282,7 +1340,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   /// distance relative to each offset query centre, not the user.
   Future<void> _sampleFarRing(
       geo.Position pos, List<_ArLandmark> collected) async {
-    if (_rangeKm < 25) return; // 2/5/10 km ranges are unchanged
+    // Offset center sampling is now performed natively on the backend server for all wide ranges.
+    // This offloads heavy multi-query fetching to the server and leverages backend Redis caching.
+    return;
 
     final double minRangeM = _getMinRangeM(_rangeKm, 'All');
     final double maxRangeM = (_rangeKm * 1000).toDouble();
@@ -1409,68 +1469,97 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       debugPrint('🔍 AR: Fetch already in progress, ignoring duplicate call.');
       return;
     }
-    final now = DateTime.now();
-    if (_lastFetchTime != null && now.difference(_lastFetchTime!) < const Duration(seconds: 15)) {
-      debugPrint('🔍 AR: Fetch throttled (cooldown active), ignoring call.');
+
+    // ─── CACHE-FIRST: check caches BEFORE entering loading state ───
+    // This ensures the UI never shows "Loading..." when cached data exists.
+    final pos = await PermissionService.getSafePosition();
+    if (pos == null) return;
+
+    _eagerPreFetchNextRanges(pos.latitude, pos.longitude);
+
+    // Check distance moved since last successful API fetch
+    if (_lastFetchPosition != null) {
+      final double distanceMoved = geo.Geolocator.distanceBetween(
+        _lastFetchPosition!.latitude, _lastFetchPosition!.longitude,
+        pos.latitude, pos.longitude,
+      );
+      // If user moved more than 100m, clear the session cache to trigger fresh requests
+      if (distanceMoved > 100.0) {
+        _sessionRangeLandmarks.clear();
+      }
+    }
+
+    // 1) Serve from session cache if available (instant range cycling)
+    if (_sessionRangeLandmarks.containsKey(_rangeKm)) {
+      var cachedForRange = _sessionRangeLandmarks[_rangeKm]!;
+      debugPrint('🚀 AR: Range $_rangeKm km served instantly from session cache.');
+      
+      // Recalculate dynamic distance/bearing for cached items using current position
+      cachedForRange = cachedForRange.map((lm) {
+        if (lm.lat == null || lm.lng == null) return lm;
+        final double rawDistM = geo.Geolocator.distanceBetween(
+          pos.latitude, pos.longitude, lm.lat!, lm.lng!
+        );
+        final bearing = _calculateBearing(pos.latitude, pos.longitude, lm.lat!, lm.lng!);
+        final distKm = rawDistM / 1000;
+        final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+        return lm.copyWith(
+          distance: distStr,
+          distanceM: rawDistM,
+          bearing: bearing,
+        );
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _landmarks = cachedForRange;
+          _placesFetchError = false;
+          _hasCompletedInitialFetch = true;
+        });
+      }
       return;
     }
+
+    // 2) Serve from persistent (local database) cache – no loading spinner
+    _loadCachedPlaces(position: pos);
+
+    if (_landmarks.isNotEmpty) {
+      // Verify the display annulus actually has places (not just nearby ones
+      // that fall outside the target band like 2-5km).
+      _capCache.clear(); // force recalculation after landmarks changed
+      final displayable = _placesForFilter(_selectedFilter);
+      if (displayable.isNotEmpty) {
+        debugPrint('🚀 AR: Range $_rangeKm km served instantly from persistent cache (${displayable.length} displayable places).');
+        // Cache into session so subsequent switches to this range are instant too
+        _sessionRangeLandmarks[_rangeKm] = List.of(_landmarks);
+        return; // Serve cached data instantly — no network fetch needed
+      } else {
+        debugPrint('📦 AR: Persistent cache has ${_landmarks.length} places but none in the ${_rangeKm}km annulus. Proceeding to network fetch.');
+      }
+    }
+
+    // ─── NETWORK FETCH: only now enter loading state (if needed) ───
+    final now = DateTime.now();
+    if (_lastFetchTime != null && now.difference(_lastFetchTime!) < const Duration(seconds: 15)) {
+      debugPrint('🔍 AR: Fetch throttled (cooldown active). Cache already served.');
+      return;
+    }
+
+    // If cache already served content or we already completed the initial page entry,
+    // do the network fetch silently (no full-screen scanning spinner).
+    // Only show the full-screen scanner on first entry when we have absolutely no data.
+    final bool hasCachedContent = _landmarks.isNotEmpty || _hasCompletedInitialFetch;
     if (mounted) {
       setState(() {
         _isFetchingPlaces = true;
+        if (!hasCachedContent) {
+          _hasCompletedInitialFetch = false;
+        }
       });
     }
     _lastFetchTime = now;
 
     try {
-      final pos = await PermissionService.getSafePosition();
-      if (pos == null) return;
-
-      // Check distance moved since last successful API fetch
-      if (_lastFetchPosition != null) {
-        final double distanceMoved = geo.Geolocator.distanceBetween(
-          _lastFetchPosition!.latitude, _lastFetchPosition!.longitude,
-          pos.latitude, pos.longitude,
-        );
-        // If user moved more than 100m, clear the session cache to trigger fresh requests
-        if (distanceMoved > 100.0) {
-          _sessionRangeLandmarks.clear();
-        }
-      }
-
-      // Serve from session cache if available (instant cycle load)
-      if (_sessionRangeLandmarks.containsKey(_rangeKm)) {
-        var cachedForRange = _sessionRangeLandmarks[_rangeKm]!;
-        debugPrint('🚀 AR: Range $_rangeKm km served instantly from session cache.');
-        
-        // Recalculate dynamic distance/bearing for cached items using current position
-        cachedForRange = cachedForRange.map((lm) {
-          if (lm.lat == null || lm.lng == null) return lm;
-          final double rawDistM = geo.Geolocator.distanceBetween(
-            pos.latitude, pos.longitude, lm.lat!, lm.lng!
-          );
-          final bearing = _calculateBearing(pos.latitude, pos.longitude, lm.lat!, lm.lng!);
-          final distKm = rawDistM / 1000;
-          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-          return lm.copyWith(
-            distance: distStr,
-            distanceM: rawDistM,
-            bearing: bearing,
-          );
-        }).toList();
-
-        setState(() {
-          _landmarks = cachedForRange;
-          _placesFetchError = false;
-          _hasCompletedInitialFetch = true;
-          _isFetchingPlaces = false;
-        });
-        return;
-      }
-
-      // Load relevant cached places immediately to show them first
-      if (_landmarks.isEmpty) {
-        _loadCachedPlaces(position: pos);
-      }
 
       List<_ArLandmark> collected = [];
       List<AttractionEntity> allPlaces = []; // to save to cache later
@@ -1480,19 +1569,59 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
       final categoriesToFetch = [
         null,
-        'Food & Drink',
-        'Shopping',
         'Attractions',
-        'Hotels',
-        'Medical',
       ];
 
-      // Honor the user-selected range: build the radius tiers up to _rangeKm.
+      // Honor the user-selected range: fetch only the selected range radius.
+      // This avoids sequentially fetching smaller, filtered-out radii, making the network fetch instant.
       final int maxRangeM = _rangeKm * 1000;
-      final List<int> activeRadii = [
-        ..._searchRadii.where((r) => r < maxRangeM),
-        maxRangeM,
-      ];
+      final List<int> activeRadii = [maxRangeM];
+
+      // Helper: convert raw API result into an _ArLandmark (deduped against collected)
+      _ArLandmark? _toLandmark(dynamic p, double radiusLimit) {
+        if (collected.any((l) => l.name == p.name)) return null;
+        final rawDistM = (p.distanceM ?? 0).toDouble();
+        if (p.distanceM != null && rawDistM > (radiusLimit * 1.5)) return null;
+        final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
+        final distKm = rawDistM / 1000;
+        final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+        allPlaces.add(p);
+
+        final isBeach = p.categoryName == 'Beach' || p.categoryName == 'NATURE' && p.name.toLowerCase().contains('beach');
+        final defaultPhoto = isBeach
+            ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop'
+            : (p.categoryName == 'Nature'
+                ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop'
+                : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
+
+        return _ArLandmark(
+          p.name,
+          p.photoUrls.isNotEmpty ? p.photoUrls.first : defaultPhoto,
+          p.rating,
+          distStr,
+          bearing,
+          p.description ?? (isBeach ? 'A beautiful sandy beach.' : 'A remarkable location nearby!'),
+          p.categoryName?.toUpperCase() ?? 'ATTRACTION',
+          rawDistM,
+          p.latitude,
+          p.longitude,
+          p.tags,
+        );
+      }
+
+      // Helper: push whatever we have so far to the UI immediately
+      void _pushProgressiveUpdate() {
+        if (!mounted || collected.isEmpty) return;
+        // Sort by distance for a clean display order
+        final sorted = List<_ArLandmark>.from(collected)
+          ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        setState(() {
+          _landmarks = sorted;
+          _hasCompletedInitialFetch = true; // dismiss scanning spinner on first batch
+          _placesFetchError = false;
+          _currentPosition = pos;
+        });
+      }
 
       for (final radius in activeRadii) {
         final currentCategories = categoriesToFetch;
@@ -1501,164 +1630,30 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
         debugPrint('🔍 AR: Searching radius $radius m across categories: $currentCategories...');
         
-        final List<List<dynamic>> results = await Future.wait(
-          currentCategories.map((cat) => GooglePlacesService.fetchNearbyPlaces(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            radius: radius,
-            categoryName: cat,
-          ).catchError((err) {
+        // Launch all category fetches in parallel and update the UI progressively as each returns.
+        // This ensures the user sees places on screen instantly (within ~700ms-1s) instead of waiting 6s for the slowest category.
+        final fetches = currentCategories.map((cat) async {
+          try {
+            final places = await GooglePlacesService.fetchNearbyPlaces(
+              latitude: pos.latitude,
+              longitude: pos.longitude,
+              radius: radius,
+              categoryName: cat,
+            );
+            if (places.isNotEmpty) {
+              for (final p in places) {
+                final lm = _toLandmark(p, radius.toDouble());
+                if (lm != null) collected.add(lm);
+              }
+              _pushProgressiveUpdate();
+            }
+          } catch (err) {
             debugPrint('Error fetching category $cat: $err');
             if (err is PlacesFetchException) fetchHadError = true;
-            return <dynamic>[];
-          }))
-        );
-
-        final places = results.expand((x) => x).toList();
-
-        for (final p in places) {
-          if (collected.any((l) => l.name == p.name)) continue;
-
-          final rawDistM = (p.distanceM ?? 0).toDouble();
-          
-          // Only filter if we actually have distance data from API
-          if (p.distanceM != null && rawDistM > (radius * 1.5)) continue;
-
-          final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
-          final distKm = rawDistM / 1000;
-          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-          
-          collected.add(_ArLandmark(
-            p.name,
-            p.photoUrls.isNotEmpty 
-                ? p.photoUrls.first 
-                : (p.categoryName == 'Nature' 
-                    ? 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop' 
-                    : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop'),
-            p.rating,
-            distStr,
-            bearing,
-            p.description ?? 'A remarkable location nearby!',
-            p.categoryName?.toUpperCase() ?? 'ATTRACTION',
-            rawDistM,
-            p.latitude,
-            p.longitude,
-            p.tags,
-          ));
-          allPlaces.add(p);
-        }
-
-        debugPrint('📍 AR: ${collected.length} places so far at $radius m tier.');
-        // Stop widening once we have enough for the selected range's display
-        // cap — keeps small ranges cheap and lets larger ranges gather more.
-        // For large ranges (≥25km) we NEVER early-break so the far tier always
-        // fires and distant landmarks actually appear.
-        if (_rangeKm < 25) {
-          final double minRangeM = _getMinRangeM(_rangeKm, 'All');
-          final int inIntervalCount = collected
-              .where((l) => l.distanceM > minRangeM && l.distanceM <= maxRangeM)
-              .length;
-          if (inIntervalCount >= _maxPlacesForRange(_rangeKm)) {
-            debugPrint('📍 AR: Reached $inIntervalCount places in interval for ${_rangeKm}km; stopping.');
-            break;
           }
-        }
-      }
+        }).toList();
 
-      // Dedicated Beach Query up to the selected range specifically
-      try {
-        debugPrint('🏖 AR: Querying Beaches up to ${_rangeKm}km specifically...');
-        final beachPlaces = await GooglePlacesService.fetchNearbyPlaces(
-          latitude: pos.latitude,
-          longitude: pos.longitude,
-          radius: maxRangeM,
-          categoryName: 'Beach',
-        );
-
-        for (final p in beachPlaces) {
-          if (collected.any((l) => l.name == p.name)) continue;
-
-          final rawDistM = (p.distanceM ?? 0).toDouble();
-          if (rawDistM > maxRangeM) continue; // within the selected range
-          final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
-          final distKm = rawDistM / 1000;
-          final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-
-          // Nature default stunning beach photo
-          final defaultPhoto = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?q=80&w=1000&auto=format&fit=crop';
-          final photoUrl = p.photoUrls.isNotEmpty ? p.photoUrls.first : defaultPhoto;
-
-          collected.add(_ArLandmark(
-            p.name,
-            photoUrl,
-            p.rating,
-            distStr,
-            bearing,
-            p.description ?? 'A beautiful sandy beach.',
-            'NATURE',
-            rawDistM,
-            p.latitude,
-            p.longitude,
-            p.tags,
-          ));
-          allPlaces.add(p);
-        }
-      } catch (e) {
-        debugPrint('AR dedicated Beach fetch failed: $e');
-      }
-
-      // Dedicated LONG-RANGE query (up to the selected range): per the client
-      // rule, attractions and hospitals are worth surfacing from far away. The
-      // tier loop above can stop early in dense areas, so this guarantees a
-      // far-but-notable attraction/hospital still shows. Display caps trim rest.
-      const longRangeQueries = [
-        {'category': 'Attractions', 'label': 'ATTRACTION', 'max': 5},
-        {'category': 'Medical', 'label': 'MEDICAL', 'max': 3},
-      ];
-      for (final q in longRangeQueries) {
-        try {
-          final cat = q['category'] as String;
-          final maxAdd = q['max'] as int;
-          debugPrint('🛰 AR: Long-range query for $cat up to ${_rangeKm}km...');
-          final farPlaces = await GooglePlacesService.fetchNearbyPlaces(
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            radius: maxRangeM,
-            categoryName: cat,
-          );
-
-          final candidates = farPlaces
-              .where((p) => (p.distanceM ?? 0) <= maxRangeM)
-              .where((p) => !collected.any((l) => l.name == p.name))
-              .toList()
-            ..sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-          for (final p in candidates.take(maxAdd)) {
-            final rawDistM = (p.distanceM ?? 0).toDouble();
-            final bearing = _calculateBearing(pos.latitude, pos.longitude, p.latitude, p.longitude);
-            final distKm = rawDistM / 1000;
-            final distStr = distKm < 1 ? '${rawDistM.toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-
-            collected.add(_ArLandmark(
-              p.name,
-              p.photoUrls.isNotEmpty
-                  ? p.photoUrls.first
-                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
-              p.rating,
-              distStr,
-              bearing,
-              p.description ?? 'A notable place worth the trip.',
-              p.categoryName?.toUpperCase() ?? (q['label'] as String),
-              rawDistM,
-              p.latitude,
-              p.longitude,
-              p.tags,
-            ));
-            allPlaces.add(p);
-          }
-        } catch (e) {
-          debugPrint('AR long-range fetch failed for ${q['category']}: $e');
-        }
+        await Future.wait(fetches);
       }
 
       // Far-ring sampling: a single user-centred query can't reach the outer
