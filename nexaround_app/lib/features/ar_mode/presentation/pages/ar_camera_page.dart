@@ -187,7 +187,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   int _rangeKm = 2;
   bool _showRangeHint = false;
   Timer? _rangeHintTimer;
-  static const List<int> _rangeSteps = [2, 5, 10, 25, 50];
+  static const List<int> _rangeSteps = [2, 15];
   static const List<Map<String, dynamic>> _arFilters = [
     {'id': 'All', 'label': 'All', 'icon': Icons.public_rounded},
     {'id': 'Food', 'label': 'Food', 'icon': Icons.restaurant_rounded},
@@ -199,19 +199,19 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
-  /// Every category exposes the km range selector (2 → 5 → 10 → 25 → 50 km).
+  /// Every category exposes the km range selector (2 or 15 km).
   bool _categoryHasRange(String filter) => true;
 
   int _maxRangeForCategory(String filter) {
-    if (filter == 'Historical' || filter == 'Nature') return 50;
-    return 10;
+    if (filter == 'All') return 2;
+    return 15;
   }
 
   List<int> _rangeStepsForCategory(String filter) {
-    if (filter == 'Historical' || filter == 'Nature') {
-      return const [2, 5, 10, 25, 50];
+    if (filter == 'All') {
+      return const [2];
     }
-    return const [2, 5, 10];
+    return const [15];
   }
 
   /// The live fetch keeps every place within range (up to the marker ceiling).
@@ -2872,6 +2872,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   String _getRangeText(int val) {
     switch (val) {
       case 2: return '0-2 kms';
+      case 15: return '0-15 kms';
       case 5: return '2-5 kms';
       case 10: return '5-10 kms';
       case 25: return '10-25 kms';
@@ -2924,60 +2925,32 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   /// Single rectangular tap-to-cycle KM range button beside "AR LIVE".
-  /// Each tap advances to the next step: 2→5→10→25→50→2→…
   Widget _buildKmRangePicker() {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.selectionClick();
-        final steps = _rangeStepsForCategory(_selectedFilter);
-        final idx = steps.indexOf(_rangeKm);
-        final next = steps[idx == -1 ? 0 : (idx + 1) % steps.length];
-        setState(() {
-          _rangeKm = next;
-          _capCache.clear();
-          _showRangeHint = true;
-        });
-
-        _rangeHintTimer?.cancel();
-        _rangeHintTimer = Timer(const Duration(milliseconds: 2500), () {
-          if (mounted) {
-            setState(() {
-              _showRangeHint = false;
-            });
-          }
-        });
-
-        _lastFetchTime = null;
-        _fetchLivePlaces();
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: AppColors.brandGreen,
-          border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brandGreen.withOpacity(0.55),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Center(
-          child: Text(
-            _getRangeText(_rangeKm),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.2,
-            ),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(8),
+        color: AppColors.brandGreen,
+        border: Border.all(color: Colors.white.withOpacity(0.25), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandGreen.withOpacity(0.55),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Center(
+        child: Text(
+          _getRangeText(_rangeKm),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.2,
           ),
         ),
-      ).animate(onPlay: (c) => c.repeat(reverse: true))
-        .scaleXY(begin: 1.0, end: 1.04, duration: 1200.ms, curve: Curves.easeInOut),
+      ),
     );
   }
 
@@ -3294,13 +3267,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   final prevRange = _rangeKm;
                   setState(() {
                     _selectedFilter = id;
-                    final maxKm = _maxRangeForCategory(id);
-                    if (_rangeKm > maxKm) {
-                      _rangeKm = maxKm;
+                    if (id == 'All') {
+                      _rangeKm = 2;
+                    } else {
+                      _rangeKm = 15;
                     }
                   });
-                  // Re-fetch only if the effective range actually changed;
-                  // otherwise just pull the new category's famous far places.
                   if (_rangeKm != prevRange) {
                     _capCache.clear();
                     _lastFetchTime = null;
