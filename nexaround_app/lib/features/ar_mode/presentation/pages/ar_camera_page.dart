@@ -1523,10 +1523,49 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       // Lets the empty-state UI say "couldn't load / retry" instead of "none".
       bool fetchHadError = false;
 
-      final categoriesToFetch = [
-        null,
-        'Attractions',
-      ];
+      final List<String?> categoriesToFetch;
+      if (_selectedFilter == 'All') {
+        categoriesToFetch = [
+          null,
+          'Attractions',
+          'Food & Drink',
+          'Hotels',
+          'Shopping',
+          'Experiences',
+          'Medical',
+        ];
+      } else {
+        final String? mappedCat;
+        switch (_selectedFilter) {
+          case 'Food':
+            mappedCat = 'Food & Drink';
+            break;
+          case 'Shopping':
+            mappedCat = 'Shopping';
+            break;
+          case 'Historical':
+            mappedCat = 'Attractions';
+            break;
+          case 'Nature':
+            mappedCat = 'Nature';
+            break;
+          case 'Hotels':
+            mappedCat = 'Hotels';
+            break;
+          case 'Medical':
+            mappedCat = 'Medical';
+            break;
+          default:
+            mappedCat = null;
+        }
+        if (mappedCat == 'Nature') {
+          categoriesToFetch = [null, 'Nature', 'Beach'];
+        } else if (mappedCat != null) {
+          categoriesToFetch = [null, mappedCat];
+        } else {
+          categoriesToFetch = [null];
+        }
+      }
 
       // Honor the user-selected range: fetch only the selected range radius.
       // This avoids sequentially fetching smaller, filtered-out radii, making the network fetch instant.

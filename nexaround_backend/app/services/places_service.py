@@ -29,6 +29,33 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def offset_lat_lng(lat: float, lng: float, bearing_deg: float, distance_m: float) -> tuple[float, float]:
+    earth_r = 6371000.0
+    ang_dist = distance_m / earth_r
+    brng = math.radians(bearing_deg)
+    lat1 = math.radians(lat)
+    lng1 = math.radians(lng)
+    
+    lat2 = math.asin(
+        math.sin(lat1) * math.cos(ang_dist) +
+        math.cos(lat1) * math.sin(ang_dist) * math.cos(brng)
+    )
+    lng2 = lng1 + math.atan2(
+        math.sin(brng) * math.sin(ang_dist) * math.cos(lat1),
+        math.cos(ang_dist) - math.sin(lat1) * math.sin(lat2)
+    )
+    
+    return math.degrees(lat2), ((math.degrees(lng2) + 540.0) % 360.0) - 180.0
+
+
+def get_min_radius(radius: int) -> int:
+    if radius == 25000:
+        return 10000
+    elif radius == 50000:
+        return 25000
+    return 0
+
+
 async def seed_places_from_google_bg(
     latitude: float,
     longitude: float,
@@ -64,20 +91,62 @@ async def seed_places_from_google_bg(
             ]
 
         # 2. Call Google API outside the database session context (no connection held!)
-        if use_legacy:
-            raw_places = await google_places_client.nearby_search_legacy(
-                latitude=latitude,
-                longitude=longitude,
-                category=category,
-                radius=radius,
-            )
+        min_radius = get_min_radius(radius)
+        if min_radius == 0:
+            if use_legacy:
+                raw_places = await google_places_client.nearby_search_legacy(
+                    latitude=latitude,
+                    longitude=longitude,
+                    category=category,
+                    radius=radius,
+                )
+            else:
+                raw_places = await google_places_client.nearby_search(
+                    latitude=latitude,
+                    longitude=longitude,
+                    category=category,
+                    radius=radius,
+                )
         else:
-            raw_places = await google_places_client.nearby_search(
-                latitude=latitude,
-                longitude=longitude,
-                category=category,
-                radius=radius,
-            )
+            mid = (min_radius + radius) / 2.0
+            sample_radius = int((radius - min_radius) / 2.0)
+            num_centers = 4
+            bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
+            offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+            all_queries = [(latitude, longitude, radius)] + [
+                (olat, olng, sample_radius) for olat, olng in offset_coords
+            ]
+            
+            async def fetch_one(lat: float, lng: float, rad: int) -> list:
+                try:
+                    if use_legacy:
+                        return await google_places_client.nearby_search_legacy(
+                            latitude=lat,
+                            longitude=lng,
+                            category=category,
+                            radius=rad,
+                        )
+                    else:
+                        return await google_places_client.nearby_search(
+                            latitude=lat,
+                            longitude=lng,
+                            category=category,
+                            radius=rad,
+                        )
+                except Exception as e:
+                    print(f"⚠️ Error fetching offset nearby search in get_nearby background: {e}")
+                    return []
+            
+            import asyncio
+            results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
+            raw_places = []
+            seen_ids = set()
+            for r_list in results:
+                for p in r_list:
+                    pid = p.get("id") or p.get("place_id")
+                    if pid and pid not in seen_ids:
+                        seen_ids.add(pid)
+                        raw_places.append(p)
 
         if not raw_places:
             return
@@ -287,20 +356,72 @@ async def get_nearby(
     # Session closed here! No connection is held during the slow Google query.
     
     # Otherwise, query Google Places API as a fallback
-    if use_legacy:
-        raw_places = await google_places_client.nearby_search_legacy(
-            latitude=latitude,
-            longitude=longitude,
-            category=category,
-            radius=radius,
-        )
+    import asyncio
+    min_radius = get_min_radius(radius)
+    
+    if min_radius == 0:
+        # Standard single query at center
+        if use_legacy:
+            raw_places = await google_places_client.nearby_search_legacy(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
+        else:
+            raw_places = await google_places_client.nearby_search(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
     else:
-        raw_places = await google_places_client.nearby_search(
-            latitude=latitude,
-            longitude=longitude,
-            category=category,
-            radius=radius,
-        )
+        # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
+        mid = (min_radius + radius) / 2.0
+        sample_radius = int((radius - min_radius) / 2.0)
+        
+        # Scale centers: reduced from 8 to 4 to speed up search and minimize API costs
+        num_centers = 4
+        bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
+        offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+        
+        # Add center query as well to ensure total coverage
+        all_queries = [(latitude, longitude, radius)] + [
+            (olat, olng, sample_radius) for olat, olng in offset_coords
+        ]
+        
+        async def fetch_one(lat: float, lng: float, rad: int) -> list:
+            try:
+                if use_legacy:
+                    return await google_places_client.nearby_search_legacy(
+                        latitude=lat,
+                        longitude=lng,
+                        category=category,
+                        radius=rad,
+                    )
+                else:
+                    return await google_places_client.nearby_search(
+                        latitude=lat,
+                        longitude=lng,
+                        category=category,
+                        radius=rad,
+                    )
+            except Exception as e:
+                print(f"⚠️ Error fetching offset nearby search in get_nearby: {e}")
+                return []
+        
+        # Fetch all in parallel
+        results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
+        
+        # Merge and deduplicate
+        raw_places = []
+        seen_ids = set()
+        for r_list in results:
+            for p in r_list:
+                pid = p.get("id") or p.get("place_id")
+                if pid and pid not in seen_ids:
+                    seen_ids.add(pid)
+                    raw_places.append(p)
     
     # Convert raw places to PlaceResponses
     if use_legacy:
