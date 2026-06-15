@@ -202,9 +202,17 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   /// Every category exposes the km range selector (2 → 5 → 10 → 25 → 50 km).
   bool _categoryHasRange(String filter) => true;
 
-  int _maxRangeForCategory(String filter) => 50;
+  int _maxRangeForCategory(String filter) {
+    if (filter == 'Historical' || filter == 'Nature') return 50;
+    return 10;
+  }
 
-  List<int> _rangeStepsForCategory(String filter) => const [2, 5, 10, 25, 50];
+  List<int> _rangeStepsForCategory(String filter) {
+    if (filter == 'Historical' || filter == 'Nature') {
+      return const [2, 5, 10, 25, 50];
+    }
+    return const [2, 5, 10];
+  }
 
   /// The live fetch keeps every place within range (up to the marker ceiling).
   /// [_placesForFilter] then shows all of them within the selected distance,

@@ -29,35 +29,6 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def offset_lat_lng(lat: float, lng: float, bearing_deg: float, distance_m: float) -> tuple[float, float]:
-    earth_r = 6371000.0
-    ang_dist = distance_m / earth_r
-    brng = math.radians(bearing_deg)
-    lat1 = math.radians(lat)
-    lng1 = math.radians(lng)
-    
-    lat2 = math.asin(
-        math.sin(lat1) * math.cos(ang_dist) +
-        math.cos(lat1) * math.sin(ang_dist) * math.cos(brng)
-    )
-    lng2 = lng1 + math.atan2(
-        math.sin(brng) * math.sin(ang_dist) * math.cos(lat1),
-        math.cos(ang_dist) - math.sin(lat1) * math.sin(lat2)
-    )
-    
-    return math.degrees(lat2), ((math.degrees(lng2) + 540.0) % 360.0) - 180.0
-
-
-def get_min_radius(radius: int) -> int:
-    # 5km and 10km return 0 so we perform a fast single query at the center
-    # instead of 7-9 slow offset queries.
-    if radius == 25000:
-        return 10000
-    elif radius == 50000:
-        return 25000
-    return 0
-
-
 async def seed_places_from_google_bg(
     latitude: float,
     longitude: float,
@@ -69,7 +40,7 @@ async def seed_places_from_google_bg(
 ):
     """Seed places from Google API in the background to avoid blocking the user request."""
     try:
-        # We must create a new session since the request's database session will be closed
+        # 1. Check database first to see if revalidation is actually needed (close session immediately after)
         async with async_session() as session:
             repo = AttractionRepository(session)
             db_limit = 100 if radius <= 10000 else 200
@@ -87,78 +58,49 @@ async def seed_places_from_google_bg(
             if has_adequate_coverage:
                 return
 
-            min_radius = get_min_radius(radius)
-            if min_radius == 0:
-                if use_legacy:
-                    raw_places = await google_places_client.nearby_search_legacy(
-                        latitude=latitude,
-                        longitude=longitude,
-                        category=category,
-                        radius=radius,
-                    )
-                else:
-                    raw_places = await google_places_client.nearby_search(
-                        latitude=latitude,
-                        longitude=longitude,
-                        category=category,
-                        radius=radius,
-                    )
-            else:
-                mid = (min_radius + radius) / 2.0
-                sample_radius = int((radius - min_radius) / 2.0)
-                num_centers = 4
-                bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
-                offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
-                all_queries = [(latitude, longitude, radius)] + [
-                    (olat, olng, sample_radius) for olat, olng in offset_coords
-                ]
-                
-                async def fetch_one(lat: float, lng: float, rad: int) -> list:
-                    try:
-                        if use_legacy:
-                            return await google_places_client.nearby_search_legacy(
-                                latitude=lat,
-                                longitude=lng,
-                                category=category,
-                                radius=rad,
-                            )
-                        else:
-                            return await google_places_client.nearby_search(
-                                latitude=lat,
-                                longitude=lng,
-                                category=category,
-                                radius=rad,
-                            )
-                    except Exception as e:
-                        print(f"⚠️ Error fetching offset nearby search in get_nearby background: {e}")
-                        return []
-                
-                import asyncio
-                results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
-                raw_places = []
-                seen_ids = set()
-                for r_list in results:
-                    for p in r_list:
-                        pid = p.get("id") or p.get("place_id")
-                        if pid and pid not in seen_ids:
-                            seen_ids.add(pid)
-                            raw_places.append(p)
+            existing_records = [
+                (get_lat_lng(attr.location), attr.name)
+                for attr, _ in nearby_db_attractions
+            ]
 
-            if use_legacy:
-                place_dicts = [
-                    google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
-                    for p in raw_places
-                ]
-            else:
-                if category == "Food & Drink":
-                    raw_places = google_places_client.filter_food(raw_places)
-                elif category != "Beach":
-                    raw_places = raw_places[:100]
-                place_dicts = [
-                    google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
-                    for p in raw_places
-                ]
+        # 2. Call Google API outside the database session context (no connection held!)
+        if use_legacy:
+            raw_places = await google_places_client.nearby_search_legacy(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
+        else:
+            raw_places = await google_places_client.nearby_search(
+                latitude=latitude,
+                longitude=longitude,
+                category=category,
+                radius=radius,
+            )
 
+        if not raw_places:
+            return
+
+        if use_legacy:
+            place_dicts = [
+                google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
+                for p in raw_places
+            ]
+        else:
+            if category == "Food & Drink":
+                raw_places = google_places_client.filter_food(raw_places)
+            elif category != "Beach":
+                raw_places = raw_places[:100]
+            place_dicts = [
+                google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+                for p in raw_places
+            ]
+
+        # 3. Open a new session to write/commit the fetched places
+        async with async_session() as session:
+            repo = AttractionRepository(session)
+            
             for p in place_dicts:
                 p_name = p.get("name")
                 plat = p.get("latitude")
@@ -169,12 +111,11 @@ async def seed_places_from_google_bg(
                     continue
 
                 existing_attraction = None
-                for attraction, _ in nearby_db_attractions:
-                    alat, alng = get_lat_lng(attraction.location)
+                for (alat, alng), name in existing_records:
                     dist = _haversine_m(plat, plng, alat, alng)
-                    name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
+                    name_similarity = (name.lower() in p_name.lower()) or (p_name.lower() in name.lower())
                     if dist < 25.0 and name_similarity:
-                        existing_attraction = attraction
+                        existing_attraction = True
                         break
 
                 if not existing_attraction:
@@ -253,7 +194,7 @@ def attraction_to_place_dict(attraction: Attraction, distance_m: float) -> dict:
         "geofence_radius_m": attraction.geofence_radius_m or 100,
         "distance_m": distance_m,
         "is_active": attraction.is_active,
-        "created_at": attraction.created_at,
+        "created_at": attraction.created_at.isoformat() if attraction.created_at else None,
     }
 
 
@@ -337,106 +278,50 @@ async def get_nearby(
                 source="database",
             )
 
-        if len(nearby_db_attractions) >= 10 and has_adequate_coverage:
-            place_dicts = [
-                attraction_to_place_dict(attr, dist)
-                for attr, dist in nearby_db_attractions
-            ]
-            await place_cache_service.set_cached(key, place_dicts)
-            return PlacesNearbyResponse(
-                places=[PlaceResponse.model_validate(p) for p in place_dicts],
-                cached=False,
-                source="database",
-            )
+        # Keep a list of existing attraction names and coordinates to prevent duplicates
+        existing_records = [
+            (get_lat_lng(attr.location), attr.name)
+            for attr, _ in nearby_db_attractions
+        ]
 
-        # Otherwise, query Google Places API as a fallback
-        import asyncio
-        min_radius = get_min_radius(radius)
-        
-        if min_radius == 0:
-            # Standard single query at center
-            if use_legacy:
-                raw = await google_places_client.nearby_search_legacy(
-                    latitude=latitude,
-                    longitude=longitude,
-                    category=category,
-                    radius=radius,
-                )
-                raw_places = raw
-            else:
-                raw = await google_places_client.nearby_search(
-                    latitude=latitude,
-                    longitude=longitude,
-                    category=category,
-                    radius=radius,
-                )
-                raw_places = raw
-        else:
-            # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
-            mid = (min_radius + radius) / 2.0
-            sample_radius = int((radius - min_radius) / 2.0)
+    # Session closed here! No connection is held during the slow Google query.
+    
+    # Otherwise, query Google Places API as a fallback
+    if use_legacy:
+        raw_places = await google_places_client.nearby_search_legacy(
+            latitude=latitude,
+            longitude=longitude,
+            category=category,
+            radius=radius,
+        )
+    else:
+        raw_places = await google_places_client.nearby_search(
+            latitude=latitude,
+            longitude=longitude,
+            category=category,
+            radius=radius,
+        )
+    
+    # Convert raw places to PlaceResponses
+    if use_legacy:
+        place_dicts = [
+            google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
+            for p in raw_places
+        ]
+    else:
+        if category == "Food & Drink":
+            raw_places = google_places_client.filter_food(raw_places)
+        elif category != "Beach":
+            raw_places = raw_places[:100] # cap merged result
             
-            # Scale centers: reduced from 8 to 4 to speed up search and minimize API costs
-            num_centers = 4
-            bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
-            offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
-            
-            # Add center query as well to ensure total coverage
-            all_queries = [(latitude, longitude, radius)] + [
-                (olat, olng, sample_radius) for olat, olng in offset_coords
-            ]
-            
-            async def fetch_one(lat: float, lng: float, rad: int) -> list:
-                try:
-                    if use_legacy:
-                        return await google_places_client.nearby_search_legacy(
-                            latitude=lat,
-                            longitude=lng,
-                            category=category,
-                            radius=rad,
-                        )
-                    else:
-                        return await google_places_client.nearby_search(
-                            latitude=lat,
-                            longitude=lng,
-                            category=category,
-                            radius=rad,
-                        )
-                except Exception as e:
-                    print(f"⚠️ Error fetching offset nearby search in get_nearby: {e}")
-                    return []
-            
-            # Fetch all in parallel
-            results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
-            
-            # Merge and deduplicate
-            raw_places = []
-            seen_ids = set()
-            for r_list in results:
-                for p in r_list:
-                    pid = p.get("id") or p.get("place_id")
-                    if pid and pid not in seen_ids:
-                        seen_ids.add(pid)
-                        raw_places.append(p)
-        
-        # Convert raw places to PlaceResponses
-        if use_legacy:
-            place_dicts = [
-                google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
-                for p in raw_places
-            ]
-        else:
-            if category == "Food & Drink":
-                raw_places = google_places_client.filter_food(raw_places)
-            elif category != "Beach":
-                raw_places = raw_places[:100] # cap merged result
-                
-            place_dicts = [
-                google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
-                for p in raw_places
-            ]
+        place_dicts = [
+            google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
+            for p in raw_places
+        ]
 
-        # Save newly fetched places to PostgreSQL database
+    # Save newly fetched places to PostgreSQL database (in a new session!)
+    async with async_session() as session:
+        repo = AttractionRepository(session)
         for p in place_dicts:
             p_name = p.get("name")
             plat = p.get("latitude")
@@ -446,14 +331,13 @@ async def get_nearby(
             if not p_name or plat is None or plng is None:
                 continue
 
-            # Check if this place already exists in database (within 25 meters and name matches)
+            # Check duplicates using the coordinate snapshot
             existing_attraction = None
-            for attraction, _ in nearby_db_attractions:
-                alat, alng = get_lat_lng(attraction.location)
+            for (alat, alng), name in existing_records:
                 dist = _haversine_m(plat, plng, alat, alng)
-                name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
+                name_similarity = (name.lower() in p_name.lower()) or (p_name.lower() in name.lower())
                 if dist < 25.0 and name_similarity:
-                    existing_attraction = attraction
+                    existing_attraction = True
                     break
 
             if not existing_attraction:
@@ -488,7 +372,7 @@ async def get_nearby(
 
         await session.commit()
 
-        # Re-query the database to get the complete unified set of attractions (Google + existing)
+        # Re-query the database to get the complete unified set
         nearby_db_attractions = await repo.get_nearby(
             latitude=latitude,
             longitude=longitude,
@@ -503,13 +387,13 @@ async def get_nearby(
         ]
         place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
 
-        await place_cache_service.set_cached(key, place_dicts)
+    await place_cache_service.set_cached(key, place_dicts)
 
-        return PlacesNearbyResponse(
-            places=[PlaceResponse.model_validate(p) for p in place_dicts],
-            cached=False,
-            source="google",
-        )
+    return PlacesNearbyResponse(
+        places=[PlaceResponse.model_validate(p) for p in place_dicts],
+        cached=False,
+        source="google",
+    )
 
 
 async def search(
