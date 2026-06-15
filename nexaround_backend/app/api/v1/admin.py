@@ -339,6 +339,42 @@ async def get_pending_approvals(
     )
 
 
+@router.get("/attractions", response_model=AttractionListResponse)
+async def list_admin_attractions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(1000, ge=1, le=1000),
+    search: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Retrieve all attractions for admin management (includes inactive/active ones)."""
+    service = AttractionService(db)
+    return await service.list_attractions(page=page, page_size=page_size, search_query=search)
+
+
+@router.post("/attractions", response_model=AttractionResponse, status_code=status.HTTP_201_CREATED)
+async def create_admin_attraction(
+    data: AttractionCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Create a new attraction as admin."""
+    service = AttractionService(db)
+    return await service.create_attraction(data)
+
+
+@router.delete("/attractions/{attraction_id}")
+async def delete_admin_attraction(
+    attraction_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Delete an attraction as admin."""
+    service = AttractionService(db)
+    success = await service.delete_attraction(attraction_id)
+    return {"status": "success" if success else "failed"}
+
+
 @router.put("/attractions/{attraction_id}", response_model=AttractionResponse)
 async def update_attraction_details(
     attraction_id: uuid.UUID,

@@ -122,6 +122,21 @@ class CacheService {
     await _prefs.setStringList('cached_attractions_list', list);
   }
 
+  static Future<void> mergeAndCacheAttractions(List<Map<String, dynamic>> placesJson) async {
+    final existing = getCachedAttractions();
+    final List<Map<String, dynamic>> merged = List.from(existing);
+    for (final newItem in placesJson) {
+      if (!merged.any((item) => item['name'] == newItem['name'] || item['id'] == newItem['id'])) {
+        merged.add(newItem);
+      }
+    }
+    // Limit to 500 entries to prevent infinite growth
+    if (merged.length > 500) {
+      merged.removeRange(0, merged.length - 500);
+    }
+    await cacheAttractions(merged);
+  }
+
   static List<Map<String, dynamic>> getCachedAttractions() {
     final List<String> list = _prefs.getStringList('cached_attractions_list') ?? [];
     return list.map((str) => json.decode(str) as Map<String, dynamic>).toList();

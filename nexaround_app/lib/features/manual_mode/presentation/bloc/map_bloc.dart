@@ -200,7 +200,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
         // Save successfully loaded network attractions to local persistent cache
         final attractionJsons = attractionsList.map((a) => _attractionEntityToJson(a)).toList();
-        CacheService.cacheAttractions(attractionJsons);
+        await CacheService.mergeAndCacheAttractions(attractionJsons);
         await CacheService.saveLastFetchCoords(event.latitude, event.longitude);
 
         emit(state.copyWith(

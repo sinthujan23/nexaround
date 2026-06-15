@@ -214,6 +214,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         ));
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
+        _preFetchArPlaces(position.latitude, position.longitude);
       }
     } catch (e) {
       debugPrint('Error fetching location: $e');
@@ -236,6 +237,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       ));
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
+      _preFetchArPlaces(6.9271, 79.8612);
     }
   }
 
@@ -271,6 +273,72 @@ class _LivingMapPageState extends State<LivingMapPage>
         setState(() => _loadingMiniTour = false);
       }
     }
+  }
+
+  Future<void> _preFetchArPlaces(double lat, double lng) async {
+    debugPrint('🚀 Starting background AR pre-fetching to populate database & cache...');
+    
+    final ranges = [2000, 5000, 10000, 25000, 50000];
+    final categories = [
+      null,
+      'Food & Drink',
+      'Shopping',
+      'Attractions',
+      'Hotels',
+      'Medical',
+      'Beach',
+    ];
+
+    Future.microtask(() async {
+      for (final radius in ranges) {
+        for (final cat in categories) {
+          try {
+            if (!mounted) return;
+            
+            debugPrint('📥 Pre-fetching radius $radius m for category: $cat');
+            final places = await GooglePlacesService.fetchNearbyPlaces(
+              latitude: lat,
+              longitude: lng,
+              radius: radius,
+              categoryName: cat,
+            );
+            
+            if (places.isNotEmpty) {
+              final attractionJsons = places.map((p) => {
+                'id': p.id,
+                'name': p.name,
+                'description': p.description,
+                'history': p.history,
+                'latitude': p.latitude,
+                'longitude': p.longitude,
+                'category_id': p.categoryId,
+                'category_name': p.categoryName,
+                'address': p.address,
+                'opening_hours': p.openingHours,
+                'entry_fee': p.entryFee,
+                'currency': p.currency,
+                'rating': p.rating,
+                'review_count': p.reviewCount,
+                'photo_urls': p.photoUrls,
+                'tags': p.tags,
+                'geofence_radius_m': p.geofenceRadiusM,
+                'distance_m': p.distanceM,
+                'is_active': p.isActive,
+                'created_at': p.createdAt.toIso8601String(),
+              }).toList();
+              
+              await CacheService.mergeAndCacheAttractions(attractionJsons);
+            }
+            
+            // Add a small delay between requests to keep the backend load gentle
+            await Future.delayed(const Duration(milliseconds: 300));
+          } catch (e) {
+            debugPrint('Error pre-fetching $cat at radius $radius: $e');
+          }
+        }
+      }
+      debugPrint('✅ Background AR pre-fetching complete.');
+    });
   }
 
   int _getDiscoverTabIndex(String category) {

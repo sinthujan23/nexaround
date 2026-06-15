@@ -257,6 +257,68 @@ async def search(
         if "formattedAddress" in p:
             place_dicts[i]["address"] = p["formattedAddress"]
 
+    # Save newly fetched places to PostgreSQL database
+    async with async_session() as session:
+        repo = AttractionRepository(session)
+        # Fetch existing database attractions near the search area (50km radius) to check for duplicates
+        nearby_db_attractions = await repo.get_nearby(
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=50000.0,
+            limit=500
+        )
+
+        for p in place_dicts:
+            p_name = p.get("name")
+            plat = p.get("latitude")
+            plng = p.get("longitude")
+            resolved_category = p.get("category_name")
+
+            if not p_name or plat is None or plng is None:
+                continue
+
+            # Check if this place already exists in database (within 25 meters and name matches)
+            existing_attraction = None
+            for attraction, _ in nearby_db_attractions:
+                alat, alng = get_lat_lng(attraction.location)
+                dist = _haversine_m(plat, plng, alat, alng)
+                name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
+                if dist < 25.0 and name_similarity:
+                    existing_attraction = attraction
+                    break
+
+            if not existing_attraction:
+                cat_id = None
+                if resolved_category:
+                    stmt = select(Category).where(Category.name == resolved_category)
+                    res = await session.execute(stmt)
+                    cat_obj = res.scalar_one_or_none()
+                    if not cat_obj:
+                        cat_obj = Category(name=resolved_category, icon="place", color="#607D8B")
+                        session.add(cat_obj)
+                        await session.flush()
+                    cat_id = cat_obj.id
+
+                new_attr = Attraction(
+                    name=p_name,
+                    description=p.get("description") or "",
+                    location=create_point(plat, plng),
+                    category_id=cat_id,
+                    address=p.get("address") or "",
+                    opening_hours=p.get("opening_hours") or {},
+                    entry_fee=p.get("entry_fee") or 0.0,
+                    currency=p.get("currency") or "USD",
+                    rating=p.get("rating") or 0.0,
+                    review_count=p.get("review_count") or 0,
+                    photo_urls=p.get("photo_urls") or [],
+                    tags=p.get("tags") or [],
+                    geofence_radius_m=100,
+                    is_active=True,
+                )
+                session.add(new_attr)
+
+        await session.commit()
+
     place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
 
     await place_cache_service.set_cached(key, place_dicts)
