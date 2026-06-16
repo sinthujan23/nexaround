@@ -29,6 +29,8 @@ import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page
 import 'package:nexaround_app/features/food_radar/presentation/pages/discover_page.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
 class _LocalEvent {
@@ -64,6 +66,10 @@ class _LivingMapPageState extends State<LivingMapPage>
   List<AttractionEntity>? _miniTourPlaces;
   bool _loadingMiniTour = false;
   bool _isPreFetching = false;
+
+  String? _currentDistrict;
+  List<AttractionEntity> _geminiTrendingPlaces = [];
+  bool _loadingGeminiTrending = false;
 
   @override
   void initState() {
@@ -173,20 +179,95 @@ class _LivingMapPageState extends State<LivingMapPage>
         distanceFilter: 300,
       ),
     ).listen((position) async {
-      final locationName = await GooglePlacesService.reverseGeocode(
+      final details = await GooglePlacesService.reverseGeocodeDetailed(
         position.latitude,
         position.longitude,
       );
+      final locationName = details['location_name'] ?? 'Nearby';
+      final district = details['district'] ?? 'Nearby';
+
       if (mounted) {
+        final districtChanged = _currentDistrict != district;
         setState(() {
           _userLatitude = position.latitude;
           _userLongitude = position.longitude;
           _currentLocationName = locationName;
+          _currentDistrict = district;
         });
+
+        if (districtChanged) {
+          _fetchGeminiTrending(district, position.latitude, position.longitude);
+        }
+
         _fetchMiniTourPlaces(position.latitude, position.longitude);
         _preFetchArPlaces(position.latitude, position.longitude);
       }
     });
+  }
+
+  Future<void> _fetchGeminiTrending(String district, double lat, double lng) async {
+    if (_loadingGeminiTrending) return;
+    setState(() => _loadingGeminiTrending = true);
+    try {
+      final prompt = '''
+You are an expert local guide and travel coordinator.
+Give me a list of 5 currently popular, trendy, famous, or highly interesting places/attractions/activities/restaurants in the district of "$district".
+The locations should be near the GPS coordinates ($lat, $lng).
+Return ONLY a JSON array of strings containing the names of these 5 places. Do not include markdown code blocks, do not write any introductory or explanatory text. Just return the JSON array, e.g.:
+["Place Name 1", "Place Name 2", "Place Name 3", "Place Name 4", "Place Name 5"]
+''';
+
+      final responseText = await GeminiService().getResponse(
+        prompt,
+        responseMimeType: "application/json",
+      );
+
+      // Clean the response if it has markdown formatting (e.g. ```json ... ```)
+      String cleanJson = responseText.trim();
+      if (cleanJson.startsWith('```')) {
+        final lines = cleanJson.split('\n');
+        if (lines.first.contains('json')) {
+          lines.removeAt(0);
+        } else {
+          lines.removeAt(0);
+        }
+        if (lines.last.trim() == '```') {
+          lines.removeLast();
+        }
+        cleanJson = lines.join('\n').trim();
+      }
+
+      final List<dynamic> placeNames = jsonDecode(cleanJson) as List;
+      final List<AttractionEntity> resolvedPlaces = [];
+
+      for (final name in placeNames) {
+        try {
+          final query = name.toString();
+          final results = await GooglePlacesService.searchPlaces(
+            query: query,
+            latitude: lat,
+            longitude: lng,
+          );
+          if (results.isNotEmpty) {
+            resolvedPlaces.add(results.first);
+          }
+        } catch (e) {
+          debugPrint('Error searching place "$name": $e');
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _geminiTrendingPlaces = resolvedPlaces;
+          _loadingGeminiTrending = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error in _fetchGeminiTrending: $e');
+      if (mounted) {
+        setState(() => _loadingGeminiTrending = false);
+      }
+    }
   }
 
   Future<void> _fetchInitialData() async {
@@ -198,18 +279,24 @@ class _LivingMapPageState extends State<LivingMapPage>
         return;
       }
       
-      // Reverse geocode to get human readable address
-      final locationName = await GooglePlacesService.reverseGeocode(
+      // Reverse geocode to get human readable address and district
+      final details = await GooglePlacesService.reverseGeocodeDetailed(
         position.latitude, 
         position.longitude
       );
+      final locationName = details['location_name'] ?? 'Nearby';
+      final district = details['district'] ?? 'Nearby';
 
       if (mounted) {
         setState(() {
           _userLatitude = position.latitude;
           _userLongitude = position.longitude;
           _currentLocationName = locationName;
+          _currentDistrict = district;
         });
+
+        _fetchGeminiTrending(district, position.latitude, position.longitude);
+
         context.read<MapBloc>().add(FetchNearbyAttractions(
           latitude: position.latitude,
           longitude: position.longitude,
@@ -229,9 +316,13 @@ class _LivingMapPageState extends State<LivingMapPage>
     if (mounted) {
       setState(() {
         _currentLocationName = 'Colombo, Sri Lanka';
+        _currentDistrict = 'Colombo District';
         _userLatitude = 6.9271; // Fallback to Colombo
         _userLongitude = 79.8612;
       });
+
+      _fetchGeminiTrending('Colombo District', 6.9271, 79.8612);
+
       // Still fetch data with fallback location
       context.read<MapBloc>().add(FetchNearbyAttractions(
         latitude: 6.9271,
@@ -527,23 +618,35 @@ class _LivingMapPageState extends State<LivingMapPage>
                     }
 
                     final publicAttractions = state.attractions.where(isPublicSpot).toList();
-                    final trendingPlaces = List<AttractionEntity>.from(publicAttractions)
-                      ..sort((a, b) => _trendingScore(b).compareTo(_trendingScore(a)));
+                    final trendingPlaces = _geminiTrendingPlaces.isNotEmpty 
+                        ? _geminiTrendingPlaces 
+                        : (List<AttractionEntity>.from(publicAttractions)
+                          ..sort((a, b) => _trendingScore(b).compareTo(_trendingScore(a))));
+
+                    final showTrendingLoading = _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
 
                     return [
                       // Trending Near You
-                      if (trendingPlaces.isNotEmpty) ...[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader(
-                              '🔥  Trending Near You', 
-                              'See all',
-                            ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                          child: _buildSectionHeader(
+                            '🔥  Trending Near You', 
+                            trendingPlaces.isNotEmpty ? 'See all' : null,
                           ),
                         ),
-                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces)),
-                      ],
+                      ),
+                      if (showTrendingLoading)
+                        SliverToBoxAdapter(child: _buildShimmerTrendingCards())
+                      else if (trendingPlaces.isNotEmpty)
+                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces))
+                      else
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            child: Text('No trending places found nearby.', style: TextStyle(color: AppColors.textSecondary)),
+                          ),
+                        ),
 
                       // Near You
                       if (publicAttractions.isNotEmpty) ...[
@@ -592,58 +695,71 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildExploringCard() {
-    return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return ClipRRect(
       borderRadius: BorderRadius.circular(100),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: AppColors.primaryGradient,
-              boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.brandGreen.withOpacity(0.08),
+            borderRadius: BorderRadius.circular(100),
+            border: Border.all(
+              color: AppColors.brandGreen.withOpacity(0.3),
+              width: 0.8,
             ),
-            child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
           ),
-          const SizedBox(width: 10),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'EXPLORING',
-                  style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: AppColors.primaryGradient,
+                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
                 ),
-                _currentLocationName == 'Locating...'
-                    ? SizedBox(
-                        width: 80,
-                        height: 12,
-                        child: Shimmer.fromColors(
-                          baseColor: Colors.grey[200]!,
-                          highlightColor: Colors.grey[50]!,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(6),
+                child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
+              ),
+              const SizedBox(width: 10),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Text(
+                      'EXPLORING',
+                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.brandGreen, letterSpacing: 2),
+                    ),
+                    _currentLocationName == 'Locating...'
+                        ? SizedBox(
+                            width: 80,
+                            height: 12,
+                            child: Shimmer.fromColors(
+                              baseColor: Colors.grey[200]!,
+                              highlightColor: Colors.grey[50]!,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                              ),
                             ),
+                          )
+                        : Text(
+                            _currentLocationName,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                        ),
-                      )
-                    : Text(
-                        _currentLocationName,
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-              ],
-            ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1217,7 +1333,14 @@ class _LivingMapPageState extends State<LivingMapPage>
       child: Container(
         padding: const EdgeInsets.fromLTRB(18, 14, 16, 14),
         decoration: BoxDecoration(
-          color: Colors.black,
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF003D3E),
+              Color(0xFF001F20),
+            ],
+          ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(

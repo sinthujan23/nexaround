@@ -51,6 +51,31 @@ class GooglePlacesService {
     }
   }
 
+  /// Reverse-geocode lat/lng to location name and district via Geoapify
+  static Future<Map<String, String>> reverseGeocodeDetailed(double lat, double lng) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/proxy/geoapify/reverse',
+        queryParameters: {
+          'lat': lat,
+          'lng': lng,
+        },
+      );
+      final name = response.data['location_name'] as String? ?? 'Nearby';
+      final district = response.data['district'] as String? ?? 'Nearby';
+      return {
+        'location_name': name,
+        'district': district,
+      };
+    } catch (e) {
+      debugPrint('Reverse geocode detailed error: $e');
+      return {
+        'location_name': 'Nearby',
+        'district': 'Nearby',
+      };
+    }
+  }
+
   /// Fetch nearby places from backend cached Places API
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,

@@ -145,7 +145,7 @@ async def proxy_geoapify_reverse(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Reverse-geocode lat/lng via Geoapify (with fallback to Mapbox/Google) and return a human-readable location name."""
+    """Reverse-geocode lat/lng via Geoapify (with fallback to Mapbox/Google) and return a human-readable location name and district."""
     settings = SettingsService(db)
     api_key = await settings.get_setting("geoapify_api_key")
 
@@ -174,7 +174,15 @@ async def proxy_geoapify_reverse(
                         or props.get("country")
                         or "Nearby"
                     )
-                    return {"location_name": name}
+                    district = (
+                        props.get("county")
+                        or props.get("city_district")
+                        or props.get("state_district")
+                        or props.get("state")
+                        or props.get("city")
+                        or "Nearby"
+                    )
+                    return {"location_name": name, "district": district}
             except Exception as e:
                 # If Geoapify request fails, fall back to Mapbox
                 pass
@@ -199,7 +207,16 @@ async def proxy_geoapify_reverse(
                 if features:
                     feature = features[0]
                     name = feature.get("text") or feature.get("place_name", "").split(",")[0] or "Nearby"
-                    return {"location_name": name}
+                    context = feature.get("context", [])
+                    district = "Nearby"
+                    for item in context:
+                        id_str = item.get("id", "")
+                        if "district" in id_str or "region" in id_str or "place" in id_str:
+                            district = item.get("text")
+                            break
+                    if district == "Nearby":
+                        district = name
+                    return {"location_name": name, "district": district}
             except Exception as e:
                 pass
 
@@ -222,16 +239,20 @@ async def proxy_geoapify_reverse(
                 if results:
                     result = results[0]
                     name = "Nearby"
+                    district = "Nearby"
                     for component in result.get("address_components", []):
                         types = component.get("types", [])
-                        if "locality" in types or "sublocality" in types or "administrative_area_level_2" in types:
+                        if "locality" in types or "sublocality" in types:
                             name = component.get("long_name")
-                            break
+                        if "administrative_area_level_2" in types:
+                            district = component.get("long_name")
                     if name == "Nearby" and result.get("formatted_address"):
                         name = result.get("formatted_address").split(",")[0]
-                    return {"location_name": name}
+                    if district == "Nearby":
+                        district = name
+                    return {"location_name": name, "district": district}
             except Exception as e:
                 pass
 
-    return {"location_name": "Nearby"}
+    return {"location_name": "Nearby", "district": "Nearby"}
 
