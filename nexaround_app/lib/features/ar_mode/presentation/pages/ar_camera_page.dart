@@ -138,7 +138,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   final Set<String> _famousFarKeys = {};
 
   // Client-side session cache for range results
-  final Map<int, List<_ArLandmark>> _sessionRangeLandmarks = {};
+  final Map<String, List<_ArLandmark>> _sessionRangeLandmarks = {};
   geo.Position? _lastFetchPosition;
   bool _isEagerPreFetching = false;
 
@@ -1480,9 +1480,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       }
     }
 
+    final String sessionCacheKey = '${_selectedFilter}_$_rangeKm';
+
     // 1) Serve from session cache if available (instant range cycling)
-    if (_sessionRangeLandmarks.containsKey(_rangeKm)) {
-      var cachedForRange = _sessionRangeLandmarks[_rangeKm]!;
+    if (_sessionRangeLandmarks.containsKey(sessionCacheKey)) {
+      var cachedForRange = _sessionRangeLandmarks[sessionCacheKey]!;
       debugPrint('🚀 AR: Range $_rangeKm km served instantly from session cache.');
       
       // Recalculate dynamic distance/bearing for cached items using current position
@@ -1523,7 +1525,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (displayable.isNotEmpty) {
         debugPrint('🚀 AR: Range $_rangeKm km served instantly from persistent cache (${displayable.length} displayable places).');
         // Cache into session so subsequent switches to this range are instant too
-        _sessionRangeLandmarks[_rangeKm] = List.of(_landmarks);
+        _sessionRangeLandmarks[sessionCacheKey] = List.of(_landmarks);
         if (mounted) {
           setState(() {
             _isFetchingPlaces = false;
@@ -1751,18 +1753,13 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             _landmarks = collected;
             _currentPosition = pos;
             _lastFetchPosition = pos; // Update last fetch position
-            _sessionRangeLandmarks[_rangeKm] = collected; // Save to session cache
+            _sessionRangeLandmarks[sessionCacheKey] = collected; // Save to session cache
             _placesFetchError = false;
             // Fresh fetch means user likely moved; drop any manual override so
             // the smart picker is in charge again.
             _userPickedLocationName = null;
           });
         }
-
-        // Option A: surface famous far-away places (Text Search) for the current
-        // category/range — Nearby Search alone misses distant landmarks.
-        _famousFarKeys.clear();
-        _loadFamousFarForSelection();
 
         // Cache the newly fetched places to the persistent cache so other screens can use them
         try {
@@ -1788,9 +1785,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           debugPrint('AR: Failed to cache fetched places: $e');
         }
       } else {
-        // If collected is empty (e.g. timeout or no result), keep the old landmarks (cached or from last load)
+        // If collected is empty (e.g. timeout or no result), clear the old landmarks so they don't leak
         if (mounted) {
           setState(() {
+            _landmarks = [];
+            _sessionRangeLandmarks[sessionCacheKey] = [];
             _currentPosition = pos;
             // No results: distinguish a real failure (all calls errored) from a
             // genuinely empty area, so the UI shows the right message.
@@ -1798,6 +1797,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           });
         }
       }
+
+      // Option A: surface famous far-away places (Text Search) for the current
+      // category/range — Nearby Search alone misses distant landmarks.
+      _famousFarKeys.clear();
+      _loadFamousFarForSelection();
 
       // Resolve a friendly name for the "Your Location" pill.
       _resolveCurrentLocationName(pos.latitude, pos.longitude);
