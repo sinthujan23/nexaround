@@ -19,7 +19,8 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Attractions": [
         "tourist_attraction", "museum", "art_gallery",
         "place_of_worship", "church", "hindu_temple", "mosque", "synagogue",
-        "buddhist_temple", "amusement_park", "aquarium"
+        "buddhist_temple", "amusement_park", "aquarium", "scenic_lookout",
+        "national_park"
     ],
     "Food & Drink": [
         "restaurant", "cafe", "bar", "bakery", "fast_food_restaurant",
@@ -30,7 +31,8 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     ],
     "Shopping": [
         "shopping_mall", "department_store", "clothing_store", "supermarket",
-        "convenience_store", "book_store", "store"
+        "convenience_store", "book_store", "store", "grocery_store", "market",
+        "gift_shop", "electronics_store", "home_goods_store"
     ],
     "Experiences": [
         "amusement_park", "aquarium", "zoo", "museum", "art_gallery"
@@ -39,7 +41,8 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "transit_station"
     ],
     "Medical": [
-        "hospital", "pharmacy", "dentist"
+        "hospital", "pharmacy", "dentist", "medical_clinic", "doctor",
+        "drugstore"
     ],
     "Nature": [
         "park", "campground", "national_park", "zoo", "tourist_attraction"

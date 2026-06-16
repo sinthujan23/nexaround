@@ -345,7 +345,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         context.read<MapBloc>().add(FetchNearbyAttractions(
           latitude: position.latitude,
           longitude: position.longitude,
-          useLegacy: true,
+          useLegacy: false,
         ));
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
@@ -372,7 +372,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       context.read<MapBloc>().add(FetchNearbyAttractions(
         latitude: 6.9271,
         longitude: 79.8612,
-        useLegacy: true,
+        useLegacy: false,
       ));
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
@@ -389,7 +389,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         longitude: lng,
         radius: 2500,
         categoryName: 'Attractions',
-        useLegacy: true,
+        useLegacy: false,
       );
       
       final uniquePlaces = <String, AttractionEntity>{};
@@ -648,7 +648,8 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                       
                       final privateKeywords = [
                         'home', 'house', 'residence', "'s place", 'my place', 'my home', 
-                        'private', 'personal', 'apartment', 'flat', 'villa'
+                        'private', 'personal', 'apartment', 'flat', 'villa',
+                        'homestay', 'guest house', 'guesthouse', '3bhk', '2bhk', '4bhk', '1bhk', 'cottage', 'bungalow', 'stay'
                       ];
                       
                       // Check name/description for private indicators
@@ -1597,7 +1598,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                   longitude: position.longitude,
                   categoryId: catId,
                   categoryName: catName == 'All' ? null : catName,
-                  useLegacy: true,
+                  useLegacy: false,
                 ));
               }
             },
@@ -2467,6 +2468,19 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       String category = place.categoryName ?? 'Places';
       final catLower = category.toLowerCase();
 
+      // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
+      if (catLower.contains('hotel') || 
+          catLower.contains('lodging') || 
+          catLower.contains('accommodation') || 
+          catLower.contains('stay') || 
+          catLower.contains('resort') || 
+          catLower.contains('guest_house') || 
+          catLower.contains('bed_and_breakfast') || 
+          catLower.contains('hostel') ||
+          place.tags.any((t) => t.contains('lodging') || t.contains('hotel') || t.contains('resort') || t.contains('guest_house') || t.contains('hostel'))) {
+        continue;
+      }
+
       if (catLower.contains('food') || catLower.contains('drink') || catLower.contains('restaurant') || catLower.contains('cafe')) {
         category = 'Food';
       } else if (catLower.contains('shop') || catLower.contains('mall') || catLower.contains('market') || catLower.contains('store')) {
@@ -2478,41 +2492,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       }
       grouped.putIfAbsent(category, () => []).add(place);
     }
-    final List<AttractionEntity> genericPlaces = grouped['Places'] ?? [];
-    grouped.remove('Places');
 
-    // Ensure all 4 categories have at least 3 places.
     final orderedCategories = ['Food', 'Attractions', 'Shopping', 'Medical'];
     
     // First guarantee every category exists in the map
     for (final cat in orderedCategories) {
       grouped.putIfAbsent(cat, () => []);
-    }
-
-    // Now populate empty categories with generic places so they have content
-    for (final cat in orderedCategories) {
-      if (grouped[cat]!.isEmpty && genericPlaces.isNotEmpty) {
-        final takeCount = genericPlaces.length >= 5 ? 5 : genericPlaces.length;
-        grouped[cat]!.addAll(genericPlaces.sublist(0, takeCount));
-        genericPlaces.removeRange(0, takeCount);
-      }
-    }
-
-    // Reuse borrow logic
-    for (final cat in orderedCategories) {
-      if (grouped[cat]!.isEmpty) {
-        String? bestCat;
-        int maxLen = 0;
-        for (final otherCat in orderedCategories) {
-          if (otherCat != cat && grouped[otherCat]!.length > maxLen) {
-            maxLen = grouped[otherCat]!.length;
-            bestCat = otherCat;
-          }
-        }
-        if (bestCat != null && grouped[bestCat]!.isNotEmpty) {
-          grouped[cat]!.addAll(grouped[bestCat]!);
-        }
-      }
     }
 
     // Balance Attractions category to ensure at least one place is 25km or further away
@@ -2523,8 +2508,16 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     if (closeAttractions.length < 4) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeAttractions.any((x) => x.id == p.id)) {
-          closeAttractions.add(p);
-          if (closeAttractions.length >= 4) break;
+          // Ensure it belongs to Attractions category
+          final catL = (p.categoryName ?? '').toLowerCase();
+          final isAttraction = !catL.contains('food') && !catL.contains('drink') && !catL.contains('restaurant') && !catL.contains('cafe') &&
+                               !catL.contains('shop') && !catL.contains('mall') && !catL.contains('market') && !catL.contains('store') &&
+                               !catL.contains('medical') && !catL.contains('hospital') && !catL.contains('clinic') && !catL.contains('doctor') && !catL.contains('pharmacy') &&
+                               !catL.contains('hotel') && !catL.contains('lodging');
+          if (isAttraction) {
+            closeAttractions.add(p);
+            if (closeAttractions.length >= 4) break;
+          }
         }
       }
     }
@@ -2542,7 +2535,8 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
             final catLower = (model.categoryName ?? '').toLowerCase();
             if (!catLower.contains('food') && !catLower.contains('drink') && !catLower.contains('restaurant') && !catLower.contains('cafe') &&
                 !catLower.contains('shop') && !catLower.contains('mall') && !catLower.contains('market') && !catLower.contains('store') &&
-                !catLower.contains('medical') && !catLower.contains('hospital') && !catLower.contains('clinic') && !catLower.contains('doctor') && !catLower.contains('pharmacy')) {
+                !catLower.contains('medical') && !catLower.contains('hospital') && !catLower.contains('clinic') && !catLower.contains('doctor') && !catLower.contains('pharmacy') &&
+                !catLower.contains('hotel') && !catLower.contains('lodging')) {
               final updated = AttractionModel(
                 id: model.id,
                 name: model.name,
@@ -2612,8 +2606,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     if (closeMedical.length < 4) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeMedical.any((x) => x.id == p.id)) {
-          closeMedical.add(p);
-          if (closeMedical.length >= 4) break;
+          final catL = (p.categoryName ?? '').toLowerCase();
+          final isMedical = catL.contains('medical') || catL.contains('hospital') || catL.contains('clinic') || catL.contains('doctor') || catL.contains('pharmacy');
+          if (isMedical) {
+            closeMedical.add(p);
+            if (closeMedical.length >= 4) break;
+          }
         }
       }
     }
