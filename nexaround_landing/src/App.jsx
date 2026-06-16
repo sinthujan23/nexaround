@@ -1,27 +1,23 @@
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
-  Compass, 
   Sparkles, 
   Map, 
   Navigation, 
-  Server, 
   Check, 
   Smartphone, 
   ArrowRight, 
-  ExternalLink, 
   Bot, 
-  Send, 
   Globe, 
-  Shield, 
-  Zap, 
-  MapPin,
-  TrendingUp,
-  Cpu
+  Zap,
+  Menu,
+  X
 } from 'lucide-react';
 
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('neva');
-  
+  // Navigation State
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   // Neva Chat Simulator States
   const [messages, setMessages] = useState([
     {
@@ -113,20 +109,17 @@ export default function App() {
       <div className="glow-orb orb-accent"></div>
 
       {/* Navigation Header */}
-      <header className="navbar">
+      <header className={`navbar ${mobileMenuOpen ? 'navbar-open' : ''}`}>
         <div className="container nav-container">
           <a href="#" className="logo-section">
-            <Compass className="animate-float" size={28} color="#ec4899" />
-            <span>NexAround</span>
+            <img src="/app_icon.png" alt="nexARound Icon" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
+            <span>nex<span className="text-teal">AR</span>ound</span>
           </a>
           
           <nav className="nav-links">
             <a href="#features" className="nav-link">Features</a>
             <a href="#neva" className="nav-link">AI Companion</a>
             <a href="#download" className="nav-link">Download</a>
-            <a href="https://admin.nexaround.com" target="_blank" rel="noopener noreferrer" className="nav-link flex items-center gap-1">
-              Admin <ExternalLink size={14} className="inline" />
-            </a>
           </nav>
 
           <div className="nav-actions">
@@ -134,7 +127,25 @@ export default function App() {
               <Smartphone size={16} />
               <span>Get the App</span>
             </a>
+            <button 
+              className="mobile-menu-btn" 
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle Menu"
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
           </div>
+        </div>
+
+        {/* Mobile Navigation Dropdown */}
+        <div className={`mobile-nav-menu ${mobileMenuOpen ? 'active' : ''}`}>
+          <a href="#features" className="mobile-nav-link" onClick={() => setMobileMenuOpen(false)}>Features</a>
+          <a href="#neva" className="mobile-nav-link" onClick={() => setMobileMenuOpen(false)}>AI Companion</a>
+          <a href="#download" className="mobile-nav-link" onClick={() => setMobileMenuOpen(false)}>Download</a>
+          <a href="#download" className="btn btn-primary mobile-menu-cta" onClick={() => setMobileMenuOpen(false)}>
+            <Smartphone size={16} />
+            <span>Get the App</span>
+          </a>
         </div>
       </header>
 
@@ -148,10 +159,10 @@ export default function App() {
                 <span>Next-Gen Smart Tourism</span>
               </div>
               <h1 className="hero-title">
-                Explore the World with <span className="gradient-text-pink">Neva AI</span> & <span className="gradient-text-cyan">Live AR</span>
+                Explore the World with <span className="gradient-text-primary">Neva AI</span> & <span className="gradient-text-secondary">Live AR</span>
               </h1>
               <p className="hero-desc">
-                NexAround is an AI-powered smart tourism companion. Real-time AR landmark identification, personalized routing, offline geospatial caching, and your own witty, stylish travel partner Neva, helping you discover hidden gems effortlessly.
+                nexARound is an AI-powered smart tourism companion. Real-time AR landmark identification, personalized routing, offline geospatial caching, and your own witty, stylish travel partner Neva, helping you discover hidden gems effortlessly.
               </p>
               <div className="hero-actions">
                 <a href="#neva" className="btn btn-primary">
@@ -166,61 +177,63 @@ export default function App() {
 
             {/* Smart visual mobile mock */}
             <div className="hero-visual">
+              {/* AR Radar Background Animation */}
+              <div className="radar-scanner-container">
+                <div className="radar-circle circle-1"></div>
+                <div className="radar-circle circle-2"></div>
+                <div className="radar-circle circle-3"></div>
+                <div className="radar-sweep-line"></div>
+                
+                {/* Floating Coordinates */}
+                <div className="coordinate-tag pos-1">LAT: 35.6895° N</div>
+                <div className="coordinate-tag pos-2">LNG: 139.6917° E</div>
+                <div className="coordinate-tag pos-3">ALT: 34m</div>
+                <div className="coordinate-tag pos-4">SCANNING POS...</div>
+              </div>
+
               <div className="mockup-wrapper animate-float">
                 <div className="mockup-notch"></div>
                 <div className="mockup-screen">
-                  {/* Mock Phone App Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', marginTop: '16px', padding: '0 4px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <Compass size={18} color="#a855f7" />
-                      <span style={{ fontSize: '12px', fontWeight: '800', color: '#fff' }}>NexAround</span>
-                    </div>
-                    <span style={{ fontSize: '10px', color: '#10b981', background: 'rgba(16, 185, 129, 0.15)', padding: '2px 6px', borderRadius: '999px', fontWeight: '600' }}>GPS Active</span>
-                  </div>
-
-                  {/* Mock Map / AR Card Screen */}
-                  <div style={{ flex: 1, borderRadius: '16px', overflow: 'hidden', background: '#1e293b', border: '1px solid rgba(255, 255, 255, 0.05)', position: 'relative', display: 'flex', flexDirection: 'column', gap: '8px', padding: '8px' }}>
-                    {/* Simulated AR Camera Stream with floating tag */}
-                    <div style={{ height: '48%', background: 'linear-gradient(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.6)), url("https://images.unsplash.com/photo-1542051841857-5f90071e7989?w=300&auto=format&fit=crop&q=60") center/cover', borderRadius: '12px', display: 'flex', alignItems: 'flex-end', padding: '8px', position: 'relative' }}>
-                      <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '4px 8px', borderRadius: '6px', background: 'rgba(0,0,0,0.6)', fontSize: '9px', fontWeight: '700', color: '#06b6d4', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                        <span style={{ width: '4px', height: '4px', background: '#06b6d4', borderRadius: '50%' }}></span> AR MODE
-                      </div>
-                      
-                      {/* Interactive Tag */}
-                      <div style={{ background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', border: '1px solid #a855f7', borderRadius: '8px', padding: '6px 10px', width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: '0 4px 12px rgba(168, 85, 247, 0.3)' }}>
-                        <div>
-                          <div style={{ fontSize: '10px', fontWeight: '700', color: '#fff' }}>Senso-ji Temple</div>
-                          <div style={{ fontSize: '8px', color: '#a855f7' }}>Landmark • Asakusa</div>
-                        </div>
-                        <Check size={12} color="#a855f7" />
-                      </div>
-                    </div>
-
-                    {/* Discovery recommendation Card */}
-                    <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '12px', padding: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span style={{ fontSize: '10px', fontWeight: '700', color: '#f3f4f6' }}>Neva's Hotspots</span>
-                        <span style={{ fontSize: '9px', color: '#a855f7', fontWeight: '600' }}>98% Match</span>
-                      </div>
-                      <div style={{ fontSize: '9px', color: '#9ca3af', lineHeight: '1.4' }}>
-                        Based on your profile, I recommend visiting <strong>Shibuya Sky</strong> at 5:30 PM for sunset.
-                      </div>
-                      <div style={{ display: 'flex', gap: '4px', marginTop: '2px' }}>
-                        <span style={{ fontSize: '8px', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', color: '#d1d5db' }}>#sunset</span>
-                        <span style={{ fontSize: '8px', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', color: '#d1d5db' }}>#views</span>
+                  {/* Splash Screen View Only */}
+                  <div style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: '#ffffff',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '24px'
+                  }}>
+                    {/* Top left mini arrow/compass dot from screenshot */}
+                    <div style={{ position: 'absolute', top: '16px', left: '16px', display: 'flex', alignItems: 'center' }}>
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '50%',
+                        background: '#007a7c',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#ffffff'
+                      }}>
+                        <Navigation size={8} style={{ transform: 'rotate(45deg)' }} />
                       </div>
                     </div>
-
-                    {/* Navigation Mini Map Panel */}
-                    <div style={{ background: 'rgba(6, 182, 212, 0.05)', border: '1px solid rgba(6, 182, 212, 0.1)', borderRadius: '12px', padding: '8px', display: 'flex', alignItems: 'center', gap: '8px', marginTop: 'auto' }}>
-                      <div style={{ width: '28px', height: '28px', background: 'var(--gradient-secondary)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifySelf: 'center', justifyContent: 'center' }}>
-                        <Navigation size={14} color="#fff" />
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '9px', fontWeight: '700', color: '#fff' }}>Route Optimization</div>
-                        <div style={{ fontSize: '8px', color: '#9ca3af' }}>3 mins walk to next location</div>
-                      </div>
-                    </div>
+                    
+                    {/* Splash Logo Image */}
+                    <img 
+                      src="/app_logo.png" 
+                      alt="nexARound Logo" 
+                      style={{ 
+                        width: '75%', 
+                        height: 'auto',
+                        marginBottom: '20px'
+                      }} 
+                    />
                   </div>
                 </div>
               </div>
@@ -235,13 +248,13 @@ export default function App() {
           <div className="section-header">
             <h2 className="section-title">Revolutionizing the Travel Experience</h2>
             <p className="section-desc">
-              NexAround bundles cutting edge spatial algorithms and Generative AI inside a beautiful, lightweight mobile app.
+              nexARound bundles cutting edge spatial algorithms and Generative AI inside a beautiful, lightweight mobile app.
             </p>
           </div>
 
           <div className="features-grid">
             <div className="glass-card">
-              <div className="feature-icon-wrapper bg-purple-gradient">
+              <div className="feature-icon-wrapper bg-primary-gradient">
                 <Bot size={24} color="#fff" />
               </div>
               <h3 className="feature-title">Neva AI Companion</h3>
@@ -251,7 +264,7 @@ export default function App() {
             </div>
 
             <div className="glass-card">
-              <div className="feature-icon-wrapper bg-cyan-gradient">
+              <div className="feature-icon-wrapper bg-secondary-gradient">
                 <Map size={24} color="#fff" />
               </div>
               <h3 className="feature-title">Live AR Identification</h3>
@@ -261,7 +274,7 @@ export default function App() {
             </div>
 
             <div className="glass-card">
-              <div className="feature-icon-wrapper bg-amber-gradient">
+              <div className="feature-icon-wrapper bg-accent-gradient">
                 <Zap size={24} color="#fff" />
               </div>
               <h3 className="feature-title">Geospatial Caching</h3>
@@ -271,7 +284,7 @@ export default function App() {
             </div>
 
             <div className="glass-card">
-              <div className="feature-icon-wrapper bg-cyan-gradient">
+              <div className="feature-icon-wrapper bg-secondary-gradient">
                 <Navigation size={24} color="#fff" />
               </div>
               <h3 className="feature-title">Living Maps & Routing</h3>
@@ -281,22 +294,12 @@ export default function App() {
             </div>
 
             <div className="glass-card">
-              <div className="feature-icon-wrapper bg-purple-gradient">
+              <div className="feature-icon-wrapper bg-primary-gradient">
                 <Globe size={24} color="#fff" />
               </div>
               <h3 className="feature-title">Quick Integrations</h3>
               <p className="feature-desc">
                 Direct actions from landmark cards: navigate via internal maps, check room availability on Booking.com, or summon an Uber with a single click.
-              </p>
-            </div>
-
-            <div className="glass-card">
-              <div className="feature-icon-wrapper bg-amber-gradient">
-                <Shield size={24} color="#fff" />
-              </div>
-              <h3 className="feature-title">Admin Dashboard</h3>
-              <p className="feature-desc">
-                Manage accounts, pending location approvals, payments, security keys, and engagement reports with our robust React + Vite administration system.
               </p>
             </div>
           </div>
@@ -318,8 +321,8 @@ export default function App() {
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(6,182,212,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px' }}>
-                    <Check size={14} color="#06b6d4" />
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(0, 122, 124, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px' }}>
+                    <Check size={14} color="#007a7c" />
                   </div>
                   <div>
                     <h4 style={{ fontSize: '16px', fontWeight: '600' }}>Context-Aware Suggestions</h4>
@@ -327,8 +330,8 @@ export default function App() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(168,85,247,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px' }}>
-                    <Check size={14} color="#a855f7" />
+                  <div style={{ width: '24px', height: '24px', borderRadius: '50%', background: 'rgba(0, 122, 124, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: '3px' }}>
+                    <Check size={14} color="#007a7c" />
                   </div>
                   <div>
                     <h4 style={{ fontSize: '16px', fontWeight: '600' }}>Interactive Formatted Output</h4>
@@ -341,7 +344,9 @@ export default function App() {
             {/* Chat Sim Box */}
             <div className="chat-simulator">
               <div className="chat-header">
-                <div className="avatar">N</div>
+                <div className="avatar" style={{ overflow: 'hidden' }}>
+                  <img src="/neva_avatar.png" alt="Neva Avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
                 <div className="avatar-status">
                   <span className="avatar-name">Neva AI</span>
                   <span className="status-online">
@@ -401,28 +406,21 @@ export default function App() {
           <div className="cta-box">
             <h2 className="cta-title">Start Your Companion Journey</h2>
             <p className="cta-desc">
-              Download NexAround for your mobile device today, or access the admin panel to manage points of interest.
+              Download nexARound for your mobile device today to start exploring the world.
             </p>
             <div className="download-buttons">
               <a href="#" className="download-btn">
-                <Smartphone size={24} color="#a855f7" />
+                <img src="/app_store.png" alt="App Store" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
                 <div>
-                  <span className="download-btn-sub">Download for</span>
+                  <span className="download-btn-sub">DOWNLOAD FOR</span>
                   <span className="download-btn-main">iOS App Store</span>
                 </div>
               </a>
               <a href="#" className="download-btn">
-                <Smartphone size={24} color="#06b6d4" />
+                <img src="/play_store.png" alt="Google Play" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
                 <div>
-                  <span className="download-btn-sub">Download for</span>
+                  <span className="download-btn-sub">DOWNLOAD FOR</span>
                   <span className="download-btn-main">Google Play Store</span>
-                </div>
-              </a>
-              <a href="https://admin.nexaround.com" target="_blank" rel="noopener noreferrer" className="download-btn" style={{ borderColor: 'rgba(168, 85, 247, 0.3)' }}>
-                <Server size={24} color="#ec4899" />
-                <div>
-                  <span className="download-btn-sub">Control Center</span>
-                  <span className="download-btn-main">Admin Dashboard</span>
                 </div>
               </a>
             </div>
@@ -434,10 +432,10 @@ export default function App() {
       <footer className="footer">
         <div className="container footer-container">
           <div className="footer-brand">
-            <Compass size={20} color="#ec4899" />
-            <span>NexAround</span>
+            <img src="/app_icon.png" alt="nexARound Icon" style={{ width: '24px', height: '24px', borderRadius: '6px' }} />
+            <span>nex<span className="text-teal">AR</span>ound</span>
           </div>
-          <p>© {new Date().getFullYear()} NexAround Smart Tourism. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} nexARound Smart Tourism. All rights reserved.</p>
           <div className="footer-links">
             <a href="#features" className="footer-link">Features</a>
             <a href="#neva" className="footer-link">AI Companion</a>
