@@ -151,32 +151,29 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         'Medical',
       ];
 
-      // Expanded radii up to 50km to support both dense urban areas (finds places at 100m/500m) 
-      // and rural areas (finds places up to 10km/50km).
-      final searchRadii = [100, 500, 2000, 10000, 50000];
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
-        for (final radius in searchRadii) {
-          final results = await Future.wait(categoriesToFetch.map((cat) {
-            return _repository.getNearbyAttractions(
-              latitude: event.latitude,
-              longitude: event.longitude,
-              radius: radius.toDouble(),
-              categoryName: cat,
-              useLegacy: event.useLegacy,
-            ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r));
-          }));
+        final results = await Future.wait(categoriesToFetch.map((cat) {
+          // Attractions, Experiences, and general searches (null) query up to 50km (50000m).
+          // Medical queries up to 10km (10000m).
+          // All other utility categories (Food, Shopping, Hotels) query up to 5km (5000m).
+          final double radius = (cat == null || cat == 'Attractions' || cat == 'Experiences')
+              ? 50000.0
+              : (cat == 'Medical' ? 10000.0 : 5000.0);
 
-          final fetched = results.expand((x) => x).toList();
-          for (final a in fetched) {
-            uniqueAttractions[a.name] = a;
-          }
+          return _repository.getNearbyAttractions(
+            latitude: event.latitude,
+            longitude: event.longitude,
+            radius: radius,
+            categoryName: cat,
+            useLegacy: event.useLegacy,
+          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r));
+        }));
 
-          // Stop querying larger radii if we already have a robust list of close places to save API costs
-          if (uniqueAttractions.length >= 25) {
-            break;
-          }
+        final fetched = results.expand((x) => x).toList();
+        for (final a in fetched) {
+          uniqueAttractions[a.name] = a;
         }
 
         final finalAttractions = uniqueAttractions.values.toList();

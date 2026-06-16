@@ -176,6 +176,8 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
   bool _isCapturing = false;
+  bool _showMaxPlacesLimitNotice = false;
+  Timer? _maxPlacesLimitNoticeTimer;
 
   // ═══════════════════════════════════════
   // AR FILTER (category-based)
@@ -827,6 +829,21 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     }
   }
 
+  void _triggerLimitNotice() {
+    if (_selectedFilter != 'All') return;
+    _maxPlacesLimitNoticeTimer?.cancel();
+    setState(() {
+      _showMaxPlacesLimitNotice = true;
+    });
+    _maxPlacesLimitNoticeTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showMaxPlacesLimitNotice = false;
+        });
+      }
+    });
+  }
+
   // Live places are fetched once, lazily, the first time AR becomes visible.
   bool _placesFetched = false;
 
@@ -843,6 +860,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       _placesFetched = true;
       _fetchLivePlaces();
     }
+    _triggerLimitNotice();
   }
 
   /// Called when the AR tab is hidden: freeze the camera preview and clear the
@@ -869,6 +887,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     _compassSubscription?.cancel();
     _positionSubscription?.cancel();
     _rangeHintTimer?.cancel();
+    _maxPlacesLimitNoticeTimer?.cancel();
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
@@ -1429,10 +1448,23 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isFetchingPlaces = true;
+      });
+    }
+
     // ─── CACHE-FIRST: check caches BEFORE entering loading state ───
     // This ensures the UI never shows "Loading..." when cached data exists.
     final pos = await PermissionService.getSafePosition();
-    if (pos == null) return;
+    if (pos == null) {
+      if (mounted) {
+        setState(() {
+          _isFetchingPlaces = false;
+        });
+      }
+      return;
+    }
 
     _eagerPreFetchNextRanges(pos.latitude, pos.longitude);
 
@@ -1474,6 +1506,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           _landmarks = cachedForRange;
           _placesFetchError = false;
           _hasCompletedInitialFetch = true;
+          _isFetchingPlaces = false;
         });
       }
       return;
@@ -1491,6 +1524,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
         debugPrint('🚀 AR: Range $_rangeKm km served instantly from persistent cache (${displayable.length} displayable places).');
         // Cache into session so subsequent switches to this range are instant too
         _sessionRangeLandmarks[_rangeKm] = List.of(_landmarks);
+        if (mounted) {
+          setState(() {
+            _isFetchingPlaces = false;
+          });
+        }
         return; // Serve cached data instantly — no network fetch needed
       } else {
         debugPrint('📦 AR: Persistent cache has ${_landmarks.length} places but none in the ${_rangeKm}km annulus. Proceeding to network fetch.');
@@ -1501,6 +1539,11 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final now = DateTime.now();
     if (_lastFetchTime != null && now.difference(_lastFetchTime!) < const Duration(seconds: 15)) {
       debugPrint('🔍 AR: Fetch throttled (cooldown active). Cache already served.');
+      if (mounted) {
+        setState(() {
+          _isFetchingPlaces = false;
+        });
+      }
       return;
     }
 
@@ -1510,7 +1553,6 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     final bool hasCachedContent = _landmarks.isNotEmpty || _hasCompletedInitialFetch;
     if (mounted) {
       setState(() {
-        _isFetchingPlaces = true;
         if (!hasCachedContent) {
           _hasCompletedInitialFetch = false;
         }
@@ -1562,9 +1604,9 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             mappedCat = null;
         }
         if (mappedCat == 'Nature') {
-          categoriesToFetch = [null, 'Nature', 'Beach'];
+          categoriesToFetch = ['Nature', 'Beach'];
         } else if (mappedCat != null) {
-          categoriesToFetch = [null, mappedCat];
+          categoriesToFetch = [mappedCat];
         } else {
           categoriesToFetch = [null];
         }
@@ -3102,14 +3144,22 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildRangeSlider(),
 
-          // Notice banner when range > 2km - shown in all modes except mapping/navigating/neva/detail
-          if (!_minimalHud && !_isMapping && !_isNavigating && _nevaSearchResult == null && !_showInfoCard && _rangeKm > 2)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 106,
-              left: 20,
-              right: 20,
-              child: Center(child: _buildApiLimitNotice()),
-            ),
+          // Notice banner when range > 2km (or 100-place cap for All category shown temporarily)
+          if (!_minimalHud && !_isMapping && !_isNavigating && _nevaSearchResult == null && !_showInfoCard)
+            if (_selectedFilter == 'All' && _showMaxPlacesLimitNotice)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 106,
+                left: 20,
+                right: 20,
+                child: Center(child: _buildMaxPlacesLimitNotice()),
+              )
+            else if (_rangeKm > 2)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 106,
+                left: 20,
+                right: 20,
+                child: Center(child: _buildApiLimitNotice()),
+              ),
 
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null && !_isFetchingPlaces)
@@ -3215,6 +3265,41 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   }
 
   // ═══════════════════════════════════════
+  Widget _buildMaxPlacesLimitNotice() {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(16),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.65),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.amber.withOpacity(0.3), width: 1.2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.info_outline_rounded, color: Colors.amber, size: 14),
+              const SizedBox(width: 8),
+              const Flexible(
+                child: Text(
+                  'Capped at 100 of the best nearby locations for a smooth viewing experience.',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade(duration: 300.ms).slideY(begin: -0.1, end: 0);
+  }
+
+  // ═══════════════════════════════════════
   Widget _buildApiLimitNotice() {
     if (_rangeKm <= 2) return const SizedBox.shrink();
     return ClipRRect(
@@ -3294,6 +3379,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
                   } else {
                     _loadFamousFarForSelection();
                   }
+                  _triggerLimitNotice();
                 },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),

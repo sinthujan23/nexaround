@@ -17,32 +17,35 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # for each application category, resolving the issue of sparse results.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Attractions": [
-        "tourist_attraction", "museum", "art_gallery", "historical_landmark",
+        "tourist_attraction", "museum", "art_gallery",
         "place_of_worship", "church", "hindu_temple", "mosque", "synagogue",
-        "buddhist_temple", "amusement_park", "aquarium", "cultural_center"
+        "buddhist_temple", "amusement_park", "aquarium"
     ],
     "Food & Drink": [
-        "restaurant", "cafe", "coffee_shop", "bar", "bakery", "fast_food_restaurant",
-        "ice_cream_shop", "food_court", "pub", "wine_bar", "meal_takeaway", "meal_delivery"
+        "restaurant", "cafe", "bar", "bakery", "fast_food_restaurant",
+        "ice_cream_shop", "food_court", "pub", "meal_takeaway", "meal_delivery"
     ],
     "Hotels": [
-        "lodging", "hotel", "motel", "resort_hotel", "guest_house", "hostel",
-        "bed_and_breakfast"
+        "lodging", "hotel", "motel"
     ],
     "Shopping": [
         "shopping_mall", "department_store", "clothing_store", "supermarket",
-        "grocery_store", "convenience_store", "gift_shop", "book_store",
-        "electronics_store", "jewelry_store", "shoe_store", "store"
+        "convenience_store", "book_store", "store"
     ],
     "Experiences": [
         "amusement_park", "aquarium", "zoo", "museum", "art_gallery"
     ],
     "Transport": [
-        "transit_station", "bus_station", "train_station", "subway_station",
-        "light_rail_station", "airport", "taxi_stand"
+        "transit_station"
     ],
     "Medical": [
-        "hospital", "pharmacy", "medical_clinic", "dentist"
+        "hospital", "pharmacy", "dentist"
+    ],
+    "Nature": [
+        "park", "campground", "national_park", "zoo", "tourist_attraction"
+    ],
+    "Beach": [
+        "park", "tourist_attraction"
     ],
 }
 

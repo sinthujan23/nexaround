@@ -2415,6 +2415,24 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       }
     }
 
+    // Balance Attractions category to ensure at least one place is 25km or further away
+    final attractionsCategoryList = grouped['Attractions'] ?? [];
+    if (attractionsCategoryList.isNotEmpty) {
+      final farPlaces = attractionsCategoryList.where((p) => (p.distanceM ?? 0) >= 25000).toList();
+      final closePlaces = attractionsCategoryList.where((p) => (p.distanceM ?? 0) < 25000).toList();
+      
+      if (farPlaces.isNotEmpty) {
+        closePlaces.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+        farPlaces.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+        
+        final List<AttractionEntity> balancedList = [];
+        balancedList.addAll(closePlaces.take(4));
+        balancedList.add(farPlaces.first);
+        
+        grouped['Attractions'] = balancedList;
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
