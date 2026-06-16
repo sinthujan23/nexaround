@@ -65,82 +65,82 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   void initState() {
     super.initState();
     _fetchPlacesDetails();
-    _fetchGeminiInfo();
   }
 
   Future<void> _fetchPlacesDetails() async {
+    List<String> types = [];
+    String? summaryText;
     try {
       // Use place_id if it looks like a real Google place ID, else find by name+location
       String? resolvedId = widget.id;
       if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null) {
         resolvedId = await _findPlaceId();
       }
-      if (resolvedId == null) {
-        if (mounted) setState(() => _isLoadingPlaces = false);
-        return;
-      }
+      if (resolvedId != null) {
+        final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary,types';
+        final response = await ApiClient.instance.get(
+          '${ApiConstants.googleMapsProxy}/place/details/json',
+          queryParameters: {
+            'place_id': resolvedId,
+            'fields': fields,
+          },
+        );
+        if (response.statusCode == 200) {
+          final data = response.data['result'] as Map<String, dynamic>?;
+          if (data != null) {
+            // Opening hours
+            final hours = data['opening_hours'] as Map<String, dynamic>?;
+            final openNow = hours?['open_now'] as bool?;
+            final weekday = (hours?['weekday_text'] as List?)?.cast<String>() ?? [];
+            String? closingTime;
+            if (openNow == true && weekday.isNotEmpty) {
+              final today = weekday[DateTime.now().weekday - 1];
+              final match = RegExp(r'–\s*(.+)$').firstMatch(today);
+              closingTime = match?.group(1)?.trim();
+            }
 
-      final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary';
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/details/json',
-        queryParameters: {
-          'place_id': resolvedId,
-          'fields': fields,
-        },
-      );
-      if (response.statusCode != 200) {
-        if (mounted) setState(() => _isLoadingPlaces = false);
-        return;
-      }
-      final data = response.data['result'] as Map<String, dynamic>?;
-      if (data == null) {
-        if (mounted) setState(() => _isLoadingPlaces = false);
-        return;
-      }
+            // Price level → human readable
+            final priceInt = data['price_level'] as int?;
+            final priceText = priceInt == null ? null
+                : priceInt == 0 ? 'Free'
+                : priceInt == 1 ? 'Inexpensive'
+                : priceInt == 2 ? 'Moderate'
+                : priceInt == 3 ? 'Expensive'
+                : 'Very Expensive';
 
-      // Opening hours
-      final hours = data['opening_hours'] as Map<String, dynamic>?;
-      final openNow = hours?['open_now'] as bool?;
-      final weekday = (hours?['weekday_text'] as List?)?.cast<String>() ?? [];
-      String? closingTime;
-      if (openNow == true && weekday.isNotEmpty) {
-        final today = weekday[DateTime.now().weekday - 1];
-        final match = RegExp(r'–\s*(.+)$').firstMatch(today);
-        closingTime = match?.group(1)?.trim();
-      }
+            // Reviews
+            final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
+            final reviews = rawReviews.take(3).map((r) => {
+              'author': r['author_name'] ?? 'Anonymous',
+              'rating': (r['rating'] as num?)?.toDouble() ?? 0.0,
+              'text': r['text'] ?? '',
+              'time': r['relative_time_description'] ?? '',
+            }).toList();
 
-      // Price level → human readable
-      final priceInt = data['price_level'] as int?;
-      final priceText = priceInt == null ? null
-          : priceInt == 0 ? 'Free'
-          : priceInt == 1 ? 'Inexpensive'
-          : priceInt == 2 ? 'Moderate'
-          : priceInt == 3 ? 'Expensive'
-          : 'Very Expensive';
+            types = (data['types'] as List?)?.cast<String>() ?? [];
+            final summaryMap = data['editorial_summary'] as Map<String, dynamic>?;
+            summaryText = summaryMap?['overview'] as String?;
 
-      // Reviews
-      final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
-      final reviews = rawReviews.take(3).map((r) => {
-        'author': r['author_name'] ?? 'Anonymous',
-        'rating': (r['rating'] as num?)?.toDouble() ?? 0.0,
-        'text': r['text'] ?? '',
-        'time': r['relative_time_description'] ?? '',
-      }).toList();
-
-      if (mounted) {
-        setState(() {
-          _openNowText = openNow == null ? null : (openNow ? 'Open' : 'Closed');
-          _closingTime = closingTime;
-          _totalReviews = data['user_ratings_total'] as int?;
-          _priceLevel = priceText;
-          _realReviews = List<Map<String, dynamic>>.from(reviews);
-          _weekdayHours = weekday;
-          _isLoadingPlaces = false;
-        });
+            if (mounted) {
+              setState(() {
+                _openNowText = openNow == null ? null : (openNow ? 'Open' : 'Closed');
+                _closingTime = closingTime;
+                _totalReviews = data['user_ratings_total'] as int?;
+                _priceLevel = priceText;
+                _realReviews = List<Map<String, dynamic>>.from(reviews);
+                _weekdayHours = weekday;
+              });
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint('Places detail error: $e');
-      if (mounted) setState(() => _isLoadingPlaces = false);
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingPlaces = false);
+      }
+      _fetchGeminiInfo(types: types, summary: summaryText);
     }
   }
 
@@ -165,14 +165,25 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     }
   }
 
-  Future<void> _fetchGeminiInfo() async {
+  Future<void> _fetchGeminiInfo({List<String> types = const [], String? summary}) async {
     try {
       final locationHint = (widget.latitude != null && widget.longitude != null)
           ? ' at coordinates (${widget.latitude}, ${widget.longitude})'
           : '';
+
+      String contextHint = '';
+      if (types.isNotEmpty) {
+        contextHint += 'Google Maps Place Types: ${types.join(', ')}. ';
+      }
+      if (summary != null && summary.isNotEmpty) {
+        contextHint += 'Google Maps Editorial Summary: "$summary". ';
+      }
+
       final prompt =
-          'For the place named "${widget.name}" (category: ${widget.category})$locationHint, '
-          'give me ONLY a JSON object (no markdown) with these fields: '
+          'For the place named "${widget.name}" (category: ${widget.category})$locationHint. '
+          '${contextHint.isNotEmpty ? 'Additional context about this place from Google Maps: $contextHint' : ''}'
+          'Please note: if the name, types, or summary suggest this is a private residential area, housing complex, housing society, apartment complex, or gated community (and not a public attraction/monument/park/museum), you must clearly describe it as such in the "history" field (e.g. "Arackal is a residential housing complex...") and state that it is a residential area with no public historical or tourist attractions inside. '
+          'Give me ONLY a JSON object (no markdown) with these fields: '
           '{"history":"2-3 sentence history or description","cultural_tips":"bullet-point tips for visitors (use \\n• for each)","avg_visit":"estimated visit duration e.g. 1-2 hrs","crowd":"Low/Medium/High crowd level"}';
 
       final raw = await GeminiService().getResponse(prompt);

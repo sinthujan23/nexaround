@@ -175,7 +175,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
 
   Widget _buildLogo() {
     return Container(
-      width: 280,
+      width: 220,
       // Let the logo determine its own height via aspect ratio.
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(24),
@@ -189,7 +189,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen>
       ),
       child: Image.asset(
         'assets/images/app_logo.png',
-        width: 280,
+        width: 220,
         fit: BoxFit.contain,
       ),
     )

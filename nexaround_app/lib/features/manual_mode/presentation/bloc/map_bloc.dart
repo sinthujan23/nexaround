@@ -76,21 +76,41 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       final cached = CacheService.getCachedAttractions();
       if (cached.isEmpty) return [];
       
-      // Filter out attractions that are more than 50km away from current coordinates
-      // (consistent with our maximum search radius of 50000m)
-      return cached
-          .map((json) => AttractionModel.fromJson(json))
-          .where((a) {
-            if (a.latitude == null || a.longitude == null) return false;
-            final double distanceM = geo.Geolocator.distanceBetween(
-              lat,
-              lng,
-              a.latitude!,
-              a.longitude!,
-            );
-            return distanceM <= 50000;
-          })
-          .toList();
+      final List<AttractionModel> result = [];
+      for (final json in cached) {
+        final model = AttractionModel.fromJson(json);
+        final double distM = geo.Geolocator.distanceBetween(
+          lat,
+          lng,
+          model.latitude,
+          model.longitude,
+        );
+        if (distM <= 50000) {
+          result.add(AttractionModel(
+            id: model.id,
+            name: model.name,
+            description: model.description,
+            history: model.history,
+            latitude: model.latitude,
+            longitude: model.longitude,
+            categoryId: model.categoryId,
+            categoryName: model.categoryName,
+            address: model.address,
+            openingHours: model.openingHours,
+            entryFee: model.entryFee,
+            currency: model.currency,
+            rating: model.rating,
+            reviewCount: model.reviewCount,
+            photoUrls: model.photoUrls,
+            tags: model.tags,
+            geofenceRadiusM: model.geofenceRadiusM,
+            distanceM: distM,
+            isActive: model.isActive,
+            createdAt: model.createdAt,
+          ));
+        }
+      }
+      return result;
     } catch (_) {
       return [];
     }
@@ -154,13 +174,47 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
-        final results = await Future.wait(categoriesToFetch.map((cat) {
-          // Attractions, Experiences, and general searches (null) query up to 50km (50000m).
-          // Medical queries up to 10km (10000m).
-          // All other utility categories (Food, Shopping, Hotels) query up to 5km (5000m).
-          final double radius = (cat == null || cat == 'Attractions' || cat == 'Experiences')
+        // Compute two opposite offset coordinates to fetch places that are 25km+ away
+        final offset1Lat = event.latitude + 0.27;
+        final offset1Lng = event.longitude + 0.27;
+        final offset2Lat = event.latitude - 0.27;
+        final offset2Lng = event.longitude - 0.27;
+
+        final offsetFutures = [
+          _repository.getNearbyAttractions(
+            latitude: offset1Lat,
+            longitude: offset1Lng,
+            radius: 10000.0,
+            categoryName: 'Attractions',
+            useLegacy: event.useLegacy,
+          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+          _repository.getNearbyAttractions(
+            latitude: offset1Lat,
+            longitude: offset1Lng,
+            radius: 10000.0,
+            categoryName: 'Medical',
+            useLegacy: event.useLegacy,
+          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+          _repository.getNearbyAttractions(
+            latitude: offset2Lat,
+            longitude: offset2Lng,
+            radius: 10000.0,
+            categoryName: 'Attractions',
+            useLegacy: event.useLegacy,
+          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+          _repository.getNearbyAttractions(
+            latitude: offset2Lat,
+            longitude: offset2Lng,
+            radius: 10000.0,
+            categoryName: 'Medical',
+            useLegacy: event.useLegacy,
+          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+        ];
+
+        final mainFutures = categoriesToFetch.map((cat) {
+          final double radius = (cat == null || cat == 'Attractions' || cat == 'Experiences' || cat == 'Medical')
               ? 50000.0
-              : (cat == 'Medical' ? 10000.0 : 5000.0);
+              : 5000.0;
 
           return _repository.getNearbyAttractions(
             latitude: event.latitude,
@@ -169,16 +223,52 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             categoryName: cat,
             useLegacy: event.useLegacy,
           ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r));
-        }));
+        });
+
+        final results = await Future.wait([
+          ...mainFutures,
+          ...offsetFutures,
+        ]);
 
         final fetched = results.expand((x) => x).toList();
         for (final a in fetched) {
           uniqueAttractions[a.name] = a;
         }
 
-        final finalAttractions = uniqueAttractions.values.toList();
+        // Recompute user-centric distances relative to original lat/lng coordinates
+        final List<AttractionEntity> attractionsList = [];
+        for (final a in uniqueAttractions.values) {
+          final double distM = geo.Geolocator.distanceBetween(
+            event.latitude,
+            event.longitude,
+            a.latitude,
+            a.longitude,
+          );
+          attractionsList.add(AttractionModel(
+            id: a.id,
+            name: a.name,
+            description: a.description,
+            history: a.history,
+            latitude: a.latitude,
+            longitude: a.longitude,
+            categoryId: a.categoryId,
+            categoryName: a.categoryName,
+            address: a.address,
+            openingHours: a.openingHours,
+            entryFee: a.entryFee,
+            currency: a.currency,
+            rating: a.rating,
+            reviewCount: a.reviewCount,
+            photoUrls: a.photoUrls,
+            tags: a.tags,
+            geofenceRadiusM: a.geofenceRadiusM,
+            distanceM: distM,
+            isActive: a.isActive,
+            createdAt: a.createdAt,
+          ));
+        }
 
-        if (finalAttractions.isEmpty) {
+        if (attractionsList.isEmpty) {
           // If network results are completely empty (offline/no network), load cache
           final cachedModels = _getFilteredCache(event.latitude, event.longitude);
           if (cachedModels.isNotEmpty) {
@@ -192,7 +282,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           }
         }
 
-        final attractionsList = finalAttractions.toList();
         attractionsList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
         // Save successfully loaded network attractions to local persistent cache

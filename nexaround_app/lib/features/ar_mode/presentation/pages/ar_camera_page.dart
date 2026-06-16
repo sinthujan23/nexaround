@@ -201,9 +201,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     {'id': 'Others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
   ];
 
-  /// Every category exposes the km range selector (except All and Others).
   bool _categoryHasRange(String filter) {
-    if (filter == 'All' || filter == 'Others') return false;
     return true;
   }
 
