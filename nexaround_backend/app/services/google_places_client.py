@@ -369,7 +369,7 @@ def _resolve_category_from_types(types: list[str]) -> str:
         return "Attractions"
     if t & {"shopping_mall", "store", "department_store", "clothing_store", "supermarket", "grocery_store", "convenience_store", "gift_shop", "book_store", "electronics_store", "jewelry_store", "shoe_store"}:
         return "Shopping"
-    return "Attractions"
+    return "Others"
 
 
 async def nearby_search_legacy(

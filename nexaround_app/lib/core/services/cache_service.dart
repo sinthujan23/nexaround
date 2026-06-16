@@ -365,6 +365,11 @@ class CacheService {
     return _prefs.getDouble('last_fetch_lng');
   }
 
+  static Future<void> clearLastFetchCoords() async {
+    await _prefs.remove('last_fetch_lat');
+    await _prefs.remove('last_fetch_lng');
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

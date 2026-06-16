@@ -75,6 +75,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   @override
   void initState() {
     super.initState();
+    CacheService.cacheAttractions([]);
+    CacheService.clearLastFetchCoords();
     WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
@@ -2344,14 +2346,16 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: () {
-                      // Make sure we have exactly 5 items to show per box to align heights
-                      final List<AttractionEntity> displayList = [];
-                      if (places.isNotEmpty) {
-                        while (displayList.length < 5) {
-                          displayList.addAll(places);
+                      // Show unique available items up to 5, without duplicating them
+                      final Set<String> seenIds = {};
+                      final List<AttractionEntity> uniquePlaces = [];
+                      for (final p in places) {
+                        if (!seenIds.contains(p.id)) {
+                          seenIds.add(p.id);
+                          uniquePlaces.add(p);
                         }
                       }
-                      final finalPlaces = displayList.take(5).toList();
+                      final finalPlaces = uniquePlaces.take(5).toList();
 
                       return finalPlaces.asMap().entries.map((entry) {
                         final place = entry.value;
@@ -2485,9 +2489,32 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         category = 'Food';
       } else if (catLower.contains('shop') || catLower.contains('mall') || catLower.contains('market') || catLower.contains('store')) {
         category = 'Shopping';
-      } else if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor') || catLower.contains('pharmacy')) {
+      } else if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor')) {
+        // Exclude pharmacies, drugstores, and dentists from Medical card on homepage
+        if (catLower.contains('pharmacy') || catLower.contains('drugstore') || catLower.contains('dentist') ||
+            place.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'))) {
+          continue;
+        }
         category = 'Medical';
       } else {
+        // Only classify as Attractions if it's a real tourist/nature/heritage spot
+        final isRealAttraction = catLower.contains('attraction') || catLower.contains('nature') || catLower.contains('park') || 
+                                 catLower.contains('landmark') || catLower.contains('museum') || catLower.contains('viewpoint') || 
+                                 catLower.contains('lookout') || catLower.contains('temple') || catLower.contains('mosque') || 
+                                 catLower.contains('church') || catLower.contains('beach') || catLower.contains('lake') || 
+                                 catLower.contains('lagoon') || catLower.contains('waterfall') || catLower.contains('island') || 
+                                 catLower.contains('monument') || catLower.contains('fort') || catLower.contains('ruins') || 
+                                 catLower.contains('garden') || catLower.contains('zoo') || catLower.contains('aquarium') ||
+                                 place.tags.any((t) => t.contains('tourist_attraction') || t.contains('museum') || t.contains('art_gallery') ||
+                                                       t.contains('place_of_worship') || t.contains('church') || t.contains('hindu_temple') ||
+                                                       t.contains('mosque') || t.contains('synagogue') || t.contains('buddhist_temple') ||
+                                                       t.contains('amusement_park') || t.contains('aquarium') || t.contains('scenic_lookout') ||
+                                                       t.contains('national_park') || t.contains('park') || t.contains('campground') ||
+                                                       t.contains('zoo') || t.contains('natural_feature') || t.contains('beach') ||
+                                                       t.contains('hiking_area') || t.contains('garden'));
+        if (!isRealAttraction) {
+          continue; // Skip schools, banks, offices, auto shops, etc.
+        }
         category = 'Attractions';
       }
       grouped.putIfAbsent(category, () => []).add(place);
@@ -2510,10 +2537,20 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         if ((p.distanceM ?? 0) < 25000 && !closeAttractions.any((x) => x.id == p.id)) {
           // Ensure it belongs to Attractions category
           final catL = (p.categoryName ?? '').toLowerCase();
-          final isAttraction = !catL.contains('food') && !catL.contains('drink') && !catL.contains('restaurant') && !catL.contains('cafe') &&
-                               !catL.contains('shop') && !catL.contains('mall') && !catL.contains('market') && !catL.contains('store') &&
-                               !catL.contains('medical') && !catL.contains('hospital') && !catL.contains('clinic') && !catL.contains('doctor') && !catL.contains('pharmacy') &&
-                               !catL.contains('hotel') && !catL.contains('lodging');
+          final isAttraction = catL.contains('attraction') || catL.contains('nature') || catL.contains('park') || 
+                               catL.contains('landmark') || catL.contains('museum') || catL.contains('viewpoint') || 
+                               catL.contains('lookout') || catL.contains('temple') || catL.contains('mosque') || 
+                               catL.contains('church') || catL.contains('beach') || catL.contains('lake') || 
+                               catL.contains('lagoon') || catL.contains('waterfall') || catL.contains('island') || 
+                               catL.contains('monument') || catL.contains('fort') || catL.contains('ruins') || 
+                               catL.contains('garden') || catL.contains('zoo') || catL.contains('aquarium') ||
+                               p.tags.any((t) => t.contains('tourist_attraction') || t.contains('museum') || t.contains('art_gallery') ||
+                                                     t.contains('place_of_worship') || t.contains('church') || t.contains('hindu_temple') ||
+                                                     t.contains('mosque') || t.contains('synagogue') || t.contains('buddhist_temple') ||
+                                                     t.contains('amusement_park') || t.contains('aquarium') || t.contains('scenic_lookout') ||
+                                                     t.contains('national_park') || t.contains('park') || t.contains('campground') ||
+                                                     t.contains('zoo') || t.contains('natural_feature') || t.contains('beach') ||
+                                                     t.contains('hiking_area') || t.contains('garden'));
           if (isAttraction) {
             closeAttractions.add(p);
             if (closeAttractions.length >= 4) break;
@@ -2595,7 +2632,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     
     final List<AttractionEntity> balancedAttractions = [];
     balancedAttractions.addAll(closeAttractions.take(4));
-    balancedAttractions.add(farAttractions.first);
+    for (final far in farAttractions) {
+      if (balancedAttractions.length >= 5) break;
+      if (!balancedAttractions.any((x) => x.id == far.id)) {
+        balancedAttractions.add(far);
+      }
+    }
     grouped['Attractions'] = balancedAttractions;
 
     // Balance Medical category to ensure at least one place is 25km or further away
@@ -2607,7 +2649,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeMedical.any((x) => x.id == p.id)) {
           final catL = (p.categoryName ?? '').toLowerCase();
-          final isMedical = catL.contains('medical') || catL.contains('hospital') || catL.contains('clinic') || catL.contains('doctor') || catL.contains('pharmacy');
+          final isMedical = (catL.contains('medical') || catL.contains('hospital') || catL.contains('clinic') || catL.contains('doctor')) &&
+                            !catL.contains('pharmacy') && !catL.contains('drugstore') && !catL.contains('dentist') &&
+                            !p.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'));
           if (isMedical) {
             closeMedical.add(p);
             if (closeMedical.length >= 4) break;
@@ -2627,7 +2671,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           if (distM >= 25000 && distM <= 55000) {
             final model = AttractionModel.fromJson(json);
             final catLower = (model.categoryName ?? '').toLowerCase();
-            if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor') || catLower.contains('pharmacy')) {
+            if ((catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor')) &&
+                !catLower.contains('pharmacy') && !catLower.contains('drugstore') && !catLower.contains('dentist') &&
+                !model.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'))) {
               final updated = AttractionModel(
                 id: model.id,
                 name: model.name,
@@ -2686,7 +2732,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     
     final List<AttractionEntity> balancedMedical = [];
     balancedMedical.addAll(closeMedical.take(4));
-    balancedMedical.add(farMedical.first);
+    for (final far in farMedical) {
+      if (balancedMedical.length >= 5) break;
+      if (!balancedMedical.any((x) => x.id == far.id)) {
+        balancedMedical.add(far);
+      }
+    }
     grouped['Medical'] = balancedMedical;
 
     return Padding(

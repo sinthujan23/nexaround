@@ -212,9 +212,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         ];
 
         final mainFutures = categoriesToFetch.map((cat) {
-          final double radius = (cat == null || cat == 'Attractions' || cat == 'Experiences' || cat == 'Medical')
+          final double radius = (cat == null || cat == 'Experiences')
               ? 50000.0
-              : 5000.0;
+              : (cat == 'Attractions' || cat == 'Medical')
+                  ? 15000.0
+                  : 5000.0;
 
           return _repository.getNearbyAttractions(
             latitude: event.latitude,
