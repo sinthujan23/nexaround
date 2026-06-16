@@ -38,6 +38,18 @@ server {
 }
 
 server {
+    listen 80;
+    server_name nexaround.com www.nexaround.com;
+
+    root /var/www/nexaround/nexaround_landing/dist;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+
+server {
     if ($host = admin.nexaround.com) {
         return 301 https://$host$request_uri;
     }
