@@ -41,8 +41,7 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "transit_station"
     ],
     "Medical": [
-        "hospital", "pharmacy", "dentist", "medical_clinic", "doctor",
-        "drugstore"
+        "hospital", "medical_clinic", "doctor"
     ],
     "Nature": [
         "park", "campground", "national_park", "zoo", "tourist_attraction"
@@ -363,7 +362,7 @@ def _resolve_category_from_types(types: list[str]) -> str:
         return "Food & Drink"
     if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo"}:
         return "Nature"
-    if t & {"hospital", "pharmacy", "medical_clinic", "dentist"}:
+    if t & {"hospital", "medical_clinic"}:
         return "Medical"
     if t & {"tourist_attraction", "museum", "art_gallery", "historical_landmark", "place_of_worship", "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "amusement_park", "aquarium", "cultural_center"}:
         return "Attractions"

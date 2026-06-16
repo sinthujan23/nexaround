@@ -162,12 +162,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       }
 
       final categoriesToFetch = [
-        null,
         'Attractions',
         'Food & Drink',
         'Hotels',
         'Shopping',
-        'Experiences',
         'Medical',
       ];
 
