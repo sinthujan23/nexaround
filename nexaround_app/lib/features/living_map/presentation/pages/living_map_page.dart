@@ -2466,13 +2466,39 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions) {
     if (attractions.isEmpty) return const SizedBox.shrink();
 
-    // Group by category name mapping
-    final Map<String, List<AttractionEntity>> grouped = {};
+    final Map<String, List<AttractionEntity>> grouped = {
+      'Food': [],
+      'Attractions': [],
+      'Shopping': [],
+      'Medical': [],
+    };
+
+    // Strict allowed place types according to Google's official types
+    final allowedTypes = {
+      'Medical': {'hospital', 'pharmacy', 'doctor', 'dentist', 'health'},
+      'Food': {'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery', 'food'},
+      'Shopping': {'shopping_mall', 'supermarket', 'store', 'department_store', 'convenience_store'},
+      'Attractions': {'tourist_attraction', 'museum', 'park', 'zoo', 'aquarium', 'art_gallery', 'amusement_park'},
+    };
+
+    // Custom comparator: Sort by distance (nearest first) and then by rating (highest first when distances are within 100 meters)
+    int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
+      final distA = a.distanceM ?? 0;
+      final distB = b.distanceM ?? 0;
+      if ((distA - distB).abs() < 100) {
+        final rateA = a.rating ?? 0.0;
+        final rateB = b.rating ?? 0.0;
+        return rateB.compareTo(rateA);
+      }
+      return distA.compareTo(distB);
+    }
+
     for (final place in attractions) {
-      String category = place.categoryName ?? 'Places';
-      final catLower = category.toLowerCase();
+      final tags = place.tags.map((t) => t.toLowerCase()).toSet();
+      final distKm = (place.distanceM ?? 0) / 1000.0;
 
       // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
+      final catLower = (place.categoryName ?? '').toLowerCase();
       if (catLower.contains('hotel') || 
           catLower.contains('lodging') || 
           catLower.contains('accommodation') || 
@@ -2481,50 +2507,51 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           catLower.contains('guest_house') || 
           catLower.contains('bed_and_breakfast') || 
           catLower.contains('hostel') ||
-          place.tags.any((t) => t.contains('lodging') || t.contains('hotel') || t.contains('resort') || t.contains('guest_house') || t.contains('hostel'))) {
+          tags.any((t) => t.contains('lodging') || t.contains('hotel') || t.contains('resort') || t.contains('guest_house') || t.contains('hostel'))) {
         continue;
       }
 
-      if (catLower.contains('food') || catLower.contains('drink') || catLower.contains('restaurant') || catLower.contains('cafe')) {
-        category = 'Food';
-      } else if (catLower.contains('shop') || catLower.contains('mall') || catLower.contains('market') || catLower.contains('store')) {
-        category = 'Shopping';
-      } else if (catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor')) {
-        // Exclude pharmacies, drugstores, and dentists from Medical card on homepage
-        if (catLower.contains('pharmacy') || catLower.contains('drugstore') || catLower.contains('dentist') ||
-            place.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'))) {
-          continue;
+      // Check category: Medical (within 50 km)
+      if (distKm <= 50.0 && tags.any((t) => allowedTypes['Medical']!.contains(t))) {
+        // Prevent cross-contamination: Bars must not appear in Medical
+        if (!tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store')) {
+          if (!grouped['Medical']!.any((x) => x.id == place.id)) {
+            grouped['Medical']!.add(place);
+          }
         }
-        category = 'Medical';
-      } else {
-        // Only classify as Attractions if it's a real tourist/nature/heritage spot
-        final isRealAttraction = catLower.contains('attraction') || catLower.contains('nature') || catLower.contains('park') || 
-                                 catLower.contains('landmark') || catLower.contains('museum') || catLower.contains('viewpoint') || 
-                                 catLower.contains('lookout') || catLower.contains('temple') || catLower.contains('mosque') || 
-                                 catLower.contains('church') || catLower.contains('beach') || catLower.contains('lake') || 
-                                 catLower.contains('lagoon') || catLower.contains('waterfall') || catLower.contains('island') || 
-                                 catLower.contains('monument') || catLower.contains('fort') || catLower.contains('ruins') || 
-                                 catLower.contains('garden') || catLower.contains('zoo') || catLower.contains('aquarium') ||
-                                 place.tags.any((t) => t.contains('tourist_attraction') || t.contains('museum') || t.contains('art_gallery') ||
-                                                       t.contains('place_of_worship') || t.contains('church') || t.contains('hindu_temple') ||
-                                                       t.contains('mosque') || t.contains('synagogue') || t.contains('buddhist_temple') ||
-                                                       t.contains('amusement_park') || t.contains('aquarium') || t.contains('scenic_lookout') ||
-                                                       t.contains('national_park') || t.contains('park') || t.contains('campground') ||
-                                                       t.contains('zoo') || t.contains('natural_feature') || t.contains('beach') ||
-                                                       t.contains('hiking_area') || t.contains('garden'));
-        if (!isRealAttraction) {
-          continue; // Skip schools, banks, offices, auto shops, etc.
-        }
-        category = 'Attractions';
       }
-      grouped.putIfAbsent(category, () => []).add(place);
-    }
 
-    final orderedCategories = ['Food', 'Attractions', 'Shopping', 'Medical'];
-    
-    // First guarantee every category exists in the map
-    for (final cat in orderedCategories) {
-      grouped.putIfAbsent(cat, () => []);
+      // Check category: Food (within 10 km)
+      if (distKm <= 10.0 && tags.any((t) => allowedTypes['Food']!.contains(t))) {
+        // Prevent cross-contamination: Hospitals must not appear in Food
+        if (!tags.contains('hospital')) {
+          if (!grouped['Food']!.any((x) => x.id == place.id)) {
+            grouped['Food']!.add(place);
+          }
+        }
+      }
+
+      // Check category: Shopping (within 10 km)
+      if (distKm <= 10.0 && tags.any((t) => allowedTypes['Shopping']!.contains(t))) {
+        // Prevent cross-contamination: Restaurants must not appear in Shopping
+        final foodTypes = {'restaurant', 'cafe', 'bakery', 'food'};
+        if (!tags.any((t) => foodTypes.contains(t))) {
+          if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
+            grouped['Shopping']!.add(place);
+          }
+        }
+      }
+
+      // Check category: Attractions (within 50 km)
+      if (distKm <= 50.0 && tags.any((t) => allowedTypes['Attractions']!.contains(t))) {
+        // Prevent cross-contamination: Shops must not appear in Attractions
+        final shopTypes = {'store', 'shopping_mall', 'supermarket', 'department_store'};
+        if (!tags.any((t) => shopTypes.contains(t))) {
+          if (!grouped['Attractions']!.any((x) => x.id == place.id)) {
+            grouped['Attractions']!.add(place);
+          }
+        }
+      }
     }
 
     // Balance Attractions category to ensure at least one place is 25km or further away
@@ -2535,22 +2562,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     if (closeAttractions.length < 4) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeAttractions.any((x) => x.id == p.id)) {
-          // Ensure it belongs to Attractions category
-          final catL = (p.categoryName ?? '').toLowerCase();
-          final isAttraction = catL.contains('attraction') || catL.contains('nature') || catL.contains('park') || 
-                               catL.contains('landmark') || catL.contains('museum') || catL.contains('viewpoint') || 
-                               catL.contains('lookout') || catL.contains('temple') || catL.contains('mosque') || 
-                               catL.contains('church') || catL.contains('beach') || catL.contains('lake') || 
-                               catL.contains('lagoon') || catL.contains('waterfall') || catL.contains('island') || 
-                               catL.contains('monument') || catL.contains('fort') || catL.contains('ruins') || 
-                               catL.contains('garden') || catL.contains('zoo') || catL.contains('aquarium') ||
-                               p.tags.any((t) => t.contains('tourist_attraction') || t.contains('museum') || t.contains('art_gallery') ||
-                                                     t.contains('place_of_worship') || t.contains('church') || t.contains('hindu_temple') ||
-                                                     t.contains('mosque') || t.contains('synagogue') || t.contains('buddhist_temple') ||
-                                                     t.contains('amusement_park') || t.contains('aquarium') || t.contains('scenic_lookout') ||
-                                                     t.contains('national_park') || t.contains('park') || t.contains('campground') ||
-                                                     t.contains('zoo') || t.contains('natural_feature') || t.contains('beach') ||
-                                                     t.contains('hiking_area') || t.contains('garden'));
+          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
+          final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
+                               !tags.any((t) => {'store', 'shopping_mall', 'supermarket', 'department_store'}.contains(t));
           if (isAttraction) {
             closeAttractions.add(p);
             if (closeAttractions.length >= 4) break;
@@ -2569,11 +2583,10 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, lat, lng);
           if (distM >= 25000 && distM <= 55000) {
             final model = AttractionModel.fromJson(json);
-            final catLower = (model.categoryName ?? '').toLowerCase();
-            if (!catLower.contains('food') && !catLower.contains('drink') && !catLower.contains('restaurant') && !catLower.contains('cafe') &&
-                !catLower.contains('shop') && !catLower.contains('mall') && !catLower.contains('market') && !catLower.contains('store') &&
-                !catLower.contains('medical') && !catLower.contains('hospital') && !catLower.contains('clinic') && !catLower.contains('doctor') && !catLower.contains('pharmacy') &&
-                !catLower.contains('hotel') && !catLower.contains('lodging')) {
+            final tags = model.tags.map((t) => t.toLowerCase()).toSet();
+            final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
+                                 !tags.any((t) => {'store', 'shopping_mall', 'supermarket', 'department_store'}.contains(t));
+            if (isAttraction) {
               final updated = AttractionModel(
                 id: model.id,
                 name: model.name,
@@ -2623,12 +2636,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         rating: 4.5,
         reviewCount: 120,
         photoUrls: const [],
-        tags: const ['viewpoint', 'heritage'],
+        tags: const ['tourist_attraction', 'park'],
       ));
     }
 
-    closeAttractions.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-    farAttractions.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    closeAttractions.sort(compareDistanceAndRating);
+    farAttractions.sort(compareDistanceAndRating);
     
     final List<AttractionEntity> balancedAttractions = [];
     balancedAttractions.addAll(closeAttractions.take(4));
@@ -2648,10 +2661,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     if (closeMedical.length < 4) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeMedical.any((x) => x.id == p.id)) {
-          final catL = (p.categoryName ?? '').toLowerCase();
-          final isMedical = (catL.contains('medical') || catL.contains('hospital') || catL.contains('clinic') || catL.contains('doctor')) &&
-                            !catL.contains('pharmacy') && !catL.contains('drugstore') && !catL.contains('dentist') &&
-                            !p.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'));
+          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
+          final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
+                            !tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store');
           if (isMedical) {
             closeMedical.add(p);
             if (closeMedical.length >= 4) break;
@@ -2670,10 +2682,10 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, lat, lng);
           if (distM >= 25000 && distM <= 55000) {
             final model = AttractionModel.fromJson(json);
-            final catLower = (model.categoryName ?? '').toLowerCase();
-            if ((catLower.contains('medical') || catLower.contains('hospital') || catLower.contains('clinic') || catLower.contains('doctor')) &&
-                !catLower.contains('pharmacy') && !catLower.contains('drugstore') && !catLower.contains('dentist') &&
-                !model.tags.any((t) => t.contains('pharmacy') || t.contains('drugstore') || t.contains('dentist'))) {
+            final tags = model.tags.map((t) => t.toLowerCase()).toSet();
+            final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
+                              !tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store');
+            if (isMedical) {
               final updated = AttractionModel(
                 id: model.id,
                 name: model.name,
@@ -2723,12 +2735,12 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
         rating: 4.2,
         reviewCount: 95,
         photoUrls: const [],
-        tags: const ['hospital', 'medical'],
+        tags: const ['hospital'],
       ));
     }
 
-    closeMedical.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-    farMedical.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    closeMedical.sort(compareDistanceAndRating);
+    farMedical.sort(compareDistanceAndRating);
     
     final List<AttractionEntity> balancedMedical = [];
     balancedMedical.addAll(closeMedical.take(4));
@@ -2739,6 +2751,10 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       }
     }
     grouped['Medical'] = balancedMedical;
+
+    // Sort Food and Shopping lists strictly by distance and rating
+    grouped['Food']?.sort(compareDistanceAndRating);
+    grouped['Shopping']?.sort(compareDistanceAndRating);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),

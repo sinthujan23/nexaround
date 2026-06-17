@@ -17,22 +17,18 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # for each application category, resolving the issue of sparse results.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Attractions": [
-        "tourist_attraction", "museum", "art_gallery",
-        "place_of_worship", "church", "hindu_temple", "mosque", "synagogue",
-        "buddhist_temple", "amusement_park", "aquarium", "scenic_lookout",
-        "national_park"
+        "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
+        "amusement_park"
     ],
     "Food & Drink": [
-        "restaurant", "cafe", "bar", "bakery", "fast_food_restaurant",
-        "ice_cream_shop", "food_court", "pub", "meal_takeaway", "meal_delivery"
+        "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"
     ],
     "Hotels": [
         "lodging", "hotel", "motel"
     ],
     "Shopping": [
-        "shopping_mall", "department_store", "clothing_store", "supermarket",
-        "convenience_store", "book_store", "store", "grocery_store", "market",
-        "gift_shop", "electronics_store", "home_goods_store"
+        "shopping_mall", "supermarket", "store", "department_store",
+        "convenience_store"
     ],
     "Experiences": [
         "amusement_park", "aquarium", "zoo", "museum", "art_gallery"
@@ -41,7 +37,7 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "transit_station"
     ],
     "Medical": [
-        "hospital", "medical_clinic", "doctor"
+        "hospital", "pharmacy", "doctor", "dentist", "health"
     ],
     "Nature": [
         "park", "campground", "national_park", "zoo", "tourist_attraction"
@@ -358,15 +354,15 @@ def _resolve_category_from_types(types: list[str]) -> str:
     t = set(types)
     if t & {"lodging", "hotel", "motel", "resort_hotel", "hostel", "guest_house", "bed_and_breakfast"}:
         return "Hotels"
-    if t & {"restaurant", "food", "cafe", "bar", "coffee_shop", "bakery", "fast_food_restaurant", "food_court", "pub", "wine_bar"}:
+    if t & {"restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"}:
         return "Food & Drink"
     if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo"}:
         return "Nature"
-    if t & {"hospital", "medical_clinic"}:
+    if t & {"hospital", "pharmacy", "doctor", "dentist", "health"}:
         return "Medical"
-    if t & {"tourist_attraction", "museum", "art_gallery", "historical_landmark", "place_of_worship", "church", "hindu_temple", "mosque", "synagogue", "buddhist_temple", "amusement_park", "aquarium", "cultural_center"}:
+    if t & {"tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery", "amusement_park"}:
         return "Attractions"
-    if t & {"shopping_mall", "store", "department_store", "clothing_store", "supermarket", "grocery_store", "convenience_store", "gift_shop", "book_store", "electronics_store", "jewelry_store", "shoe_store"}:
+    if t & {"shopping_mall", "supermarket", "store", "department_store", "convenience_store"}:
         return "Shopping"
     return "Others"
 
