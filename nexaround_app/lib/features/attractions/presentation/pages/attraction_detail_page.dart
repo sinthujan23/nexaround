@@ -24,6 +24,12 @@ class AttractionDetailPage extends StatefulWidget {
   final String? imageUrl;
   final double? latitude;
   final double? longitude;
+  final int? reviewCount;
+  final String? aiWhy;
+  final String? aiWhen;
+  final String? aiCost;
+  final String? aiBestFor;
+  final String? aiConfidence;
 
   const AttractionDetailPage({
     super.key,
@@ -36,6 +42,12 @@ class AttractionDetailPage extends StatefulWidget {
     this.imageUrl,
     this.latitude,
     this.longitude,
+    this.reviewCount,
+    this.aiWhy,
+    this.aiWhen,
+    this.aiCost,
+    this.aiBestFor,
+    this.aiConfidence,
   });
 
   @override
@@ -64,6 +76,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   @override
   void initState() {
     super.initState();
+    _totalReviews = widget.reviewCount;
     _fetchPlacesDetails();
   }
 
@@ -335,37 +348,56 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       const Icon(Icons.location_on_rounded, size: 14, color: AppColors.actionTeal),
                       const SizedBox(width: 4),
                       Text(widget.distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
-                      const SizedBox(width: 16),
-                      Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
-                      const SizedBox(width: 4),
-                      if (_isLoadingPlaces)
-                        Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6)))
-                      else if (_openNowText != null)
+                      if (_isLoadingPlaces) ...[
+                        const SizedBox(width: 16),
+                        const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 4),
+                        Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6))),
+                      ] else if (_openNowText != null && _openNowText!.isNotEmpty) ...[
+                        const SizedBox(width: 16),
+                        const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
+                        const SizedBox(width: 4),
                         Text(
                           _openNowText == 'Open'
                               ? 'Open${_closingTime != null ? ' · Closes $_closingTime' : ''}'
                               : 'Closed',
                           style: TextStyle(fontSize: 13, color: _openNowText == 'Open' ? Colors.green : Colors.red, fontWeight: FontWeight.w600),
                         ),
+                      ],
                     ],
                   ),
 
                   const SizedBox(height: 24),
 
                   // Quick stats row
-                  Row(
-                    children: [
-                      _buildStatChip(Icons.attach_money_rounded, _isLoadingPlaces ? '...' : (_priceLevel ?? 'N/A'), 'Entry Fee'),
-                      const SizedBox(width: 8),
-                      _buildStatChip(Icons.schedule_rounded, _isLoadingGemini ? '...' : (_avgVisit ?? 'N/A'), 'Avg Visit'),
-                      const SizedBox(width: 8),
-                      _buildStatChip(Icons.people_rounded, _isLoadingGemini ? '...' : (_crowdLevel ?? 'N/A'), 'Crowd'),
-                      const SizedBox(width: 8),
-                      _buildSaveChip(isSaved),
-                    ],
-                  ),
+                  (() {
+                    final displayCost = _isLoadingPlaces ? '...' : (_priceLevel ?? widget.aiCost ?? 'N/A');
+                    final displayAvgVisit = _isLoadingGemini ? '...' : (_avgVisit ?? widget.aiWhen ?? 'N/A');
+                    final displayCrowd = _isLoadingGemini ? '...' : (_crowdLevel ?? 'N/A');
+                    final showCost = _isLoadingPlaces || (displayCost.toLowerCase() != 'n/a' && displayCost.isNotEmpty);
+
+                    return Row(
+                      children: [
+                        if (showCost) ...[
+                          _buildStatChip(Icons.attach_money_rounded, displayCost, 'Entry Fee'),
+                          const SizedBox(width: 8),
+                        ],
+                        _buildStatChip(Icons.schedule_rounded, displayAvgVisit, 'Avg Visit'),
+                        const SizedBox(width: 8),
+                        _buildStatChip(Icons.people_rounded, displayCrowd, 'Crowd'),
+                        const SizedBox(width: 8),
+                        _buildSaveChip(isSaved),
+                      ],
+                    );
+                  })(),
 
                   const SizedBox(height: 28),
+
+                  // AI Experience Insights if available
+                  if (widget.aiWhy != null) ...[
+                    _buildAiExperienceSection(),
+                    const SizedBox(height: 16),
+                  ],
 
                   // History section
                   AnimatedSwitcher(
@@ -715,6 +747,75 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
         const SizedBox(height: 8),
         Text(text, style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4)),
       ],
+    );
+  }
+
+  Widget _buildAiExperienceSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primary.withOpacity(0.12),
+            AppColors.actionTeal.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: AppColors.actionTeal.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('✨', style: TextStyle(fontSize: 18)),
+              const SizedBox(width: 8),
+              const Text(
+                'AI Experience Insights',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.actionTeal,
+                ),
+              ),
+              const Spacer(),
+              if (widget.aiConfidence != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.ratingGold.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.ratingGold.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    '${widget.aiConfidence} Match',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.ratingGold,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            widget.aiWhy!,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Colors.white,
+              height: 1.5,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

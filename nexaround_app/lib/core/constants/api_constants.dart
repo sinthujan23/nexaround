@@ -30,6 +30,9 @@ class ApiConstants {
   // Itinerary endpoints
   static const String itineraries = '$apiVersion/itineraries';
   
+  // Travel Stories endpoints
+  static const String travelStories = '$apiVersion/travel-stories';
+  
   // Mapbox Configuration
   static String mapboxAccessToken = '';
   

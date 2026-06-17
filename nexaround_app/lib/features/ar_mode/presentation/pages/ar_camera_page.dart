@@ -202,7 +202,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
   ];
 
   bool _categoryHasRange(String filter) {
-    return true;
+    return filter != 'All' && filter != 'Others';
   }
 
   int _maxRangeForCategory(String filter) {

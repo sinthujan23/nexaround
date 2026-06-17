@@ -33,6 +33,13 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:nexaround_app/features/travel_stories/data/models/travel_story.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/travel_story_card.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/post_story_sheet.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/stories_comments_dialog.dart';
 
 class _LocalEvent {
   final String title;
@@ -69,12 +76,18 @@ class _LivingMapPageState extends State<LivingMapPage>
   bool _isPreFetching = false;
 
   String? _currentDistrict;
+  String? _lastFetchedDistrict;
   List<AttractionEntity> _geminiTrendingPlaces = [];
   bool _loadingGeminiTrending = false;
+  List<TravelStory> _travelStories = [];
+
+  String? _geminiTrendingMarkdown;
+  final Map<String, Map<String, String>> _parsedAiDetails = {};
 
   @override
   void initState() {
     super.initState();
+    _loadTravelStories();
     CacheService.cacheAttractions([]);
     CacheService.clearLastFetchCoords();
     WidgetsBinding.instance.addObserver(this);
@@ -239,62 +252,275 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _fetchGeminiTrending(String district, double lat, double lng) async {
+    if (_lastFetchedDistrict == district && _geminiTrendingMarkdown != null) {
+      debugPrint('ℹ️ Gemini trending already loaded for district "$district". Skipping request.');
+      return;
+    }
     if (_loadingGeminiTrending) return;
-    setState(() => _loadingGeminiTrending = true);
+    setState(() {
+      _loadingGeminiTrending = true;
+      _geminiTrendingMarkdown = null;
+    });
     try {
+      final formattedTime = DateFormat('EEEE, MMMM d, yyyy, h:mm a').format(DateTime.now());
+      final userLocation = "$district (${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)})";
+
       final prompt = '''
-You are an expert local guide and travel coordinator.
-Give me a list of 5 currently popular, trendy, famous, or highly interesting tourist attractions, landmarks, scenic spots, viewpoints, parks, beaches, cafes, or restaurants in the district of "$district".
-The locations should be near the GPS coordinates ($lat, $lng).
+# NexAround AI Experience Discovery Engine
 
-CRITICAL CONSTRAINTS:
-- Do NOT return any utility locations, pharmacies, hospitals, clinics, medical centers, banks, schools, universities, offices, supermarkets, grocery stores, gas stations, gyms, or residential areas.
-- Focus strictly on places that a tourist or traveler would want to visit for leisure, sight-seeing, history, or dining.
-- Provide the specific, exact name of the spot (e.g. "Fort Fredrick", "Dutch Bay Beach").
+You are **NexAround AI**, an intelligent local discovery companion.
 
-Return ONLY a JSON array of strings containing the names of these 5 places. Do not include markdown code blocks, do not write any introductory or explanatory text. Just return the JSON array, e.g.:
-["Place Name 1", "Place Name 2", "Place Name 3", "Place Name 4", "Place Name 5"]
+Your mission is not to find events.
+
+Your mission is to help people discover experiences worth leaving home for.
+
+Act like a knowledgeable local guide, cultural insider, event curator, and travel companion combined.
+
+---
+
+## User Context
+
+Analyze and utilize the following information whenever available:
+
+* Current location : $userLocation
+* Current date and time: $formattedTime
+
+---
+
+## Experience Search Categories
+
+Search for and prioritize:
+
+### Events
+
+* Festivals
+* Cultural celebrations
+* Religious festivals
+* Community gatherings
+* Live music
+* Concerts
+* Theater
+* Comedy shows
+* Workshops
+* Meetups
+* Art exhibitions
+* Food festivals
+* Farmers markets
+* Sporting events
+
+### Outdoor Experiences
+
+* Walking trails
+* Scenic viewpoints
+* Parks
+* Waterfront experiences
+* Nature activities
+* Adventure activities
+* Seasonal outdoor attractions
+
+### Local Discovery
+
+* Hidden gems
+* Local favorites
+* Historic neighborhoods
+* Street food experiences
+* Artisan markets
+* Cultural districts
+* Unique local businesses
+
+### Family Experiences
+
+* Children's activities
+* Educational attractions
+* Interactive experiences
+* Family festivals
+
+### Nightlife
+
+* Live entertainment
+* Rooftop venues
+* Night markets
+* Cultural performances
+
+---
+
+## Recommendation Priorities
+
+Rank opportunities using:
+
+1. Relevance to user interests
+2. Events happening now
+3. Events starting soon
+4. Weather suitability
+5. Local popularity
+6. Authenticity
+7. Uniqueness
+8. User ratings and reviews
+9. Travel convenience
+10. Value for money
+
+Give preference to:
+
+* Hyperlocal discoveries
+* Experiences tourists often miss
+* Time-sensitive opportunities
+* Seasonal events
+* One-time happenings
+* Highly rated local experiences
+
+Avoid:
+
+* Generic tourist recommendations
+* Duplicate listings
+* Outdated events
+* Poorly reviewed experiences
+* Low-quality directory results
+
+---
+
+## Scoring Framework
+
+Assign a confidence score from 1–100 based on:
+
+* Data freshness
+* Popularity
+* Interest match
+* Weather fit
+* Timing suitability
+* Travel convenience
+
+---
+
+## Response Format
+
+# What's Happening Nearby
+
+## Recommended For You (Atleast 5 events)
+
+### [Event or Experience Name]
+
+Why you'll love it:
+[Personalized explanation]
+
+Distance:
+[X km]
+
+Travel Time:
+[X minutes]
+
+When:
+[Time and date]
+
+Cost:
+[Free / Estimated cost]
+
+Best For:
+[Solo / Couple / Family / Friends]
+
+Confidence Score:
+[X/100]
+
+---
+
+### Why It's Worth Leaving Home For
+
+Provide a short personalized recommendation explaining why this experience stands out today.
+
+---
+
+# Hidden Gem (Atleast 5 gems)
+
+
+If applicable, recommend a lesser-known local experience.
+
+### [Hidden Gem Name]
+
+Why locals love it:
+[Description]
+
+Distance:
+[X km]
+
+Cost:
+[Estimated cost]
+
+
+---
+
+## No Event Fallback Strategy
+
+If no notable events exist, intelligently recommend:
+
+* Self-guided walking tours
+* Food trails
+* Scenic drives
+* Historic neighborhoods
+* Local markets
+* Hidden attractions
+* Sunset viewpoints
+* Cultural experiences
+* Nature spots
+* Weekend adventures
+
+Never return "No events found."
+
+Always provide a meaningful discovery opportunity.
 ''';
 
       final responseText = await GeminiService().getResponse(
         prompt,
-        responseMimeType: "application/json",
       );
 
-      // Clean the response if it has markdown formatting (e.g. ```json ... ```)
-      String cleanJson = responseText.trim();
-      if (cleanJson.startsWith('```')) {
-        final lines = cleanJson.split('\n');
-        if (lines.first.contains('json')) {
-          lines.removeAt(0);
-        } else {
-          lines.removeAt(0);
-        }
-        if (lines.last.trim() == '```') {
-          lines.removeLast();
-        }
-        cleanJson = lines.join('\n').trim();
-      }
-
-      final List<dynamic> placeNames = jsonDecode(cleanJson) as List;
       final List<AttractionEntity> resolvedPlaces = [];
 
-      for (final name in placeNames) {
+      // Extract place names from markdown headers starting with "### "
+      final RegExp headerRegExp = RegExp(r'^###\s+(.*)$', multiLine: true);
+      final matches = headerRegExp.allMatches(responseText);
+      final List<String> extractedNames = [];
+      
+      for (final m in matches) {
+        var name = m.group(1)?.trim() ?? '';
+        if (name.isEmpty) continue;
+        
+        // Strip square brackets if present, e.g. "### [Place Name]" -> "Place Name"
+        if (name.startsWith('[') && name.endsWith(']')) {
+          name = name.substring(1, name.length - 1).trim();
+        } else if (name.startsWith('[') && name.contains(']')) {
+          final closingBracket = name.indexOf(']');
+          name = name.substring(1, closingBracket).trim();
+        }
+
+        final lowerName = name.toLowerCase();
+        
+        // Avoid system headers and personalized summary header
+        if (lowerName.contains("why it's worth leaving home for") ||
+            lowerName.contains("why locals love it") ||
+            lowerName.contains("why you'll love it") ||
+            lowerName.contains("event or experience name") ||
+            lowerName.contains("hidden gem name")) {
+          continue;
+        }
+        
+        if (!extractedNames.contains(name)) {
+          extractedNames.add(name);
+        }
+      }
+
+      // Resolve the extracted names to real places using Google Places API
+      for (final name in extractedNames.take(8)) {
         try {
-          final query = name.toString();
           final results = await GooglePlacesService.searchPlaces(
-            query: query,
+            query: name,
             latitude: lat,
             longitude: lng,
           );
           if (results.isNotEmpty) {
-            // Find the first result that matches isTrendingSpot
             final validSpot = results.firstWhere(
               (p) => _isTrendingSpot(p),
               orElse: () => results.first,
             );
             
-            if (_isTrendingSpot(validSpot)) {
+            if (_isTrendingSpot(validSpot) && !resolvedPlaces.any((x) => x.id == validSpot.id)) {
               resolvedPlaces.add(validSpot);
             }
           }
@@ -305,8 +531,11 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
 
       if (mounted) {
         setState(() {
+          _geminiTrendingMarkdown = responseText;
+          _parseMarkdownDetails(responseText);
           _geminiTrendingPlaces = resolvedPlaces;
           _loadingGeminiTrending = false;
+          _lastFetchedDistrict = district;
         });
       }
     } catch (e) {
@@ -314,6 +543,84 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
       if (mounted) {
         setState(() => _loadingGeminiTrending = false);
       }
+    }
+  }
+
+  void _parseMarkdownDetails(String markdown) {
+    _parsedAiDetails.clear();
+    final segments = markdown.split('###');
+    if (segments.length <= 1) return;
+    
+    for (int i = 1; i < segments.length; i++) {
+      final segment = segments[i].trim();
+      if (segment.isEmpty) continue;
+      
+      final lines = segment.split('\n');
+      var rawName = lines[0].trim();
+      if (rawName.startsWith('[') && rawName.endsWith(']')) {
+        rawName = rawName.substring(1, rawName.length - 1).trim();
+      } else if (rawName.startsWith('[') && rawName.contains(']')) {
+        final closingBracket = rawName.indexOf(']');
+        rawName = rawName.substring(1, closingBracket).trim();
+      }
+      
+      final lowerName = rawName.toLowerCase().trim();
+      if (lowerName.contains("why it's worth leaving home for") ||
+          lowerName.contains("why locals love it") ||
+          lowerName.contains("why you'll love it") ||
+          lowerName.contains("event or experience name") ||
+          lowerName.contains("hidden gem name")) {
+        continue;
+      }
+      
+      final Map<String, String> details = {};
+      String currentKey = '';
+      StringBuffer currentValue = StringBuffer();
+      
+      for (int j = 1; j < lines.length; j++) {
+        final line = lines[j].trim();
+        if (line.isEmpty) continue;
+        
+        final lowerLine = line.toLowerCase();
+        if (lowerLine.startsWith("why you'll love it:") || lowerLine.startsWith("why locals love it:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'why';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("distance:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'distance';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("travel time:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'travelTime';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("when:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'when';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("cost:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'cost';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("best for:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'bestFor';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else if (lowerLine.startsWith("confidence score:")) {
+          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          currentKey = 'confidence';
+          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+        } else {
+          if (currentKey.isNotEmpty) {
+            currentValue.write(' ' + line);
+          }
+        }
+      }
+      if (currentKey.isNotEmpty) {
+        details[currentKey] = currentValue.toString().trim();
+      }
+      
+      _parsedAiDetails[lowerName] = details;
     }
   }
 
@@ -626,16 +933,39 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader('🔥  Trending Near You', null),
+                            child: _buildSectionHeader(
+                              'Popular Around You',
+                              null,
+                              imageIconPath: 'assets/images/popular.png',
+                            ),
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+
+                        // Travel Stories (Where Was I?)
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              'Travel Stories',
+                              '+ Share',
+                              onTap: _showPostStorySheet,
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(
+                          child: _buildTravelStoriesFeed(),
+                        ),
 
                         // Nearby Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader('✨  Near You', null),
+                            child: _buildSectionHeader(
+                              'Near You',
+                              null,
+                              imageIconPath: 'assets/images/near.png',
+                            ),
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
@@ -687,8 +1017,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                           child: _buildSectionHeader(
-                            '🔥  Trending Near You', 
+                            'Popular Around You', 
                             null,
+                            imageIconPath: 'assets/images/popular.png',
                           ),
                         ),
                       ),
@@ -700,9 +1031,24 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                         const SliverToBoxAdapter(
                           child: Padding(
                             padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            child: Text('No trending places found nearby.', style: TextStyle(color: AppColors.textSecondary)),
+                            child: Text('No popular recommendations found nearby.', style: TextStyle(color: AppColors.textSecondary)),
                           ),
                         ),
+
+                      // Travel Stories (Where Was I?)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                          child: _buildSectionHeader(
+                            'Travel Stories',
+                            '+ Share',
+                            onTap: _showPostStorySheet,
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildTravelStoriesFeed(),
+                      ),
 
                       // Near You
                       if (publicAttractions.isNotEmpty) ...[
@@ -710,8 +1056,9 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              '✨  Near You', 
+                              'Near You', 
                               null,
+                              imageIconPath: 'assets/images/near.png',
                             ),
                           ),
                         ),
@@ -1635,17 +1982,121 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     );
   }
 
-  Widget _buildSectionHeader(String title, String? action, {VoidCallback? onTap}) {
+  Future<void> _loadTravelStories() async {
+    try {
+      final stories = await TravelStoriesService().getStories();
+      if (mounted) {
+        setState(() {
+          _travelStories = stories;
+        });
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load travel stories: $e');
+    }
+  }
+
+  void _showPostStorySheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return PostStorySheet(
+          userLatitude: _userLatitude ?? 6.9271,
+          userLongitude: _userLongitude ?? 79.8612,
+          onStorySubmitted: (newStory) {
+            setState(() {
+              _travelStories.insert(0, newStory);
+            });
+            TravelStoriesService().addStory(newStory);
+          },
+        );
+      },
+    );
+  }
+
+  void _showCommentsDialog(TravelStory story) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StoriesCommentsDialog(
+          story: story,
+          onCommentAdded: (commentText) {
+            setState(() {
+              story.comments.add(commentText);
+            });
+            TravelStoriesService().addComment(story.id, commentText);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildTravelStoriesFeed() {
+    if (_travelStories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      height: 340,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: _travelStories.length,
+        itemBuilder: (context, index) {
+          final story = _travelStories[index];
+          return TravelStoryCard(
+            story: story,
+            onLikeTap: () {
+              TravelStoriesService().toggleLike(story.id);
+            },
+            onCommentTap: () => _showCommentsDialog(story),
+            onLocationTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Exploring ${story.locationName}...'),
+                  duration: const Duration(seconds: 1),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(
+    String title,
+    String? action, {
+    String? imageIconPath,
+    VoidCallback? onTap,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            if (imageIconPath != null) ...[
+              Image.asset(
+                imageIconPath,
+                width: 36,
+                height: 36,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 8),
+            ],
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
         ),
         if (action != null && action.isNotEmpty)
           GestureDetector(
@@ -1711,7 +2162,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
     if (event != null) return event;
     return _LocalEvent(
       title: 'Popular Local Gathering',
-      time: 'Trending Near You',
+      time: 'Popular on You',
       isOngoing: false,
     );
   }
@@ -1757,6 +2208,222 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           return _buildPlaceCard(p, index);
         },
       ),
+    );
+  }
+
+  Widget _buildAiReportCard() {
+    return GestureDetector(
+      onTap: _showAiReportBottomSheet,
+      child: Container(
+        width: 200,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0F1E36), // Deep premium dark blue
+              Color(0xFF050B14),
+            ],
+          ),
+          border: Border.all(
+            color: AppColors.actionTeal.withOpacity(0.4),
+            width: 1.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.actionTeal.withOpacity(0.15),
+              blurRadius: 15,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // Decorative light glow
+              Positioned(
+                top: -20,
+                right: -20,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.actionTeal.withOpacity(0.15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.actionTeal.withOpacity(0.15),
+                        blurRadius: 30,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('🤖', style: TextStyle(fontSize: 24)),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: AppColors.actionTeal.withOpacity(0.2),
+                          ),
+                          child: const Text(
+                            'NEXAROUND AI',
+                            style: TextStyle(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.actionTeal,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    const Text(
+                      "AI Experience Report",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      "See why leaving home today is worth it.",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.white.withOpacity(0.7),
+                        height: 1.2,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const Spacer(),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: AppColors.actionTeal,
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'Read Report →',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAiReportBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.85,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1018).withOpacity(0.95), // Premium dark theme matching app
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.5),
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                child: Column(
+                  children: [
+                    // Handle/drag indicator
+                    Container(
+                      width: 40,
+                      height: 5,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    // Header
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            const Text('✨', style: TextStyle(fontSize: 20)),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'NexAround AI Discovery',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Markdown body
+                    Expanded(
+                      child: Markdown(
+                        data: _geminiTrendingMarkdown ?? '',
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14, height: 1.4),
+                          h1: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.5),
+                          h2: const TextStyle(color: AppColors.actionTeal, fontSize: 18, fontWeight: FontWeight.w800, height: 1.5),
+                          h3: const TextStyle(color: AppColors.ratingGold, fontSize: 15, fontWeight: FontWeight.w700, height: 1.4),
+                          listBullet: const TextStyle(color: AppColors.actionTeal, fontSize: 14),
+                          horizontalRuleDecoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(
+                                color: Colors.white.withOpacity(0.1),
+                                width: 1.0,
+                              ),
+                            ),
+                          ),
+                          blockSpacing: 16.0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1918,20 +2585,31 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
 
   Widget _buildPlaceCard(AttractionEntity place, int index) {
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: place.id,
-          name: place.name,
-          category: place.categoryName ?? 'Attraction', 
-          rating: place.rating, 
-          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
-          emoji: '📍', 
-          imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-          latitude: place.latitude,
-          longitude: place.longitude,
-        )),
-      ),
+      onTap: () {
+        final lowerName = place.name.toLowerCase().trim();
+        final aiDetails = _parsedAiDetails[lowerName];
+        if (aiDetails != null && aiDetails.isNotEmpty) {
+          _showAiPlaceDetailsBottomSheet(place, aiDetails);
+        } else {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AttractionDetailPage(
+                id: place.id,
+                name: place.name,
+                category: place.categoryName ?? 'Attraction',
+                rating: place.rating,
+                distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                emoji: '📍',
+                imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                reviewCount: place.reviewCount,
+              ),
+            ),
+          );
+        }
+      },
       child: Container(
         width: 200,
         margin: const EdgeInsets.only(right: 16),
@@ -1949,7 +2627,6 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
           borderRadius: BorderRadius.circular(24),
           child: Stack(
             children: [
-              // Background Image or Fallback
               Positioned.fill(
                 child: (() {
                   final hasImage = place.photoUrls.isNotEmpty;
@@ -2000,7 +2677,6 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                       : buildFallbackBackground();
                 })(),
               ),
-              // Gradient Overlay
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -2016,146 +2692,460 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                   ),
                 ),
               ),
-
-            // Content
-            Padding(
-              padding: const EdgeInsets.all(18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Icon + category
-                  Row(
-                    children: [
-                      const Text('📍', style: TextStyle(fontSize: 28)),
-                      const Spacer(),
-                      Container(
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('📍', style: TextStyle(fontSize: 28)),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.white.withOpacity(0.2),
+                          ),
+                          child: Text(
+                            place.categoryName ?? 'LANDMARK',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    (() {
+                      final eventInfo = _getEventOrTrendingInfo(place);
+                      final hasEvent = _getEventForPlace(place) != null;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
+                          color: hasEvent ? Colors.red.withOpacity(0.25) : AppColors.brandGreen.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
-                          color: Colors.white.withOpacity(0.2),
+                          border: Border.all(
+                            color: hasEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.3),
+                            width: 1,
+                          ),
                         ),
-                        child: Text(
-                          place.categoryName ?? 'LANDMARK',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              hasEvent ? Icons.campaign_rounded : Icons.trending_up_rounded,
+                              size: 11,
+                              color: hasEvent ? Colors.redAccent[100] : AppColors.brandGreen,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                eventInfo.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    })(),
+                    Text(
+                      place.name,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${place.rating} (${place.reviewCount})',
                           style: const TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
                         ),
-                      ),
-                    ],
-                  ),
-
-                  const Spacer(),
-
-                  // Dynamic Event Badge
-                  (() {
-                    final eventInfo = _getEventOrTrendingInfo(place);
-                    final hasEvent = _getEventForPlace(place) != null;
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: hasEvent ? Colors.red.withOpacity(0.25) : AppColors.brandGreen.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: hasEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.3),
-                          width: 1,
+                        const SizedBox(width: 12),
+                        Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
+                        const SizedBox(width: 3),
+                        Text(
+                          '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.white.withOpacity(0.7),
+                          ),
                         ),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            hasEvent ? Icons.campaign_rounded : Icons.trending_up_rounded,
-                            size: 11,
-                            color: hasEvent ? Colors.redAccent[100] : AppColors.brandGreen,
-                          ),
-                          const SizedBox(width: 4),
-                          Flexible(
-                            child: Text(
-                              eventInfo.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w900,
-                                color: Colors.white,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  })(),
-
-                  // Name
-                  Text(
-                    place.name,
-                    style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      height: 1.2,
+                      ],
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Rating & distance
-                  Row(
-                    children: [
-                      const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${place.rating} (${place.reviewCount})',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        gradient: AppColors.primaryGradient,
+                      ),
+                      child: const Text(
+                        'Explore →',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withOpacity(0.7),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
+  }
+
+  void _showAiPlaceDetailsBottomSheet(AttractionEntity place, Map<String, String> aiDetails) {
+    final distText = '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km';
+    final hasImage = place.photoUrls.isNotEmpty;
+    final imageUrl = hasImage ? place.photoUrls.first : null;
+    final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
+        ? '${ApiConstants.baseUrl}$imageUrl'
+        : imageUrl;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A1018), // Dark theme matching app
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.5),
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Hero Image / Gradient Block
+                Stack(
+                  children: [
+                    Container(
+                      height: 180,
+                      width: double.infinity,
+                      child: resolvedUrl != null && resolvedUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: resolvedUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: AppColors.surfaceVariant,
+                                child: const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                            )
+                          : Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [Color(0xFF0F1E36), Color(0xFF050B14)],
+                                ),
+                              ),
+                              child: Center(
+                                child: Opacity(
+                                  opacity: 0.15,
+                                  child: Icon(
+                                    _getCategoryIcon(place.categoryName ?? 'Attraction', place.name),
+                                    size: 80,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              const Color(0xFF0A1018),
+                              const Color(0xFF0A1018).withOpacity(0.4),
+                              Colors.transparent,
+                            ],
+                          ),
                         ),
                       ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // Action
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      gradient: AppColors.primaryGradient,
                     ),
-                    child: const Text(
-                      'Explore →',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                    // Drag indicator
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
                       ),
                     ),
+                    // Close button
+                    Positioned(
+                      top: 15,
+                      right: 15,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black.withOpacity(0.4),
+                        radius: 18,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // Details area
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ListView(
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: AppColors.actionTeal.withOpacity(0.15),
+                                border: Border.all(color: AppColors.actionTeal.withOpacity(0.3)),
+                              ),
+                              child: Text(
+                                place.categoryName?.toUpperCase() ?? 'ATTRACTION',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.actionTeal,
+                                ),
+                              ),
+                            ),
+                            if (aiDetails['confidence'] != null) ...[
+                              const SizedBox(width: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: AppColors.ratingGold.withOpacity(0.15),
+                                  border: Border.all(color: AppColors.ratingGold.withOpacity(0.3)),
+                                ),
+                                child: Text(
+                                  'Confidence: ${aiDetails['confidence']}',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.ratingGold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          place.name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            const Icon(Icons.star_rounded, size: 16, color: AppColors.ratingGold),
+                            const SizedBox(width: 4),
+                            Text(
+                              '${place.rating} (${place.reviewCount})',
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Icon(Icons.location_on_rounded, size: 14, color: AppColors.textSecondary),
+                            const SizedBox(width: 4),
+                            Text(
+                              distText,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'WHY YOU\'LL LOVE IT',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.actionTeal,
+                            letterSpacing: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          aiDetails['why'] ?? 'A highly rated local recommendation.',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.9),
+                            height: 1.4,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Divider(color: Colors.white10),
+                        const SizedBox(height: 12),
+                        // Grid of key info
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            if (aiDetails['when'] != null)
+                              Expanded(
+                                child: _buildInfoGridCell('When', aiDetails['when']!, Icons.access_time_filled_rounded),
+                              ),
+                            if (aiDetails['cost'] != null)
+                              Expanded(
+                                child: _buildInfoGridCell('Cost', aiDetails['cost']!, Icons.attach_money_rounded),
+                              ),
+                            if (aiDetails['bestFor'] != null)
+                              Expanded(
+                                child: _buildInfoGridCell('Best For', aiDetails['bestFor']!, Icons.people_alt_rounded),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 30),
+                        // Navigate / Details Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AttractionDetailPage(
+                                    id: place.id,
+                                    name: place.name,
+                                    category: place.categoryName ?? 'Attraction',
+                                    rating: place.rating,
+                                    distance: distText,
+                                    emoji: '📍',
+                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                    latitude: place.latitude,
+                                    longitude: place.longitude,
+                                    reviewCount: place.reviewCount,
+                                    aiWhy: aiDetails['why'],
+                                    aiWhen: aiDetails['when'],
+                                    aiCost: aiDetails['cost'],
+                                    aiBestFor: aiDetails['bestFor'],
+                                    aiConfidence: aiDetails['confidence'],
+                                  ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppColors.brandGreen,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.explore, color: Colors.white),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Explore details & Navigation',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+                    ),
                   ),
-                ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInfoGridCell(String label, String value, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 14, color: AppColors.actionTeal),
+            const SizedBox(width: 6),
+            Text(
+              label.toUpperCase(),
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textTertiary,
+                letterSpacing: 0.5,
               ),
             ),
           ],
         ),
-      ),
-    ),
-  ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
   }
 
   String _getCategoryImagePath(String category) {
@@ -2376,6 +3366,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                                 imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
                                 latitude: place.latitude,
                                 longitude: place.longitude,
+                                reviewCount: place.reviewCount,
                               ),
                             ),
                           ),
@@ -2970,6 +3961,7 @@ Return ONLY a JSON array of strings containing the names of these 5 places. Do n
                         imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
                         latitude: place.latitude,
                         longitude: place.longitude,
+                        reviewCount: place.reviewCount,
                       ))),
                       child: const Text('View Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
                     ),
