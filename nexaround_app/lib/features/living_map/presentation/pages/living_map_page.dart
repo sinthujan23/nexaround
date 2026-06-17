@@ -40,6 +40,7 @@ import 'package:nexaround_app/features/travel_stories/data/datasources/travel_st
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/travel_story_card.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/post_story_sheet.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/stories_comments_dialog.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_stories_page.dart';
 
 class _LocalEvent {
   final String title;
@@ -950,6 +951,7 @@ Always provide a meaningful discovery opportunity.
                               'Travel Stories',
                               '+ Share',
                               onTap: _showPostStorySheet,
+                              onTitleTap: () => _navigateToTravelStories(0),
                             ),
                           ),
                         ),
@@ -1043,6 +1045,7 @@ Always provide a meaningful discovery opportunity.
                             'Travel Stories',
                             '+ Share',
                             onTap: _showPostStorySheet,
+                            onTitleTap: () => _navigateToTravelStories(0),
                           ),
                         ),
                       ),
@@ -1995,6 +1998,18 @@ Always provide a meaningful discovery opportunity.
     }
   }
 
+  void _navigateToTravelStories(int startIndex) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TravelStoriesPage(
+          stories: _travelStories,
+          initialIndex: startIndex,
+        ),
+      ),
+    );
+  }
+
   void _showPostStorySheet() {
     showModalBottomSheet(
       context: context,
@@ -2024,8 +2039,13 @@ Always provide a meaningful discovery opportunity.
         return StoriesCommentsDialog(
           story: story,
           onCommentAdded: (commentText) {
+            final authState = context.read<AuthBloc>().state;
+            String author = 'You';
+            if (authState is AuthAuthenticated) {
+              author = authState.user.displayName;
+            }
             setState(() {
-              story.comments.add(commentText);
+              story.comments.add('$author: $commentText');
             });
             TravelStoriesService().addComment(story.id, commentText);
           },
@@ -2036,7 +2056,47 @@ Always provide a meaningful discovery opportunity.
 
   Widget _buildTravelStoriesFeed() {
     if (_travelStories.isEmpty) {
-      return const SizedBox.shrink();
+      return Container(
+        height: 160,
+        margin: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            )
+          ],
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.photo_library_outlined, size: 36, color: Colors.grey[400]),
+              const SizedBox(height: 12),
+              Text(
+                'No travel stories posted yet',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap "+ Share" to post your experience!',
+                style: TextStyle(
+                  fontSize: 11.5,
+                  color: Colors.grey[500],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
     return SizedBox(
       height: 340,
@@ -2060,6 +2120,7 @@ Always provide a meaningful discovery opportunity.
                 ),
               );
             },
+            onTap: () => _navigateToTravelStories(index),
           );
         },
       ),
@@ -2071,33 +2132,50 @@ Always provide a meaningful discovery opportunity.
     String? action, {
     String? imageIconPath,
     VoidCallback? onTap,
+    VoidCallback? onTitleTap,
   }) {
+    final headerContent = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        if (imageIconPath != null) ...[
+          Image.asset(
+            imageIconPath,
+            width: 36,
+            height: 36,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 8),
+        ],
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+            color: AppColors.textPrimary,
+          ),
+        ),
+        if (onTitleTap != null) ...[
+          const SizedBox(width: 6),
+          const Icon(
+            Icons.arrow_forward_ios_rounded,
+            size: 14,
+            color: AppColors.textSecondary,
+          ),
+        ],
+      ],
+    );
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            if (imageIconPath != null) ...[
-              Image.asset(
-                imageIconPath,
-                width: 36,
-                height: 36,
-                fit: BoxFit.contain,
-              ),
-              const SizedBox(width: 8),
-            ],
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
-            ),
-          ],
-        ),
+        onTitleTap != null
+            ? GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTitleTap,
+                child: headerContent,
+              )
+            : headerContent,
         if (action != null && action.isNotEmpty)
           GestureDetector(
             onTap: onTap ?? () {},

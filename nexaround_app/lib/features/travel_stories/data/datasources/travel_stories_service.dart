@@ -12,41 +12,7 @@ class TravelStoriesService {
   final Dio _dio = ApiClient.instance;
 
   // In-memory fallback list in case backend is offline
-  final List<TravelStory> _fallbackStories = [
-    TravelStory(
-      id: 'story_1',
-      userName: 'Sarah @wanderlust_sarah',
-      userAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&auto=format&fit=crop',
-      locationName: 'Nine Arch Bridge, Ella',
-      category: '🧭 Offbeat Place',
-      description: 'Woke up at 5:00 AM to catch the morning train crossing the bridge. Absolutely magical! The mist rolling over the tea plantations was out of this world.',
-      imageUrl: 'https://images.unsplash.com/photo-1546708973-b339540b5162?w=600&auto=format&fit=crop',
-      likesCount: 42,
-      comments: [
-        'Jane Doe @jane_d: Wow, Ella is indeed beautiful!',
-        'Ethan Miller @ethan_m: Which spot did you take this from?',
-        'Sithmi Lokuge @sithmi: Stunning photo!'
-      ],
-      createdAt: DateTime.now().subtract(const Duration(hours: 3)),
-      isLiked: false,
-    ),
-    TravelStory(
-      id: 'story_2',
-      userName: 'Rohan @island_explorer',
-      userAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&auto=format&fit=crop',
-      locationName: 'Hiriketiya Secret Cove',
-      category: '💎 Hidden Gem',
-      description: 'Found this tiny secluded beach cove just a 10-minute walk from the main Hiriketiya bay. Zero tourists, pristine blue waters, and absolute peace.',
-      imageUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop',
-      likesCount: 29,
-      comments: [
-        'Jane Doe @jane_d: Is it safe for swimming?',
-        'Ethan Miller @ethan_m: Coordinates please!',
-      ],
-      createdAt: DateTime.now().subtract(const Duration(hours: 6)),
-      isLiked: true,
-    ),
-  ];
+  final List<TravelStory> _fallbackStories = [];
 
   Future<List<TravelStory>> getStories() async {
     try {
@@ -111,6 +77,30 @@ class TravelStoriesService {
         _fallbackStories[index].comments.add('You @explorer_me: $commentText');
       }
     }
+  }
+
+  Future<String?> uploadImage(String filePath) async {
+    try {
+      final file = await MultipartFile.fromFile(
+        filePath,
+        filename: filePath.split('/').last.split('\\').last,
+      );
+      final formData = FormData.fromMap({
+        'file': file,
+      });
+
+      final response = await _dio.post(
+        '${ApiConstants.travelStories}/upload',
+        data: formData,
+      );
+
+      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+        return response.data['url'] as String;
+      }
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to upload image ($e).');
+    }
+    return null;
   }
 
   // Pre-defined template images for mocked upload

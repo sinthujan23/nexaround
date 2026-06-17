@@ -1,6 +1,7 @@
+import os
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -82,6 +83,7 @@ async def create_travel_story(
     )
     db.add(story)
     await db.flush()  # Populate id and created_at
+    await db.commit()
     
     # Refresh/load user model relationship details
     stmt = select(TravelStory).where(TravelStory.id == story.id)
@@ -166,6 +168,7 @@ async def create_comment(
     )
     db.add(comment)
     await db.flush()
+    await db.commit()
 
     return TravelStoryCommentResponse(
         id=comment.id,
@@ -176,3 +179,23 @@ async def create_comment(
         comment_text=comment.comment_text,
         created_at=comment.created_at
     )
+
+
+@router.post("/upload")
+async def upload_story_image(
+    file: UploadFile = File(...)
+):
+    """Upload an image for a travel story."""
+    upload_dir = "app/static/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    file_ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+    unique_filename = f"{uuid.uuid4()}{file_ext}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    content = await file.read()
+    with open(file_path, "wb") as buffer:
+        buffer.write(content)
+        
+    return {"url": f"/static/uploads/{unique_filename}"}
+

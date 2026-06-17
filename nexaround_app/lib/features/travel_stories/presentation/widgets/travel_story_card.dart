@@ -1,7 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/constants/api_constants.dart';
 import '../../data/models/travel_story.dart';
 
 class TravelStoryCard extends StatefulWidget {
@@ -9,6 +11,7 @@ class TravelStoryCard extends StatefulWidget {
   final VoidCallback onLikeTap;
   final VoidCallback onCommentTap;
   final VoidCallback? onLocationTap;
+  final VoidCallback? onTap;
 
   const TravelStoryCard({
     super.key,
@@ -16,6 +19,7 @@ class TravelStoryCard extends StatefulWidget {
     required this.onLikeTap,
     required this.onCommentTap,
     this.onLocationTap,
+    this.onTap,
   });
 
   @override
@@ -53,11 +57,77 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     return Colors.teal;
   }
 
+  Widget _buildImage(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return CachedNetworkImage(
+        imageUrl: url,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(
+          color: AppColors.surface,
+          child: const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+            ),
+          ),
+        ),
+        errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+      );
+    } else if (url.startsWith('/static/')) {
+      final fullUrl = '${ApiConstants.baseUrl}$url';
+      return CachedNetworkImage(
+        imageUrl: fullUrl,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => Container(
+          color: AppColors.surface,
+          child: const Center(
+            child: SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+            ),
+          ),
+        ),
+        errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+      );
+    } else {
+      final file = File(url);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+        );
+      } else {
+        final fullUrl = url.startsWith('/') ? '${ApiConstants.baseUrl}$url' : url;
+        return CachedNetworkImage(
+          imageUrl: fullUrl,
+          fit: BoxFit.cover,
+          placeholder: (_, __) => Container(
+            color: AppColors.surface,
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+              ),
+            ),
+          ),
+          errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final catColor = _getCategoryColor(widget.story.category);
 
-    return Container(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTap,
+      child: Container(
       width: 280,
       margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
       decoration: BoxDecoration(
@@ -145,21 +215,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
               child: Stack(
                 fit: StackFit.expand,
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.story.imageUrl,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
-                      color: AppColors.surface,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
-                        ),
-                      ),
-                    ),
-                    errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
-                  ),
+                  _buildImage(widget.story.imageUrl),
                   // Location Overlay Tag
                   Positioned(
                     bottom: 8,
@@ -197,13 +253,31 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             // Story description
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Text(
-                widget.story.description,
-                style: const TextStyle(
-                  fontSize: 11.5,
-                  height: 1.4,
-                  fontWeight: FontWeight.w400,
-                  color: AppColors.textSecondary,
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: widget.story.description.length > 95
+                          ? '${widget.story.description.substring(0, 92)}...'
+                          : widget.story.description,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        height: 1.4,
+                        fontWeight: FontWeight.w400,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (widget.story.description.length > 95)
+                      const TextSpan(
+                        text: ' see more',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          height: 1.4,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.brandGreen,
+                        ),
+                      ),
+                  ],
                 ),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
@@ -291,8 +365,9 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   String _timeAgo(DateTime dateTime) {
     final difference = DateTime.now().difference(dateTime);
