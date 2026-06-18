@@ -199,3 +199,25 @@ async def upload_story_image(
         
     return {"url": f"/static/uploads/{unique_filename}"}
 
+
+@router.delete("/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_travel_story(
+    story_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a travel story. Only the owner can delete their story."""
+    stmt = select(TravelStory).where(TravelStory.id == story_id)
+    res = await db.execute(stmt)
+    story = res.scalar_one_or_none()
+    if not story:
+        raise HTTPException(status_code=404, detail="Travel story not found")
+    
+    # Only owner can delete
+    if story.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this story")
+    
+    await db.delete(story)
+    await db.commit()
+    return None
+

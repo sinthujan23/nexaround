@@ -2005,6 +2005,11 @@ Always provide a meaningful discovery opportunity.
         builder: (context) => TravelStoriesPage(
           stories: _travelStories,
           initialIndex: startIndex,
+          onStoryDeleted: (storyId) {
+            setState(() {
+              _travelStories.removeWhere((s) => s.id == storyId);
+            });
+          },
         ),
       ),
     );
@@ -2019,11 +2024,14 @@ Always provide a meaningful discovery opportunity.
         return PostStorySheet(
           userLatitude: _userLatitude ?? 6.9271,
           userLongitude: _userLongitude ?? 79.8612,
-          onStorySubmitted: (newStory) {
-            setState(() {
-              _travelStories.insert(0, newStory);
-            });
-            TravelStoriesService().addStory(newStory);
+          onStorySubmitted: (newStory) async {
+            // Send to backend first to persist in DB and get the real UUID
+            final savedStory = await TravelStoriesService().addStory(newStory);
+            if (mounted) {
+              setState(() {
+                _travelStories.insert(0, savedStory ?? newStory);
+              });
+            }
           },
         );
       },

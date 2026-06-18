@@ -15,11 +15,13 @@ import '../widgets/stories_comments_dialog.dart';
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
   final int initialIndex;
+  final Function(String storyId)? onStoryDeleted;
 
   const TravelStoriesPage({
     super.key,
     required this.stories,
     required this.initialIndex,
+    this.onStoryDeleted,
   });
 
   @override
@@ -31,6 +33,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   late int _currentIndex;
   final TextEditingController _commentController = TextEditingController();
   bool _isSendingComment = false;
+  bool _isDeletingStory = false;
   final Set<String> _expandedStoryIds = {};
 
   @override
@@ -181,6 +184,70 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     );
   }
 
+  Future<void> _deleteCurrentStory() async {
+    final story = widget.stories[_currentIndex];
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Story', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Are you sure you want to delete this story? This action cannot be undone.',
+          style: TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isDeletingStory = true);
+    try {
+      await TravelStoriesService().deleteStory(story.id);
+      widget.onStoryDeleted?.call(story.id);
+      if (!mounted) return;
+      
+      // Remove from local list
+      widget.stories.removeAt(_currentIndex);
+      
+      if (widget.stories.isEmpty) {
+        Navigator.pop(context);
+        return;
+      }
+      
+      // Adjust index if we deleted the last story
+      if (_currentIndex >= widget.stories.length) {
+        _currentIndex = widget.stories.length - 1;
+      }
+      setState(() => _isDeletingStory = false);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Story deleted'),
+          backgroundColor: Colors.redAccent,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isDeletingStory = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete story: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.stories.isEmpty) {
@@ -289,10 +356,36 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                               ),
                             ],
                           ),
-                          // Close button
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // More options (delete)
+                              BlocBuilder<AuthBloc, AuthState>(
+                                builder: (context, authState) {
+                                  final isOwner = authState is AuthAuthenticated &&
+                                      currentStory.userId == authState.user.id;
+                                  if (!isOwner) return const SizedBox.shrink();
+                                  return IconButton(
+                                    onPressed: _isDeletingStory ? null : _deleteCurrentStory,
+                                    icon: _isDeletingStory
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.5,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(Icons.delete_outline_rounded, color: Colors.white70, size: 24),
+                                  );
+                                },
+                              ),
+                              // Close button
+                              IconButton(
+                                onPressed: () => Navigator.pop(context),
+                                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                              ),
+                            ],
                           ),
                         ],
                       ),

@@ -79,6 +79,15 @@ class TravelStoriesService {
     }
   }
 
+  Future<void> deleteStory(String storyId) async {
+    try {
+      await _dio.delete('${ApiConstants.travelStories}/$storyId');
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to delete story ($e).');
+      rethrow;
+    }
+  }
+
   Future<String?> uploadImage(String filePath) async {
     try {
       final file = await MultipartFile.fromFile(

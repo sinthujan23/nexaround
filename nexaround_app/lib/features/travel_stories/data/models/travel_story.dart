@@ -1,5 +1,6 @@
 class TravelStory {
   final String id;
+  final String userId;
   final String userName;
   final String userAvatar;
   final String locationName;
@@ -13,6 +14,7 @@ class TravelStory {
 
   TravelStory({
     required this.id,
+    required this.userId,
     required this.userName,
     required this.userAvatar,
     required this.locationName,
@@ -27,6 +29,7 @@ class TravelStory {
 
   TravelStory copyWith({
     String? id,
+    String? userId,
     String? userName,
     String? userAvatar,
     String? locationName,
@@ -40,6 +43,7 @@ class TravelStory {
   }) {
     return TravelStory(
       id: id ?? this.id,
+      userId: userId ?? this.userId,
       userName: userName ?? this.userName,
       userAvatar: userAvatar ?? this.userAvatar,
       locationName: locationName ?? this.locationName,
@@ -63,6 +67,7 @@ class TravelStory {
 
     return TravelStory(
       id: (json['id'] ?? '').toString(),
+      userId: (json['user_id'] ?? '').toString(),
       userName: json['user_display_name'] as String? ?? 'Anonymous',
       userAvatar: json['user_avatar_url'] as String? ?? '',
       locationName: json['location_name'] as String? ?? '',

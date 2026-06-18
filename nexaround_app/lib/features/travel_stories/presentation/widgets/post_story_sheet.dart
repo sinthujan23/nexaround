@@ -200,16 +200,19 @@ class _PostStorySheetState extends State<PostStorySheet> {
     }
 
     final authState = BlocProvider.of<AuthBloc>(context).state;
+    String userId = '';
     String userName = 'Explorer';
     String userAvatar = '';
 
     if (authState is AuthAuthenticated) {
+      userId = authState.user.id;
       userName = authState.user.displayName;
       userAvatar = authState.user.avatarUrl ?? '';
     }
 
     final newStory = TravelStory(
       id: 'story_${DateTime.now().millisecondsSinceEpoch}',
+      userId: userId,
       userName: userName,
       userAvatar: userAvatar,
       locationName: location,
@@ -251,20 +254,22 @@ class _PostStorySheetState extends State<PostStorySheet> {
         _descriptionController.text.trim().isNotEmpty &&
         _selectedImage != null;
 
-    return Container(
-      height: MediaQuery.of(context).size.height * 0.85,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 24,
-            spreadRadius: 1,
-          )
-        ],
-      ),
-      child: Column(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.85,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 24,
+              spreadRadius: 1,
+            )
+          ],
+        ),
+        child: Column(
         children: [
           // Drag Indicator
           Container(
@@ -302,6 +307,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
           Expanded(
             child: SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,9 +426,30 @@ class _PostStorySheetState extends State<PostStorySheet> {
                   const SizedBox(height: 20),
 
                   // 3. Story Comment
-                  const Text(
-                    'Your Experience / Story',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Your Experience / Story',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
+                      ),
+                      TextButton(
+                        onPressed: () => FocusScope.of(context).unfocus(),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.zero,
+                          minimumSize: const Size(50, 30),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Done',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -547,6 +574,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
           ),
         ],
       ),
-    );
+    ),
+   );
   }
 }
