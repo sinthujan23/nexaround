@@ -1481,6 +1481,14 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                           ),
                           const SizedBox(height: 8),
                           _buildCircleButton(
+                            imagePath: 'assets/images/headout.png',
+                            onTap: _openHeadout,
+                            bgColor: Colors.transparent,
+                            iconColor: Colors.white,
+                            fillImage: true,
+                          ),
+                          const SizedBox(height: 8),
+                          _buildCircleButton(
                             icon: Icons.my_location_rounded,
                             onTap: _recenterOnUser,
                             bgColor: Colors.black.withValues(alpha: 0.7),
@@ -1645,6 +1653,17 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       'dropoff[nickname]': name,
     };
     await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
+  }
+
+  /// Opens Headout for activities & experiences near the destination.
+  Future<void> _openHeadout() async {
+    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
+    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
+    final name = _destinationName ?? '';
+    final query = name.trim().isNotEmpty ? name.trim() : '$lat,$lng';
+    await _launchExternalUrl(
+      Uri.https('www.headout.com', '/search', {'q': query}),
+    );
   }
 
   Future<void> _launchExternalUrl(Uri uri) async {
@@ -1908,6 +1927,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     required Color iconColor,
     bool glow = false,
     String? label,
+    bool fillImage = false,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1939,12 +1959,14 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             ),
             child: ClipOval(
               child: imagePath != null
-                  ? Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: ClipOval(
-                        child: Image.asset(imagePath, fit: BoxFit.cover),
-                      ),
-                    )
+                  ? (fillImage
+                      ? Image.asset(imagePath, fit: BoxFit.cover)
+                      : Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: ClipOval(
+                            child: Image.asset(imagePath, fit: BoxFit.cover),
+                          ),
+                        ))
                   : Icon(icon, color: iconColor, size: 22), // Set icon size to 22px
             ),
           ),

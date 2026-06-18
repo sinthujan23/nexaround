@@ -2,7 +2,7 @@ import os
 import uuid
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user
@@ -24,7 +24,9 @@ async def get_travel_stories(
     current_user: User = Depends(get_current_user)
 ):
     """Get all travel stories, sorted newest first."""
-    stmt = select(TravelStory).order_by(TravelStory.created_at.desc())
+    stmt = select(TravelStory).where(
+        or_(TravelStory.is_public == True, TravelStory.user_id == current_user.id)
+    ).order_by(TravelStory.created_at.desc())
     res = await db.execute(stmt)
     stories = res.scalars().all()
     
@@ -57,6 +59,7 @@ async def get_travel_stories(
                 category=s.category,
                 description=s.description,
                 image_url=s.image_url,
+                is_public=s.is_public,
                 likes_count=len(s.likes),
                 is_liked=is_liked,
                 created_at=s.created_at,
@@ -79,7 +82,8 @@ async def create_travel_story(
         location_name=data.location_name,
         category=data.category,
         description=data.description,
-        image_url=data.image_url
+        image_url=data.image_url,
+        is_public=data.is_public
     )
     db.add(story)
     await db.flush()  # Populate id and created_at
@@ -99,6 +103,7 @@ async def create_travel_story(
         category=refreshed_story.category,
         description=refreshed_story.description,
         image_url=refreshed_story.image_url,
+        is_public=refreshed_story.is_public,
         likes_count=0,
         is_liked=False,
         created_at=refreshed_story.created_at,

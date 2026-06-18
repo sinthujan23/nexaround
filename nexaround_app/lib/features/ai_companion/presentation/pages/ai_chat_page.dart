@@ -710,8 +710,9 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       IconData? icon,
       String? imagePath,
       required Color color,
-      required VoidCallback onTap,
       required int index,
+      required VoidCallback onTap,
+      bool fillImage = false,
     }) {
       return GestureDetector(
         onTap: onTap,
@@ -731,15 +732,17 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
           ),
           child: Center(
             child: child ?? (imagePath != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: Image.asset(
-                      imagePath,
-                      width: 28,
-                      height: 28,
-                      fit: BoxFit.cover,
-                    ),
-                  )
+                ? (fillImage
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset(imagePath, fit: BoxFit.cover, width: 48, height: 48),
+                      )
+                    : Padding(
+                        padding: const EdgeInsets.all(5),
+                        child: ClipOval(
+                          child: Image.asset(imagePath, fit: BoxFit.cover, width: 34, height: 34),
+                        ),
+                      ))
                 : Icon(icon, color: Colors.white, size: 24)),
           ),
         ),
@@ -799,6 +802,20 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             onTap: () async {
               try {
                 await launchUrl(bookingUri, mode: LaunchMode.externalApplication);
+              } catch (_) {}
+            },
+          ),
+          const SizedBox(width: 16),
+          circleActionButton(
+            imagePath: 'assets/images/headout.png',
+            color: Colors.transparent,
+            index: 3,
+            fillImage: true,
+            onTap: () async {
+              final query = name.trim().isNotEmpty ? name.trim() : '$finalLat,$finalLng';
+              final headoutUri = Uri.https('www.headout.com', '/search', {'q': query});
+              try {
+                await launchUrl(headoutUri, mode: LaunchMode.externalApplication);
               } catch (_) {}
             },
           ),

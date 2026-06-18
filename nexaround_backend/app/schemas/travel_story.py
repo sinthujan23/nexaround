@@ -26,6 +26,7 @@ class TravelStoryBase(BaseModel):
     category: str = Field(..., max_length=100)
     description: str = Field(..., max_length=1000)
     image_url: str = Field(..., max_length=500)
+    is_public: bool = True
 
 class TravelStoryCreate(TravelStoryBase):
     pass

@@ -56,6 +56,7 @@ class AttractionDetailPage extends StatefulWidget {
 
 class _AttractionDetailPageState extends State<AttractionDetailPage> {
   String get _placeId => widget.id ?? widget.name.hashCode.toString();
+  String? _resolvedImageUrl;
 
   // ── Google Places data ──
   bool _isLoadingPlaces = true;
@@ -76,6 +77,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   @override
   void initState() {
     super.initState();
+    _resolvedImageUrl = widget.imageUrl;
     _totalReviews = widget.reviewCount;
     _fetchPlacesDetails();
   }
@@ -90,7 +92,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
         resolvedId = await _findPlaceId();
       }
       if (resolvedId != null) {
-        final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary,types';
+        final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary,types,photos';
         final response = await ApiClient.instance.get(
           '${ApiConstants.googleMapsProxy}/place/details/json',
           queryParameters: {
@@ -134,6 +136,16 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
             final summaryMap = data['editorial_summary'] as Map<String, dynamic>?;
             summaryText = summaryMap?['overview'] as String?;
 
+            // Retrieve photo if local photo is null/empty
+            String? fetchedPhotoUrl;
+            final photos = data['photos'] as List? ?? [];
+            if (photos.isNotEmpty) {
+              final ref = photos[0]['photo_reference'] as String?;
+              if (ref != null && ref.isNotEmpty) {
+                fetchedPhotoUrl = '/api/v1/places/photo?ref=$ref';
+              }
+            }
+
             if (mounted) {
               setState(() {
                 _openNowText = openNow == null ? null : (openNow ? 'Open' : 'Closed');
@@ -142,6 +154,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                 _priceLevel = priceText;
                 _realReviews = List<Map<String, dynamic>>.from(reviews);
                 _weekdayHours = weekday;
+                if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && fetchedPhotoUrl != null) {
+                  _resolvedImageUrl = fetchedPhotoUrl;
+                }
               });
             }
           }
@@ -153,7 +168,13 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       if (mounted) {
         setState(() => _isLoadingPlaces = false);
       }
-      _fetchGeminiInfo(types: types, summary: summaryText);
+      if (widget.aiWhy == null) {
+        _fetchGeminiInfo(types: types, summary: summaryText);
+      } else {
+        if (mounted) {
+          setState(() => _isLoadingGemini = false);
+        }
+      }
     }
   }
 
@@ -272,12 +293,45 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                 child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
               ),
             ),
+            actions: [
+              GestureDetector(
+                onTap: () async {
+                  final map = {
+                    'id': _placeId,
+                    'name': widget.name,
+                    'category_name': widget.category,
+                    'rating': widget.rating,
+                    'photo_urls': _resolvedImageUrl != null ? [_resolvedImageUrl!] : <String>[],
+                    'latitude': widget.latitude ?? 0.0,
+                    'longitude': widget.longitude ?? 0.0,
+                    'created_at': DateTime.now().toIso8601String(),
+                  };
+                  await CacheService.toggleSavedPlace(map);
+                  if (mounted) setState(() {});
+                },
+                child: Container(
+                  margin: const EdgeInsets.all(8),
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                  child: Icon(
+                    isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                    color: isSaved ? AppColors.ratingGold : Colors.white,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Stack(
                 fit: StackFit.expand,
                 children: [
                   PlaceImageHelper.buildPlaceImage(
-                    imagePath: widget.imageUrl,
+                    imagePath: _resolvedImageUrl,
                     category: widget.category,
                     name: widget.name,
                   ),
@@ -369,24 +423,68 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
                   const SizedBox(height: 24),
 
-                  // Quick stats row
+                  // Stats Section as wrapping badges
                   (() {
                     final displayCost = _isLoadingPlaces ? '...' : (_priceLevel ?? widget.aiCost ?? 'N/A');
                     final displayAvgVisit = _isLoadingGemini ? '...' : (_avgVisit ?? widget.aiWhen ?? 'N/A');
                     final displayCrowd = _isLoadingGemini ? '...' : (_crowdLevel ?? 'N/A');
-                    final showCost = _isLoadingPlaces || (displayCost.toLowerCase() != 'n/a' && displayCost.isNotEmpty);
 
-                    return Row(
+                    Widget buildStatBadge(IconData icon, String title, String value, bool isLoading) {
+                      if (isLoading) {
+                        return Container(
+                          width: 140,
+                          height: 56,
+                          margin: const EdgeInsets.only(right: 12, bottom: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade200,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
+                      }
+                      
+                      return Container(
+                        margin: const EdgeInsets.only(right: 12, bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 18, color: AppColors.actionTeal),
+                            const SizedBox(width: 8),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 120),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    title,
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    value,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    return Wrap(
                       children: [
-                        if (showCost) ...[
-                          _buildStatChip(Icons.attach_money_rounded, displayCost, 'Entry Fee'),
-                          const SizedBox(width: 8),
-                        ],
-                        _buildStatChip(Icons.schedule_rounded, displayAvgVisit, 'Avg Visit'),
-                        const SizedBox(width: 8),
-                        _buildStatChip(Icons.people_rounded, displayCrowd, 'Crowd'),
-                        const SizedBox(width: 8),
-                        _buildSaveChip(isSaved),
+                        buildStatBadge(Icons.attach_money_rounded, 'ENTRY FEE', displayCost, _isLoadingPlaces),
+                        buildStatBadge(Icons.schedule_rounded, 'WHEN TO VISIT', displayAvgVisit.isEmpty ? 'N/A' : displayAvgVisit, _isLoadingGemini),
+                        buildStatBadge(Icons.people_rounded, 'CROWD LEVEL', displayCrowd.isEmpty ? 'N/A' : displayCrowd, _isLoadingGemini),
                       ],
                     );
                   })(),
@@ -399,27 +497,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     const SizedBox(height: 16),
                   ],
 
-                  // History section
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    child: _isLoadingGemini
-                        ? _buildSkeletonSection(key: const ValueKey('hist_skel'))
-                        : _historyText != null
-                            ? _buildInfoSection('History', Icons.history_edu_rounded, _historyText!, key: const ValueKey('hist_real'))
-                            : const SizedBox.shrink(key: ValueKey('hist_none')),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Cultural Tips
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 400),
-                    child: _isLoadingGemini
-                        ? _buildSkeletonSection(key: const ValueKey('tips_skel'))
-                        : _culturalTips != null
-                            ? _buildInfoSection('Cultural Tips', Icons.info_outline_rounded, _culturalTips!, key: const ValueKey('tips_real'))
-                            : const SizedBox.shrink(key: ValueKey('tips_none')),
-                  ),
-                  const SizedBox(height: 16),
+                  // History and Cultural Tips removed as requested.
 
                   // Opening Hours
                   AnimatedSwitcher(
@@ -428,7 +506,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('hours_skel'))
                         : _weekdayHours.isNotEmpty
                             ? _buildOpeningHoursCard(key: const ValueKey('hours_real'))
-                            : const SizedBox.shrink(key: ValueKey('hours_none')),
+                            : _buildEmptyStateCard('Opening Hours', Icons.schedule_rounded, 'No opening hours available', key: const ValueKey('hours_none')),
                   ),
                   const SizedBox(height: 16),
 
@@ -439,7 +517,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('rev_skel'))
                         : _realReviews.isNotEmpty
                             ? _buildReviewsCard(key: const ValueKey('rev_real'))
-                            : const SizedBox.shrink(key: ValueKey('rev_none')),
+                            : _buildEmptyStateCard('Reviews', Icons.star_rounded, 'No reviews available', key: const ValueKey('rev_none')),
                   ),
 
                   const SizedBox(height: 32),
@@ -538,6 +616,35 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
           Container(height: 10, width: 220, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
           const SizedBox(height: 8),
           Container(height: 10, width: 180, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+        ],
+      ),
+    ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
+  }
+
+  Widget _buildEmptyStateCard(String title, IconData icon, String message, {Key? key}) {
+    return Container(key: key,
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black.withOpacity(0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 18, color: AppColors.textSecondary),
+              const SizedBox(width: 10),
+              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            style: const TextStyle(fontSize: 13, color: AppColors.textTertiary, fontStyle: FontStyle.italic),
+          ),
         ],
       ),
     );
@@ -755,19 +862,19 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.primary.withOpacity(0.12),
-            AppColors.actionTeal.withOpacity(0.05),
-          ],
-        ),
+        color: const Color(0xFF1A1F24),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: AppColors.actionTeal.withOpacity(0.3),
-          width: 1,
+          color: AppColors.ratingGold.withOpacity(0.5),
+          width: 1.5,
         ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ratingGold.withOpacity(0.15),
+            blurRadius: 20,
+            spreadRadius: 2,
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -781,27 +888,31 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.actionTeal,
+                  color: AppColors.ratingGold,
                 ),
               ),
               const Spacer(),
-              if (widget.aiConfidence != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppColors.ratingGold.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.ratingGold.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    '${widget.aiConfidence} Match',
-                    style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.ratingGold,
+              if (widget.aiConfidence != null && widget.aiConfidence!.trim().isNotEmpty)
+                (() {
+                  final cleanConf = widget.aiConfidence!.replaceAll(RegExp(r'[\s\-]+$'), '');
+                  if (cleanConf.isEmpty) return const SizedBox.shrink();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.ratingGold.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.ratingGold.withOpacity(0.3)),
                     ),
-                  ),
-                ),
+                    child: Text(
+                      '$cleanConf Match',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.ratingGold,
+                      ),
+                    ),
+                  );
+                })(),
             ],
           ),
           const SizedBox(height: 14),
@@ -816,6 +927,70 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
           ),
         ],
       ),
+    );
+  }
+
+  String _shortenCost(String cost) {
+    if (cost.toLowerCase() == 'n/a') return 'N/A';
+    // Remove parentheses and everything inside
+    String cleaned = cost.replaceAll(RegExp(r'\(.*?\)'), '').trim();
+    // Remove common prefix words
+    cleaned = cleaned.replaceAll(RegExp(r'^(estimated|approx|approx\.|about|around)\s+', caseSensitive: false), '').trim();
+    // If still very long (more than 20 chars), try to find a number range
+    if (cleaned.length > 20) {
+      final match = RegExp(r'(\d+[\d,]*\s*(?:-|to)\s*\d+[\d,]*)').firstMatch(cleaned);
+      if (match != null) {
+        final currencyMatch = RegExp(r'\b([A-Z]{3}|Rs\.?|\$)\b').firstMatch(cleaned);
+        if (currencyMatch != null) {
+          return '${currencyMatch.group(1)} ${match.group(1)}';
+        }
+        return match.group(1) ?? cleaned;
+      }
+      return cleaned.substring(0, 17) + '...';
+    }
+    return cleaned;
+  }
+
+  Widget _buildHorizontalStatRow(IconData icon, String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.actionTeal.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: AppColors.actionTeal),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textTertiary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

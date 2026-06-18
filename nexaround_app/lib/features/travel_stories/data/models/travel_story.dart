@@ -11,6 +11,7 @@ class TravelStory {
   final List<String> comments;
   final DateTime createdAt;
   bool isLiked;
+  final bool isPublic;
 
   TravelStory({
     required this.id,
@@ -25,6 +26,7 @@ class TravelStory {
     required this.comments,
     required this.createdAt,
     this.isLiked = false,
+    this.isPublic = true,
   });
 
   TravelStory copyWith({
@@ -40,6 +42,7 @@ class TravelStory {
     List<String>? comments,
     DateTime? createdAt,
     bool? isLiked,
+    bool? isPublic,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -54,6 +57,7 @@ class TravelStory {
       comments: comments ?? this.comments,
       createdAt: createdAt ?? this.createdAt,
       isLiked: isLiked ?? this.isLiked,
+      isPublic: isPublic ?? this.isPublic,
     );
   }
 
@@ -80,6 +84,7 @@ class TravelStory {
           ? DateTime.parse(json['created_at'] as String) 
           : DateTime.now(),
       isLiked: json['is_liked'] as bool? ?? false,
+      isPublic: json['is_public'] as bool? ?? true,
     );
   }
 
@@ -89,6 +94,7 @@ class TravelStory {
       'category': category,
       'description': description,
       'image_url': imageUrl,
+      'is_public': isPublic,
     };
   }
 }

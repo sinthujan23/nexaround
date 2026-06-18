@@ -1310,6 +1310,14 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           color: Colors.black,
           onTap: _openUber,
         ),
+        const SizedBox(height: 10),
+        // Headout — book activities & experiences
+        _buildFab(
+          imagePath: 'assets/images/headout.png',
+          color: Colors.transparent,
+          fillImage: true,
+          onTap: _openHeadout,
+        ),
       ],
     );
   }
@@ -1350,6 +1358,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
   }
 
+  /// Opens Headout for activities & experiences near the destination.
+  Future<void> _openHeadout() async {
+    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
+    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
+    final name = _destName ?? '';
+    final query = name.trim().isNotEmpty ? name.trim() : '$lat,$lng';
+    final uri = Uri.https('www.headout.com', '/search', {'q': query});
+    await _launchExternalUrl(uri);
+  }
+
   Future<void> _launchExternalUrl(Uri uri) async {
     try {
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1372,6 +1390,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     String? imagePath,
     required Color color,
     required VoidCallback onTap,
+    bool fillImage = false,
   }) {
     return GestureDetector(
       onTap: onTap,
@@ -1393,10 +1412,12 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         ),
         child: ClipOval(
           child: imagePath != null
-              ? Padding(
-                  padding: const EdgeInsets.all(6),
-                  child: Image.asset(imagePath, fit: BoxFit.contain),
-                )
+              ? (fillImage
+                  ? Image.asset(imagePath, fit: BoxFit.cover, width: 48, height: 48)
+                  : Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Image.asset(imagePath, fit: BoxFit.contain),
+                    ))
               : Icon(icon, color: Colors.white, size: 22),
         ),
       ),

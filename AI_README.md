@@ -31,14 +31,18 @@ To reduce Gemini API spend, avoid Google Places API quota consumption, and guara
 
 ---
 
-## 🎨 Mobile Client Card Fallback Design
+## 🎨 Mobile Client Card Fallback & Navigation Design
 
 Mobile clients fetch the discovery payload through a single HTTP GET request. The client maps the raw `_aiExperiences` to the carousel:
 
-* **Resolved Cards:** If an experience matches a resolved place returned by the backend, it renders a card containing real Google Place images, star ratings, review counts, and exact distance badges.
-* **Unresolved Fallback Cards:** If an experience cannot be resolved to a Google Place (e.g., street food crawl, temporary festival, beach walk), it is **never hidden**. The app renders a premium visual card containing:
-  * A custom gradient background (`AppColors.primary` & `AppColors.surfaceVariant`).
-  * A translucent central category icon (`Experiences` or `Attractions`).
-  * An **AI Pick Match Score** badge (derived from Gemini confidence rating).
-  * A structured timing badge showing date/hours.
-  * Interaction: Tapping either resolved or unresolved cards triggers the same structured AI Experience Details bottom sheet modal.
+* **Header Neva Action Button:** The static "See AI Report" text button is replaced with an animated Neva avatar action pill. If the report is loaded, the button pulsates dynamically using scale loops via `flutter_animate` and includes a live pulsing red indicator dot. Clicking this button toggles the AI Report bottom sheet.
+* **Carousel Cleanup:** The "AI Experience Report" card at index 0 is removed from the horizontal carousel to keep the focus entirely on specific local experiences.
+* **Direct Navigation:** Instead of launching bottom sheets, tapping either resolved or unresolved experience cards navigates the user directly to the full-screen `AttractionDetailPage`.
+* **Detail Page Capabilities:** The `AttractionDetailPage` fetches reviews and details dynamically from the Google Places API (using text queries if `place_id` is missing) and overlays AI experience insights.
+* **Dynamic Photo Fetching:** If no local photo is passed, the page queries Google Places details with the `photos` field to retrieve the first Place photo, ensuring real photos render rather than generic category fallbacks.
+* **Fuzzy Matching & Background Resolving:** The mobile app checks experience names using a fuzzy word matching algorithm (`_shareSignificantWords`) against `_geminiTrendingPlaces` and `state.attractions`. Unresolved cards trigger background lookups via text queries, caching fetched photo references locally to render place images directly inside the carousel.
+* **Custom Section Visibility:** History and Cultural Tips sections are hidden when viewing an AI-curated experience (`widget.aiWhy != null`) to declutter the view, and the generic Gemini details request is bypassed.
+* **Contrast Optimization:** Body text in the "AI Experience Insights" card is styled with `AppColors.textPrimary` (dark charcoal/black) for clear readability against the glass tint background.
+* **Sanitized Match Scores:** Trailing separators and noise (e.g. trailing `---`) from Gemini's markdown response are cleanly parsed out and sanitized at both the parser and badge level, ensuring match scores display as clean strings like `95/100 Match` instead of `95/100 --- Match`.
+* **Consolidated Stats Layout:** Replaced the grid-based quick stats chips with a unified horizontal row list container in `AttractionDetailPage`. Values wrap naturally to fit multi-line content (e.g., long hours or entry details) without stretching box boundaries.
+* **Floating AppBar Bookmark Actions:** The save/bookmark toggle is relocated to the top-right corner of the hero image inside the AppBar's action list, matching standard mobile design conventions.

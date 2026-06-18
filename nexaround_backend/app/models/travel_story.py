@@ -19,6 +19,7 @@ class TravelStory(Base):
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=False)
     image_url: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_public: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -3146,22 +3146,7 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
             _buildRangeSlider(),
 
-          // Notice banner when range > 2km (or 100-place cap for All category shown temporarily)
-          if (!_minimalHud && !_isMapping && !_isNavigating && _nevaSearchResult == null && !_showInfoCard)
-            if (_selectedFilter == 'All' && _showMaxPlacesLimitNotice)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 106,
-                left: 20,
-                right: 20,
-                child: Center(child: _buildMaxPlacesLimitNotice()),
-              )
-            else if (_rangeKm > 2)
-              Positioned(
-                top: MediaQuery.of(context).padding.top + 106,
-                left: 20,
-                right: 20,
-                child: Center(child: _buildApiLimitNotice()),
-              ),
+          // Notice banners removed per client request
 
           // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null && !_isFetchingPlaces)
@@ -5056,6 +5041,9 @@ HOW TO FORMAT EVERY REPLY:
                 'longitude': finalLng.toStringAsFixed(6),
               });
 
+              final headoutQuery = name.trim().isNotEmpty ? name.trim() : '$finalLat,$finalLng';
+              final headoutUri = Uri.https('www.headout.com', '/search', {'q': headoutQuery});
+
               Widget circleActionButton({
                 Widget? child,
                 IconData? icon,
@@ -5063,6 +5051,7 @@ HOW TO FORMAT EVERY REPLY:
                 required Color color,
                 required VoidCallback onTap,
                 required int index,
+                bool fillImage = false,
               }) {
                 return GestureDetector(
                   onTap: onTap,
@@ -5082,15 +5071,20 @@ HOW TO FORMAT EVERY REPLY:
                     ),
                     child: Center(
                       child: child ?? (imagePath != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: Image.asset(
-                                imagePath,
-                                width: 28,
-                                height: 28,
-                                fit: BoxFit.cover,
-                              ),
-                            )
+                          ? (fillImage
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.asset(imagePath, fit: BoxFit.cover, width: 44, height: 44),
+                                )
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.asset(
+                                    imagePath,
+                                    width: 28,
+                                    height: 28,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ))
                           : Icon(icon, color: Colors.white, size: 24)),
                     ),
                   ),
@@ -5103,9 +5097,12 @@ HOW TO FORMAT EVERY REPLY:
                  );
               }
 
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+              return SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   circleActionButton(
                     icon: Icons.explore_rounded,
                     color: const Color(0xFF00C6FF),
@@ -5153,15 +5150,27 @@ HOW TO FORMAT EVERY REPLY:
                   ),
                   const SizedBox(width: 16),
                   circleActionButton(
-                    child: _buildNevaAvatar(44),
+                    imagePath: 'assets/images/headout.png',
                     color: Colors.transparent,
                     index: 3,
+                    fillImage: true,
+                    onTap: () async {
+                      try {
+                        await launchUrl(headoutUri, mode: LaunchMode.externalApplication);
+                      } catch (_) {}
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  circleActionButton(
+                    child: _buildNevaAvatar(44),
+                    color: Colors.transparent,
+                    index: 4,
                     onTap: () {
                       _openAskNevaForResult(result);
                     },
                   ),
                 ],
-              ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0);
+              )).animate().fadeIn(duration: 400.ms).slideY(begin: 0.1, end: 0);
             },
           ),
         ),
@@ -5797,9 +5806,12 @@ HOW TO FORMAT EVERY REPLY:
                               ),
                               const SizedBox(height: 10),
                               // MORE INFO — opens Ask Neva
-                              Row(
-                                children: [
-                                  GestureDetector(
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Row(
+                                  children: [
+                                    GestureDetector(
                                     onTap: () => _openAskNevaFor(landmark),
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -5844,6 +5856,7 @@ HOW TO FORMAT EVERY REPLY:
                                       required Color color,
                                       required VoidCallback onTap,
                                       required int index,
+                                      bool fillImage = false,
                                     }) {
                                       return GestureDetector(
                                         onTap: onTap,
@@ -5868,12 +5881,14 @@ HOW TO FORMAT EVERY REPLY:
                                           child: Center(
                                             child: ClipRRect(
                                               borderRadius: BorderRadius.circular(19),
-                                              child: Image.asset(
-                                                imagePath,
-                                                width: 22,
-                                                height: 22,
-                                                fit: BoxFit.cover,
-                                              ),
+                                              child: fillImage
+                                                  ? Image.asset(imagePath, fit: BoxFit.cover, width: 38, height: 38)
+                                                  : Image.asset(
+                                                      imagePath,
+                                                      width: 22,
+                                                      height: 22,
+                                                      fit: BoxFit.cover,
+                                                    ),
                                             ),
                                           ),
                                         ),
@@ -5910,12 +5925,27 @@ HOW TO FORMAT EVERY REPLY:
                                             } catch (_) {}
                                           },
                                         ),
+                                        const SizedBox(width: 8),
+                                        miniCircleActionButton(
+                                          imagePath: 'assets/images/headout.png',
+                                          color: Colors.transparent,
+                                          index: 2,
+                                          fillImage: true,
+                                          onTap: () async {
+                                            final hQuery = name.trim().isNotEmpty ? name.trim() : '$finalLat,$finalLng';
+                                            final hUri = Uri.https('www.headout.com', '/search', {'q': hQuery});
+                                            try {
+                                              await launchUrl(hUri, mode: LaunchMode.externalApplication);
+                                            } catch (_) {}
+                                          },
+                                        ),
                                       ],
                                     );
                                   }(),
                                 ],
                               ),
-                            ],
+                            ),
+                          ],
                           ),
                         ),
                         const SizedBox(width: 12),

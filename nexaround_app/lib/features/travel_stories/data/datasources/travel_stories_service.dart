@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/network/api_client.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../models/travel_story.dart';
@@ -15,33 +17,57 @@ class TravelStoriesService {
   final List<TravelStory> _fallbackStories = [];
 
   Future<List<TravelStory>> getStories() async {
+    final prefs = await SharedPreferences.getInstance();
     try {
       final response = await _dio.get(ApiConstants.travelStories);
       if (response.statusCode == 200 && response.data != null) {
         final List<dynamic> data = response.data;
-        return data.map((json) => TravelStory.fromJson(json)).toList();
+        final stories = data.map((json) => TravelStory.fromJson(json)).toList();
+        await prefs.setString('cached_travel_stories', jsonEncode(data));
+        return stories;
       }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using fallback mock data.');
+      print('⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using fallback/cached data.');
+    }
+
+    final cachedData = prefs.getString('cached_travel_stories');
+    if (cachedData != null) {
+      final List<dynamic> data = jsonDecode(cachedData);
+      return data.map((json) => TravelStory.fromJson(json)).toList();
     }
     return List.from(_fallbackStories);
   }
 
   Future<TravelStory?> addStory(TravelStory story) async {
+    final prefs = await SharedPreferences.getInstance();
+    TravelStory? returnedStory;
     try {
       final response = await _dio.post(
         ApiConstants.travelStories,
         data: story.toJson(),
       );
       if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
-        return TravelStory.fromJson(response.data);
+        returnedStory = TravelStory.fromJson(response.data);
       }
     } catch (e) {
       print('⚠️ TravelStoriesService: Failed to post story to backend ($e). Saving locally in fallback list.');
       // Append to fallback stories locally
       _fallbackStories.insert(0, story);
+      returnedStory = story;
     }
-    return story;
+
+    if (returnedStory != null) {
+      final cachedData = prefs.getString('cached_travel_stories');
+      if (cachedData != null) {
+        final List<dynamic> data = jsonDecode(cachedData);
+        data.insert(0, returnedStory.toJson());
+        await prefs.setString('cached_travel_stories', jsonEncode(data));
+      } else {
+        await prefs.setString('cached_travel_stories', jsonEncode([returnedStory.toJson()]));
+      }
+    }
+    
+    return returnedStory;
   }
 
   Future<void> toggleLike(String id) async {

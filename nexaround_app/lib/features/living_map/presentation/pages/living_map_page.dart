@@ -86,6 +86,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   String? _geminiTrendingMarkdown;
   final Map<String, Map<String, String>> _parsedAiDetails = {};
   List<AiExperience> _aiExperiences = [];
+  final Map<String, String> _unresolvedPhotos = {};
 
   @override
   void initState() {
@@ -300,6 +301,63 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
+  void _resolveUnresolvedCardPhotos() {
+    for (final exp in _aiExperiences) {
+      final lowerExpName = exp.name.toLowerCase().trim();
+      bool isResolved = _geminiTrendingPlaces.any((p) => p.name.toLowerCase().trim() == lowerExpName);
+      if (!isResolved) {
+        _searchPhotoForUnresolved(exp.name);
+      }
+    }
+  }
+
+  Future<void> _searchPhotoForUnresolved(String name) async {
+    if (_unresolvedPhotos.containsKey(name)) return;
+    try {
+      final queryParams = {
+        'input': name,
+        'inputtype': 'textquery',
+        'fields': 'photos',
+      };
+      if (_userLatitude != null && _userLongitude != null) {
+        queryParams['locationbias'] = 'circle:5000@$_userLatitude,$_userLongitude';
+      }
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
+        queryParameters: queryParams,
+      );
+      final candidates = response.data['candidates'] as List?;
+      if (candidates != null && candidates.isNotEmpty) {
+        final candidate = candidates[0] as Map<String, dynamic>;
+        final photos = candidate['photos'] as List? ?? [];
+        if (photos.isNotEmpty) {
+          final ref = photos[0]['photo_reference'] as String?;
+          if (ref != null && ref.isNotEmpty) {
+            final url = '/api/v1/places/photo?ref=$ref';
+            if (mounted) {
+              setState(() {
+                _unresolvedPhotos[name] = url;
+              });
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  bool _shareSignificantWords(String name1, String name2) {
+    final stopWords = {'and', 'the', 'of', 'in', 'at', 'with', 'for', 'a', 'an', '&', 'to', 'or', 'on', 'by', 'harbor', 'harbour'};
+    final words1 = name1.split(RegExp(r'\s+')).map((w) => w.replaceAll(RegExp(r'[^\w]'), '')).where((w) => w.length > 2 && !stopWords.contains(w)).toSet();
+    final words2 = name2.split(RegExp(r'\s+')).map((w) => w.replaceAll(RegExp(r'[^\w]'), '')).where((w) => w.length > 2 && !stopWords.contains(w)).toSet();
+    
+    final intersection = words1.intersection(words2);
+    if (intersection.isNotEmpty) {
+      if (intersection.length >= 2) return true;
+      if (words1.length == 1 || words2.length == 1) return true;
+    }
+    return false;
+  }
+
   void _parseMarkdownDetails(String markdown) {
     _parsedAiDetails.clear();
     _aiExperiences.clear();
@@ -341,6 +399,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       for (int j = 1; j < lines.length; j++) {
         final line = lines[j].trim();
         if (line.isEmpty) continue;
+        if (line.startsWith('---')) continue;
         
         final lowerLine = line.toLowerCase();
         if (lowerLine.startsWith("why you'll love it:") || lowerLine.startsWith("why locals love it:")) {
@@ -370,7 +429,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         } else if (lowerLine.startsWith("confidence score:")) {
           if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
           currentKey = 'confidence';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          final rawVal = line.substring(line.indexOf(':') + 1).trim();
+          final cleanVal = rawVal.split(RegExp(r'\s*\-\s*')).first.replaceAll(RegExp(r'[\s\-]+$'), '').trim();
+          currentValue = StringBuffer()..write(cleanVal);
         } else {
           if (currentKey.isNotEmpty) {
             currentValue.write(' ' + line);
@@ -394,6 +455,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         confidence: details['confidence'] ?? '',
       ));
     }
+    _resolveUnresolvedCardPhotos();
   }
 
   Future<void> _fetchInitialData() async {
@@ -701,14 +763,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ...() {
                     if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
                       return [
-                        // Popular Around You Shimmer
+                        // Curated For You Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Popular Around You',
+                              'Curated For You',
                               null,
                               imageIconPath: 'assets/images/popular.png',
+                              customAction: _buildNevaReportButton(),
                             ),
                           ),
                         ),
@@ -785,22 +848,22 @@ class _LivingMapPageState extends State<LivingMapPage>
                     final showTrendingLoading = _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
 
                     return [
-                      // Popular Around You
+                      // Curated For You
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                           child: _buildSectionHeader(
-                            'Popular Around You', 
-                            'See AI Report',
-                            onTap: _geminiTrendingMarkdown != null ? _showAiReportBottomSheet : null,
+                            'Curated For You',
+                            null,
                             imageIconPath: 'assets/images/popular.png',
+                            customAction: _buildNevaReportButton(),
                           ),
                         ),
                       ),
                       if (_loadingGeminiTrending && _aiExperiences.isEmpty)
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards())
                       else if (_aiExperiences.isNotEmpty)
-                        SliverToBoxAdapter(child: _buildTrendingPlacesList())
+                        SliverToBoxAdapter(child: _buildTrendingPlacesList(state))
                       else
                         const SliverToBoxAdapter(
                           child: Padding(
@@ -844,18 +907,55 @@ class _LivingMapPageState extends State<LivingMapPage>
       
                   // Cluster suggestion
                   ...() {
-                    if (_loadingMiniTour || _miniTourPlaces == null || _miniTourPlaces!.length < 3) {
-                      return <Widget>[const SliverToBoxAdapter(child: SizedBox.shrink())];
+                    if (_miniTourPlaces != null && _miniTourPlaces!.length >= 3) {
+                      return <Widget>[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: _buildClusterSuggestion(_miniTourPlaces!),
+                          ),
+                        ),
+                      ];
                     }
 
-                    return <Widget>[
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: _buildClusterSuggestion(_miniTourPlaces!),
+                    if (_loadingMiniTour) {
+                      return <Widget>[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Container(
+                              width: double.infinity,
+                              height: 220,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Row(
+                                      children: [
+                                        Container(width: 34, height: 34, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey.shade300)),
+                                        const SizedBox(width: 12),
+                                        Container(width: 100, height: 14, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6))),
+                                      ],
+                                    ),
+                                  ),
+                                  ...List.generate(3, (_) => Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                                    child: Container(height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
+                                  )),
+                                ],
+                              ),
+                            ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms, color: Colors.white54),
+                          ),
                         ),
-                      ),
-                    ];
+                      ];
+                    }
+
+                    return <Widget>[const SliverToBoxAdapter(child: SizedBox.shrink())];
                   }(),
       
                   const SliverToBoxAdapter(child: SizedBox(height: 120)),
@@ -1913,6 +2013,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     String? imageIconPath,
     VoidCallback? onTap,
     VoidCallback? onTitleTap,
+    Widget? customAction,
   }) {
     final headerContent = Row(
       mainAxisSize: MainAxisSize.min,
@@ -1956,7 +2057,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                 child: headerContent,
               )
             : headerContent,
-        if (action != null && action.isNotEmpty)
+        if (customAction != null)
+          customAction
+        else if (action != null && action.isNotEmpty)
           GestureDetector(
             onTap: onTap ?? () {},
             child: ShaderMask(
@@ -1977,7 +2080,96 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  Widget _buildNevaReportButton() {
+    final hasReport = _geminiTrendingMarkdown != null;
+    
+    Widget buttonContent = GestureDetector(
+      onTap: hasReport ? _showAiReportBottomSheet : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(20),
+          gradient: LinearGradient(
+            colors: hasReport
+                ? [AppColors.primary.withOpacity(0.9), AppColors.actionTeal.withOpacity(0.9)]
+                : [Colors.grey.shade800, Colors.grey.shade900],
+          ),
+          border: Border.all(
+            color: hasReport ? AppColors.actionTeal.withOpacity(0.5) : Colors.white24,
+            width: 1,
+          ),
+          boxShadow: hasReport ? [
+            BoxShadow(
+              color: AppColors.actionTeal.withOpacity(0.3),
+              blurRadius: 8,
+              spreadRadius: 1,
+            ),
+          ] : [],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Circular Neva Avatar
+            Container(
+              width: 24,
+              height: 24,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                image: DecorationImage(
+                  image: AssetImage('assets/images/neva_avatar.png'),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Report icon
+            Icon(
+              Icons.analytics_outlined,
+              size: 14,
+              color: hasReport ? Colors.white : Colors.grey.shade400,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              'Report',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: hasReport ? Colors.white : Colors.grey.shade400,
+              ),
+            ),
+            if (hasReport) ...[
+              const SizedBox(width: 4),
+              // Pulse/Live indicator dot
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+              ).animate(onPlay: (controller) => controller.repeat(reverse: true))
+               .scale(begin: const Offset(1, 1), end: const Offset(1.5, 1.5), duration: 800.ms)
+               .fadeIn(duration: 800.ms),
+            ],
+          ],
+        ),
+      ),
+    );
 
+    if (hasReport) {
+      // Pulsating scale loop animation
+      return buttonContent
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .scale(
+            begin: const Offset(0.97, 0.97),
+            end: const Offset(1.03, 1.03),
+            duration: 1200.ms,
+            curve: Curves.easeInOutSine,
+          );
+    }
+    
+    return buttonContent;
+  }
 
   _LocalEvent? _getEventForPlace(AttractionEntity place) {
     final name = place.name.toLowerCase();
@@ -2069,252 +2261,66 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildTrendingPlacesList() {
-    final hasReport = _geminiTrendingMarkdown != null;
+  Widget _buildTrendingPlacesList(MapState state) {
     return SizedBox(
       height: 240,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: _aiExperiences.length + (hasReport ? 1 : 0),
+        itemCount: _aiExperiences.length,
         itemBuilder: (context, index) {
-          if (hasReport && index == 0) {
-            return _buildAiReportCard();
-          }
-          final exp = _aiExperiences[hasReport ? index - 1 : index];
+          final exp = _aiExperiences[index];
           
           // Try to find a resolved Google Place matching the AI recommendation name
           final lowerExpName = exp.name.toLowerCase().trim();
           AttractionEntity? resolvedPlace;
           for (final p in _geminiTrendingPlaces) {
-            if (p.name.toLowerCase().trim() == lowerExpName) {
+            final lowerPName = p.name.toLowerCase().trim();
+            if (lowerPName == lowerExpName ||
+                lowerPName.contains(lowerExpName) ||
+                lowerExpName.contains(lowerPName) ||
+                _shareSignificantWords(lowerPName, lowerExpName)) {
               resolvedPlace = p;
               break;
             }
           }
           
+          if (resolvedPlace == null) {
+            for (final p in state.attractions) {
+              final lowerPName = p.name.toLowerCase().trim();
+              if (lowerPName == lowerExpName ||
+                  lowerPName.contains(lowerExpName) ||
+                  lowerExpName.contains(lowerPName) ||
+                  _shareSignificantWords(lowerPName, lowerExpName)) {
+                resolvedPlace = p;
+                break;
+              }
+            }
+          }
+          
           if (resolvedPlace != null) {
-            return _buildPlaceCard(resolvedPlace, hasReport ? index - 1 : index);
+            return _buildPlaceCard(resolvedPlace, index);
           } else {
-            return _buildUnresolvedExperienceCard(exp, hasReport ? index - 1 : index);
+            final customImageUrl = _unresolvedPhotos[exp.name];
+            final fakePlace = AttractionEntity(
+              id: 'ai_exp_${exp.name}',
+              name: exp.name,
+              latitude: 0,
+              longitude: 0,
+              rating: 4.5,
+              reviewCount: 0,
+              categoryName: exp.type == 'event' ? 'Event' : 'Gem',
+              photoUrls: customImageUrl != null && customImageUrl.isNotEmpty ? [customImageUrl] : [],
+              tags: [],
+              createdAt: DateTime.now(),
+            );
+            return _buildPlaceCard(fakePlace, index);
           }
         },
       ),
     );
   }
 
-  Widget _buildUnresolvedExperienceCard(AiExperience exp, int index) {
-    final isEvent = exp.type == 'event';
-
-    return GestureDetector(
-      onTap: () {
-        _showAiExperienceDetailsBottomSheet(exp);
-      },
-      child: Container(
-        width: 200,
-        margin: const EdgeInsets.only(right: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              // Fallback background gradient & category icon
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(24),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.primary.withOpacity(0.3),
-                        AppColors.surfaceVariant,
-                      ],
-                    ),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Center(
-                    child: Opacity(
-                      opacity: 0.15,
-                      child: Icon(
-                        _getCategoryIcon(isEvent ? 'Experiences' : 'Attractions', exp.name),
-                        size: 100,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              // Gradient Overlay
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.9),
-                        Colors.black.withOpacity(0.2),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('📍', style: TextStyle(fontSize: 28)),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: isEvent 
-                                ? AppColors.actionTeal.withOpacity(0.85)
-                                : AppColors.ratingGold.withOpacity(0.85),
-                          ),
-                          child: Text(
-                            isEvent ? 'EVENT' : 'GEM',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                        if (exp.confidence.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: Colors.white.withOpacity(0.25),
-                            ),
-                            child: Text(
-                              (() {
-                                final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
-                                if (int.tryParse(cleanConf) != null) {
-                                  return '$cleanConf%';
-                                }
-                                return exp.confidence;
-                              })(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const Spacer(),
-                    if (exp.when.isNotEmpty)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.25),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isEvent ? Colors.red.withOpacity(0.6) : AppColors.brandGreen.withOpacity(0.4),
-                            width: 1,
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              isEvent ? Icons.calendar_today_rounded : Icons.auto_awesome_rounded,
-                              size: 11,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                exp.when,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Text(
-                      exp.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(Icons.bolt_rounded, size: 14, color: AppColors.actionTeal),
-                        const SizedBox(width: 4),
-                        Text(
-                          (() {
-                            final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
-                            if (int.tryParse(cleanConf) != null) {
-                              return '$cleanConf% Match';
-                            }
-                            return 'AI Pick';
-                          })(),
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
-                        const SizedBox(width: 3),
-                        Flexible(
-                          child: Text(
-                            exp.distance.isNotEmpty ? exp.distance : 'Nearby',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white.withOpacity(0.9),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildAiExperienceList() {
     return SizedBox(
@@ -3248,18 +3254,28 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     return GestureDetector(
       onTap: () {
-        final expToDetail = matchedExp ?? AiExperience(
-          name: place.name,
-          type: isEvent ? 'event' : 'gem',
-          why: place.description ?? 'A popular local destination.',
-          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-          travelTime: '',
-          when: _getEventOrTrendingInfo(place).title,
-          cost: '',
-          bestFor: '',
-          confidence: '',
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AttractionDetailPage(
+              id: place.id,
+              name: place.name,
+              category: place.categoryName ?? (isEvent ? 'Event' : 'Gem'),
+              rating: place.rating,
+              distance: place.distanceM != null ? '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km' : '',
+              emoji: isEvent ? '📅' : '✨',
+              imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+              latitude: place.latitude,
+              longitude: place.longitude,
+              reviewCount: place.reviewCount,
+              aiWhy: matchedExp?.why,
+              aiWhen: matchedExp?.when,
+              aiCost: matchedExp?.cost,
+              aiBestFor: matchedExp?.bestFor,
+              aiConfidence: matchedExp?.confidence,
+            ),
+          ),
         );
-        _showAiExperienceDetailsBottomSheet(expToDetail);
       },
       child: Container(
         width: 200,
@@ -3399,6 +3415,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ),
                         ],
+
                       ],
                     ),
                     const Spacer(),
@@ -4543,7 +4560,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
         ],
       ),
-    ).animate().fade(delay: 400.ms).slideY(begin: 0.1, end: 0);
+    );
   }
 
   Widget _buildRouteItem(String num, String name, String info, Color color) {

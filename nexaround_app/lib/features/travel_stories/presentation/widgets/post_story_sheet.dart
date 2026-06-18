@@ -33,6 +33,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
   String _selectedCategory = '💎 Hidden Gem';
   File? _selectedImage;
+  bool _isPublic = true; // New field for privacy toggle
   final ImagePicker _picker = ImagePicker();
   
   final List<String> _categories = [
@@ -223,6 +224,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
       comments: [],
       createdAt: DateTime.now(),
       isLiked: false,
+      isPublic: _isPublic,
     );
 
     widget.onStorySubmitted(newStory);
@@ -288,12 +290,14 @@ class _PostStorySheetState extends State<PostStorySheet> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Share Travel Story',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black87,
+                const Expanded(
+                  child: Text(
+                    'Let people Know - Share your travel story',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -312,6 +316,53 @@ class _PostStorySheetState extends State<PostStorySheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Privacy Toggle
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.black, width: 1.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _isPublic = true),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _isPublic ? Icons.radio_button_checked : Icons.radio_button_off,
+                                  size: 16,
+                                  color: Colors.black,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text('Public', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          GestureDetector(
+                            onTap: () => setState(() => _isPublic = false),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  !_isPublic ? Icons.radio_button_checked : Icons.radio_button_off,
+                                  size: 16,
+                                  color: Colors.black,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text('Private', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
                   // 1. Where was I? (Location)
                   const Text(
                     'Where was I? (Location Name)',
@@ -384,7 +435,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
                   // 2. Select Category
                   const Text(
-                    'Select Category',
+                    'What was the location like?',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
                   ),
                   const SizedBox(height: 8),
@@ -475,7 +526,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
                   // 4. Attach Photograph
                   const Text(
-                    'Attach Photograph',
+                    'Add Photos',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
                   ),
                   const SizedBox(height: 8),
