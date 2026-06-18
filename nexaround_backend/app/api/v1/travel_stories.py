@@ -18,7 +18,7 @@ from app.schemas.travel_story import (
 router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
 
 
-@router.get("/", response_model=List[TravelStoryResponse])
+@router.get("", response_model=List[TravelStoryResponse])
 async def get_travel_stories(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -70,7 +70,7 @@ async def get_travel_stories(
     return response_list
 
 
-@router.post("/", response_model=TravelStoryResponse, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TravelStoryResponse, status_code=status.HTTP_201_CREATED)
 async def create_travel_story(
     data: TravelStoryCreate,
     db: AsyncSession = Depends(get_db),
