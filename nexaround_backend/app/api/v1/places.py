@@ -5,10 +5,12 @@ per-user API spend by ~90% via cache reuse across all users in the same
 ~500m tile, and removes the Google API key from the mobile binary.
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.schemas.place import PlacesNearbyResponse
+from app.core.database import get_db
+from app.schemas.place import PlacesNearbyResponse, TrendingExperiencesResponse
 from app.services import places_service, photo_cache_service
 
 router = APIRouter(prefix="/places", tags=["places"])
@@ -62,3 +64,22 @@ async def get_place_photo(
         media_type="image/jpeg",
         headers={"Cache-Control": "public, max-age=2592000"},  # 30d on client
     )
+
+
+@router.get("/trending", response_model=TrendingExperiencesResponse)
+async def get_trending_experiences(
+    district: str = Query(..., min_length=1),
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch Gemini-recommended local experiences and events, with Google Places resolution.
+    Cached server-side in Redis for 24 hours.
+    """
+    return await places_service.get_trending(
+        district=district,
+        latitude=lat,
+        longitude=lng,
+        db=db,
+    )
+

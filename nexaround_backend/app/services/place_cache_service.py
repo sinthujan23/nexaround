@@ -66,3 +66,22 @@ async def set_cached(key: str, places: list[dict]) -> None:
     except Exception as e:
         print(f"⚠️ Redis SET error: {e}")
         pass
+
+
+async def get_raw(key: str) -> Optional[str]:
+    """Return the raw cached string value or None on miss."""
+    try:
+        return await _get_client().get(key)
+    except Exception as e:
+        print(f"⚠️ Redis GET error: {e}")
+        return None
+
+
+async def set_raw(key: str, value: str, ttl: int = 86400) -> None:
+    """Set a raw string value in Redis with a custom TTL."""
+    try:
+        await _get_client().set(key, value, ex=ttl)
+    except Exception as e:
+        print(f"⚠️ Redis SET error: {e}")
+        pass
+

@@ -673,3 +673,360 @@ async def search(
         cached=False,
         source="google",
     )
+
+
+async def get_trending(
+    *,
+    district: str,
+    latitude: float,
+    longitude: float,
+    db,
+) -> dict:
+    from app.services.settings_service import SettingsService
+    from datetime import datetime
+    import httpx
+    import json
+    import re
+    import asyncio
+
+    clean_dist = district.strip().lower().replace(" ", "_")
+    if not clean_dist or clean_dist == "nearby":
+        # Snap lat/lng to 0.1 degree grid (approx 11km) for caching when district is missing
+        snap_lat = f"{math.floor(latitude / 0.1) * 0.1:.2f}"
+        snap_lng = f"{math.floor(longitude / 0.1) * 0.1:.2f}"
+        key = f"trending:v1:grid:{snap_lat}:{snap_lng}"
+    else:
+        key = f"trending:v1:district:{clean_dist}"
+
+    # 1. Check Redis Cache
+    cached_raw = await place_cache_service.get_raw(key)
+    if cached_raw is not None:
+        try:
+            cached_data = json.loads(cached_raw)
+            return {
+                "markdown": cached_data["markdown"],
+                "places": [PlaceResponse.model_validate(p) for p in cached_data["places"]],
+                "cached": True
+            }
+        except Exception as e:
+            print(f"⚠️ Error parsing cached trending data: {e}")
+
+    # 2. Redis Cache Miss: Fetch from Gemini
+    settings = SettingsService(db)
+    api_key = await settings.get_setting("gemini_api_key")
+    if not api_key:
+        raise ValueError("Gemini API Key not configured")
+
+    formatted_time = datetime.now().strftime('%A, %B %d, %Y, %I:%M %p')
+    user_location = f"{district} ({latitude:.6f}, {longitude:.6f})"
+
+    # The exact discovery prompt
+    prompt = f"""# NexAround AI Experience Discovery Engine
+
+You are **NexAround AI**, an intelligent local discovery companion.
+
+Your mission is not to find events.
+
+Your mission is to help people discover experiences worth leaving home for.
+
+Act like a knowledgeable local guide, cultural insider, event curator, and travel companion combined.
+
+---
+
+## User Context
+
+Analyze and utilize the following information whenever available:
+
+* Current location : {user_location}
+* Current date and time: {formatted_time}
+
+---
+
+## Experience Search Categories
+
+Search for and prioritize:
+
+### Events
+
+* Festivals
+* Cultural celebrations
+* Religious festivals
+* Community gatherings
+* Live music
+* Concerts
+* Theater
+* Comedy shows
+* Workshops
+* Meetups
+* Art exhibitions
+* Food festivals
+* Farmers markets
+* Sporting events
+
+### Outdoor Experiences
+
+* Walking trails
+* Scenic viewpoints
+* Parks
+* Waterfront experiences
+* Nature activities
+* Adventure activities
+* Seasonal outdoor attractions
+
+### Local Discovery
+
+* Hidden gems
+* Local favorites
+* Historic neighborhoods
+* Street food experiences
+* Artisan markets
+* Cultural districts
+* Unique local businesses
+
+### Family Experiences
+
+* Children's activities
+* Educational attractions
+* Interactive experiences
+* Family festivals
+
+### Nightlife
+
+* Live entertainment
+* Rooftop venues
+* Night markets
+* Cultural performances
+
+---
+
+## Recommendation Priorities
+
+Rank opportunities using:
+
+1. Relevance to user interests
+2. Events happening now
+3. Events starting soon
+4. Weather suitability
+5. Local popularity
+6. Authenticity
+7. Uniqueness
+8. User ratings and reviews
+9. Travel convenience
+10. Value for money
+
+Give preference to:
+
+* Hyperlocal discoveries
+* Experiences tourists often miss
+* Time-sensitive opportunities
+* Seasonal events
+* One-time happenings
+* Highly rated local experiences
+
+Avoid:
+
+* Generic tourist recommendations
+* Duplicate listings
+* Outdated events
+* Poorly reviewed experiences
+* Low-quality directory results
+
+---
+
+## Scoring Framework
+
+Assign a confidence score from 1–100 based on:
+
+* Data freshness
+* Popularity
+* Interest match
+* Weather fit
+* Timing suitability
+* Travel convenience
+
+---
+
+## Response Format
+
+# What's Happening Nearby
+
+## Recommended For You (Atleast 5 events)
+
+### [Event or Experience Name]
+
+Why you'll love it:
+[Personalized explanation]
+
+Distance:
+[X km]
+
+Travel Time:
+[X minutes]
+
+When:
+[Time and date]
+
+Cost:
+[Free / Estimated cost]
+
+Best For:
+[Solo / Couple / Family / Friends]
+
+Confidence Score:
+[X/100]
+
+---
+
+### Why It's Worth Leaving Home For
+
+Provide a short personalized recommendation explaining why this experience stands out today.
+
+---
+
+# Hidden Gem (Atleast 5 gems)
+
+
+If applicable, recommend a lesser-known local experience.
+
+### [Hidden Gem Name]
+
+Why locals love it:
+[Description]
+
+Distance:
+[X km]
+
+Cost:
+[Estimated cost]
+
+
+---
+
+## No Event Fallback Strategy
+
+If no notable events exist, intelligently recommend:
+
+* Self-guided walking tours
+* Food trails
+* Scenic drives
+* Historic neighborhoods
+* Local markets
+* Hidden attractions
+* Sunset viewpoints
+* Cultural experiences
+* Nature spots
+* Weekend adventures
+
+Never return "No events found."
+
+Always provide a meaningful discovery opportunity.
+"""
+
+    system_instruction = (
+        "You are NexAround AI, an intelligent local discovery companion. "
+        "Help people discover experiences worth leaving home for."
+    )
+
+    body = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "system_instruction": {"parts": [{"text": system_instruction}]},
+        "generationConfig": {
+            "temperature": 0.8,
+            "maxOutputTokens": 4096,
+        },
+    }
+
+    models = [
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-flash-latest",
+        "gemini-2.5-pro",
+    ]
+    headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
+    
+    response_text = ""
+    async with httpx.AsyncClient(timeout=90.0) as client:
+        for i, model in enumerate(models):
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            try:
+                resp = await client.post(url, json=body, headers=headers)
+                if resp.status_code in (429, 500, 503) and i < len(models) - 1:
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                candidates = data.get("candidates") or []
+                if candidates:
+                    parts = (candidates[0].get("content") or {}).get("parts") or []
+                    response_text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
+                    if response_text.strip():
+                        break
+            except Exception as e:
+                print(f"⚠️ Error calling Gemini model {model} in get_trending: {e}")
+                if i == len(models) - 1:
+                    raise e
+
+    if not response_text.strip():
+        raise ValueError("Gemini returned empty response")
+
+    # 3. Extract place names from markdown headers starting with "### "
+    extracted_names = []
+    matches = re.findall(r'^###\s+(.*)$', response_text, re.MULTILINE)
+    for match in matches:
+        name = match.strip()
+        if not name:
+            continue
+        
+        # Strip square brackets
+        if name.startswith('[') and name.endswith(']'):
+            name = name[1:-1].strip()
+        elif name.startswith('[') and ']' in name:
+            closing_bracket = name.find(']')
+            name = name[1:closing_bracket].strip()
+            
+        lower_name = name.lower()
+        if (
+            "why it's worth leaving home for" in lower_name
+            or "why locals love it" in lower_name
+            or "why you'll love it" in lower_name
+            or "event or experience name" in lower_name
+            or "hidden gem name" in lower_name
+        ):
+            continue
+            
+        if name not in extracted_names:
+            extracted_names.append(name)
+
+    # 4. Resolve the extracted names using Google Places text search API in parallel
+    resolved_places = []
+    
+    async def resolve_one_place(name_str: str) -> Optional[dict]:
+        try:
+            # We call places_service.search which has built-in Redis caching!
+            res = await search(query=name_str, latitude=latitude, longitude=longitude)
+            if res.places:
+                return res.places[0].model_dump()
+        except Exception as ex:
+            print(f"⚠️ Error resolving place '{name_str}' in get_trending: {ex}")
+        return None
+
+    # Resolve up to 8 places in parallel
+    search_tasks = [resolve_one_place(n) for n in extracted_names[:8]]
+    resolved_results = await asyncio.gather(*search_tasks)
+    for r in resolved_results:
+        if r is not None:
+            resolved_places.append(r)
+
+    # 5. Save in Redis (TTL = 24 hours / 86400 seconds)
+    response_data = {
+        "markdown": response_text,
+        "places": resolved_places
+    }
+    # We will use place_cache_service to set the raw key in Redis
+    await place_cache_service.set_raw(key, json.dumps(response_data, default=str), ttl=86400)
+
+    return {
+        "markdown": response_text,
+        "places": [PlaceResponse.model_validate(p) for p in resolved_places],
+        "cached": False
+    }
+

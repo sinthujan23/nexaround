@@ -38,3 +38,10 @@ class PlacesNearbyResponse(BaseModel):
     places: list[PlaceResponse]
     cached: bool = False
     source: str = Field("google", description="google | cache")
+
+
+class TrendingExperiencesResponse(BaseModel):
+    markdown: str
+    places: list[PlaceResponse]
+    cached: bool = False
+

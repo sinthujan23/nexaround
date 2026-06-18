@@ -84,6 +84,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   String? _geminiTrendingMarkdown;
   final Map<String, Map<String, String>> _parsedAiDetails = {};
+  List<AiExperience> _aiExperiences = [];
 
   @override
   void initState() {
@@ -263,281 +264,32 @@ class _LivingMapPageState extends State<LivingMapPage>
       _geminiTrendingMarkdown = null;
     });
     try {
-      final formattedTime = DateFormat('EEEE, MMMM d, yyyy, h:mm a').format(DateTime.now());
-      final userLocation = "$district (${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)})";
-
-      final prompt = '''
-# NexAround AI Experience Discovery Engine
-
-You are **NexAround AI**, an intelligent local discovery companion.
-
-Your mission is not to find events.
-
-Your mission is to help people discover experiences worth leaving home for.
-
-Act like a knowledgeable local guide, cultural insider, event curator, and travel companion combined.
-
----
-
-## User Context
-
-Analyze and utilize the following information whenever available:
-
-* Current location : $userLocation
-* Current date and time: $formattedTime
-
----
-
-## Experience Search Categories
-
-Search for and prioritize:
-
-### Events
-
-* Festivals
-* Cultural celebrations
-* Religious festivals
-* Community gatherings
-* Live music
-* Concerts
-* Theater
-* Comedy shows
-* Workshops
-* Meetups
-* Art exhibitions
-* Food festivals
-* Farmers markets
-* Sporting events
-
-### Outdoor Experiences
-
-* Walking trails
-* Scenic viewpoints
-* Parks
-* Waterfront experiences
-* Nature activities
-* Adventure activities
-* Seasonal outdoor attractions
-
-### Local Discovery
-
-* Hidden gems
-* Local favorites
-* Historic neighborhoods
-* Street food experiences
-* Artisan markets
-* Cultural districts
-* Unique local businesses
-
-### Family Experiences
-
-* Children's activities
-* Educational attractions
-* Interactive experiences
-* Family festivals
-
-### Nightlife
-
-* Live entertainment
-* Rooftop venues
-* Night markets
-* Cultural performances
-
----
-
-## Recommendation Priorities
-
-Rank opportunities using:
-
-1. Relevance to user interests
-2. Events happening now
-3. Events starting soon
-4. Weather suitability
-5. Local popularity
-6. Authenticity
-7. Uniqueness
-8. User ratings and reviews
-9. Travel convenience
-10. Value for money
-
-Give preference to:
-
-* Hyperlocal discoveries
-* Experiences tourists often miss
-* Time-sensitive opportunities
-* Seasonal events
-* One-time happenings
-* Highly rated local experiences
-
-Avoid:
-
-* Generic tourist recommendations
-* Duplicate listings
-* Outdated events
-* Poorly reviewed experiences
-* Low-quality directory results
-
----
-
-## Scoring Framework
-
-Assign a confidence score from 1–100 based on:
-
-* Data freshness
-* Popularity
-* Interest match
-* Weather fit
-* Timing suitability
-* Travel convenience
-
----
-
-## Response Format
-
-# What's Happening Nearby
-
-## Recommended For You (Atleast 5 events)
-
-### [Event or Experience Name]
-
-Why you'll love it:
-[Personalized explanation]
-
-Distance:
-[X km]
-
-Travel Time:
-[X minutes]
-
-When:
-[Time and date]
-
-Cost:
-[Free / Estimated cost]
-
-Best For:
-[Solo / Couple / Family / Friends]
-
-Confidence Score:
-[X/100]
-
----
-
-### Why It's Worth Leaving Home For
-
-Provide a short personalized recommendation explaining why this experience stands out today.
-
----
-
-# Hidden Gem (Atleast 5 gems)
-
-
-If applicable, recommend a lesser-known local experience.
-
-### [Hidden Gem Name]
-
-Why locals love it:
-[Description]
-
-Distance:
-[X km]
-
-Cost:
-[Estimated cost]
-
-
----
-
-## No Event Fallback Strategy
-
-If no notable events exist, intelligently recommend:
-
-* Self-guided walking tours
-* Food trails
-* Scenic drives
-* Historic neighborhoods
-* Local markets
-* Hidden attractions
-* Sunset viewpoints
-* Cultural experiences
-* Nature spots
-* Weekend adventures
-
-Never return "No events found."
-
-Always provide a meaningful discovery opportunity.
-''';
-
-      final responseText = await GeminiService().getResponse(
-        prompt,
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/trending',
+        queryParameters: {
+          'district': district,
+          'lat': lat,
+          'lng': lng,
+        },
       );
 
-      final List<AttractionEntity> resolvedPlaces = [];
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final markdown = data['markdown'] as String? ?? '';
+        final List<dynamic> placesList = data['places'] as List? ?? [];
+        final resolvedPlaces = placesList.map((p) => AttractionModel.fromJson(p)).toList();
 
-      // Extract place names from markdown headers starting with "### "
-      final RegExp headerRegExp = RegExp(r'^###\s+(.*)$', multiLine: true);
-      final matches = headerRegExp.allMatches(responseText);
-      final List<String> extractedNames = [];
-      
-      for (final m in matches) {
-        var name = m.group(1)?.trim() ?? '';
-        if (name.isEmpty) continue;
-        
-        // Strip square brackets if present, e.g. "### [Place Name]" -> "Place Name"
-        if (name.startsWith('[') && name.endsWith(']')) {
-          name = name.substring(1, name.length - 1).trim();
-        } else if (name.startsWith('[') && name.contains(']')) {
-          final closingBracket = name.indexOf(']');
-          name = name.substring(1, closingBracket).trim();
+        if (mounted) {
+          setState(() {
+            _geminiTrendingMarkdown = markdown;
+            _parseMarkdownDetails(markdown);
+            _geminiTrendingPlaces = resolvedPlaces;
+            _loadingGeminiTrending = false;
+            _lastFetchedDistrict = district;
+          });
         }
-
-        final lowerName = name.toLowerCase();
-        
-        // Avoid system headers and personalized summary header
-        if (lowerName.contains("why it's worth leaving home for") ||
-            lowerName.contains("why locals love it") ||
-            lowerName.contains("why you'll love it") ||
-            lowerName.contains("event or experience name") ||
-            lowerName.contains("hidden gem name")) {
-          continue;
-        }
-        
-        if (!extractedNames.contains(name)) {
-          extractedNames.add(name);
-        }
-      }
-
-      // Resolve the extracted names to real places using Google Places API
-      for (final name in extractedNames.take(8)) {
-        try {
-          final results = await GooglePlacesService.searchPlaces(
-            query: name,
-            latitude: lat,
-            longitude: lng,
-          );
-          if (results.isNotEmpty) {
-            final validSpot = results.firstWhere(
-              (p) => _isTrendingSpot(p),
-              orElse: () => results.first,
-            );
-            
-            if (_isTrendingSpot(validSpot) && !resolvedPlaces.any((x) => x.id == validSpot.id)) {
-              resolvedPlaces.add(validSpot);
-            }
-          }
-        } catch (e) {
-          debugPrint('Error searching place "$name": $e');
-        }
-      }
-
-      if (mounted) {
-        setState(() {
-          _geminiTrendingMarkdown = responseText;
-          _parseMarkdownDetails(responseText);
-          _geminiTrendingPlaces = resolvedPlaces;
-          _loadingGeminiTrending = false;
-          _lastFetchedDistrict = district;
-        });
+      } else {
+        throw Exception('Failed to load trending endpoint');
       }
     } catch (e) {
       debugPrint('Error in _fetchGeminiTrending: $e');
@@ -549,12 +301,19 @@ Always provide a meaningful discovery opportunity.
 
   void _parseMarkdownDetails(String markdown) {
     _parsedAiDetails.clear();
+    _aiExperiences.clear();
+    
     final segments = markdown.split('###');
     if (segments.length <= 1) return;
+    
+    final hiddenGemsIndex = markdown.toLowerCase().indexOf('hidden gem');
     
     for (int i = 1; i < segments.length; i++) {
       final segment = segments[i].trim();
       if (segment.isEmpty) continue;
+      
+      final segmentIndex = markdown.indexOf(segments[i]);
+      final isGem = hiddenGemsIndex != -1 && segmentIndex > hiddenGemsIndex;
       
       final lines = segment.split('\n');
       var rawName = lines[0].trim();
@@ -622,6 +381,17 @@ Always provide a meaningful discovery opportunity.
       }
       
       _parsedAiDetails[lowerName] = details;
+      _aiExperiences.add(AiExperience(
+        name: rawName,
+        type: isGem ? 'gem' : 'event',
+        why: details['why'] ?? '',
+        distance: details['distance'] ?? '',
+        travelTime: details['travelTime'] ?? '',
+        when: details['when'] ?? '',
+        cost: details['cost'] ?? '',
+        bestFor: details['bestFor'] ?? '',
+        confidence: details['confidence'] ?? '',
+      ));
     }
   }
 
@@ -930,7 +700,7 @@ Always provide a meaningful discovery opportunity.
                   ...() {
                     if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
                       return [
-                        // Trending Shimmer
+                        // Popular Around You Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
@@ -1014,21 +784,22 @@ Always provide a meaningful discovery opportunity.
                     final showTrendingLoading = _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
 
                     return [
-                      // Trending Near You
+                      // Popular Around You
                       SliverToBoxAdapter(
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                           child: _buildSectionHeader(
                             'Popular Around You', 
-                            null,
+                            'See AI Report',
+                            onTap: _geminiTrendingMarkdown != null ? _showAiReportBottomSheet : null,
                             imageIconPath: 'assets/images/popular.png',
                           ),
                         ),
                       ),
-                      if (showTrendingLoading)
+                      if (_loadingGeminiTrending && _aiExperiences.isEmpty)
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards())
-                      else if (trendingPlaces.isNotEmpty)
-                        SliverToBoxAdapter(child: _buildTrendingCards(trendingPlaces))
+                      else if (_aiExperiences.isNotEmpty)
+                        SliverToBoxAdapter(child: _buildTrendingPlacesList())
                       else
                         const SliverToBoxAdapter(
                           child: Padding(
@@ -2297,6 +2068,796 @@ Always provide a meaningful discovery opportunity.
     );
   }
 
+  Widget _buildTrendingPlacesList() {
+    final hasReport = _geminiTrendingMarkdown != null;
+    return SizedBox(
+      height: 240,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: _aiExperiences.length + (hasReport ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (hasReport && index == 0) {
+            return _buildAiReportCard();
+          }
+          final exp = _aiExperiences[hasReport ? index - 1 : index];
+          
+          // Try to find a resolved Google Place matching the AI recommendation name
+          final lowerExpName = exp.name.toLowerCase().trim();
+          AttractionEntity? resolvedPlace;
+          for (final p in _geminiTrendingPlaces) {
+            if (p.name.toLowerCase().trim() == lowerExpName) {
+              resolvedPlace = p;
+              break;
+            }
+          }
+          
+          if (resolvedPlace != null) {
+            return _buildPlaceCard(resolvedPlace, hasReport ? index - 1 : index);
+          } else {
+            return _buildUnresolvedExperienceCard(exp, hasReport ? index - 1 : index);
+          }
+        },
+      ),
+    );
+  }
+
+  Widget _buildUnresolvedExperienceCard(AiExperience exp, int index) {
+    final isEvent = exp.type == 'event';
+
+    return GestureDetector(
+      onTap: () {
+        _showAiExperienceDetailsBottomSheet(exp);
+      },
+      child: Container(
+        width: 200,
+        margin: const EdgeInsets.only(right: 16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              // Fallback background gradient & category icon
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.primary.withOpacity(0.3),
+                        AppColors.surfaceVariant,
+                      ],
+                    ),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Center(
+                    child: Opacity(
+                      opacity: 0.15,
+                      child: Icon(
+                        _getCategoryIcon(isEvent ? 'Experiences' : 'Attractions', exp.name),
+                        size: 100,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Gradient Overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.9),
+                        Colors.black.withOpacity(0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text('📍', style: TextStyle(fontSize: 28)),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(8),
+                            color: isEvent 
+                                ? AppColors.actionTeal.withOpacity(0.85)
+                                : AppColors.ratingGold.withOpacity(0.85),
+                          ),
+                          child: Text(
+                            isEvent ? 'EVENT' : 'GEM',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (exp.confidence.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.white.withOpacity(0.25),
+                            ),
+                            child: Text(
+                              (() {
+                                final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
+                                if (int.tryParse(cleanConf) != null) {
+                                  return '$cleanConf%';
+                                }
+                                return exp.confidence;
+                              })(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const Spacer(),
+                    if (exp.when.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.25),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: isEvent ? Colors.red.withOpacity(0.6) : AppColors.brandGreen.withOpacity(0.4),
+                            width: 1,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isEvent ? Icons.calendar_today_rounded : Icons.auto_awesome_rounded,
+                              size: 11,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 4),
+                            Flexible(
+                              child: Text(
+                                exp.when,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    Text(
+                      exp.name,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        const Icon(Icons.bolt_rounded, size: 14, color: AppColors.actionTeal),
+                        const SizedBox(width: 4),
+                        Text(
+                          (() {
+                            final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
+                            if (int.tryParse(cleanConf) != null) {
+                              return '$cleanConf% Match';
+                            }
+                            return 'AI Pick';
+                          })(),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            exp.distance.isNotEmpty ? exp.distance : 'Nearby',
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white.withOpacity(0.9),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAiExperienceList() {
+    return SizedBox(
+      height: 245,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
+        scrollDirection: Axis.horizontal,
+        itemCount: _aiExperiences.length + 1,
+        itemBuilder: (context, index) {
+          if (index == 0) {
+            return _buildAiReportCard();
+          }
+          final exp = _aiExperiences[index - 1];
+          return _buildAiExperienceCard(exp, index - 1);
+        },
+      ),
+    );
+  }
+
+  Widget _buildAiExperienceCard(AiExperience exp, int index) {
+    final isEvent = exp.type == 'event';
+    final badgeColor = isEvent ? AppColors.actionTeal : AppColors.ratingGold;
+    final badgeBg = isEvent ? AppColors.actionTeal.withOpacity(0.1) : AppColors.ratingGold.withOpacity(0.1);
+    
+    String matchText = '90%';
+    if (exp.confidence.isNotEmpty) {
+      final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
+      if (int.tryParse(cleanConf) != null) {
+        matchText = '$cleanConf%';
+      } else {
+        matchText = exp.confidence;
+      }
+    }
+
+    return GestureDetector(
+      onTap: () => _showAiExperienceDetailsBottomSheet(exp),
+      child: Container(
+        width: 220,
+        margin: const EdgeInsets.only(right: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.border, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Badge Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: badgeBg,
+                  ),
+                  child: Text(
+                    isEvent ? 'EVENT' : 'GEM',
+                    style: TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w900,
+                      color: badgeColor,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: AppColors.actionTeal.withOpacity(0.08),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.bolt_rounded, size: 10, color: AppColors.actionTeal),
+                      const SizedBox(width: 2),
+                      Text(
+                        matchText,
+                        style: const TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.actionTeal,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            // Title
+            Text(
+              exp.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87,
+                height: 1.25,
+              ),
+            ),
+            const SizedBox(height: 10),
+            // When Info
+            if (exp.when.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today_rounded, size: 11, color: AppColors.actionTeal),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        exp.when,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            // Distance Info
+            Row(
+              children: [
+                const Icon(Icons.location_on_rounded, size: 11, color: AppColors.actionTeal),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    exp.distance.isNotEmpty 
+                        ? '${exp.distance}${exp.travelTime.isNotEmpty ? ' (${exp.travelTime})' : ''}'
+                        : 'Nearby',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: 8),
+            // Description / Why you'll love it
+            Text(
+              exp.why,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: AppColors.textSecondary.withOpacity(0.85),
+                height: 1.3,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.1, end: 0);
+  }
+
+  void _showAiExperienceDetailsBottomSheet(AiExperience exp) {
+    final lowerName = exp.name.toLowerCase().trim();
+    AttractionEntity? matchedPlace;
+    for (final p in _geminiTrendingPlaces) {
+      if (p.name.toLowerCase().trim() == lowerName) {
+        matchedPlace = p;
+        break;
+      }
+    }
+
+    final hasImage = matchedPlace != null && matchedPlace.photoUrls.isNotEmpty;
+    final imageUrl = hasImage ? matchedPlace.photoUrls.first : null;
+    final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
+        ? '${ApiConstants.baseUrl}$imageUrl'
+        : imageUrl;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            border: Border.all(color: AppColors.border, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 24,
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Hero Image / Gradient Block
+                Stack(
+                  children: [
+                    Container(
+                      height: 180,
+                      width: double.infinity,
+                      child: resolvedUrl != null && resolvedUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: resolvedUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: AppColors.surfaceVariant,
+                                child: const Center(
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.actionTeal),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                            )
+                          : Container(
+                              decoration: const BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFF007A7C),
+                                    Color(0xFF121212),
+                                  ],
+                                ),
+                              ),
+                              child: const Center(
+                                child: Opacity(
+                                  opacity: 0.15,
+                                  child: Icon(
+                                    Icons.auto_awesome_rounded,
+                                    size: 80,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.bottomCenter,
+                            end: Alignment.topCenter,
+                            colors: [
+                              Colors.white,
+                              Colors.white.withOpacity(0.4),
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Drag indicator
+                    Align(
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        width: 40,
+                        height: 5,
+                        margin: const EdgeInsets.only(top: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    // Close button
+                    Positioned(
+                      top: 15,
+                      right: 15,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.white.withOpacity(0.9),
+                        radius: 18,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(Icons.close, color: Colors.black87, size: 18),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                // Details area
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: ListView(
+                      physics: const BouncingScrollPhysics(),
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: (exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold).withOpacity(0.15),
+                                border: Border.all(
+                                  color: (exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold).withOpacity(0.3),
+                                ),
+                              ),
+                              child: Text(
+                                exp.type.toUpperCase(),
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold,
+                                ),
+                              ),
+                            ),
+                            if (exp.confidence.isNotEmpty) ...[
+                              const SizedBox(width: 10),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: AppColors.actionTeal.withOpacity(0.15),
+                                  border: Border.all(color: AppColors.actionTeal.withOpacity(0.3)),
+                                ),
+                                child: Text(
+                                  'Match Score: ${exp.confidence}',
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.actionTeal,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          exp.name,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        if (matchedPlace != null) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(Icons.star_rounded, size: 16, color: AppColors.ratingGold),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${matchedPlace.rating} (${matchedPlace.reviewCount})',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        
+                        // Metadata Grid
+                        _buildDetailMetadataRow(Icons.calendar_today_rounded, 'When', exp.when),
+                        _buildDetailMetadataRow(Icons.location_on_rounded, 'Distance', exp.distance.isNotEmpty ? exp.distance : 'Nearby'),
+                        if (exp.travelTime.isNotEmpty)
+                          _buildDetailMetadataRow(Icons.directions_run_rounded, 'Travel Time', exp.travelTime),
+                        _buildDetailMetadataRow(Icons.attach_money_rounded, 'Cost', exp.cost.isNotEmpty ? exp.cost : 'N/A'),
+                        if (exp.bestFor.isNotEmpty)
+                          _buildDetailMetadataRow(Icons.people_rounded, 'Best For', exp.bestFor),
+                        
+                        const SizedBox(height: 20),
+                        const Divider(height: 1, color: AppColors.border),
+                        const SizedBox(height: 16),
+                        
+                        // Why you'll love it
+                        Text(
+                          exp.type == 'event' ? "Why You'll Love It" : "Why Locals Love It",
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          exp.why,
+                          style: TextStyle(
+                            fontSize: 13.5,
+                            color: Colors.black87.withOpacity(0.8),
+                            height: 1.4,
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 30),
+                        
+                        // Locate on Map Action Button
+                        _buildLocateOnMapButton(exp, matchedPlace),
+                        const SizedBox(height: 40),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDetailMetadataRow(IconData icon, String label, String value) {
+    if (value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppColors.actionTeal),
+          const SizedBox(width: 12),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: const TextStyle(fontSize: 13, color: Colors.black87),
+                children: [
+                  TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(text: value),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLocateOnMapButton(AiExperience exp, AttractionEntity? matchedPlace) {
+    bool locating = false;
+    return StatefulBuilder(
+      builder: (context, setSheetState) {
+        return ElevatedButton.icon(
+          onPressed: locating
+              ? null
+              : () async {
+                  if (matchedPlace != null) {
+                    Navigator.pop(context);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => SmartTourismMapPage(
+                          initialLat: matchedPlace.latitude,
+                          initialLng: matchedPlace.longitude,
+                          destinationName: matchedPlace.name,
+                        ),
+                      ),
+                    );
+                  } else {
+                    setSheetState(() => locating = true);
+                    try {
+                      final results = await GooglePlacesService.searchPlaces(
+                        query: exp.name,
+                        latitude: _userLatitude ?? 6.9271,
+                        longitude: _userLongitude ?? 79.8612,
+                      );
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      if (results.isNotEmpty) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SmartTourismMapPage(
+                              initialLat: results.first.latitude,
+                              initialLng: results.first.longitude,
+                              destinationName: results.first.name,
+                            ),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => SmartTourismMapPage(
+                              initialLat: _userLatitude ?? 6.9271,
+                              initialLng: _userLongitude ?? 79.8612,
+                              destinationName: exp.name,
+                            ),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      debugPrint('Locating experience error: $e');
+                      if (!mounted) return;
+                      Navigator.pop(context);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SmartTourismMapPage(
+                            initialLat: _userLatitude ?? 6.9271,
+                            initialLng: _userLongitude ?? 79.8612,
+                            destinationName: exp.name,
+                          ),
+                        ),
+                      );
+                    }
+                  }
+                },
+          icon: locating
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Icon(Icons.map_rounded),
+          label: Text(locating ? 'Searching Map...' : 'Locate on Map'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.actionTeal,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildAiReportCard() {
     return GestureDetector(
       onTap: _showAiReportBottomSheet,
@@ -2434,77 +2995,80 @@ Always provide a meaningful discovery opportunity.
         return Container(
           height: MediaQuery.of(context).size.height * 0.85,
           decoration: BoxDecoration(
-            color: const Color(0xFF0A1018).withOpacity(0.95), // Premium dark theme matching app
+            color: Colors.white,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.5),
+            border: Border.all(color: AppColors.border, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 24,
+              ),
+            ],
           ),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                child: Column(
-                  children: [
-                    // Handle/drag indicator
-                    Container(
-                      width: 40,
-                      height: 5,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+              child: Column(
+                children: [
+                  // Handle/drag indicator
+                  Container(
+                    width: 40,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    // Header
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Row(
-                          children: [
-                            const Text('✨', style: TextStyle(fontSize: 20)),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'NexAround AI Discovery',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Markdown body
-                    Expanded(
-                      child: Markdown(
-                        data: _geminiTrendingMarkdown ?? '',
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 14, height: 1.4),
-                          h1: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800, height: 1.5),
-                          h2: const TextStyle(color: AppColors.actionTeal, fontSize: 18, fontWeight: FontWeight.w800, height: 1.5),
-                          h3: const TextStyle(color: AppColors.ratingGold, fontSize: 15, fontWeight: FontWeight.w700, height: 1.4),
-                          listBullet: const TextStyle(color: AppColors.actionTeal, fontSize: 14),
-                          horizontalRuleDecoration: BoxDecoration(
-                            border: Border(
-                              top: BorderSide(
-                                color: Colors.white.withOpacity(0.1),
-                                width: 1.0,
-                              ),
+                  ),
+                  // Header
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Text('✨', style: TextStyle(fontSize: 20)),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'NexAround AI Discovery',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black87,
                             ),
                           ),
-                          blockSpacing: 16.0,
+                        ],
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.close, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Markdown body
+                  Expanded(
+                    child: Markdown(
+                      data: _geminiTrendingMarkdown ?? '',
+                      styleSheet: MarkdownStyleSheet(
+                        p: TextStyle(color: Colors.black87.withOpacity(0.85), fontSize: 14, height: 1.4),
+                        h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.w800, height: 1.5),
+                        h2: const TextStyle(color: AppColors.actionTeal, fontSize: 18, fontWeight: FontWeight.w800, height: 1.5),
+                        h3: const TextStyle(color: AppColors.ratingGold, fontSize: 15, fontWeight: FontWeight.w700, height: 1.4),
+                        listBullet: const TextStyle(color: AppColors.actionTeal, fontSize: 14),
+                        horizontalRuleDecoration: BoxDecoration(
+                          border: Border(
+                            top: BorderSide(
+                              color: AppColors.border,
+                              width: 1.0,
+                            ),
+                          ),
                         ),
+                        blockSpacing: 16.0,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -2670,31 +3234,31 @@ Always provide a meaningful discovery opportunity.
   }
 
   Widget _buildPlaceCard(AttractionEntity place, int index) {
+    final lowerName = place.name.toLowerCase().trim();
+    AiExperience? matchedExp;
+    for (final exp in _aiExperiences) {
+      if (exp.name.toLowerCase().trim() == lowerName) {
+        matchedExp = exp;
+        break;
+      }
+    }
+    final isEvent = matchedExp != null ? matchedExp.type == 'event' : (_getEventForPlace(place) != null);
+    final isGem = matchedExp != null ? matchedExp.type == 'gem' : false;
+
     return GestureDetector(
       onTap: () {
-        final lowerName = place.name.toLowerCase().trim();
-        final aiDetails = _parsedAiDetails[lowerName];
-        if (aiDetails != null && aiDetails.isNotEmpty) {
-          _showAiPlaceDetailsBottomSheet(place, aiDetails);
-        } else {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => AttractionDetailPage(
-                id: place.id,
-                name: place.name,
-                category: place.categoryName ?? 'Attraction',
-                rating: place.rating,
-                distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-                emoji: '📍',
-                imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                latitude: place.latitude,
-                longitude: place.longitude,
-                reviewCount: place.reviewCount,
-              ),
-            ),
-          );
-        }
+        final expToDetail = matchedExp ?? AiExperience(
+          name: place.name,
+          type: isEvent ? 'event' : 'gem',
+          why: place.description ?? 'A popular local destination.',
+          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+          travelTime: '',
+          when: _getEventOrTrendingInfo(place).title,
+          cost: '',
+          bestFor: '',
+          confidence: '',
+        );
+        _showAiExperienceDetailsBottomSheet(expToDetail);
       },
       child: Container(
         width: 200,
@@ -2791,31 +3355,65 @@ Always provide a meaningful discovery opportunity.
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
-                            color: Colors.white.withOpacity(0.2),
+                            color: isEvent 
+                                ? AppColors.actionTeal.withOpacity(0.85)
+                                : isGem 
+                                    ? AppColors.ratingGold.withOpacity(0.85)
+                                    : Colors.white.withOpacity(0.2),
                           ),
                           child: Text(
-                            place.categoryName ?? 'LANDMARK',
+                            isEvent 
+                                ? 'EVENT' 
+                                : isGem 
+                                    ? 'GEM' 
+                                    : (place.categoryName ?? 'LANDMARK').toUpperCase(),
                             style: const TextStyle(
                               fontSize: 10,
-                              fontWeight: FontWeight.w700,
+                              fontWeight: FontWeight.w800,
                               color: Colors.white,
                             ),
                           ),
                         ),
+                        if (matchedExp != null && matchedExp.confidence.isNotEmpty) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              color: Colors.white.withOpacity(0.25),
+                            ),
+                            child: Text(
+                              (() {
+                                final cleanConf = matchedExp!.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
+                                if (int.tryParse(cleanConf) != null) {
+                                  return '$cleanConf%';
+                                }
+                                return matchedExp!.confidence;
+                              })(),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                     const Spacer(),
                     (() {
                       final eventInfo = _getEventOrTrendingInfo(place);
-                      final hasEvent = _getEventForPlace(place) != null;
+                      final displayTitle = matchedExp != null ? matchedExp.when : eventInfo.title;
+                      final isEventCard = matchedExp != null ? matchedExp.type == 'event' : (_getEventForPlace(place) != null);
+                      
                       return Container(
                         margin: const EdgeInsets.only(bottom: 8),
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: hasEvent ? Colors.red.withOpacity(0.25) : AppColors.brandGreen.withOpacity(0.15),
+                          color: isEventCard ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.25),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: hasEvent ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.3),
+                            color: isEventCard ? Colors.red.withOpacity(0.6) : AppColors.brandGreen.withOpacity(0.4),
                             width: 1,
                           ),
                         ),
@@ -2823,18 +3421,18 @@ Always provide a meaningful discovery opportunity.
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              hasEvent ? Icons.campaign_rounded : Icons.trending_up_rounded,
+                              isEventCard ? Icons.calendar_today_rounded : Icons.auto_awesome_rounded,
                               size: 11,
-                              color: hasEvent ? Colors.redAccent[100] : AppColors.brandGreen,
+                              color: Colors.white,
                             ),
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                eventInfo.title,
+                                displayTitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 9,
+                                  fontSize: 9.5,
                                   fontWeight: FontWeight.w900,
                                   color: Colors.white,
                                   letterSpacing: 0.5,
@@ -4391,4 +4989,28 @@ class _SpotlightPoint3D {
   _SpotlightPoint3D(double latDeg, double lngDeg)
       : lat = latDeg * pi / 180,
         lng = lngDeg * pi / 180;
+}
+
+class AiExperience {
+  final String name;
+  final String type; // 'event' or 'gem'
+  final String why;
+  final String distance;
+  final String travelTime;
+  final String when;
+  final String cost;
+  final String bestFor;
+  final String confidence;
+
+  AiExperience({
+    required this.name,
+    required this.type,
+    required this.why,
+    required this.distance,
+    required this.travelTime,
+    required this.when,
+    required this.cost,
+    required this.bestFor,
+    required this.confidence,
+  });
 }
