@@ -174,8 +174,13 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         return StoriesCommentsDialog(
           story: story,
           onCommentAdded: (commentText) {
+            final authState = context.read<AuthBloc>().state;
+            String author = 'You';
+            if (authState is AuthAuthenticated) {
+              author = authState.user.displayName;
+            }
             setState(() {
-              story.comments.add(commentText);
+              story.comments.add('$author: $commentText');
             });
             TravelStoriesService().addComment(story.id, commentText);
           },
@@ -261,6 +266,10 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
 
     final currentStory = widget.stories[_currentIndex];
 
+    // Find stories by the same user for the progress indicator
+    final userStories = widget.stories.where((s) => s.userId == currentStory.userId).toList();
+    final userStoryIndex = userStories.indexOf(currentStory);
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -297,9 +306,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                     children: [
                       // Story Segment Indicators
                       Row(
-                        children: List.generate(widget.stories.length, (index) {
-                          final isWatched = index < _currentIndex;
-                          final isActive = index == _currentIndex;
+                        children: List.generate(userStories.length, (index) {
+                          final isWatched = index < userStoryIndex;
+                          final isActive = index == userStoryIndex;
                           return Expanded(
                             child: Container(
                               height: 3,

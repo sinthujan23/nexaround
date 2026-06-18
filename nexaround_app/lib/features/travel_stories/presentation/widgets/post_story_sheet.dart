@@ -292,7 +292,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
               children: [
                 const Expanded(
                   child: Text(
-                    'Let people Know - Share your travel story',
+                    'Share your travel story',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -321,10 +321,6 @@ class _PostStorySheetState extends State<PostStorySheet> {
                     alignment: Alignment.centerRight,
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.black, width: 1.5),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [

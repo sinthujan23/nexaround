@@ -32,7 +32,7 @@ class MapSearchBar extends StatelessWidget {
         children: [
           Icon(
             Icons.search_rounded,
-            color: AppColors.secondary,
+            color: AppColors.brandGreen,
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -54,12 +54,12 @@ class MapSearchBar extends StatelessWidget {
             height: 32,
             width: 32,
             decoration: BoxDecoration(
-              color: AppColors.secondary,
+              color: AppColors.brandGreen.withOpacity(0.12),
               shape: BoxShape.circle,
             ),
             child: const Icon(
               Icons.mic_rounded,
-              color: AppColors.primary,
+              color: AppColors.brandGreen,
               size: 20,
             ),
           ),

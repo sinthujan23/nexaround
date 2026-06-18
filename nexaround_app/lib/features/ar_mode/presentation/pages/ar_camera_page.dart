@@ -28,6 +28,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 
 class ArCameraPage extends StatefulWidget {
   final Map<String, dynamic>? initialPlace;
@@ -60,9 +61,12 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
 
   // Search state
   final TextEditingController _searchController = TextEditingController();
-  List<AttractionEntity> _searchResults = [];
+  List<dynamic> _searchResults = [];
   bool _isSearching = false;
-  bool _showSearchResults = false;
+  bool _isGoogleSearching = false;
+  bool _showSearchResults = false; // Restored for backwards compatibility
+  final SpeechToText _speechToText = SpeechToText();
+  Timer? _searchDebounceTimer;
   
   // Permission state
   bool _isLocationGranted = false;
@@ -875,6 +879,15 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
       _startArCapture();
+      if (mounted) {
+        setState(() {
+          _isIdentifying = true;
+          _isNavigating = false;
+          _showInfoCard = false;
+          _selectedLandmark = -1;
+          _arMode = 'explore';
+        });
+      }
     } else if (!widget.isActive && oldWidget.isActive) {
       _stopArCapture();
     }
@@ -925,6 +938,84 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
       if (mounted) {
         setState(() {
           _isSearching = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _performArSearchAndSelectFirst(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() {
+      _isSearching = true;
+      _showSearchResults = true;
+    });
+
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: _currentPosition?.latitude ?? 6.9271,
+        longitude: _currentPosition?.longitude ?? 79.8612,
+      );
+
+      if (mounted) {
+        if (results.isNotEmpty) {
+          final place = results.first;
+          final pos = _currentPosition;
+          final distanceM = place.distanceM ?? 0.0;
+          final distanceText = distanceM < 1000
+              ? '${distanceM.toInt()} m'
+              : '${(distanceM / 1000).toStringAsFixed(1)} km';
+          final bearing = pos != null
+              ? _calculateBearing(pos.latitude, pos.longitude, place.latitude, place.longitude)
+              : 0.0;
+          final landmark = _ArLandmark(
+            place.name,
+            place.photoUrls.isNotEmpty
+                ? place.photoUrls.first
+                : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
+            place.rating,
+            distanceText,
+            bearing,
+            place.description ?? 'A remarkable location nearby!',
+            place.categoryName?.toUpperCase() ?? 'ATTRACTION',
+            distanceM,
+            place.latitude,
+            place.longitude,
+          );
+
+          setState(() {
+            if (!_landmarks.any((l) => l.name == landmark.name)) {
+              _landmarks.add(landmark);
+            }
+            _selectedLandmark = _landmarks.indexWhere((l) => l.name == landmark.name);
+            _showInfoCard = true;
+            _showSearchResults = false;
+            _isSearching = false;
+            _searchController.text = place.name;
+            _isIdentifying = false;
+          });
+          FocusScope.of(context).unfocus();
+        } else {
+          setState(() {
+            _isSearching = false;
+            _showSearchResults = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No places found for "$query"'),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: const Color(0xFFFF5252),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('AR Search error: $e');
+      if (mounted) {
+        setState(() {
+          _isSearching = false;
+          _showSearchResults = false;
         });
       }
     }
@@ -2760,6 +2851,135 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
     );
   }
 
+  void _onSearchQueryChanged(String query) {
+    if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
+    if (query.trim().isEmpty) {
+      updateState(() {
+        _searchResults = [];
+      });
+      return;
+    }
+
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _performGoogleSearch(query);
+    });
+  }
+
+  Future<void> _performGoogleSearch(String query) async {
+    if (_currentPosition == null) return;
+    updateState(() {
+      _isGoogleSearching = true;
+    });
+
+    try {
+      final results = await GooglePlacesService.getAutocompleteSuggestions(
+        input: query,
+        latitude: _currentPosition!.latitude,
+        longitude: _currentPosition!.longitude,
+      );
+      if (mounted) {
+        updateState(() {
+          _searchResults = results;
+          _isGoogleSearching = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        updateState(() {
+          _isGoogleSearching = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _onSearchSuggestionSelected(Map<String, dynamic> suggestion) async {
+    // Hide keyboard
+    FocusScope.of(context).unfocus();
+    updateState(() {
+      _isSearching = false;
+      _searchController.clear();
+      _searchResults.clear();
+    });
+
+    final placeId = suggestion['place_id'] as String?;
+    if (placeId == null) return;
+
+    final details = await GooglePlacesService.getPlaceDetails(placeId);
+    if (details != null) {
+      // Find or create landmark
+      _ArLandmark? found;
+      try {
+        found = _landmarks.firstWhere((l) => l.name == details.name);
+      } catch (_) {
+        double calcDist = details.distanceM ?? 0.0;
+        if (_currentPosition != null && details.latitude != null && details.longitude != null) {
+          calcDist = geo.Geolocator.distanceBetween(
+            _currentPosition!.latitude,
+            _currentPosition!.longitude,
+            details.latitude!,
+            details.longitude!,
+          );
+        }
+        found = _ArLandmark(
+          details.name,
+          details.photoUrls.isNotEmpty ? details.photoUrls.first : '',
+          details.rating ?? 4.0,
+          '${(calcDist / 1000).toStringAsFixed(1)} km',
+          0.0, // Default bearing, will be updated if it enters view
+          details.description ?? '',
+          details.categoryName ?? 'Attractions',
+          calcDist,
+          details.latitude,
+          details.longitude,
+          details.tags,
+        );
+      }
+
+      // If it wasn't in the local list, add it temporarily so it renders
+      if (!_landmarks.any((l) => l.name == found!.name)) {
+        updateState(() {
+          _landmarks.add(found!);
+        });
+      }
+
+      updateState(() {
+        _selectedLandmark = _landmarks.indexOf(found!);
+        _showInfoCard = true;
+        _isNavigating = false;
+        _isIdentifying = false;
+        _isSearching = false;
+        _searchController.clear();
+        _searchResults.clear();
+      });
+      FocusScope.of(context).unfocus();
+    }
+  }
+
+  Future<void> _startVoiceSearch() async {
+    final status = await Permission.microphone.request();
+    if (status.isGranted) {
+      bool available = await _speechToText.initialize(
+        onStatus: (status) {
+          if (status == 'notListening' || status == 'done') {
+            if (mounted) updateState(() => _isListening = false);
+          }
+        },
+      );
+      if (available) {
+        updateState(() {
+          _isListening = true;
+          _isSearching = true;
+        });
+        _speechToText.listen(
+          onResult: (result) {
+            _searchController.text = result.recognizedWords;
+            _onSearchQueryChanged(result.recognizedWords);
+          },
+        );
+      }
+    }
+  }
+
   /// Convert a heading in degrees to a compass cardinal (N, NE, E, …, NW).
   String _cardinalFromHeading(double heading) {
     const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
@@ -2782,133 +3002,195 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             children: [
               Row(
                 children: [
-                  // Live dot
-                  Container(
-                    width: 8, height: 8,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.primary,
-                      boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
+                  if (!_isSearching) ...[
+                    // Live dot
+                    Container(
+                      width: 8, height: 8,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppColors.primary,
+                        boxShadow: [BoxShadow(color: AppColors.primary, blurRadius: 6)],
+                      ),
+                    ).animate(onPlay: (c) => c.repeat(reverse: true))
+                     .fade(begin: 0.3, end: 1, duration: 900.ms),
+                    const SizedBox(width: 8),
+                    // AR LIVE label
+                    Text(
+                      'AR LIVE',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 13,
+                        letterSpacing: 2,
+                      ),
                     ),
-                  ).animate(onPlay: (c) => c.repeat(reverse: true))
-                   .fade(begin: 0.3, end: 1, duration: 900.ms),
-                  const SizedBox(width: 8),
-                  // AR LIVE label
-                  Text(
-                    'AR LIVE',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 13,
-                      letterSpacing: 2,
-                    ),
-                  ),
-                  // ── KM RANGE CYCLE CIRCLE — only for range-enabled categories
-                  // (Historical / Medical / Nature); hidden for the rest. ──
-                  if (_categoryHasRange(_selectedFilter)) ...[
-                    const SizedBox(width: 18),
-                    _buildKmRangePicker(),
                   ],
-                  const Spacer(),
-                  // Combined XP + Compass pill
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(22),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.55),
-                          borderRadius: BorderRadius.circular(22),
-                          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // XP segment
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.amber.withOpacity(0.15),
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.stars_rounded, color: Colors.amber, size: 16),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    '$_nexusPoints XP',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            // Compass segment
-                            Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SizedBox(
-                                    width: 22,
-                                    height: 22,
-                                    child: Transform.rotate(
-                                      angle: -_heading * pi / 180,
-                                      child: CustomPaint(painter: _CompassNeedlePainter()),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    cardinal,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 13,
-                                      letterSpacing: 1,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
+                  const SizedBox(width: 16),
+                  // Search Bar
+                  Expanded(
+                    child: Container(
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.55),
+                        borderRadius: BorderRadius.circular(23),
+                        border: Border.all(color: _isListening ? const Color(0xFF00E5FF).withOpacity(0.6) : Colors.white.withOpacity(0.12), width: 1),
+                        boxShadow: [
+                          if (_isListening)
+                            BoxShadow(color: const Color(0xFF00E5FF).withOpacity(0.2), blurRadius: 10, spreadRadius: 1),
+                        ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Exit AR Button
-                  GestureDetector(
-                    onTap: () {
-                      if (widget.initialPlace != null) {
-                        Navigator.of(context).pop();
-                      } else {
-                        HomePage.homeKey.currentState?.switchToExplore();
-                      }
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(50),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          width: 38, height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.9),
-                            border: Border.all(color: Colors.white.withOpacity(0.6), width: 1),
+                      child: Row(
+                        children: [
+                          const SizedBox(width: 12),
+                          Icon(
+                            _isListening ? Icons.graphic_eq_rounded : Icons.search_rounded, 
+                            color: _isListening ? const Color(0xFF00E5FF) : AppColors.brandGreen, 
+                            size: 20
+                          ).animate(target: _isListening ? 1 : 0).scaleXY(end: 1.1, duration: 200.ms),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              decoration: InputDecoration(
+                                hintText: _isListening ? 'Listening...' : 'Search places...',
+                                hintStyle: TextStyle(
+                                  color: _isListening ? const Color(0xFF00E5FF).withOpacity(0.8) : Colors.white54, 
+                                  fontSize: 14
+                                ),
+                                border: InputBorder.none,
+                                isDense: true,
+                              ),
+                              onTap: () {
+                                updateState(() => _isSearching = true);
+                              },
+                              onChanged: _onSearchQueryChanged,
+                              onSubmitted: (val) {
+                                _performArSearchAndSelectFirst(val);
+                              },
+                            ),
                           ),
-                          child: const Icon(Icons.close_rounded, color: Colors.black, size: 20),
-                        ),
+                          if (_searchController.text.isNotEmpty)
+                            GestureDetector(
+                              onTap: () {
+                                _searchController.clear();
+                                _onSearchQueryChanged('');
+                              },
+                              child: const Padding(
+                                padding: EdgeInsets.symmetric(horizontal: 8),
+                                child: Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                              ),
+                            ),
+                          GestureDetector(
+                            onTap: () {
+                              if (_isListening) {
+                                _speechToText.stop();
+                                updateState(() => _isListening = false);
+                              } else {
+                                _startVoiceSearch();
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.only(right: 12, left: 4),
+                              child: Icon(
+                                _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                                color: _isListening ? const Color(0xFF00E5FF) : AppColors.brandGreen,
+                                size: 22,
+                              ).animate(target: _isListening ? 1 : 0).scaleXY(end: 1.2, duration: 200.ms),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
+                  if (_isSearching) ...[
+                    const SizedBox(width: 12),
+                    GestureDetector(
+                      onTap: () {
+                        FocusScope.of(context).unfocus();
+                        updateState(() {
+                          _isSearching = false;
+                          _searchController.clear();
+                          _searchResults.clear();
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.keyboard_arrow_down_rounded, color: Colors.white, size: 22),
+                      ),
+                    ),
+                  ],
+                  if (!_isSearching) ...[
+                    const SizedBox(width: 12),
+                    // Exit AR Button
+                    GestureDetector(
+                      onTap: () {
+                        if (widget.initialPlace != null) {
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.of(context).pop();
+                          }
+                          HomePage.homeKey.currentState?.switchToAr();
+                        } else {
+                          setState(() {
+                            _isIdentifying = true;
+                          });
+                          HomePage.homeKey.currentState?.switchToExplore();
+                        }
+                      },
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(50),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                          child: Container(
+                            width: 38, height: 38,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.4),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.white.withOpacity(0.2), width: 1),
+                            ),
+                            child: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
               ),
+              // Search Results Dropdown
+              if (_isSearching && _searchResults.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _searchResults.length,
+                    separatorBuilder: (_, __) => Divider(color: Colors.white.withOpacity(0.1), height: 1),
+                    itemBuilder: (context, index) {
+                      final item = _searchResults[index];
+                      return ListTile(
+                        leading: const Icon(Icons.place_rounded, color: Colors.white54),
+                        title: Text(item['main_text'] ?? '', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        subtitle: Text(item['description'] ?? '', style: const TextStyle(color: Colors.white54, fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        onTap: () => _onSearchSuggestionSelected(item),
+                      );
+                    },
+                  ),
+                ),
+              ],
+              if (_isSearching && _isGoogleSearching) ...[
+                const SizedBox(height: 16),
+                const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
+              ],
             ],
           ),
         ),
@@ -3098,29 +3380,18 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
           // Removed subtle scan line wave effect as requested
           
           // EXPLORE MODE: Floating AR markers (compass-driven).
-          // During navigation, show them dimmed so nearby POIs (like UC College)
-          // remain visible as contextual landmarks.
-          if (!_isIdentifying)
-            if (_isNavigating)
-              ...(_landmarksInView
-                  .where((lm) => lm.name != _navigationTarget?.name)
-                  .toList()
-                  .asMap()
-                  .entries
-                  .map((e) => Opacity(
-                        opacity: 0.4,
-                        child: _buildLandmarkMarker(e.key, e.value),
-                      )))
-            else
-              ..._landmarksInView
-                  .asMap()
-                  .entries
-                  .map((e) => _buildLandmarkMarker(e.key, e.value)),
+          // Hide all floating place markers when navigating to keep the screen clean as requested.
+          if (!_isIdentifying && !_isSearching && !_showInfoCard && !_isNavigating)
+            ..._landmarksInView
+                .asMap()
+                .entries
+                .map((e) => _buildLandmarkMarker(e.key, e.value)),
 
           // EXPLORE MODE: If we have places nearby but none in the view cone,
           // guide the user to rotate toward the closest one.
           if (!_isNavigating &&
               !_isIdentifying &&
+              !_isSearching &&
               !_isMapping &&
               _nevaSearchResult == null &&
               !_showInfoCard &&
@@ -3129,35 +3400,28 @@ class _ArCameraPageState extends State<ArCameraPage> with TickerProviderStateMix
             _buildRotateToDiscoverOverlay(),
 
           // DISCOVER MODE: Show single closest place with lock-on animation
-          if (_isIdentifying && !_showInfoCard && !_isNevaAnalyzing && !_isNavigating)
+          if (_isIdentifying && !_showInfoCard && !_isNevaAnalyzing && !_isNavigating && !_isSearching)
             _buildDiscoveryTarget(),
 
           // Top HUD (XP and Map Place) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null) _buildTopHUD(),
 
+          // Search Results Dropdown Overlay (shown when pressing enter in search bar)
+          if (_showSearchResults && !_isNavigating)
+            _buildArSearchResultsOverlay(),
 
 
-          // Filter chip bar - hide when mapping or showing detail (can be shown while navigating)
-          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
+
+          // Filter chip bar - hide when mapping, showing detail, or navigating to keep screen clean
+          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard && !_isSearching && !_isNavigating)
             _buildArFilterBar(),
 
-          // Range slider - sits just below the filter chips; lets the user pick
-          // how far out (km) to surface attractions / medical and all places.
-          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard)
+          // Range slider - sits just below the filter chips; hide when mapping, showing detail, or navigating
+          if (!_minimalHud && !_isMapping && _nevaSearchResult == null && !_showInfoCard && !_isSearching && !_isNavigating)
             _buildRangeSlider(),
 
           // Notice banners removed per client request
 
-          // Place count/Status badge at bottom - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
-          if (!_minimalHud && !_isNavigating && !_isIdentifying && _nevaSearchResult == null && !_isFetchingPlaces)
-            Positioned(
-              // Anchored below the range slider relative to the notch so it
-              // never overlaps the slider or the floating place labels.
-              top: MediaQuery.of(context).padding.top + 146,
-              left: 0,
-              right: 0,
-              child: Center(child: _buildXPBadge()),
-            ),
 
           // Dynamic Loading Indicator for Range/Places Fetching
           if (_isFetchingPlaces)
@@ -4778,7 +5042,10 @@ HOW TO FORMAT EVERY REPLY:
               debugPrint('🔍 NEVA: Closing result');
               if (widget.initialPlace != null) {
                 // Launched from proximity alert — go back to previous page
-                Navigator.of(context).pop();
+                if (Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+                HomePage.homeKey.currentState?.switchToAr();
               } else {
                 setState(() {
                   _nevaSearchResult = null;
@@ -5676,10 +5943,20 @@ HOW TO FORMAT EVERY REPLY:
                         ),
                         if (!_isNavigating)
                           GestureDetector(
-                            onTap: () => setState(() {
-                              _showInfoCard = false;
-                              _isListening = false;
-                            }),
+                            onTap: () {
+                              if (widget.initialPlace != null) {
+                                if (Navigator.of(context).canPop()) {
+                                  Navigator.of(context).pop();
+                                }
+                                HomePage.homeKey.currentState?.switchToAr();
+                              } else {
+                                setState(() {
+                                  _showInfoCard = false;
+                                  _isListening = false;
+                                  _isIdentifying = true;
+                                });
+                              }
+                            },
                             child: Container(
                               width: 32,
                               height: 32,
@@ -6130,14 +6407,26 @@ HOW TO FORMAT EVERY REPLY:
                             Expanded(
                               flex: 3,
                               child: GestureDetector(
-                                onTap: () => setState(() {
-                                  _isNavigating = false;
-                                  _navigationTarget = null;
-                                  _walkingRoute = null;
-                                  _currentStepIndex = 0;
-                                  _hasArrivedAtDestination = false;
-                                  _arMode = 'explore';
-                                }),
+                                onTap: () {
+                                  if (widget.initialPlace != null) {
+                                    if (Navigator.of(context).canPop()) {
+                                      Navigator.of(context).pop();
+                                    }
+                                    HomePage.homeKey.currentState?.switchToAr();
+                                  } else {
+                                    setState(() {
+                                      _isNavigating = false;
+                                      _navigationTarget = null;
+                                      _walkingRoute = null;
+                                      _currentStepIndex = 0;
+                                      _hasArrivedAtDestination = false;
+                                      _showInfoCard = false;
+                                      _selectedLandmark = -1;
+                                      _arMode = 'explore';
+                                      _isIdentifying = true;
+                                    });
+                                  }
+                                },
                                 child: Container(
                                   height: 52,
                                   decoration: BoxDecoration(
@@ -6865,13 +7154,25 @@ HOW TO FORMAT EVERY REPLY:
             ),
             const SizedBox(height: 32),
             GestureDetector(
-              onTap: () => setState(() {
-                _isNavigating = false;
-                _navigationTarget = null;
-                _walkingRoute = null;
-                _hasArrivedAtDestination = false;
-                _arMode = 'explore';
-              }),
+              onTap: () {
+                if (widget.initialPlace != null) {
+                  if (Navigator.of(context).canPop()) {
+                    Navigator.of(context).pop();
+                  }
+                  HomePage.homeKey.currentState?.switchToAr();
+                } else {
+                  setState(() {
+                    _isNavigating = false;
+                    _navigationTarget = null;
+                    _walkingRoute = null;
+                    _hasArrivedAtDestination = false;
+                    _showInfoCard = false;
+                    _selectedLandmark = -1;
+                    _arMode = 'explore';
+                    _isIdentifying = true;
+                  });
+                }
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                 decoration: BoxDecoration(
@@ -7923,7 +8224,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
               decoration: InputDecoration(
                 hintText: 'Search any place to navigate...',
                 hintStyle: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12, fontWeight: FontWeight.w500),
-                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 20),
+                prefixIcon: const Icon(Icons.search_rounded, color: AppColors.brandGreen, size: 20),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.clear_rounded, color: Colors.white70, size: 18),
@@ -7947,7 +8248,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
                 _performArSearch(val);
               },
               onSubmitted: (val) {
-                _performArSearch(val);
+                _performArSearchAndSelectFirst(val);
               },
             ),
           ),
@@ -8068,6 +8369,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
                             _showInfoCard = true;
                             _showSearchResults = false;
                             _searchController.text = place.name;
+                            _isIdentifying = false;
                           });
                           FocusScope.of(context).unfocus();
                         },

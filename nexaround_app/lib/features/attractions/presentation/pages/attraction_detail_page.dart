@@ -68,11 +68,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   List<String> _weekdayHours = [];
 
   // ── Gemini data ──
-  bool _isLoadingGemini = true;
-  String? _historyText;
-  String? _culturalTips;
-  String? _avgVisit;
-  String? _crowdLevel;
+  // (Removed history/cultural tips as requested to speed up Near You places)
 
   @override
   void initState() {
@@ -88,7 +84,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     try {
       // Use place_id if it looks like a real Google place ID, else find by name+location
       String? resolvedId = widget.id;
-      if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null) {
+      bool isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(resolvedId ?? '');
+      if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null || isUuid) {
         resolvedId = await _findPlaceId();
       }
       if (resolvedId != null) {
@@ -168,13 +165,6 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       if (mounted) {
         setState(() => _isLoadingPlaces = false);
       }
-      if (widget.aiWhy == null) {
-        _fetchGeminiInfo(types: types, summary: summaryText);
-      } else {
-        if (mounted) {
-          setState(() => _isLoadingGemini = false);
-        }
-      }
     }
   }
 
@@ -199,47 +189,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     }
   }
 
-  Future<void> _fetchGeminiInfo({List<String> types = const [], String? summary}) async {
-    try {
-      final locationHint = (widget.latitude != null && widget.longitude != null)
-          ? ' at coordinates (${widget.latitude}, ${widget.longitude})'
-          : '';
 
-      String contextHint = '';
-      if (types.isNotEmpty) {
-        contextHint += 'Google Maps Place Types: ${types.join(', ')}. ';
-      }
-      if (summary != null && summary.isNotEmpty) {
-        contextHint += 'Google Maps Editorial Summary: "$summary". ';
-      }
-
-      final prompt =
-          'For the place named "${widget.name}" (category: ${widget.category})$locationHint. '
-          '${contextHint.isNotEmpty ? 'Additional context about this place from Google Maps: $contextHint' : ''}'
-          'Please note: if the name, types, or summary suggest this is a private residential area, housing complex, housing society, apartment complex, or gated community (and not a public attraction/monument/park/museum), you must clearly describe it as such in the "history" field (e.g. "Arackal is a residential housing complex...") and state that it is a residential area with no public historical or tourist attractions inside. '
-          'Give me ONLY a JSON object (no markdown) with these fields: '
-          '{"history":"2-3 sentence history or description","cultural_tips":"bullet-point tips for visitors (use \\n• for each)","avg_visit":"estimated visit duration e.g. 1-2 hrs","crowd":"Low/Medium/High crowd level"}';
-
-      final raw = await GeminiService().getResponse(prompt);
-      String cleaned = raw.trim();
-      if (cleaned.contains('```')) {
-        cleaned = cleaned.replaceAll(RegExp(r'```json?\n?'), '').replaceAll(RegExp(r'\n?```'), '');
-      }
-      final info = jsonDecode(cleaned) as Map<String, dynamic>;
-      if (mounted) {
-        setState(() {
-          _historyText = info['history'] as String?;
-          _culturalTips = info['cultural_tips'] as String?;
-          _avgVisit = info['avg_visit'] as String?;
-          _crowdLevel = info['crowd'] as String?;
-          _isLoadingGemini = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Gemini detail error: $e');
-      if (mounted) setState(() => _isLoadingGemini = false);
-    }
-  }
 
   Future<void> _launchNavigation(BuildContext context) async {
     if (widget.latitude == null || widget.longitude == null ||
@@ -423,71 +373,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
                   const SizedBox(height: 24),
 
-                  // Stats Section as wrapping badges
-                  (() {
-                    final displayCost = _isLoadingPlaces ? '...' : (_priceLevel ?? widget.aiCost ?? 'N/A');
-                    final displayAvgVisit = _isLoadingGemini ? '...' : (_avgVisit ?? widget.aiWhen ?? 'N/A');
-                    final displayCrowd = _isLoadingGemini ? '...' : (_crowdLevel ?? 'N/A');
 
-                    Widget buildStatBadge(IconData icon, String title, String value, bool isLoading) {
-                      if (isLoading) {
-                        return Container(
-                          width: 140,
-                          height: 56,
-                          margin: const EdgeInsets.only(right: 12, bottom: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
-                      }
-                      
-                      return Container(
-                        margin: const EdgeInsets.only(right: 12, bottom: 12),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceVariant,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Colors.black12),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icon, size: 18, color: AppColors.actionTeal),
-                            const SizedBox(width: 8),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 120),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    title,
-                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.textSecondary, letterSpacing: 0.5),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    value,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-
-                    return Wrap(
-                      children: [
-                        buildStatBadge(Icons.attach_money_rounded, 'ENTRY FEE', displayCost, _isLoadingPlaces),
-                        buildStatBadge(Icons.schedule_rounded, 'WHEN TO VISIT', displayAvgVisit.isEmpty ? 'N/A' : displayAvgVisit, _isLoadingGemini),
-                        buildStatBadge(Icons.people_rounded, 'CROWD LEVEL', displayCrowd.isEmpty ? 'N/A' : displayCrowd, _isLoadingGemini),
-                      ],
-                    );
-                  })(),
 
                   const SizedBox(height: 28),
 
@@ -506,9 +392,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('hours_skel'))
                         : _weekdayHours.isNotEmpty
                             ? _buildOpeningHoursCard(key: const ValueKey('hours_real'))
-                            : _buildEmptyStateCard('Opening Hours', Icons.schedule_rounded, 'No opening hours available', key: const ValueKey('hours_none')),
+                            : const SizedBox.shrink(key: ValueKey('hours_none')),
                   ),
-                  const SizedBox(height: 16),
+                  if (_isLoadingPlaces || _weekdayHours.isNotEmpty) const SizedBox(height: 16),
 
                   // Visitor Reviews
                   AnimatedSwitcher(
@@ -517,7 +403,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('rev_skel'))
                         : _realReviews.isNotEmpty
                             ? _buildReviewsCard(key: const ValueKey('rev_real'))
-                            : _buildEmptyStateCard('Reviews', Icons.star_rounded, 'No reviews available', key: const ValueKey('rev_none')),
+                            : const SizedBox.shrink(key: ValueKey('rev_none')),
                   ),
 
                   const SizedBox(height: 32),
@@ -710,71 +596,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
-  Widget _buildStatChip(IconData icon, String value, String label) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, size: 18, color: AppColors.actionTeal),
-            const SizedBox(height: 8),
-            Text(value, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-            const SizedBox(height: 2),
-            Text(label, style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Widget _buildSaveChip(bool isSaved) {
-    return Expanded(
-      child: GestureDetector(
-        onTap: () async {
-          final map = {
-            'id': _placeId,
-            'name': widget.name,
-            'category_name': widget.category,
-            'rating': widget.rating,
-            'photo_urls': widget.imageUrl != null ? [widget.imageUrl!] : <String>[],
-            'latitude': widget.latitude ?? 0.0,
-            'longitude': widget.longitude ?? 0.0,
-            'created_at': DateTime.now().toIso8601String(),
-          };
-          await CacheService.toggleSavedPlace(map);
-          setState(() {});
-        },
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 14),
-          decoration: BoxDecoration(
-            color: isSaved ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: isSaved ? AppColors.primary.withOpacity(0.3) : Colors.transparent,
-              width: 1,
-            ),
-          ),
-          child: Column(
-            children: [
-              Icon(
-                isSaved ? Icons.bookmark_rounded : Icons.bookmark_outline_rounded, 
-                size: 18, 
-                color: isSaved ? AppColors.primary : AppColors.actionTeal
-              ),
-              const SizedBox(height: 8),
-              Text(isSaved ? 'Saved' : 'Save', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: isSaved ? AppColors.primary : AppColors.textPrimary)),
-              const SizedBox(height: 2),
-              Text('To Profile', style: TextStyle(fontSize: 10, color: AppColors.textTertiary)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildInfoSection(String title, IconData icon, String content, {Key? key}) {
     return Container(
@@ -857,6 +679,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
+
   Widget _buildAiExperienceSection() {
     return Container(
       width: double.infinity,
@@ -932,11 +755,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
   String _shortenCost(String cost) {
     if (cost.toLowerCase() == 'n/a') return 'N/A';
-    // Remove parentheses and everything inside
     String cleaned = cost.replaceAll(RegExp(r'\(.*?\)'), '').trim();
-    // Remove common prefix words
     cleaned = cleaned.replaceAll(RegExp(r'^(estimated|approx|approx\.|about|around)\s+', caseSensitive: false), '').trim();
-    // If still very long (more than 20 chars), try to find a number range
     if (cleaned.length > 20) {
       final match = RegExp(r'(\d+[\d,]*\s*(?:-|to)\s*\d+[\d,]*)').firstMatch(cleaned);
       if (match != null) {

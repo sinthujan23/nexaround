@@ -39,10 +39,10 @@ class PlaceImageHelper {
             ),
           ),
         ),
-        errorWidget: (context, url, error) => _buildFallbackAsset(category, name, fit),
+        errorWidget: (context, url, error) => _buildFallbackAsset(category, name, fit, width, height),
       );
     } else {
-      imageWidget = _buildFallbackAsset(category, name, fit);
+      imageWidget = _buildFallbackAsset(category, name, fit, width, height);
     }
 
     if (borderRadius != null) {
@@ -95,12 +95,16 @@ class PlaceImageHelper {
     return 'assets/images/$prefix$index.jpeg';
   }
 
-  static Widget _buildFallbackAsset(String category, String name, BoxFit fit) {
+  static Widget _buildFallbackAsset(String category, String name, BoxFit fit, double? width, double? height) {
     return Image.asset(
       getAssetPath(category, name), 
       fit: fit,
+      width: width,
+      height: height,
       errorBuilder: (c, e, s) => Container(
         color: Colors.black, 
+        width: width,
+        height: height,
         child: const Center(
           child: Icon(Icons.image_not_supported_outlined, color: Colors.white10, size: 20),
         ),

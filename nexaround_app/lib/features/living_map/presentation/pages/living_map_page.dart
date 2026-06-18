@@ -763,20 +763,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ...() {
                     if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
                       return [
-                        // Curated For You Shimmer
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader(
-                              'Curated For You',
-                              null,
-                              imageIconPath: 'assets/images/popular.png',
-                              customAction: _buildNevaReportButton(),
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
-
                         // Travel Stories (Where Was I?)
                         SliverToBoxAdapter(
                           child: Padding(
@@ -793,12 +779,26 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: _buildTravelStoriesFeed(),
                         ),
 
+                        // Curated For You Shimmer
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              'Curated For You',
+                              null,
+                              imageIconPath: 'assets/images/popular.png',
+                              customAction: _buildNevaReportButton(),
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+
                         // Nearby Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Near You',
+                              'Around You',
                               null,
                               imageIconPath: 'assets/images/near.png',
                             ),
@@ -848,6 +848,22 @@ class _LivingMapPageState extends State<LivingMapPage>
                     final showTrendingLoading = _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
 
                     return [
+                      // Travel Stories (Where Was I?)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                          child: _buildSectionHeader(
+                            'Travel Stories',
+                            '+ Share',
+                            onTap: _showPostStorySheet,
+                            onTitleTap: () => _navigateToTravelStories(0),
+                          ),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: _buildTravelStoriesFeed(),
+                      ),
+
                       // Curated For You
                       SliverToBoxAdapter(
                         child: Padding(
@@ -872,29 +888,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
 
-                      // Travel Stories (Where Was I?)
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                          child: _buildSectionHeader(
-                            'Travel Stories',
-                            '+ Share',
-                            onTap: _showPostStorySheet,
-                            onTitleTap: () => _navigateToTravelStories(0),
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: _buildTravelStoriesFeed(),
-                      ),
-
                       // Near You
                       if (publicAttractions.isNotEmpty) ...[
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Near You', 
+                              'Around You', 
                               null,
                               imageIconPath: 'assets/images/near.png',
                             ),
@@ -4018,7 +4018,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             Text(
                               categoryName == 'Attractions' || categoryName == 'Medical'
                                   ? '0-50 km'
-                                  : '0-5 km',
+                                  : '0-15 km',
                               style: TextStyle(
                                 color: _getCategoryBorderColor(categoryName).withOpacity(0.95),
                                 fontSize: 9.5,
@@ -4047,7 +4047,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           uniquePlaces.add(p);
                         }
                       }
-                      final finalPlaces = uniquePlaces.take(5).toList();
+                      final finalPlaces = uniquePlaces.take(10).toList();
 
                       return finalPlaces.asMap().entries.map((entry) {
                         final place = entry.value;
@@ -4166,12 +4166,12 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Medical': [],
     };
 
-    // Strict allowed place types according to Google's official types
+    // Expanded place types for better discovery
     final allowedTypes = {
-      'Medical': {'hospital', 'pharmacy', 'doctor', 'dentist', 'health'},
-      'Food': {'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery', 'food'},
-      'Shopping': {'shopping_mall', 'supermarket', 'store', 'department_store', 'convenience_store'},
-      'Attractions': {'tourist_attraction', 'museum', 'park', 'zoo', 'aquarium', 'art_gallery', 'amusement_park'},
+      'Medical': {'hospital', 'pharmacy', 'doctor', 'dentist', 'health', 'physiotherapist', 'veterinary_care', 'clinic', 'medical_lab', 'optician'},
+      'Food': {'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery', 'food', 'bar', 'night_club', 'ice_cream_shop', 'coffee_shop', 'juice_bar'},
+      'Shopping': {'shopping_mall', 'supermarket', 'store', 'department_store', 'convenience_store', 'clothing_store', 'electronics_store', 'book_store', 'jewelry_store', 'shoe_store', 'furniture_store', 'pet_store', 'hardware_store', 'gift_shop', 'market'},
+      'Attractions': {'tourist_attraction', 'museum', 'park', 'zoo', 'aquarium', 'art_gallery', 'amusement_park', 'church', 'hindu_temple', 'mosque', 'synagogue', 'stadium', 'casino', 'movie_theater', 'bowling_alley', 'campground', 'national_park', 'historical_landmark', 'performing_arts_theater', 'cultural_center', 'monument', 'waterfall', 'beach', 'viewpoint', 'garden', 'fort', 'palace'},
     };
 
     // Custom comparator: Sort by distance (nearest first) and then by rating (highest first when distances are within 100 meters)
@@ -4204,46 +4204,39 @@ class _LivingMapPageState extends State<LivingMapPage>
         continue;
       }
 
-      // Check category: Medical (within 50 km)
-      if (distKm <= 50.0 && tags.any((t) => allowedTypes['Medical']!.contains(t))) {
-        // Prevent cross-contamination: Bars must not appear in Medical
-        if (!tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store')) {
-          if (!grouped['Medical']!.any((x) => x.id == place.id)) {
-            grouped['Medical']!.add(place);
-          }
-        }
-      }
+      // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
+      // Priority: Medical > Food > Shopping > Attractions
+      final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
+      final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
+      final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
+      final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
 
-      // Check category: Food (within 10 km)
-      if (distKm <= 10.0 && tags.any((t) => allowedTypes['Food']!.contains(t))) {
-        // Prevent cross-contamination: Hospitals must not appear in Food
-        if (!tags.contains('hospital')) {
-          if (!grouped['Food']!.any((x) => x.id == place.id)) {
-            grouped['Food']!.add(place);
-          }
+      String? bestCategory;
+      if (isMedical && !isFood && !isShopping) {
+        bestCategory = 'Medical';
+      } else if (isFood && !isMedical) {
+        // Food but NOT medical — exclude places that are primarily shopping
+        final primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
+        if (!primaryShop) {
+          bestCategory = 'Food';
         }
+      } else if (isShopping && !isMedical && !isFood) {
+        bestCategory = 'Shopping';
+      } else if (isAttraction && !isMedical && !isFood && !isShopping) {
+        bestCategory = 'Attractions';
       }
+      // If place matches multiple categories (e.g. a supermarket tagged as 'food' + 'store'), 
+      // it only goes to the first matching priority category above.
+      // If it matches NONE, skip it entirely.
 
-      // Check category: Shopping (within 10 km)
-      if (distKm <= 10.0 && tags.any((t) => allowedTypes['Shopping']!.contains(t))) {
-        // Prevent cross-contamination: Restaurants must not appear in Shopping
-        final foodTypes = {'restaurant', 'cafe', 'bakery', 'food'};
-        if (!tags.any((t) => foodTypes.contains(t))) {
-          if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
-            grouped['Shopping']!.add(place);
-          }
-        }
-      }
+      if (bestCategory == null) continue;
 
-      // Check category: Attractions (within 50 km)
-      if (distKm <= 50.0 && tags.any((t) => allowedTypes['Attractions']!.contains(t))) {
-        // Prevent cross-contamination: Shops must not appear in Attractions
-        final shopTypes = {'store', 'shopping_mall', 'supermarket', 'department_store'};
-        if (!tags.any((t) => shopTypes.contains(t))) {
-          if (!grouped['Attractions']!.any((x) => x.id == place.id)) {
-            grouped['Attractions']!.add(place);
-          }
-        }
+      // Apply distance limits per category
+      final maxDist = (bestCategory == 'Attractions' || bestCategory == 'Medical') ? 50.0 : 15.0;
+      if (distKm > maxDist) continue;
+
+      if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
+        grouped[bestCategory]!.add(place);
       }
     }
 
@@ -4252,7 +4245,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     var farAttractions = attractionsCategoryList.where((p) => (p.distanceM ?? 0) >= 25000).toList();
     var closeAttractions = attractionsCategoryList.where((p) => (p.distanceM ?? 0) < 25000).toList();
     
-    if (closeAttractions.length < 4) {
+    if (closeAttractions.length < 7) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeAttractions.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
@@ -4260,7 +4253,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                !tags.any((t) => {'store', 'shopping_mall', 'supermarket', 'department_store'}.contains(t));
           if (isAttraction) {
             closeAttractions.add(p);
-            if (closeAttractions.length >= 4) break;
+            if (closeAttractions.length >= 7) break;
           }
         }
       }
@@ -4337,9 +4330,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     farAttractions.sort(compareDistanceAndRating);
     
     final List<AttractionEntity> balancedAttractions = [];
-    balancedAttractions.addAll(closeAttractions.take(4));
+    balancedAttractions.addAll(closeAttractions.take(7));
     for (final far in farAttractions) {
-      if (balancedAttractions.length >= 5) break;
+      if (balancedAttractions.length >= 10) break;
       if (!balancedAttractions.any((x) => x.id == far.id)) {
         balancedAttractions.add(far);
       }
@@ -4351,7 +4344,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     var farMedical = medicalCategoryList.where((p) => (p.distanceM ?? 0) >= 25000).toList();
     var closeMedical = medicalCategoryList.where((p) => (p.distanceM ?? 0) < 25000).toList();
     
-    if (closeMedical.length < 4) {
+    if (closeMedical.length < 7) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 && !closeMedical.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
@@ -4359,7 +4352,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             !tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store');
           if (isMedical) {
             closeMedical.add(p);
-            if (closeMedical.length >= 4) break;
+            if (closeMedical.length >= 7) break;
           }
         }
       }
@@ -4436,9 +4429,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     farMedical.sort(compareDistanceAndRating);
     
     final List<AttractionEntity> balancedMedical = [];
-    balancedMedical.addAll(closeMedical.take(4));
+    balancedMedical.addAll(closeMedical.take(7));
     for (final far in farMedical) {
-      if (balancedMedical.length >= 5) break;
+      if (balancedMedical.length >= 10) break;
       if (!balancedMedical.any((x) => x.id == far.id)) {
         balancedMedical.add(far);
       }

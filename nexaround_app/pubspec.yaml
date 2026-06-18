@@ -2,7 +2,7 @@ name: nexaround_app
 description: "NexAround - AI-powered smart tourism companion"
 publish_to: 'none'
 
-version: 1.0.0+41
+version: 1.0.0+42
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -53,6 +53,7 @@ dependencies:
   json_annotation: ^4.8.0
   intl: ^0.20.2
   permission_handler: ^12.0.0
+  speech_to_text: ^7.4.0
   connectivity_plus: ^6.1.0
   cupertino_icons: ^1.0.6
   uuid: ^4.3.3
