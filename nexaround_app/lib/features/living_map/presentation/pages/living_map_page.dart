@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
