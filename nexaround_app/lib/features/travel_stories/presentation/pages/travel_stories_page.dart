@@ -183,14 +183,19 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     });
 
     try {
-      await TravelStoriesService().addComment(story.id, text);
+      await TravelStoriesService().addComment(story.id, text, _currentImageIndex);
       final authState = context.read<AuthBloc>().state;
       String author = 'You';
       if (authState is AuthAuthenticated) {
         author = authState.user.displayName;
       }
       setState(() {
-        story.comments.add('$author: $text');
+        story.comments.add(TravelStoryComment(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            author: author,
+            text: text,
+            imageIndex: _currentImageIndex,
+        ));
         _commentController.clear();
       });
       if (mounted) {
@@ -256,10 +261,6 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         final authState = BlocProvider.of<AuthBloc>(context).state;
         double lat = 6.9271;
         double lng = 79.8612;
-        if (authState is AuthAuthenticated) {
-          lat = authState.currentLocation?.latitude ?? lat;
-          lng = authState.currentLocation?.longitude ?? lng;
-        }
         return PostStorySheet(
           userLatitude: lat,
           userLongitude: lng,
@@ -604,8 +605,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                                 context,
                                                 MaterialPageRoute(
                                                   builder: (context) => SmartTourismMapPage(
-                                                    targetLatitude: story.latitude!,
-                                                    targetLongitude: story.longitude!,
+                                                    initialLat: story.latitude!,
+                                                    initialLng: story.longitude!,
+                                                    destinationName: story.locationName,
                                                   ),
                                                 ),
                                               );

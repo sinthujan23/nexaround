@@ -1918,6 +1918,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       builder: (context) {
         return StoriesCommentsDialog(
           story: story,
+          imageIndex: 0,
           onCommentAdded: (commentText) {
             final authState = context.read<AuthBloc>().state;
             String author = 'You';
@@ -1925,9 +1926,14 @@ class _LivingMapPageState extends State<LivingMapPage>
               author = authState.user.displayName;
             }
             setState(() {
-              story.comments.add('$author: $commentText');
+              story.comments.add(TravelStoryComment(
+                author: author,
+                text: commentText,
+                imageIndex: 0,
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+              ));
             });
-            TravelStoriesService().addComment(story.id, commentText);
+            TravelStoriesService().addComment(story.id, commentText, 0);
           },
         );
       },
