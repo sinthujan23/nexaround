@@ -779,6 +779,19 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: _buildTravelStoriesFeed(),
                         ),
 
+                        // Around You Shimmer
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              'Around You',
+                              null,
+                              imageIconPath: 'assets/images/near.png',
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
+
                         // Curated For You Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
@@ -792,19 +805,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
-
-                        // Nearby Shimmer
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader(
-                              'Around You',
-                              null,
-                              imageIconPath: 'assets/images/near.png',
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
                       ];
                     }
 
@@ -864,6 +864,21 @@ class _LivingMapPageState extends State<LivingMapPage>
                         child: _buildTravelStoriesFeed(),
                       ),
 
+                      // Around You
+                      if (publicAttractions.isNotEmpty) ...[
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            child: _buildSectionHeader(
+                              'Around You', 
+                              null,
+                              imageIconPath: 'assets/images/near.png',
+                            ),
+                          ),
+                        ),
+                        SliverToBoxAdapter(child: _buildHiddenGemCards(publicAttractions)),
+                      ],
+
                       // Curated For You
                       SliverToBoxAdapter(
                         child: Padding(
@@ -887,21 +902,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                             child: Text('No popular recommendations found nearby.', style: TextStyle(color: AppColors.textSecondary)),
                           ),
                         ),
-
-                      // Near You
-                      if (publicAttractions.isNotEmpty) ...[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
-                            child: _buildSectionHeader(
-                              'Around You', 
-                              null,
-                              imageIconPath: 'assets/images/near.png',
-                            ),
-                          ),
-                        ),
-                        SliverToBoxAdapter(child: _buildHiddenGemCards(publicAttractions)),
-                      ],
                     ];
                   }(),
       
@@ -1870,8 +1870,8 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
-  void _navigateToTravelStories(int startIndex) {
-    Navigator.push(
+  void _navigateToTravelStories(int startIndex) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TravelStoriesPage(
@@ -1885,6 +1885,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         ),
       ),
     );
+    // Refresh stories from server when returning, so we pick up
+    // changes from other users (new stories, deletions, etc.)
+    _loadTravelStories();
   }
 
   void _showPostStorySheet() {
@@ -1919,7 +1922,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         return StoriesCommentsDialog(
           story: story,
           imageIndex: 0,
-          onCommentAdded: (commentText) {
+          onCommentAdded: (commentText, imgIndex) {
             final authState = context.read<AuthBloc>().state;
             String author = 'You';
             if (authState is AuthAuthenticated) {
@@ -1929,11 +1932,11 @@ class _LivingMapPageState extends State<LivingMapPage>
               story.comments.add(TravelStoryComment(
                 author: author,
                 text: commentText,
-                imageIndex: 0,
+                imageIndex: imgIndex,
                 id: DateTime.now().millisecondsSinceEpoch.toString(),
               ));
             });
-            TravelStoriesService().addComment(story.id, commentText, 0);
+            TravelStoriesService().addComment(story.id, commentText, imgIndex);
           },
         );
       },

@@ -203,7 +203,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
     final location = _locationController.text.trim();
     final description = _descriptionController.text.trim();
 
-    if (location.isEmpty || description.isEmpty || _selectedImages.isEmpty) {
+    if (location.isEmpty || description.isEmpty || (_selectedImages.isEmpty && _existingImageUrls.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill all fields and attach at least one photo')),
       );
@@ -637,6 +637,12 @@ class _PostStorySheetState extends State<PostStorySheet> {
                                               ? _existingImageUrls[index] 
                                               : '${ApiConstants.baseUrl}${_existingImageUrls[index]}',
                                           fit: BoxFit.cover,
+                                          errorBuilder: (_, __, ___) => Container(
+                                            color: Colors.grey[200],
+                                            child: const Center(
+                                              child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 32),
+                                            ),
+                                          ),
                                         )
                                       : Image.file(
                                           _selectedImages[index - _existingImageUrls.length],

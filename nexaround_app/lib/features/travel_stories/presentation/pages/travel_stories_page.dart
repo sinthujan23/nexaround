@@ -331,6 +331,12 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       if (_currentIndex >= widget.stories.length) {
         _currentIndex = widget.stories.length - 1;
       }
+      
+      // Recreate the PageController so it doesn't reference a stale page
+      _pageController.dispose();
+      _pageController = PageController(initialPage: _currentIndex);
+      _currentImageIndex = 0;
+      
       setState(() => _isDeletingStory = false);
       
       ScaffoldMessenger.of(context).showSnackBar(
@@ -425,43 +431,49 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundColor: Colors.white24,
-                                backgroundImage: currentStory.userAvatar.startsWith('http')
-                                    ? CachedNetworkImageProvider(currentStory.userAvatar)
-                                    : null,
-                                child: !currentStory.userAvatar.startsWith('http')
-                                    ? const Icon(Icons.person, size: 18, color: Colors.white70)
-                                    : null,
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    currentStory.userName,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  if (_currentImageIndex == 0)
-                                    Text(
-                                      currentStory.description,
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 11,
+                          Expanded(
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.white24,
+                                  backgroundImage: currentStory.userAvatar.startsWith('http')
+                                      ? CachedNetworkImageProvider(currentStory.userAvatar)
+                                      : null,
+                                  child: !currentStory.userAvatar.startsWith('http')
+                                      ? const Icon(Icons.person, size: 18, color: Colors.white70)
+                                      : null,
+                                ),
+                                const SizedBox(width: 10),
+                                Flexible(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        currentStory.userName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                ],
-                              ),
-                            ],
+                                      if (_currentImageIndex == 0)
+                                        Text(
+                                          currentStory.description,
+                                          style: const TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           Row(
                             mainAxisSize: MainAxisSize.min,
