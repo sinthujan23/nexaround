@@ -1,3 +1,35 @@
+class TravelStoryComment {
+  final String id;
+  final String author;
+  final String text;
+  final int imageIndex;
+
+  TravelStoryComment({
+    required this.id,
+    required this.author,
+    required this.text,
+    this.imageIndex = 0,
+  });
+
+  factory TravelStoryComment.fromJson(Map<String, dynamic> json) {
+    return TravelStoryComment(
+      id: (json['id'] ?? '').toString(),
+      author: json['user_display_name'] as String? ?? 'Anonymous',
+      text: json['comment_text'] as String? ?? '',
+      imageIndex: json['image_index'] as int? ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'user_display_name': author,
+      'comment_text': text,
+      'image_index': imageIndex,
+    };
+  }
+}
+
 class TravelStory {
   final String id;
   final String userId;
@@ -7,8 +39,11 @@ class TravelStory {
   final String category; // e.g. "Hidden Gem", "Offbeat Place", "Local Secret", "Scenic Viewpoint"
   final String description;
   final String imageUrl;
+  final List<String> imageUrls;
+  final double? latitude;
+  final double? longitude;
   int likesCount;
-  final List<String> comments;
+  final List<TravelStoryComment> comments;
   final DateTime createdAt;
   bool isLiked;
   final bool isPublic;
@@ -22,6 +57,9 @@ class TravelStory {
     required this.category,
     required this.description,
     required this.imageUrl,
+    this.imageUrls = const [],
+    this.latitude,
+    this.longitude,
     this.likesCount = 0,
     required this.comments,
     required this.createdAt,
@@ -38,8 +76,11 @@ class TravelStory {
     String? category,
     String? description,
     String? imageUrl,
+    List<String>? imageUrls,
+    double? latitude,
+    double? longitude,
     int? likesCount,
-    List<String>? comments,
+    List<TravelStoryComment>? comments,
     DateTime? createdAt,
     bool? isLiked,
     bool? isPublic,
@@ -53,6 +94,9 @@ class TravelStory {
       category: category ?? this.category,
       description: description ?? this.description,
       imageUrl: imageUrl ?? this.imageUrl,
+      imageUrls: imageUrls ?? this.imageUrls,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
       likesCount: likesCount ?? this.likesCount,
       comments: comments ?? this.comments,
       createdAt: createdAt ?? this.createdAt,
@@ -64,9 +108,14 @@ class TravelStory {
   factory TravelStory.fromJson(Map<String, dynamic> json) {
     final commentsJson = json['comments'] as List<dynamic>? ?? [];
     final parsedComments = commentsJson.map((c) {
-      final text = c['comment_text'] as String? ?? '';
-      final author = c['user_display_name'] as String? ?? 'Anonymous';
-      return '$author: $text';
+      if (c is Map<String, dynamic>) {
+        return TravelStoryComment.fromJson(c);
+      }
+      return TravelStoryComment(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        author: 'User',
+        text: c.toString()
+      );
     }).toList();
 
     return TravelStory(
@@ -78,6 +127,10 @@ class TravelStory {
       category: json['category'] as String? ?? '',
       description: json['description'] as String? ?? '',
       imageUrl: json['image_url'] as String? ?? '',
+      imageUrls: (json['image_urls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? 
+                 ((json['image_url'] as String? ?? '').isNotEmpty ? [json['image_url'] as String] : []),
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
       likesCount: json['likes_count'] as int? ?? 0,
       comments: parsedComments,
       createdAt: json['created_at'] != null 
@@ -94,6 +147,9 @@ class TravelStory {
       'category': category,
       'description': description,
       'image_url': imageUrl,
+      'image_urls': imageUrls,
+      'latitude': latitude,
+      'longitude': longitude,
       'is_public': isPublic,
     };
   }

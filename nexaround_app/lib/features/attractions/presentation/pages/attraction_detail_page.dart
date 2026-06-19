@@ -13,6 +13,8 @@ import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/permission_service.dart';
 
 class AttractionDetailPage extends StatefulWidget {
   final String? id;
@@ -67,6 +69,11 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   List<Map<String, dynamic>> _realReviews = [];
   List<String> _weekdayHours = [];
 
+  // ── Route data ──
+  String? _routeDistanceStr;
+  String? _routeDurationStr;
+  bool _isLoadingRoute = true;
+
   // ── Gemini data ──
   // (Removed history/cultural tips as requested to speed up Near You places)
 
@@ -76,6 +83,55 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     _resolvedImageUrl = widget.imageUrl;
     _totalReviews = widget.reviewCount;
     _fetchPlacesDetails();
+    _fetchRouteDistance();
+  }
+
+  Future<void> _fetchRouteDistance() async {
+    if (widget.latitude == null || widget.longitude == null || (widget.latitude == 0.0 && widget.longitude == 0.0)) {
+      if (mounted) setState(() => _isLoadingRoute = false);
+      return;
+    }
+    
+    try {
+      final position = await PermissionService.getSafePosition();
+      if (position == null) {
+        if (mounted) setState(() => _isLoadingRoute = false);
+        return;
+      }
+      
+      final routeData = await GooglePlacesService.getDirections(
+        originLat: position.latitude,
+        originLng: position.longitude,
+        destLat: widget.latitude!,
+        destLng: widget.longitude!,
+        profile: 'driving',
+      );
+      
+      if (routeData != null && mounted) {
+        final distM = routeData['distance_meters'] as double;
+        final durSec = routeData['duration_seconds'] as double;
+        
+        setState(() {
+          _routeDistanceStr = '${(distM / 1000).toStringAsFixed(1)} km';
+          if (durSec > 0) {
+            final mins = (durSec / 60).round();
+            if (mins > 60) {
+              final hrs = mins ~/ 60;
+              final remMins = mins % 60;
+              _routeDurationStr = remMins > 0 ? '$hrs hr $remMins min' : '$hrs hr';
+            } else {
+              _routeDurationStr = '$mins min';
+            }
+          }
+          _isLoadingRoute = false;
+        });
+      } else {
+        if (mounted) setState(() => _isLoadingRoute = false);
+      }
+    } catch (e) {
+      debugPrint('Error fetching route distance: $e');
+      if (mounted) setState(() => _isLoadingRoute = false);
+    }
   }
 
   Future<void> _fetchPlacesDetails() async {
@@ -351,7 +407,17 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     children: [
                       const Icon(Icons.location_on_rounded, size: 14, color: AppColors.actionTeal),
                       const SizedBox(width: 4),
-                      Text(widget.distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
+                      Text(_routeDistanceStr ?? widget.distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
+                      if (_routeDurationStr != null) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.directions_car_rounded, size: 14, color: AppColors.actionTeal),
+                        const SizedBox(width: 4),
+                        Text(_routeDurationStr!, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
+                      ],
+                      if (_isLoadingRoute) ...[
+                        const SizedBox(width: 8),
+                        const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.actionTeal)),
+                      ],
                       if (_isLoadingPlaces) ...[
                         const SizedBox(width: 16),
                         const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),

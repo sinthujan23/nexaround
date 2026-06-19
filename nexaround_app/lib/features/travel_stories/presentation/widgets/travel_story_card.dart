@@ -246,6 +246,19 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                       ),
                     ),
                   ),
+                  if (widget.story.imageUrls.length > 1)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.layers_rounded, color: Colors.white, size: 14),
+                      ),
+                    ),
                 ],
               ),
             ),

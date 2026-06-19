@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import FirebaseMessaging
 import GoogleMaps
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
@@ -21,6 +22,10 @@ import GoogleMaps
 
     // Force APNs registration to happen early/on-startup
     application.registerForRemoteNotifications()
+    
+    if #available(iOS 10.0, *) {
+      UNUserNotificationCenter.current().delegate = self
+    }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
@@ -73,6 +78,38 @@ import GoogleMaps
   ) {
     Messaging.messaging().appDidReceiveMessage(userInfo)
     super.application(application, didReceiveRemoteNotification: userInfo, fetchCompletionHandler: completionHandler)
+  }
+
+  // MARK: - UNUserNotificationCenterDelegate
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+  ) {
+    let userInfo = notification.request.content.userInfo
+    Messaging.messaging().appDidReceiveMessage(userInfo)
+    
+    // Pass to flutter engine
+    super.userNotificationCenter(center, willPresent: notification, withCompletionHandler: { _ in })
+    
+    // Present the notification in foreground
+    if #available(iOS 14.0, *) {
+      completionHandler([.banner, .list, .sound, .badge])
+    } else {
+      completionHandler([.alert, .sound, .badge])
+    }
+  }
+
+  override func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
+    let userInfo = response.notification.request.content.userInfo
+    Messaging.messaging().appDidReceiveMessage(userInfo)
+    
+    // Let flutter handle the tap
+    super.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
   }
 
   // Forward APNs registration failures for better debugging.

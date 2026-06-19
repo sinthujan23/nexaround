@@ -6,11 +6,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
-import '../../../auth/presentation/bloc/auth_bloc.dart';
-import '../../../auth/presentation/bloc/auth_state.dart';
+import 'dart:async';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import '../../data/models/travel_story.dart';
 import '../../data/datasources/travel_stories_service.dart';
 import '../widgets/stories_comments_dialog.dart';
+import '../widgets/post_story_sheet.dart';
+import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
@@ -36,15 +39,63 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   bool _isDeletingStory = false;
   final Set<String> _expandedStoryIds = {};
 
+  int _currentImageIndex = 0;
+  Timer? _storyTimer;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
     _pageController = PageController(initialPage: widget.initialIndex);
+    _startStoryTimer();
+  }
+
+  void _startStoryTimer() {
+    _storyTimer?.cancel();
+    _storyTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (!mounted) return;
+      _goToNext();
+    });
+  }
+
+  void _goToNext() {
+    if (widget.stories.isEmpty) return;
+    final story = widget.stories[_currentIndex];
+    final imageCount = story.imageUrls.isNotEmpty ? story.imageUrls.length : 1;
+    
+    if (_currentImageIndex < imageCount - 1) {
+      setState(() {
+        _currentImageIndex++;
+      });
+      _startStoryTimer(); // Restart timer for the new image
+    } else if (_currentIndex < widget.stories.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      // Reached the end of all stories, maybe pop?
+      Navigator.pop(context);
+    }
+  }
+
+  void _goToPrevious() {
+    if (_currentImageIndex > 0) {
+      setState(() {
+        _currentImageIndex--;
+      });
+      _startStoryTimer();
+    } else if (_currentIndex > 0) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   @override
   void dispose() {
+    _storyTimer?.cancel();
     _pageController.dispose();
     _commentController.dispose();
     super.dispose();
@@ -173,16 +224,61 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       builder: (context) {
         return StoriesCommentsDialog(
           story: story,
-          onCommentAdded: (commentText) {
+          imageIndex: _currentImageIndex,
+          onCommentAdded: (commentText, imgIndex) {
             final authState = context.read<AuthBloc>().state;
             String author = 'You';
             if (authState is AuthAuthenticated) {
               author = authState.user.displayName;
             }
             setState(() {
-              story.comments.add('$author: $commentText');
+              story.comments.add(TravelStoryComment(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                author: author,
+                text: commentText,
+                imageIndex: imgIndex,
+              ));
             });
-            TravelStoriesService().addComment(story.id, commentText);
+            TravelStoriesService().addComment(story.id, commentText, imgIndex);
+          },
+        );
+      },
+    );
+  }
+
+  void _editCurrentStory() {
+    final story = widget.stories[_currentIndex];
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        final authState = BlocProvider.of<AuthBloc>(context).state;
+        double lat = 6.9271;
+        double lng = 79.8612;
+        if (authState is AuthAuthenticated) {
+          lat = authState.currentLocation?.latitude ?? lat;
+          lng = authState.currentLocation?.longitude ?? lng;
+        }
+        return PostStorySheet(
+          userLatitude: lat,
+          userLongitude: lng,
+          editStory: story,
+          onStorySubmitted: (updatedStory) async {
+            setState(() {
+              _isDeletingStory = true; // Use this to show a loading state
+            });
+            final finalStory = await TravelStoriesService().updateStory(story.id, updatedStory);
+            if (finalStory != null && mounted) {
+              setState(() {
+                widget.stories[_currentIndex] = finalStory;
+                _isDeletingStory = false;
+              });
+            } else if (mounted) {
+               setState(() {
+                _isDeletingStory = false;
+              });
+            }
           },
         );
       },
@@ -265,10 +361,8 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     }
 
     final currentStory = widget.stories[_currentIndex];
-
-    // Find stories by the same user for the progress indicator
-    final userStories = widget.stories.where((s) => s.userId == currentStory.userId).toList();
-    final userStoryIndex = userStories.indexOf(currentStory);
+    final activeImageUrls = currentStory.imageUrls.isNotEmpty ? currentStory.imageUrls : [currentStory.imageUrl];
+    final imageCount = activeImageUrls.length;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -284,7 +378,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
               child: Container(
                 decoration: BoxDecoration(
                   image: DecorationImage(
-                    image: _getImageProvider(currentStory.imageUrl),
+                    image: _getImageProvider(activeImageUrls[_currentImageIndex]),
                     fit: BoxFit.cover,
                   ),
                 ),
@@ -306,9 +400,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                     children: [
                       // Story Segment Indicators
                       Row(
-                        children: List.generate(userStories.length, (index) {
-                          final isWatched = index < userStoryIndex;
-                          final isActive = index == userStoryIndex;
+                        children: List.generate(imageCount, (index) {
+                          final isWatched = index < _currentImageIndex;
+                          final isActive = index == _currentImageIndex;
                           return Expanded(
                             child: Container(
                               height: 3,
@@ -354,13 +448,16 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                       fontSize: 13,
                                     ),
                                   ),
-                                  Text(
-                                    'Shared to ${currentStory.locationName}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 10,
+                                  if (_currentImageIndex == 0)
+                                    Text(
+                                      currentStory.description,
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 11,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
-                                  ),
                                 ],
                               ),
                             ],
@@ -368,24 +465,32 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // More options (delete)
+                              // More options (edit/delete)
                               BlocBuilder<AuthBloc, AuthState>(
                                 builder: (context, authState) {
                                   final isOwner = authState is AuthAuthenticated &&
                                       currentStory.userId == authState.user.id;
                                   if (!isOwner) return const SizedBox.shrink();
-                                  return IconButton(
-                                    onPressed: _isDeletingStory ? null : _deleteCurrentStory,
-                                    icon: _isDeletingStory
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 1.5,
-                                              color: Colors.white,
-                                            ),
-                                          )
-                                        : const Icon(Icons.delete_outline_rounded, color: Colors.white70, size: 24),
+                                  return Row(
+                                    children: [
+                                      IconButton(
+                                        onPressed: _isDeletingStory ? null : _editCurrentStory,
+                                        icon: const Icon(Icons.edit_outlined, color: Colors.white70, size: 24),
+                                      ),
+                                      IconButton(
+                                        onPressed: _isDeletingStory ? null : _deleteCurrentStory,
+                                        icon: _isDeletingStory
+                                            ? const SizedBox(
+                                                width: 18,
+                                                height: 18,
+                                                child: CircularProgressIndicator(
+                                                  strokeWidth: 1.5,
+                                                  color: Colors.white,
+                                                ),
+                                              )
+                                            : const Icon(Icons.delete_outline_rounded, color: Colors.white70, size: 24),
+                                      ),
+                                    ],
                                   );
                                 },
                               ),
@@ -409,7 +514,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                     onPageChanged: (index) {
                       setState(() {
                         _currentIndex = index;
+                        _currentImageIndex = 0; // Reset image index on story change
                       });
+                      _startStoryTimer();
                     },
                     itemCount: widget.stories.length,
                     itemBuilder: (context, index) {
@@ -438,7 +545,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   child: Stack(
                                     fit: StackFit.expand,
                                     children: [
-                                      _buildMainImage(story.imageUrl),
+                                      _buildMainImage(story.imageUrls.isNotEmpty ? story.imageUrls[_currentImageIndex] : story.imageUrl),
                                       // Left tap area to go to previous story
                                       Positioned(
                                         left: 0,
@@ -447,14 +554,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                         width: MediaQuery.of(context).size.width * 0.35,
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () {
-                                            if (_currentIndex > 0) {
-                                              _pageController.previousPage(
-                                                duration: const Duration(milliseconds: 300),
-                                                curve: Curves.easeInOut,
-                                              );
-                                            }
-                                          },
+                                          onTap: _goToPrevious,
                                           child: Container(color: Colors.transparent),
                                         ),
                                       ),
@@ -466,14 +566,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                         left: MediaQuery.of(context).size.width * 0.35,
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
-                                          onTap: () {
-                                            if (_currentIndex < widget.stories.length - 1) {
-                                              _pageController.nextPage(
-                                                duration: const Duration(milliseconds: 300),
-                                                curve: Curves.easeInOut,
-                                              );
-                                            }
-                                          },
+                                          onTap: _goToNext,
                                           child: Container(color: Colors.transparent),
                                         ),
                                       ),
@@ -502,29 +595,54 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                       ),
                                       // Location Pin overlay
                                       Positioned(
-                                        bottom: 16,
-                                        left: 16,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: Colors.black87,
-                                            borderRadius: BorderRadius.circular(30),
-                                            border: Border.all(color: Colors.white24, width: 0.8),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              const Icon(Icons.location_on, size: 12, color: Colors.redAccent),
-                                              const SizedBox(width: 4),
-                                              Text(
-                                                story.locationName,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.bold,
-                                                  fontSize: 10.5,
+                                        top: 50,
+                                        left: 20,
+                                        child: GestureDetector(
+                                          onTap: () {
+                                            if (story.latitude != null && story.longitude != null) {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (context) => SmartTourismMapPage(
+                                                    targetLatitude: story.latitude!,
+                                                    targetLongitude: story.longitude!,
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          },
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(20),
+                                            child: BackdropFilter(
+                                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black.withOpacity(0.3),
+                                                  borderRadius: BorderRadius.circular(20),
+                                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                                ),
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    const Icon(Icons.location_on, size: 12, color: Colors.redAccent),
+                                                    const SizedBox(width: 4),
+                                                    Text(
+                                                      story.locationName,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight: FontWeight.bold,
+                                                        fontSize: 10.5,
+                                                      ),
+                                                    ),
+                                                    if (story.latitude != null && story.longitude != null) ...[
+                                                      const SizedBox(width: 4),
+                                                      const Icon(Icons.arrow_forward_ios_rounded, size: 8, color: Colors.white70),
+                                                    ]
+                                                  ],
                                                 ),
                                               ),
-                                            ],
+                                            ),
                                           ),
                                         ),
                                       ),

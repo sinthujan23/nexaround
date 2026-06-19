@@ -5,6 +5,7 @@ from datetime import datetime
 
 class TravelStoryCommentBase(BaseModel):
     comment_text: str = Field(..., max_length=1000)
+    image_index: int = Field(0, description="Index of the image this comment belongs to")
 
 class TravelStoryCommentCreate(TravelStoryCommentBase):
     pass
@@ -25,7 +26,10 @@ class TravelStoryBase(BaseModel):
     location_name: str = Field(..., max_length=255)
     category: str = Field(..., max_length=100)
     description: str = Field(..., max_length=1000)
-    image_url: str = Field(..., max_length=500)
+    image_url: str = Field(..., max_length=500) # Kept for backwards compatibility
+    image_urls: List[str] = Field(default_factory=list)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     is_public: bool = True
 
 class TravelStoryCreate(TravelStoryBase):

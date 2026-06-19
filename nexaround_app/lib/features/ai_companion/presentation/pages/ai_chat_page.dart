@@ -57,7 +57,11 @@ class _AiChatPageState extends State<AiChatPage> {
   static const List<Map<String, dynamic>> _nearbyCategories = [
     {'id': 'Food & Drink', 'label': 'Food', 'icon': Icons.restaurant_rounded},
     {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
-    {'id': 'Experiences', 'label': 'Services', 'icon': Icons.miscellaneous_services_rounded},
+    {
+      'id': 'Experiences',
+      'label': 'Services',
+      'icon': Icons.miscellaneous_services_rounded,
+    },
   ];
 
   bool get _hasPlaceContext {
@@ -103,17 +107,19 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     '💸 Local prices',
   ];
 
-
   @override
   void initState() {
     super.initState();
     // Kick off location resolution early so the very first answer is local.
     _resolveUserLocation();
-    _messages.add(_ChatMessage(
-      text: "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
-      isUser: false,
-      timestamp: DateTime.now(),
-    ));
+    _messages.add(
+      _ChatMessage(
+        text:
+            "Hey! I'm Neva ✨ Your personal travel companion. Whether you need hidden gems, local food tips, or a full itinerary — I've got you covered.\n\nWhat are we exploring today?",
+        isUser: false,
+        timestamp: DateTime.now(),
+      ),
+    );
 
     if (widget.initialPrompt != null) {
       Future.delayed(const Duration(milliseconds: 600), () {
@@ -174,11 +180,13 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       _activeCategoryChip = categoryId;
       _isFetchingPlaces = true;
       _showSuggestions = false;
-      _messages.add(_ChatMessage(
-        text: 'Show me $label near $anchorName',
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
+      _messages.add(
+        _ChatMessage(
+          text: 'Show me $label near $anchorName',
+          isUser: true,
+          timestamp: DateTime.now(),
+        ),
+      );
     });
     _scrollToBottom();
 
@@ -198,13 +206,15 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       if (mounted) {
         setState(() {
           _isFetchingPlaces = false;
-          _messages.add(_ChatMessage(
-            text: intro,
-            isUser: false,
-            timestamp: DateTime.now(),
-            places: top.isEmpty ? null : top,
-            placesCategoryLabel: label,
-          ));
+          _messages.add(
+            _ChatMessage(
+              text: intro,
+              isUser: false,
+              timestamp: DateTime.now(),
+              places: top.isEmpty ? null : top,
+              placesCategoryLabel: label,
+            ),
+          );
         });
         _scrollToBottom();
       }
@@ -213,11 +223,14 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       if (mounted) {
         setState(() {
           _isFetchingPlaces = false;
-          _messages.add(_ChatMessage(
-            text: "I had trouble pulling $label spots near $anchorName. Try again in a moment.",
-            isUser: false,
-            timestamp: DateTime.now(),
-          ));
+          _messages.add(
+            _ChatMessage(
+              text:
+                  "I had trouble pulling $label spots near $anchorName. Try again in a moment.",
+              isUser: false,
+              timestamp: DateTime.now(),
+            ),
+          );
         });
         _scrollToBottom();
       }
@@ -248,7 +261,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       if (pos == null) return; // not granted / unavailable — retry on next send
       _userLat = pos.latitude;
       _userLng = pos.longitude;
-      _userArea = await GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude);
+      _userArea = await GooglePlacesService.reverseGeocode(
+        pos.latitude,
+        pos.longitude,
+      );
       _locationResolved = true;
     } catch (e) {
       debugPrint('Neva location resolve failed: $e');
@@ -263,11 +279,13 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     }
     if (_userLat != null && _userLng != null) {
       parts.add(
-          'Their coordinates are ${_userLat!.toStringAsFixed(5)}, ${_userLng!.toStringAsFixed(5)}.');
+        'Their coordinates are ${_userLat!.toStringAsFixed(5)}, ${_userLng!.toStringAsFixed(5)}.',
+      );
     }
     if (parts.isEmpty) return null;
     parts.add(
-        'Tailor your suggestions to this area and mention it naturally. Do not ask the user where they are.');
+      'Tailor your suggestions to this area and mention it naturally. Do not ask the user where they are.',
+    );
     return parts.join(' ');
   }
 
@@ -275,7 +293,9 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
     if (text.trim().isEmpty) return;
 
     setState(() {
-      _messages.add(_ChatMessage(text: text, isUser: true, timestamp: DateTime.now()));
+      _messages.add(
+        _ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
+      );
       _showSuggestions = false;
       _isTyping = true;
     });
@@ -296,7 +316,13 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       if (mounted) {
         setState(() {
           _isTyping = false;
-          _messages.add(_ChatMessage(text: response, isUser: false, timestamp: DateTime.now()));
+          _messages.add(
+            _ChatMessage(
+              text: response,
+              isUser: false,
+              timestamp: DateTime.now(),
+            ),
+          );
         });
         _scrollToBottom();
       }
@@ -305,11 +331,14 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       if (mounted) {
         setState(() {
           _isTyping = false;
-          _messages.add(_ChatMessage(
-            text: "I'm having a bit of trouble connecting to my central processing ($e). Please check if the Gemini API key is active!", 
-            isUser: false, 
-            timestamp: DateTime.now()
-          ));
+          _messages.add(
+            _ChatMessage(
+              text:
+                  "I'm having a bit of trouble connecting to my central processing ($e). Please check if the Gemini API key is active!",
+              isUser: false,
+              timestamp: DateTime.now(),
+            ),
+          );
         });
         _scrollToBottom();
       }
@@ -332,7 +361,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final bottomPadding = MediaQuery.of(context).padding.bottom;
-    
+
     return Scaffold(
       backgroundColor: AppColors.background,
       resizeToAvoidBottomInset: false,
@@ -348,12 +377,18 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                   child: Container(
                     width: 300,
                     height: 300,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: AppColors.primary.withOpacity(0.03)),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primary.withOpacity(0.03),
+                    ),
                   ),
                 ),
                 ListView.builder(
                   controller: _scrollController,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
+                  ),
                   itemCount: _messages.length + (_isTyping ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (index == _messages.length && _isTyping) {
@@ -370,7 +405,11 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5)),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 20,
+                  offset: const Offset(0, -5),
+                ),
               ],
             ),
             child: Column(
@@ -388,12 +427,14 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 ],
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    16, 
-                    12, 
-                    16, 
-                    bottomInset > 0 
-                        ? 12 
-                        : (bottomPadding > 0 ? bottomPadding + 8 : 16), // Clean safe-area responsive padding instead of a hardcoded 110px gap
+                    16,
+                    12,
+                    16,
+                    bottomInset > 0
+                        ? 12
+                        : (bottomPadding > 0
+                              ? bottomPadding + 8
+                              : 16), // Clean safe-area responsive padding instead of a hardcoded 110px gap
                   ),
                   child: _buildInputBar(),
                 ),
@@ -414,7 +455,11 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
-          BoxShadow(color: const Color(0xFF64B5F6).withOpacity(0.5), blurRadius: 15, spreadRadius: 2),
+          BoxShadow(
+            color: const Color(0xFF64B5F6).withOpacity(0.5),
+            blurRadius: 15,
+            spreadRadius: 2,
+          ),
         ],
       ),
       child: ClipRRect(
@@ -442,18 +487,29 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         color: Colors.black.withOpacity(0.05),
         border: Border.all(color: Colors.black12, width: 1),
       ),
-      child: Icon(Icons.person_rounded, color: Colors.black26, size: size * 0.6),
+      child: Icon(
+        Icons.person_rounded,
+        color: Colors.black26,
+        size: size * 0.6,
+      ),
     );
   }
 
   Widget _buildHeader() {
     final topPadding = MediaQuery.of(context).padding.top;
-    
+
     return Container(
-      padding: EdgeInsets.fromLTRB(16, topPadding > 0 ? topPadding + 10 : 24, 24, 16),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        topPadding > 0 ? topPadding + 10 : 24,
+        24,
+        16,
+      ),
       decoration: BoxDecoration(
         color: AppColors.background,
-        border: const Border(bottom: BorderSide(color: Colors.black12, width: 0.5)),
+        border: const Border(
+          bottom: BorderSide(color: Colors.black12, width: 0.5),
+        ),
       ),
       child: Row(
         children: [
@@ -485,11 +541,21 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               children: [
                 const Text(
                   'NEVA',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.black, letterSpacing: 2),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                    letterSpacing: 2,
+                  ),
                 ),
                 Text(
                   'SPATIAL COGNITION PARTNER',
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.black54, letterSpacing: 1),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black54,
+                    letterSpacing: 1,
+                  ),
                 ),
               ],
             ),
@@ -505,21 +571,33 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       padding: const EdgeInsets.only(bottom: 24),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           if (!isUser) ...[
             Column(
               children: [
                 _buildNevaAvatar(32),
                 const SizedBox(height: 4),
-                const Text('NEVA', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 0.5)),
+                const Text(
+                  'NEVA',
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black26,
+                    letterSpacing: 0.5,
+                  ),
+                ),
               ],
             ),
             const SizedBox(width: 10),
           ],
           Flexible(
             child: Column(
-              crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -531,8 +609,16 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                       bottomLeft: Radius.circular(isUser ? 20 : 4),
                       bottomRight: Radius.circular(isUser ? 4 : 20),
                     ),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 5))],
-                    border: !isUser ? Border.all(color: Colors.black.withOpacity(0.03)) : null,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.03),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                    border: !isUser
+                        ? Border.all(color: Colors.black.withOpacity(0.03))
+                        : null,
                   ),
                   child: isUser
                       ? Text(
@@ -559,10 +645,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               ],
             ),
           ),
-          if (isUser) ...[
-            const SizedBox(width: 10),
-            _buildUserAvatar(32),
-          ],
+          if (isUser) ...[const SizedBox(width: 10), _buildUserAvatar(32)],
         ],
       ),
     ).animate().fade().slideY(begin: 0.1, end: 0);
@@ -584,13 +667,21 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) {
               return Container(
-                width: 4,
-                height: 4,
-                margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black26),
-              )
+                    width: 4,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.black26,
+                    ),
+                  )
                   .animate(onPlay: (c) => c.repeat(reverse: true))
-                  .scale(begin: const Offset(0.5, 0.5), end: const Offset(1.5, 1.5), delay: (i * 200).ms, duration: 600.ms);
+                  .scale(
+                    begin: const Offset(0.5, 0.5),
+                    end: const Offset(1.5, 1.5),
+                    delay: (i * 200).ms,
+                    duration: 600.ms,
+                  );
             }),
           ),
         ),
@@ -605,71 +696,121 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         final distM = p.distanceM;
         final distLabel = distM == null
             ? ''
-            : (distM < 1000 ? '${distM.round()} m' : '${(distM / 1000).toStringAsFixed(1)} km');
+            : (distM < 1000
+                  ? '${distM.round()} m'
+                  : '${(distM / 1000).toStringAsFixed(1)} km');
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.black.withOpacity(0.05)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2))],
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Container(
-                  width: 44,
-                  height: 44,
-                  color: Colors.black.withOpacity(0.05),
-                  child: p.photoUrls.isNotEmpty
-                      ? Image.network(
-                          p.photoUrls.first,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => const Icon(Icons.place_rounded, color: Colors.black38, size: 22),
-                        )
-                      : const Icon(Icons.place_rounded, color: Colors.black38, size: 22),
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => GoogleMapsPage(
+                  initialLat: p.latitude,
+                  initialLng: p.longitude,
+                  destinationName: p.name,
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      p.name,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black87),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded, color: Colors.amber, size: 12),
-                        const SizedBox(width: 2),
-                        Text(
-                          p.rating.toStringAsFixed(1),
-                          style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w700),
+            );
+          },
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.black.withOpacity(0.05)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    color: Colors.black.withOpacity(0.05),
+                    child: p.photoUrls.isNotEmpty
+                        ? Image.network(
+                            p.photoUrls.first,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.place_rounded,
+                              color: Colors.black38,
+                              size: 22,
+                            ),
+                          )
+                        : const Icon(
+                            Icons.place_rounded,
+                            color: Colors.black38,
+                            size: 22,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        p.name,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black87,
                         ),
-                        if (distLabel.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Icon(Icons.straighten_rounded, color: Colors.black38, size: 11),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star_rounded,
+                            color: Colors.amber,
+                            size: 12,
+                          ),
                           const SizedBox(width: 2),
                           Text(
-                            distLabel,
-                            style: const TextStyle(fontSize: 11, color: Colors.black54, fontWeight: FontWeight.w600),
+                            p.rating.toStringAsFixed(1),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
+                          if (distLabel.isNotEmpty) ...[
+                            const SizedBox(width: 8),
+                            Icon(
+                              Icons.straighten_rounded,
+                              color: Colors.black38,
+                              size: 11,
+                            ),
+                            const SizedBox(width: 2),
+                            Text(
+                              distLabel,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       }).toList(),
@@ -715,44 +856,57 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       bool fillImage = false,
     }) {
       return GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: color,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 8,
-                offset: const Offset(0, 3),
+            onTap: onTap,
+            child: Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Center(
-            child: child ?? (imagePath != null
-                ? (fillImage
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(24),
-                        child: Image.asset(imagePath, fit: BoxFit.cover, width: 48, height: 48),
-                      )
-                    : Padding(
-                        padding: const EdgeInsets.all(5),
-                        child: ClipOval(
-                          child: Image.asset(imagePath, fit: BoxFit.cover, width: 34, height: 34),
-                        ),
-                      ))
-                : Icon(icon, color: Colors.white, size: 24)),
-          ),
-        ),
-      ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-       .moveY(
-         begin: -2,
-         end: 2,
-         duration: (1400 + (index * 200)).ms,
-         curve: Curves.easeInOut,
-       );
+              child: Center(
+                child:
+                    child ??
+                    (imagePath != null
+                        ? (fillImage
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.asset(
+                                    imagePath,
+                                    fit: BoxFit.cover,
+                                    width: 48,
+                                    height: 48,
+                                  ),
+                                )
+                              : Padding(
+                                  padding: const EdgeInsets.all(5),
+                                  child: ClipOval(
+                                    child: Image.asset(
+                                      imagePath,
+                                      fit: BoxFit.cover,
+                                      width: 34,
+                                      height: 34,
+                                    ),
+                                  ),
+                                ))
+                        : Icon(icon, color: Colors.white, size: 24)),
+              ),
+            ),
+          )
+          .animate(onPlay: (controller) => controller.repeat(reverse: true))
+          .moveY(
+            begin: -2,
+            end: 2,
+            duration: (1400 + (index * 200)).ms,
+            curve: Curves.easeInOut,
+          );
     }
 
     return Padding(
@@ -778,7 +932,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 );
               } else {
                 try {
-                  await launchUrl(Uri.parse(mapsUrl), mode: LaunchMode.externalApplication);
+                  await launchUrl(
+                    Uri.parse(mapsUrl),
+                    mode: LaunchMode.externalApplication,
+                  );
                 } catch (_) {}
               }
             },
@@ -801,7 +958,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             index: 2,
             onTap: () async {
               try {
-                await launchUrl(bookingUri, mode: LaunchMode.externalApplication);
+                await launchUrl(
+                  bookingUri,
+                  mode: LaunchMode.externalApplication,
+                );
               } catch (_) {}
             },
           ),
@@ -812,10 +972,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             index: 3,
             fillImage: true,
             onTap: () async {
-              final query = name.trim().isNotEmpty ? name.trim() : '$finalLat,$finalLng';
-              final headoutUri = Uri.https('www.headout.com', '/search', {'q': query});
+              final headoutUri = await GooglePlacesService.getHeadoutSearchUri(finalLat, finalLng, name);
               try {
-                await launchUrl(headoutUri, mode: LaunchMode.externalApplication);
+                await launchUrl(
+                  headoutUri,
+                  mode: LaunchMode.externalApplication,
+                );
               } catch (_) {}
             },
           ),
@@ -859,7 +1021,9 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               final isActive = _activeCategoryChip == id && _isFetchingPlaces;
 
               return GestureDetector(
-                onTap: _isFetchingPlaces ? null : () => _fetchNearbyForCategory(id, label),
+                onTap: _isFetchingPlaces
+                    ? null
+                    : () => _fetchNearbyForCategory(id, label),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 220),
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -867,7 +1031,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     color: Colors.black,
                     borderRadius: BorderRadius.circular(22),
                     boxShadow: isActive
-                        ? [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 12)]
+                        ? [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 12,
+                            ),
+                          ]
                         : null,
                   ),
                   child: Row(
@@ -877,7 +1046,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                         const SizedBox(
                           width: 12,
                           height: 12,
-                          child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: Colors.white,
+                          ),
                         )
                       else
                         Icon(icon, color: Colors.white, size: 13),
@@ -922,7 +1094,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               child: Center(
                 child: Text(
                   _quickPrompts[index].toUpperCase(),
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1.5),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -949,7 +1126,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               Expanded(
                 child: TextField(
                   controller: _controller,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
                   decoration: const InputDecoration(
                     hintText: 'Talk to Neva...',
                     hintStyle: TextStyle(color: Colors.black26, fontSize: 15),
@@ -964,8 +1144,15 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 child: Container(
                   width: 48,
                   height: 48,
-                  decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.black),
-                  child: const Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 22),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black,
+                  ),
+                  child: const Icon(
+                    Icons.arrow_upward_rounded,
+                    color: Colors.white,
+                    size: 22,
+                  ),
                 ),
               ),
             ],
@@ -1003,8 +1190,9 @@ class _NevaFormattedText extends StatelessWidget {
   const _NevaFormattedText(this.text, {required this.baseStyle});
 
   // Inline emphasis, longest markers first so **bold** wins over *italic*.
-  static final RegExp _inlineRe =
-      RegExp(r'(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*]+)\*)|(`([^`]+)`)');
+  static final RegExp _inlineRe = RegExp(
+    r'(\*\*([^*]+)\*\*)|(__([^_]+)__)|(\*([^*]+)\*)|(`([^`]+)`)',
+  );
 
   List<InlineSpan> _inline(String content) {
     final spans = <InlineSpan>[];
@@ -1014,23 +1202,29 @@ class _NevaFormattedText extends StatelessWidget {
         spans.add(TextSpan(text: content.substring(i, m.start)));
       }
       if (m.group(2) != null || m.group(4) != null) {
-        spans.add(TextSpan(
-          text: m.group(2) ?? m.group(4),
-          style: const TextStyle(fontWeight: FontWeight.w700),
-        ));
-      } else if (m.group(6) != null) {
-        spans.add(TextSpan(
-          text: m.group(6),
-          style: const TextStyle(fontStyle: FontStyle.italic),
-        ));
-      } else {
-        spans.add(TextSpan(
-          text: m.group(8),
-          style: TextStyle(
-            fontFamily: 'monospace',
-            fontSize: (baseStyle.fontSize ?? 15) - 1,
+        spans.add(
+          TextSpan(
+            text: m.group(2) ?? m.group(4),
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
-        ));
+        );
+      } else if (m.group(6) != null) {
+        spans.add(
+          TextSpan(
+            text: m.group(6),
+            style: const TextStyle(fontStyle: FontStyle.italic),
+          ),
+        );
+      } else {
+        spans.add(
+          TextSpan(
+            text: m.group(8),
+            style: TextStyle(
+              fontFamily: 'monospace',
+              fontSize: (baseStyle.fontSize ?? 15) - 1,
+            ),
+          ),
+        );
       }
       i = m.end;
     }
@@ -1055,46 +1249,56 @@ class _NevaFormattedText extends StatelessWidget {
 
       final heading = headingRe.firstMatch(line);
       if (heading != null) {
-        children.add(Padding(
-          padding: const EdgeInsets.only(bottom: 2),
-          child: Text.rich(TextSpan(
-            style: baseStyle.copyWith(
-              fontWeight: FontWeight.w800,
-              fontSize: (baseStyle.fontSize ?? 15) + 1,
+        children.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text.rich(
+              TextSpan(
+                style: baseStyle.copyWith(
+                  fontWeight: FontWeight.w800,
+                  fontSize: (baseStyle.fontSize ?? 15) + 1,
+                ),
+                children: _inline(heading.group(1)!),
+              ),
             ),
-            children: _inline(heading.group(1)!),
-          )),
-        ));
+          ),
+        );
         continue;
       }
 
       final bullet = bulletRe.firstMatch(line);
       if (bullet != null) {
-        children.add(_row(
-          marker: '•',
-          markerStyle: baseStyle.copyWith(
-            fontWeight: FontWeight.w900,
-            color: AppColors.primary,
+        children.add(
+          _row(
+            marker: '•',
+            markerStyle: baseStyle.copyWith(
+              fontWeight: FontWeight.w900,
+              color: AppColors.primary,
+            ),
+            content: bullet.group(1)!,
           ),
-          content: bullet.group(1)!,
-        ));
+        );
         continue;
       }
 
       final number = numberRe.firstMatch(line);
       if (number != null) {
-        children.add(_row(
-          marker: '${number.group(1)}.',
-          markerStyle: baseStyle.copyWith(
-            fontWeight: FontWeight.w800,
-            color: AppColors.primary,
+        children.add(
+          _row(
+            marker: '${number.group(1)}.',
+            markerStyle: baseStyle.copyWith(
+              fontWeight: FontWeight.w800,
+              color: AppColors.primary,
+            ),
+            content: number.group(2)!,
           ),
-          content: number.group(2)!,
-        ));
+        );
         continue;
       }
 
-      children.add(Text.rich(TextSpan(style: baseStyle, children: _inline(line))));
+      children.add(
+        Text.rich(TextSpan(style: baseStyle, children: _inline(line))),
+      );
     }
 
     if (children.isEmpty) children.add(Text(text, style: baseStyle));
@@ -1121,7 +1325,9 @@ class _NevaFormattedText extends StatelessWidget {
             child: Text(marker, style: markerStyle),
           ),
           Expanded(
-            child: Text.rich(TextSpan(style: baseStyle, children: _inline(content))),
+            child: Text.rich(
+              TextSpan(style: baseStyle, children: _inline(content)),
+            ),
           ),
         ],
       ),

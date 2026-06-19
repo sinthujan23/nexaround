@@ -3240,6 +3240,21 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  double _getAccurateDistanceM(AttractionEntity place) {
+    if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
+      return geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, place.latitude, place.longitude);
+    }
+    return place.distanceM?.toDouble() ?? 0.0;
+  }
+
+  String _getAccurateDistanceString(AttractionEntity place, [AiExperience? matchedExp]) {
+    if (matchedExp != null && (place.distanceM == null || place.distanceM == 0) && place.latitude == 0) {
+      return matchedExp.distance.isNotEmpty ? matchedExp.distance : 'Nearby';
+    }
+    final distM = _getAccurateDistanceM(place);
+    return '${(distM / 1000).toStringAsFixed(1)} km';
+  }
+
   Widget _buildPlaceCard(AttractionEntity place, int index) {
     final lowerName = place.name.toLowerCase().trim();
     AiExperience? matchedExp;
@@ -3262,7 +3277,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               name: place.name,
               category: place.categoryName ?? (isEvent ? 'Event' : 'Gem'),
               rating: place.rating,
-              distance: place.distanceM != null ? '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km' : '',
+              distance: _getAccurateDistanceString(place, matchedExp),
               emoji: isEvent ? '📅' : '✨',
               imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
               latitude: place.latitude,
@@ -3489,7 +3504,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                         const SizedBox(width: 3),
                         Text(
-                          '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                          _getAccurateDistanceString(place, matchedExp),
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.white.withOpacity(0.7),
@@ -3524,7 +3539,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   void _showAiPlaceDetailsBottomSheet(AttractionEntity place, Map<String, String> aiDetails) {
-    final distText = '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km';
+    final distText = _getAccurateDistanceString(place);
     final hasImage = place.photoUrls.isNotEmpty;
     final imageUrl = hasImage ? place.photoUrls.first : null;
     final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
@@ -4051,7 +4066,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       return finalPlaces.asMap().entries.map((entry) {
                         final place = entry.value;
-                        final distText = '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km';
+                        final distText = _getAccurateDistanceString(place);
                         final dirText = _getDirectionString(_userLatitude, _userLongitude, place.latitude, place.longitude);
 
                         return GestureDetector(
@@ -4132,8 +4147,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                                     ),
                                     child: Text(
                                       dirText,
-                                      style: TextStyle(
-                                        color: _getCategoryBorderColor(categoryName).withOpacity(0.9),
+                                      style: const TextStyle(
+                                        color: Colors.black87,
                                         fontSize: 9.5,
                                         fontWeight: FontWeight.w900,
                                       ),
@@ -4188,7 +4203,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     for (final place in attractions) {
       final tags = place.tags.map((t) => t.toLowerCase()).toSet();
-      final distKm = (place.distanceM ?? 0) / 1000.0;
+      final distKm = _getAccurateDistanceM(place) / 1000.0;
 
       // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
       final catLower = (place.categoryName ?? '').toLowerCase();
@@ -4651,7 +4666,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         name: place.name,
                         category: place.categoryName ?? 'Attraction', 
                         rating: place.rating, 
-                        distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', 
+                        distance: _getAccurateDistanceString(place), 
                         emoji: '📍', 
                         imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
                         latitude: place.latitude,
@@ -4678,8 +4693,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                             initialPlace: {
                               'name': place.name,
                               'category': place.categoryName ?? 'Attraction',
-                              'distance': '${((place.distanceM ?? 0)).toStringAsFixed(0)} m',
-                              'distanceM': place.distanceM ?? 0,
+                              'distance': '${(_getAccurateDistanceM(place)).toStringAsFixed(0)} m',
+                              'distanceM': _getAccurateDistanceM(place),
                               'rating': place.rating ?? 0.0,
                               'latitude': place.latitude,
                               'longitude': place.longitude,

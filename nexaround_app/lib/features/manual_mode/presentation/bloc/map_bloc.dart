@@ -172,61 +172,48 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
-        // Compute two opposite offset coordinates to fetch places that are 25km+ away
-        final offset1Lat = event.latitude + 0.27;
-        final offset1Lng = event.longitude + 0.27;
-        final offset2Lat = event.latitude - 0.27;
-        final offset2Lng = event.longitude - 0.27;
+        final mainFutures = categoriesToFetch.expand((cat) {
+          if (cat == 'Attractions' || cat == 'Medical') {
+            // Concentric rings to fetch wide 50km categories evenly
+            // without hitting API result caps in a single localized area.
+            return [
+              _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 5000.0,
+                categoryName: cat,
+                useLegacy: event.useLegacy,
+              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+              _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 20000.0,
+                categoryName: cat,
+                useLegacy: event.useLegacy,
+              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+              _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 50000.0,
+                categoryName: cat,
+                useLegacy: event.useLegacy,
+              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
+            ];
+          } else {
+            // Single 15km ring for regular categories (Food, Shopping, Hotels)
+            return [
+              _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 15000.0,
+                categoryName: cat,
+                useLegacy: event.useLegacy,
+              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r))
+            ];
+          }
+        }).toList();
 
-        final offsetFutures = [
-          _repository.getNearbyAttractions(
-            latitude: offset1Lat,
-            longitude: offset1Lng,
-            radius: 10000.0,
-            categoryName: 'Attractions',
-            useLegacy: event.useLegacy,
-          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-          _repository.getNearbyAttractions(
-            latitude: offset1Lat,
-            longitude: offset1Lng,
-            radius: 10000.0,
-            categoryName: 'Medical',
-            useLegacy: event.useLegacy,
-          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-          _repository.getNearbyAttractions(
-            latitude: offset2Lat,
-            longitude: offset2Lng,
-            radius: 10000.0,
-            categoryName: 'Attractions',
-            useLegacy: event.useLegacy,
-          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-          _repository.getNearbyAttractions(
-            latitude: offset2Lat,
-            longitude: offset2Lng,
-            radius: 10000.0,
-            categoryName: 'Medical',
-            useLegacy: event.useLegacy,
-          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-        ];
-
-        final mainFutures = categoriesToFetch.map((cat) {
-          final double radius = (cat == 'Attractions' || cat == 'Medical')
-              ? 50000.0
-              : 10000.0;
-
-          return _repository.getNearbyAttractions(
-            latitude: event.latitude,
-            longitude: event.longitude,
-            radius: radius,
-            categoryName: cat,
-            useLegacy: event.useLegacy,
-          ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r));
-        });
-
-        final results = await Future.wait([
-          ...mainFutures,
-          ...offsetFutures,
-        ]);
+        final results = await Future.wait(mainFutures);
 
         final fetched = results.expand((x) => x).toList();
         for (final a in fetched) {

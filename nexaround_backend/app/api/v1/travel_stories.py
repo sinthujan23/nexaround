@@ -45,6 +45,7 @@ async def get_travel_stories(
                     user_display_name=c.user.display_name,
                     user_avatar_url=c.user.avatar_url,
                     comment_text=c.comment_text,
+                    image_index=c.image_index,
                     created_at=c.created_at
                 )
             )
@@ -59,6 +60,9 @@ async def get_travel_stories(
                 category=s.category,
                 description=s.description,
                 image_url=s.image_url,
+                image_urls=s.image_urls,
+                latitude=s.latitude,
+                longitude=s.longitude,
                 is_public=s.is_public,
                 likes_count=len(s.likes),
                 is_liked=is_liked,
@@ -83,6 +87,9 @@ async def create_travel_story(
         category=data.category,
         description=data.description,
         image_url=data.image_url,
+        image_urls=data.image_urls,
+        latitude=data.latitude,
+        longitude=data.longitude,
         is_public=data.is_public
     )
     db.add(story)
@@ -103,6 +110,9 @@ async def create_travel_story(
         category=refreshed_story.category,
         description=refreshed_story.description,
         image_url=refreshed_story.image_url,
+        image_urls=refreshed_story.image_urls,
+        latitude=refreshed_story.latitude,
+        longitude=refreshed_story.longitude,
         is_public=refreshed_story.is_public,
         likes_count=0,
         is_liked=False,
@@ -169,7 +179,8 @@ async def create_comment(
     comment = TravelStoryComment(
         story_id=story_id,
         user_id=current_user.id,
-        comment_text=data.comment_text
+        comment_text=data.comment_text,
+        image_index=data.image_index
     )
     db.add(comment)
     await db.flush()
@@ -182,27 +193,32 @@ async def create_comment(
         user_display_name=current_user.display_name,
         user_avatar_url=current_user.avatar_url,
         comment_text=comment.comment_text,
+        image_index=comment.image_index,
         created_at=comment.created_at
     )
 
 
 @router.post("/upload")
-async def upload_story_image(
-    file: UploadFile = File(...)
+async def upload_story_images(
+    files: List[UploadFile] = File(...)
 ):
-    """Upload an image for a travel story."""
+    """Upload multiple images for a travel story."""
     upload_dir = "app/static/uploads"
     os.makedirs(upload_dir, exist_ok=True)
     
-    file_ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
-    unique_filename = f"{uuid.uuid4()}{file_ext}"
-    file_path = os.path.join(upload_dir, unique_filename)
-    
-    content = await file.read()
-    with open(file_path, "wb") as buffer:
-        buffer.write(content)
+    urls = []
+    for file in files:
+        file_ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = os.path.join(upload_dir, unique_filename)
         
-    return {"url": f"/static/uploads/{unique_filename}"}
+        content = await file.read()
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+            
+        urls.append(f"/static/uploads/{unique_filename}")
+        
+    return {"urls": urls}
 
 
 @router.delete("/{story_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -226,3 +242,71 @@ async def delete_travel_story(
     await db.commit()
     return None
 
+@router.put("/{story_id}", response_model=TravelStoryResponse)
+async def update_travel_story(
+    story_id: uuid.UUID,
+    data: TravelStoryCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update a travel story."""
+    stmt = select(TravelStory).where(TravelStory.id == story_id)
+    res = await db.execute(stmt)
+    story = res.scalar_one_or_none()
+    
+    if not story:
+        raise HTTPException(status_code=404, detail="Travel story not found")
+        
+    if story.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to edit this story")
+        
+    # Update fields
+    story.location_name = data.location_name
+    story.category = data.category
+    story.description = data.description
+    story.image_url = data.image_url
+    story.image_urls = data.image_urls
+    story.latitude = data.latitude
+    story.longitude = data.longitude
+    story.is_public = data.is_public
+    
+    await db.commit()
+    await db.refresh(story)
+    
+    # Needs to match response model shape exactly
+    # Check if logged-in user liked this story
+    is_liked = any(like.user_id == current_user.id for like in story.likes)
+    
+    comments_list = []
+    for c in story.comments:
+        comments_list.append(
+            TravelStoryCommentResponse(
+                id=c.id,
+                story_id=c.story_id,
+                user_id=c.user_id,
+                user_display_name=c.user.display_name,
+                user_avatar_url=c.user.avatar_url,
+                comment_text=c.comment_text,
+                image_index=c.image_index,
+                created_at=c.created_at
+            )
+        )
+        
+    return TravelStoryResponse(
+        id=story.id,
+        user_id=story.user_id,
+        user_display_name=story.user.display_name,
+        user_avatar_url=story.user.avatar_url,
+        location_name=story.location_name,
+        category=story.category,
+        description=story.description,
+        image_url=story.image_url,
+        image_urls=story.image_urls,
+        latitude=story.latitude,
+        longitude=story.longitude,
+        is_public=story.is_public,
+        likes_count=len(story.likes),
+        is_liked=is_liked,
+        created_at=story.created_at,
+        comments=comments_list
+    )

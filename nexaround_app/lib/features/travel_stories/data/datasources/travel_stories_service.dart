@@ -90,19 +90,44 @@ class TravelStoriesService {
     }
   }
 
-  Future<void> addComment(String id, String commentText) async {
+  Future<void> addComment(String id, String commentText, int imageIndex) async {
     try {
       await _dio.post(
         '${ApiConstants.travelStories}/$id/comment',
-        data: {'comment_text': commentText},
+        data: {
+          'comment_text': commentText,
+          'image_index': imageIndex,
+        },
       );
     } catch (e) {
       print('⚠️ TravelStoriesService: Failed to post comment to backend ($e). Saving locally in fallback.');
       final index = _fallbackStories.indexWhere((s) => s.id == id);
       if (index != -1) {
-        _fallbackStories[index].comments.add('You @explorer_me: $commentText');
+        _fallbackStories[index].comments.add(
+          TravelStoryComment(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            author: 'You',
+            text: commentText,
+            imageIndex: imageIndex,
+          )
+        );
       }
     }
+  }
+
+  Future<TravelStory?> updateStory(String storyId, TravelStory updatedStory) async {
+    try {
+      final response = await _dio.put(
+        '${ApiConstants.travelStories}/$storyId',
+        data: updatedStory.toJson(),
+      );
+      if (response.statusCode == 200 && response.data != null) {
+        return TravelStory.fromJson(response.data);
+      }
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to update story ($e).');
+    }
+    return null;
   }
 
   Future<void> deleteStory(String storyId) async {

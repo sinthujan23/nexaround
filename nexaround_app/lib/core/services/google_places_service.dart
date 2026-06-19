@@ -76,6 +76,31 @@ class GooglePlacesService {
     }
   }
 
+  /// Generates a Headout search URL for a given location, appending the city/district
+  /// name to the query to ensure Headout finds relevant experiences instead of
+  /// falling back to defaults like Vietnam/Singapore.
+  static Future<Uri> getHeadoutSearchUri(double lat, double lng, String placeName) async {
+    final details = await reverseGeocodeDetailed(lat, lng);
+    final district = details['district'] ?? '';
+    
+    String query = placeName.trim();
+    if (district.isNotEmpty && district != 'Nearby') {
+      if (query.isNotEmpty) {
+        query = '$query, $district';
+      } else {
+        query = district;
+      }
+    } else if (query.isEmpty) {
+      query = '$lat,$lng';
+    }
+
+    return Uri.https('www.headout.com', '/search', {
+      'q': query,
+      'latitude': lat.toStringAsFixed(6),
+      'longitude': lng.toStringAsFixed(6),
+    });
+  }
+
   /// Fetch nearby places from backend cached Places API
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,

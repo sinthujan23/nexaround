@@ -100,7 +100,13 @@ def _build_message(token, title, body, data):
         android=messaging.AndroidConfig(priority="high"),
         apns=messaging.APNSConfig(
             headers={"apns-priority": "10"},
-            payload=messaging.APNSPayload(aps=messaging.Aps(sound="default")),
+            payload=messaging.APNSPayload(
+                aps=messaging.Aps(
+                    sound="default",
+                    content_available=True,
+                    mutable_content=True,
+                )
+            ),
         ),
     )
 
@@ -190,7 +196,13 @@ async def send_multicast(
             android=messaging.AndroidConfig(priority="high"),
             apns=messaging.APNSConfig(
                 headers={"apns-priority": "10"},
-                payload=messaging.APNSPayload(aps=messaging.Aps(sound="default")),
+                payload=messaging.APNSPayload(
+                    aps=messaging.Aps(
+                        sound="default",
+                        content_available=True,
+                        mutable_content=True,
+                    )
+                ),
             ),
         )
         try:

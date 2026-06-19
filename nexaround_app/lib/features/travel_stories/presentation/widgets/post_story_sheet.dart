@@ -15,12 +15,14 @@ class PostStorySheet extends StatefulWidget {
   final Function(TravelStory) onStorySubmitted;
   final double userLatitude;
   final double userLongitude;
+  final TravelStory? editStory;
 
   const PostStorySheet({
     super.key,
     required this.onStorySubmitted,
     required this.userLatitude,
     required this.userLongitude,
+    this.editStory,
   });
 
   @override
@@ -32,9 +34,13 @@ class _PostStorySheetState extends State<PostStorySheet> {
   final TextEditingController _descriptionController = TextEditingController();
 
   String _selectedCategory = '💎 Hidden Gem';
-  File? _selectedImage;
+  List<File> _selectedImages = [];
+  List<String> _existingImageUrls = [];
   bool _isPublic = true; // New field for privacy toggle
   final ImagePicker _picker = ImagePicker();
+  
+  double? _selectedLatitude;
+  double? _selectedLongitude;
   
   final List<String> _categories = [
     '💎 Hidden Gem',
@@ -97,12 +103,24 @@ class _PostStorySheetState extends State<PostStorySheet> {
     final details = await GooglePlacesService.getPlaceDetails(placeId);
     if (details != null) {
       print('Resolved place coords: ${details.latitude}, ${details.longitude}');
+      _selectedLatitude = details.latitude;
+      _selectedLongitude = details.longitude;
     }
   }
 
   @override
   void initState() {
     super.initState();
+    if (widget.editStory != null) {
+      final story = widget.editStory!;
+      _locationController.text = story.locationName;
+      _descriptionController.text = story.description;
+      _selectedCategory = story.category;
+      _isPublic = story.isPublic;
+      _selectedLatitude = story.latitude;
+      _selectedLongitude = story.longitude;
+      _existingImageUrls = story.imageUrls.isNotEmpty ? story.imageUrls : [story.imageUrl];
+    }
   }
 
   @override
@@ -113,21 +131,34 @@ class _PostStorySheetState extends State<PostStorySheet> {
     super.dispose();
   }
 
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _pickImages(ImageSource source) async {
     try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: source,
-        maxWidth: 1080,
-        maxHeight: 1080,
-        imageQuality: 85,
-      );
-      if (pickedFile != null) {
-        setState(() {
-          _selectedImage = File(pickedFile.path);
-        });
+      if (source == ImageSource.gallery) {
+        final List<XFile> pickedFiles = await _picker.pickMultiImage(
+          maxWidth: 1080,
+          maxHeight: 1080,
+          imageQuality: 85,
+        );
+        if (pickedFiles.isNotEmpty) {
+          setState(() {
+            _selectedImages.addAll(pickedFiles.map((f) => File(f.path)));
+          });
+        }
+      } else {
+        final XFile? pickedFile = await _picker.pickImage(
+          source: source,
+          maxWidth: 1080,
+          maxHeight: 1080,
+          imageQuality: 85,
+        );
+        if (pickedFile != null) {
+          setState(() {
+            _selectedImages.add(File(pickedFile.path));
+          });
+        }
       }
     } catch (e) {
-      print('⚠️ Error picking image: $e');
+      print('⚠️ Error picking images: $e');
     }
   }
 
@@ -147,7 +178,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
                 title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickImage(ImageSource.gallery);
+                  _pickImages(ImageSource.gallery);
                 },
               ),
               ListTile(
@@ -155,7 +186,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
                 title: const Text('Take Photo', style: TextStyle(fontWeight: FontWeight.w600)),
                 onTap: () {
                   Navigator.pop(context);
-                  _pickImage(ImageSource.camera);
+                  _pickImages(ImageSource.camera);
                 },
               ),
             ],
@@ -169,9 +200,9 @@ class _PostStorySheetState extends State<PostStorySheet> {
     final location = _locationController.text.trim();
     final description = _descriptionController.text.trim();
 
-    if (location.isEmpty || description.isEmpty || _selectedImage == null) {
+    if (location.isEmpty || description.isEmpty || _selectedImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all fields and attach a photo')),
+        const SnackBar(content: Text('Please fill all fields and attach at least one photo')),
       );
       return;
     }
@@ -185,14 +216,19 @@ class _PostStorySheetState extends State<PostStorySheet> {
       ),
     );
 
-    String imgUrl = _selectedImage!.path;
+    List<String> finalUrls = List.from(_existingImageUrls);
     try {
-      final uploadedUrl = await TravelStoriesService().uploadImage(_selectedImage!.path);
-      if (uploadedUrl != null) {
-        imgUrl = uploadedUrl;
+      for (var file in _selectedImages) {
+        final uploadedUrl = await TravelStoriesService().uploadImage(file.path);
+        if (uploadedUrl != null) {
+          finalUrls.add(uploadedUrl);
+        } else {
+          finalUrls.add(file.path); // fallback
+        }
       }
     } catch (e) {
-      print('⚠️ Upload failed, submitting with local image path: $e');
+      print('⚠️ Upload failed, submitting with local image paths: $e');
+      finalUrls.addAll(_selectedImages.map((f) => f.path));
     }
 
     // Dismiss loading spinner
@@ -212,18 +248,21 @@ class _PostStorySheetState extends State<PostStorySheet> {
     }
 
     final newStory = TravelStory(
-      id: 'story_${DateTime.now().millisecondsSinceEpoch}',
+      id: widget.editStory?.id ?? 'story_${DateTime.now().millisecondsSinceEpoch}',
       userId: userId,
       userName: userName,
       userAvatar: userAvatar,
       locationName: location,
       category: _selectedCategory,
       description: description,
-      imageUrl: imgUrl,
-      likesCount: 0,
-      comments: [],
-      createdAt: DateTime.now(),
-      isLiked: false,
+      imageUrl: finalUrls.isNotEmpty ? finalUrls.first : '',
+      imageUrls: finalUrls,
+      latitude: _selectedLatitude ?? widget.userLatitude,
+      longitude: _selectedLongitude ?? widget.userLongitude,
+      likesCount: widget.editStory?.likesCount ?? 0,
+      comments: widget.editStory?.comments ?? [],
+      createdAt: widget.editStory?.createdAt ?? DateTime.now(),
+      isLiked: widget.editStory?.isLiked ?? false,
       isPublic: _isPublic,
     );
 
@@ -241,7 +280,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
             const Icon(Icons.check_circle_rounded, color: Colors.white),
             const SizedBox(width: 12),
             Text(
-              'Story shared to "$location"!',
+              widget.editStory != null ? 'Story updated!' : 'Story shared to "$location"!',
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
           ],
@@ -254,7 +293,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
   Widget build(BuildContext context) {
     final bool canSubmit = _locationController.text.trim().isNotEmpty &&
         _descriptionController.text.trim().isNotEmpty &&
-        _selectedImage != null;
+        (_selectedImages.isNotEmpty || _existingImageUrls.isNotEmpty);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
@@ -526,53 +565,94 @@ class _PostStorySheetState extends State<PostStorySheet> {
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black87),
                   ),
                   const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: _showImagePickerOptions,
-                    child: Container(
-                      height: 120,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.grey[300]!,
-                          style: BorderStyle.solid,
-                          width: 1.5,
+                  if (_selectedImages.isEmpty && _existingImageUrls.isEmpty)
+                    GestureDetector(
+                      onTap: _showImagePickerOptions,
+                      child: Container(
+                        height: 120,
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.grey[300]!,
+                            style: BorderStyle.solid,
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.add_a_photo_outlined, size: 28, color: Colors.grey[600]),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Tap to select multiple photos',
+                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+                            ),
+                          ],
                         ),
                       ),
-                      child: _selectedImage == null
-                          ? Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_a_photo_outlined, size: 28, color: Colors.grey[600]),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Tap to capture or choose photo',
-                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Colors.grey[600]),
+                    )
+                  else
+                    SizedBox(
+                      height: 120,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: _existingImageUrls.length + _selectedImages.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == _existingImageUrls.length + _selectedImages.length) {
+                            return GestureDetector(
+                              onTap: _showImagePickerOptions,
+                              child: Container(
+                                width: 80,
+                                margin: const EdgeInsets.only(left: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey[50],
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.grey[300]!, width: 1.5),
                                 ),
-                              ],
-                            )
-                          : ClipRRect(
+                                child: const Center(
+                                  child: Icon(Icons.add, color: Colors.black54, size: 28),
+                                ),
+                              ),
+                            );
+                          }
+                          
+                          final isExisting = index < _existingImageUrls.length;
+                          
+                          return Container(
+                            width: 120,
+                            margin: const EdgeInsets.only(right: 8),
+                            child: ClipRRect(
                               borderRadius: BorderRadius.circular(15),
                               child: Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  Image.file(
-                                    _selectedImage!,
-                                    fit: BoxFit.cover,
-                                  ),
-                                  // Dark overlay
+                                  isExisting
+                                      ? Image.network(
+                                          _existingImageUrls[index].startsWith('http') 
+                                              ? _existingImageUrls[index] 
+                                              : '${ApiConstants.baseUrl}${_existingImageUrls[index]}',
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Image.file(
+                                          _selectedImages[index - _existingImageUrls.length],
+                                          fit: BoxFit.cover,
+                                        ),
                                   Container(
                                     color: Colors.black12,
                                   ),
-                                  // Delete / Close button
                                   Positioned(
-                                    top: 8,
-                                    right: 8,
+                                    top: 6,
+                                    right: 6,
                                     child: GestureDetector(
                                       onTap: () {
                                         setState(() {
-                                          _selectedImage = null;
+                                          if (isExisting) {
+                                            _existingImageUrls.removeAt(index);
+                                          } else {
+                                            _selectedImages.removeAt(index - _existingImageUrls.length);
+                                          }
                                         });
                                       },
                                       child: const CircleAvatar(
@@ -585,8 +665,10 @@ class _PostStorySheetState extends State<PostStorySheet> {
                                 ],
                               ),
                             ),
+                          );
+                        },
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 30),
 
                   // Submit Button
@@ -605,7 +687,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
                       ),
                       child: Center(
                         child: Text(
-                          'Post Travel Story',
+                          widget.editStory != null ? 'Save Changes' : 'Post Travel Story',
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.bold,

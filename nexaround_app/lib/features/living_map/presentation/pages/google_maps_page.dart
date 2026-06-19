@@ -1363,8 +1363,7 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
     final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
     final name = _destName ?? '';
-    final query = name.trim().isNotEmpty ? name.trim() : '$lat,$lng';
-    final uri = Uri.https('www.headout.com', '/search', {'q': query});
+    final uri = await GooglePlacesService.getHeadoutSearchUri(lat, lng, name);
     await _launchExternalUrl(uri);
   }
 

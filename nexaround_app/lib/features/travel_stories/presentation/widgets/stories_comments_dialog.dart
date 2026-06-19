@@ -9,11 +9,13 @@ import '../../data/models/travel_story.dart';
 
 class StoriesCommentsDialog extends StatefulWidget {
   final TravelStory story;
-  final Function(String) onCommentAdded;
+  final int imageIndex;
+  final Function(String, int) onCommentAdded;
 
   const StoriesCommentsDialog({
     super.key,
     required this.story,
+    required this.imageIndex,
     required this.onCommentAdded,
   });
 
@@ -23,12 +25,14 @@ class StoriesCommentsDialog extends StatefulWidget {
 
 class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
   final TextEditingController _commentController = TextEditingController();
-  late List<String> _localComments;
+  late List<TravelStoryComment> _localComments;
 
   @override
   void initState() {
     super.initState();
-    _localComments = List.from(widget.story.comments);
+    _localComments = widget.story.comments
+        .where((c) => c.imageIndex == widget.imageIndex)
+        .toList();
   }
 
   @override
@@ -47,9 +51,14 @@ class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
       author = authState.user.displayName;
     }
 
-    widget.onCommentAdded(text);
+    widget.onCommentAdded(text, widget.imageIndex);
     setState(() {
-      _localComments.add('$author: $text');
+      _localComments.add(TravelStoryComment(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        author: author,
+        text: text,
+        imageIndex: widget.imageIndex,
+      ));
     });
     _commentController.clear();
     // Scroll list down to see comment
@@ -170,7 +179,7 @@ class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    _getAuthorName(index),
+                                    _localComments[index].author,
                                     style: const TextStyle(
                                       fontSize: 11.5,
                                       fontWeight: FontWeight.w700,
@@ -179,9 +188,7 @@ class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
                                   ),
                                   const SizedBox(height: 3),
                                   Text(
-                                    _localComments[index].contains(': ')
-                                        ? _localComments[index].substring(_localComments[index].indexOf(': ') + 2)
-                                        : _localComments[index],
+                                    _localComments[index].text,
                                     style: const TextStyle(
                                       fontSize: 13,
                                       height: 1.3,
@@ -257,31 +264,11 @@ class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
   }
 
   String _getInitials(int index) {
-    final rawComment = _localComments[index];
-    if (rawComment.contains(': ')) {
-      final author = rawComment.split(': ').first;
-      final parts = author.replaceAll('@', '').split(' ');
-      if (parts.length >= 2) {
-        return (parts[0][0] + parts[1][0]).toUpperCase();
-      }
-      return author.substring(0, min(2, author.length)).toUpperCase();
+    final author = _localComments[index].author;
+    final parts = author.replaceAll('@', '').split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
     }
-    if (index == _localComments.length - 1 && _commentController.text.isEmpty) {
-      return 'ME';
-    }
-    final initials = ['JD', 'EM', 'SL', 'AK', 'MB'];
-    return initials[index % initials.length];
-  }
-
-  String _getAuthorName(int index) {
-    final rawComment = _localComments[index];
-    if (rawComment.contains(': ')) {
-      return rawComment.split(': ').first;
-    }
-    if (index == _localComments.length - 1 && _commentController.text.isEmpty) {
-      return 'You @explorer_me';
-    }
-    final names = ['Jane Doe @jane_d', 'Ethan Miller @ethan_m', 'Sithmi Lokuge @sithmi', 'Arun Kumar @arunk', 'Maya Brown @mayab'];
-    return names[index % names.length];
+    return author.substring(0, min(2, author.length)).toUpperCase();
   }
 }

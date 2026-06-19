@@ -1660,10 +1660,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
     final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
     final name = _destinationName ?? '';
-    final query = name.trim().isNotEmpty ? name.trim() : '$lat,$lng';
-    await _launchExternalUrl(
-      Uri.https('www.headout.com', '/search', {'q': query}),
-    );
+    final uri = await GooglePlacesService.getHeadoutSearchUri(lat, lng, name);
+    await _launchExternalUrl(uri);
   }
 
   Future<void> _launchExternalUrl(Uri uri) async {
