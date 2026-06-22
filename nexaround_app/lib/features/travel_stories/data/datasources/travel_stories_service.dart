@@ -7,7 +7,8 @@ import '../models/travel_story.dart';
 
 class TravelStoriesService {
   // Singleton instance
-  static final TravelStoriesService _instance = TravelStoriesService._internal();
+  static final TravelStoriesService _instance =
+      TravelStoriesService._internal();
   factory TravelStoriesService() => _instance;
   TravelStoriesService._internal();
 
@@ -27,7 +28,9 @@ class TravelStoriesService {
         return stories;
       }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using fallback/cached data.');
+      print(
+        '⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using fallback/cached data.',
+      );
     }
 
     final cachedData = prefs.getString('cached_travel_stories');
@@ -46,11 +49,14 @@ class TravelStoriesService {
         ApiConstants.travelStories,
         data: story.toJson(),
       );
-      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
         returnedStory = TravelStory.fromJson(response.data);
       }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to post story to backend ($e). Saving locally in fallback list.');
+      print(
+        '⚠️ TravelStoriesService: Failed to post story to backend ($e). Saving locally in fallback list.',
+      );
       // Append to fallback stories locally
       _fallbackStories.insert(0, story);
       returnedStory = story;
@@ -63,10 +69,13 @@ class TravelStoriesService {
         data.insert(0, returnedStory.toJson());
         await prefs.setString('cached_travel_stories', jsonEncode(data));
       } else {
-        await prefs.setString('cached_travel_stories', jsonEncode([returnedStory.toJson()]));
+        await prefs.setString(
+          'cached_travel_stories',
+          jsonEncode([returnedStory.toJson()]),
+        );
       }
     }
-    
+
     return returnedStory;
   }
 
@@ -74,7 +83,9 @@ class TravelStoriesService {
     try {
       await _dio.post('${ApiConstants.travelStories}/$id/like');
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to toggle like on backend ($e). Toggling locally.');
+      print(
+        '⚠️ TravelStoriesService: Failed to toggle like on backend ($e). Toggling locally.',
+      );
       // Toggle locally on fallback list
       final index = _fallbackStories.indexWhere((s) => s.id == id);
       if (index != -1) {
@@ -94,13 +105,12 @@ class TravelStoriesService {
     try {
       await _dio.post(
         '${ApiConstants.travelStories}/$id/comment',
-        data: {
-          'comment_text': commentText,
-          'image_index': imageIndex,
-        },
+        data: {'comment_text': commentText, 'image_index': imageIndex},
       );
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to post comment to backend ($e). Saving locally in fallback.');
+      print(
+        '⚠️ TravelStoriesService: Failed to post comment to backend ($e). Saving locally in fallback.',
+      );
       final index = _fallbackStories.indexWhere((s) => s.id == id);
       if (index != -1) {
         _fallbackStories[index].comments.add(
@@ -109,13 +119,16 @@ class TravelStoriesService {
             author: 'You',
             text: commentText,
             imageIndex: imageIndex,
-          )
+          ),
         );
       }
     }
   }
 
-  Future<TravelStory?> updateStory(String storyId, TravelStory updatedStory) async {
+  Future<TravelStory?> updateStory(
+    String storyId,
+    TravelStory updatedStory,
+  ) async {
     try {
       final response = await _dio.put(
         '${ApiConstants.travelStories}/$storyId',
@@ -139,26 +152,34 @@ class TravelStoriesService {
     }
   }
 
-  Future<String?> uploadImage(String filePath) async {
+  Future<List<String>?> uploadImages(List<String> filePaths) async {
+    if (filePaths.isEmpty) return [];
+
     try {
-      final file = await MultipartFile.fromFile(
-        filePath,
-        filename: filePath.split('/').last.split('\\').last,
-      );
-      final formData = FormData.fromMap({
-        'file': file,
-      });
+      final List<MultipartFile> files = [];
+      for (var path in filePaths) {
+        files.add(
+          await MultipartFile.fromFile(
+            path,
+            filename: path.split('/').last.split('\\').last,
+          ),
+        );
+      }
+
+      final formData = FormData.fromMap({'files': files});
 
       final response = await _dio.post(
         '${ApiConstants.travelStories}/upload',
         data: formData,
       );
 
-      if ((response.statusCode == 200 || response.statusCode == 201) && response.data != null) {
-        return response.data['url'] as String;
+      if ((response.statusCode == 200 || response.statusCode == 201) &&
+          response.data != null) {
+        final List<dynamic> urls = response.data['urls'];
+        return urls.map((e) => e.toString()).toList();
       }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to upload image ($e).');
+      print('⚠️ TravelStoriesService: Failed to upload images ($e).');
     }
     return null;
   }
@@ -168,27 +189,33 @@ class TravelStoriesService {
     return [
       {
         'title': 'Ella Train',
-        'url': 'https://images.unsplash.com/photo-1546708973-b339540b5162?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1546708973-b339540b5162?w=600&auto=format&fit=crop',
       },
       {
         'title': 'Pidurangala Sunrise',
-        'url': 'https://images.unsplash.com/photo-1588598126702-8611846b036c?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1588598126702-8611846b036c?w=600&auto=format&fit=crop',
       },
       {
         'title': 'Tropical Cove',
-        'url': 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop',
       },
       {
         'title': 'Tea Plantation',
-        'url': 'https://images.unsplash.com/photo-1555899434-94d1368aa7af?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1555899434-94d1368aa7af?w=600&auto=format&fit=crop',
       },
       {
         'title': 'Safari Gathering',
-        'url': 'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=600&auto=format&fit=crop',
       },
       {
         'title': 'Ancient Temple',
-        'url': 'https://images.unsplash.com/photo-1568790308560-f4ca6469cfbe?w=600&auto=format&fit=crop',
+        'url':
+            'https://images.unsplash.com/photo-1568790308560-f4ca6469cfbe?w=600&auto=format&fit=crop',
       },
     ];
   }

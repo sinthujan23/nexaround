@@ -68,7 +68,10 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             child: SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: AppColors.brandGreen,
+              ),
             ),
           ),
         ),
@@ -85,7 +88,10 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
             child: SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: AppColors.brandGreen,
+              ),
             ),
           ),
         ),
@@ -97,10 +103,13 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
         return Image.file(
           file,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+          errorBuilder: (_, __, ___) =>
+              Container(color: AppColors.surfaceVariant),
         );
       } else {
-        final fullUrl = url.startsWith('/') ? '${ApiConstants.baseUrl}$url' : url;
+        final fullUrl = url.startsWith('/')
+            ? '${ApiConstants.baseUrl}$url'
+            : url;
         return CachedNetworkImage(
           imageUrl: fullUrl,
           fit: BoxFit.cover,
@@ -110,277 +119,380 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
               child: SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.brandGreen),
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: AppColors.brandGreen,
+                ),
               ),
             ),
           ),
-          errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+          errorWidget: (_, __, ___) =>
+              Container(color: AppColors.surfaceVariant),
         );
       }
     }
   }
 
+  Widget _buildImageGrid(List<String> urls) {
+    if (urls.isEmpty) return const SizedBox.shrink();
+
+    final images = urls.take(3).toList();
+    final isSingle = images.length == 1;
+    final isDouble = images.length == 2;
+
+    if (isSingle) {
+      return _buildImage(images[0]);
+    }
+
+    if (isDouble) {
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: _buildImage(images[0])),
+          const SizedBox(width: 2),
+          Expanded(child: _buildImage(images[1])),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(flex: 2, child: _buildImage(images[0])),
+        const SizedBox(width: 2),
+        Expanded(
+          flex: 1,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _buildImage(images[1])),
+              const SizedBox(height: 2),
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildImage(images[2]),
+                    if (urls.length > 3)
+                      Container(
+                        color: Colors.black.withOpacity(0.5),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '+${urls.length - 3}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final catColor = _getCategoryColor(widget.story.category);
+    final allUrls = widget.story.imageUrls.isNotEmpty
+        ? widget.story.imageUrls
+        : (widget.story.imageUrl.isNotEmpty
+              ? [widget.story.imageUrl]
+              : <String>[]);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       child: Container(
-      width: 280,
-      margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withOpacity(0.8), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 16,
-            offset: const Offset(0, 6),
+        width: 280,
+        margin: const EdgeInsets.only(right: 18, bottom: 8, top: 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: AppColors.border.withOpacity(0.8),
+            width: 1.0,
           ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // User info header
-            Padding(
-              padding: const EdgeInsets.all(12),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.grey[200],
-                    backgroundImage: widget.story.userAvatar.startsWith('http')
-                        ? CachedNetworkImageProvider(widget.story.userAvatar)
-                        : null,
-                    child: !widget.story.userAvatar.startsWith('http')
-                        ? const Icon(Icons.person, size: 16, color: Colors.grey)
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.story.userName,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        Text(
-                          _timeAgo(widget.story.createdAt),
-                          style: const TextStyle(
-                            fontSize: 9,
-                            color: AppColors.textTertiary,
-                          ),
-                        ),
-                      ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // User info header
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey[200],
+                      backgroundImage:
+                          widget.story.userAvatar.startsWith('http')
+                          ? CachedNetworkImageProvider(widget.story.userAvatar)
+                          : null,
+                      child: !widget.story.userAvatar.startsWith('http')
+                          ? const Icon(
+                              Icons.person,
+                              size: 16,
+                              color: Colors.grey,
+                            )
+                          : null,
                     ),
-                  ),
-                  // Category Tag
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: catColor.withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: catColor.withOpacity(0.3), width: 0.8),
-                    ),
-                    child: Text(
-                      widget.story.category,
-                      style: TextStyle(
-                        fontSize: 9,
-                        fontWeight: FontWeight.w800,
-                        color: catColor,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.story.userName,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          Text(
+                            _timeAgo(widget.story.createdAt),
+                            style: const TextStyle(
+                              fontSize: 9,
+                              color: AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                ],
+                    // Category Tag
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: catColor.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: catColor.withOpacity(0.3),
+                          width: 0.8,
+                        ),
+                      ),
+                      child: Text(
+                        widget.story.category,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: catColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
 
-            // Post image
-            SizedBox(
-              height: 115,
-              width: double.infinity,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  _buildImage(widget.story.imageUrl),
-                  // Location Overlay Tag
-                  Positioned(
-                    bottom: 8,
-                    left: 8,
-                    child: GestureDetector(
-                      onTap: widget.onLocationTap,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          color: Colors.black.withOpacity(0.6),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.location_on, size: 10, color: Colors.white),
-                              const SizedBox(width: 4),
-                              Text(
-                                widget.story.locationName,
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w700,
+              // Post image
+              SizedBox(
+                height: 240,
+                width: double.infinity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _buildImageGrid(allUrls),
+                    // Location Overlay Tag
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      child: GestureDetector(
+                        onTap: widget.onLocationTap,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            color: Colors.black.withOpacity(0.6),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.location_on,
+                                  size: 10,
                                   color: Colors.white,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 4),
+                                Text(
+                                  widget.story.locationName,
+                                  style: const TextStyle(
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  if (widget.story.imageUrls.length > 1)
-                    Positioned(
-                      top: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.6),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.layers_rounded, color: Colors.white, size: 14),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-
-            // Story description
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-              child: Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: widget.story.description.length > 95
-                          ? '${widget.story.description.substring(0, 92)}...'
-                          : widget.story.description,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        height: 1.4,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    if (widget.story.description.length > 95)
-                      const TextSpan(
-                        text: ' see more',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          height: 1.4,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.brandGreen,
+                    if (widget.story.imageUrls.length > 1)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.6),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.layers_rounded,
+                            color: Colors.white,
+                            size: 14,
+                          ),
                         ),
                       ),
                   ],
                 ),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
               ),
-            ),
 
-            const Spacer(),
-            const Divider(height: 1, color: AppColors.border),
-
-            // Social actions footer
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(
-                children: [
-                  // Like button
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {
-                      setState(() {
-                        if (_localLiked) {
-                          _localLiked = false;
-                          _localLikesCount--;
-                        } else {
-                          _localLiked = true;
-                          _localLikesCount++;
-                        }
-                      });
-                      widget.onLikeTap();
-                    },
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _localLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                          size: 16,
-                          color: _localLiked ? Colors.red : AppColors.textTertiary,
-                        ).animate(
-                          target: _localLiked ? 1.0 : 0.0,
-                        ).scale(
-                          begin: const Offset(1.0, 1.0),
-                          end: const Offset(1.3, 1.3),
-                          curve: Curves.elasticOut,
-                          duration: 350.ms,
+              // Story description
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                child: Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: widget.story.description.length > 95
+                            ? '${widget.story.description.substring(0, 92)}...'
+                            : widget.story.description,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          height: 1.4,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.textSecondary,
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '$_localLikesCount',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
+                      ),
+                      if (widget.story.description.length > 95)
+                        const TextSpan(
+                          text: ' see more',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            height: 1.4,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.brandGreen,
                           ),
                         ),
-                      ],
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 16),
-                  // Comment button
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: widget.onCommentTap,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.chat_bubble_outline_rounded,
-                          size: 15,
-                          color: AppColors.textTertiary,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${widget.story.comments.length}',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-          ],
+
+              const Spacer(),
+              const Divider(height: 1, color: AppColors.border),
+
+              // Social actions footer
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                child: Row(
+                  children: [
+                    // Like button
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        setState(() {
+                          if (_localLiked) {
+                            _localLiked = false;
+                            _localLikesCount--;
+                          } else {
+                            _localLiked = true;
+                            _localLikesCount++;
+                          }
+                        });
+                        widget.onLikeTap();
+                      },
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                                _localLiked
+                                    ? Icons.favorite_rounded
+                                    : Icons.favorite_border_rounded,
+                                size: 16,
+                                color: _localLiked
+                                    ? Colors.red
+                                    : AppColors.textTertiary,
+                              )
+                              .animate(target: _localLiked ? 1.0 : 0.0)
+                              .scale(
+                                begin: const Offset(1.0, 1.0),
+                                end: const Offset(1.3, 1.3),
+                                curve: Curves.elasticOut,
+                                duration: 350.ms,
+                              ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$_localLikesCount',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    // Comment button
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: widget.onCommentTap,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.chat_bubble_outline_rounded,
+                            size: 15,
+                            color: AppColors.textTertiary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${widget.story.comments.length}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   String _timeAgo(DateTime dateTime) {
     final difference = DateTime.now().difference(dateTime);

@@ -38,10 +38,7 @@ class GooglePlacesService {
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/proxy/geoapify/reverse',
-        queryParameters: {
-          'lat': lat,
-          'lng': lng,
-        },
+        queryParameters: {'lat': lat, 'lng': lng},
       );
       final name = response.data['location_name'] as String?;
       return (name != null && name.isNotEmpty) ? name : 'Nearby';
@@ -52,37 +49,35 @@ class GooglePlacesService {
   }
 
   /// Reverse-geocode lat/lng to location name and district via Geoapify
-  static Future<Map<String, String>> reverseGeocodeDetailed(double lat, double lng) async {
+  static Future<Map<String, String>> reverseGeocodeDetailed(
+    double lat,
+    double lng,
+  ) async {
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/proxy/geoapify/reverse',
-        queryParameters: {
-          'lat': lat,
-          'lng': lng,
-        },
+        queryParameters: {'lat': lat, 'lng': lng},
       );
       final name = response.data['location_name'] as String? ?? 'Nearby';
       final district = response.data['district'] as String? ?? 'Nearby';
-      return {
-        'location_name': name,
-        'district': district,
-      };
+      return {'location_name': name, 'district': district};
     } catch (e) {
       debugPrint('Reverse geocode detailed error: $e');
-      return {
-        'location_name': 'Nearby',
-        'district': 'Nearby',
-      };
+      return {'location_name': 'Nearby', 'district': 'Nearby'};
     }
   }
 
   /// Generates a Headout search URL for a given location, appending the city/district
   /// name to the query to ensure Headout finds relevant experiences instead of
   /// falling back to defaults like Vietnam/Singapore.
-  static Future<Uri> getHeadoutSearchUri(double lat, double lng, String placeName) async {
+  static Future<Uri> getHeadoutSearchUri(
+    double lat,
+    double lng,
+    String placeName,
+  ) async {
     final details = await reverseGeocodeDetailed(lat, lng);
     final district = details['district'] ?? '';
-    
+
     String query = placeName.trim();
     if (district.isNotEmpty && district != 'Nearby') {
       if (query.isNotEmpty) {
@@ -124,8 +119,12 @@ class GooglePlacesService {
       if (response.statusCode == 200) {
         final data = response.data;
         final List<dynamic> placesList = data['places'] as List? ?? [];
-        final models = placesList.map((p) => AttractionModel.fromJson(p)).toList();
-        print('✅ Places fetched from backend: ${models.length} items (Source: ${data['source']})');
+        final models = placesList
+            .map((p) => AttractionModel.fromJson(p))
+            .toList();
+        print(
+          '✅ Places fetched from backend: ${models.length} items (Source: ${data['source']})',
+        );
         return models;
       }
       return [];
@@ -170,20 +169,28 @@ class GooglePlacesService {
         final data = response.data;
         final List<dynamic> results = data['results'] as List? ?? [];
         final List<AttractionModel> models = [];
-        
+
         for (final place in results) {
           final placeId = place['place_id'] as String? ?? '';
           final name = place['name'] as String? ?? 'Unknown';
           final rating = (place['rating'] as num?)?.toDouble() ?? 4.0;
-          final userRatingsTotal = (place['user_ratings_total'] as num?)?.toInt() ?? 0;
-          
+          final userRatingsTotal =
+              (place['user_ratings_total'] as num?)?.toInt() ?? 0;
+
           final geom = place['geometry'] as Map<String, dynamic>?;
-          final loc = geom != null ? geom['location'] as Map<String, dynamic>? : null;
+          final loc = geom != null
+              ? geom['location'] as Map<String, dynamic>?
+              : null;
           final plat = loc != null ? (loc['lat'] as num).toDouble() : latitude;
           final plng = loc != null ? (loc['lng'] as num).toDouble() : longitude;
-          
-          final distanceM = geo.Geolocator.distanceBetween(latitude, longitude, plat, plng);
-          
+
+          final distanceM = geo.Geolocator.distanceBetween(
+            latitude,
+            longitude,
+            plat,
+            plng,
+          );
+
           // Map photo reference to our backend photo proxy URL
           final photos = place['photos'] as List? ?? [];
           final List<String> photoUrls = [];
@@ -193,33 +200,40 @@ class GooglePlacesService {
               photoUrls.add('/api/v1/places/photo?ref=$ref');
             }
           }
-          
-          final typesList = (place['types'] as List? ?? []).map((t) => t.toString()).toList();
-          final resolvedCategory = categoryName ?? _resolveCategoryFromTypes(typesList);
-          
-          models.add(AttractionModel(
-            id: placeId,
-            name: name,
-            description: place['vicinity'] as String? ?? '',
-            latitude: plat,
-            longitude: plng,
-            categoryId: null,
-            categoryName: resolvedCategory,
-            address: place['vicinity'] as String? ?? '',
-            openingHours: const {},
-            entryFee: 0.0,
-            currency: 'USD',
-            rating: rating,
-            reviewCount: userRatingsTotal,
-            photoUrls: photoUrls,
-            tags: typesList,
-            geofenceRadiusM: 100,
-            distanceM: distanceM,
-            isActive: true,
-            createdAt: DateTime.now(),
-          ));
+
+          final typesList = (place['types'] as List? ?? [])
+              .map((t) => t.toString())
+              .toList();
+          final resolvedCategory =
+              categoryName ?? _resolveCategoryFromTypes(typesList);
+
+          models.add(
+            AttractionModel(
+              id: placeId,
+              name: name,
+              description: place['vicinity'] as String? ?? '',
+              latitude: plat,
+              longitude: plng,
+              categoryId: null,
+              categoryName: resolvedCategory,
+              address: place['vicinity'] as String? ?? '',
+              openingHours: const {},
+              entryFee: 0.0,
+              currency: 'USD',
+              rating: rating,
+              reviewCount: userRatingsTotal,
+              photoUrls: photoUrls,
+              tags: typesList,
+              geofenceRadiusM: 100,
+              distanceM: distanceM,
+              isActive: true,
+              createdAt: DateTime.now(),
+            ),
+          );
         }
-        print('✅ Places fetched from Google Maps legacy API (Homepage): ${models.length} items');
+        print(
+          '✅ Places fetched from Google Maps legacy API (Homepage): ${models.length} items',
+        );
         return models;
       }
       return [];
@@ -238,18 +252,18 @@ class GooglePlacesService {
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/search',
-        queryParameters: {
-          'query': query,
-          'lat': latitude,
-          'lng': longitude,
-        },
+        queryParameters: {'query': query, 'lat': latitude, 'lng': longitude},
       );
 
       if (response.statusCode == 200) {
         final data = response.data;
         final List<dynamic> placesList = data['places'] as List? ?? [];
-        final models = placesList.map((p) => AttractionModel.fromJson(p)).toList();
-        print('✅ Places searched: ${models.length} items (Source: ${data['source']})');
+        final models = placesList
+            .map((p) => AttractionModel.fromJson(p))
+            .toList();
+        print(
+          '✅ Places searched: ${models.length} items (Source: ${data['source']})',
+        );
         return models;
       }
       return [];
@@ -268,22 +282,82 @@ class GooglePlacesService {
 
   static String _resolveCategoryFromTypes(List<String> types) {
     final t = types.toSet();
-    if (t.intersection({'lodging', 'hotel', 'motel', 'resort_hotel', 'hostel', 'guest_house', 'bed_and_breakfast'}).isNotEmpty) {
+    if (t.intersection({
+      'lodging',
+      'hotel',
+      'motel',
+      'resort_hotel',
+      'hostel',
+      'guest_house',
+      'bed_and_breakfast',
+    }).isNotEmpty) {
       return 'Hotels';
     }
-    if (t.intersection({'restaurant', 'food', 'cafe', 'bar', 'coffee_shop', 'bakery', 'fast_food_restaurant', 'food_court', 'pub', 'wine_bar'}).isNotEmpty) {
+    if (t.intersection({
+      'restaurant',
+      'food',
+      'cafe',
+      'bar',
+      'coffee_shop',
+      'bakery',
+      'fast_food_restaurant',
+      'food_court',
+      'pub',
+      'wine_bar',
+    }).isNotEmpty) {
       return 'Food & Drink';
     }
-    if (t.intersection({'park', 'campground', 'natural_feature', 'beach', 'national_park', 'hiking_area', 'garden', 'zoo'}).isNotEmpty) {
+    if (t.intersection({
+      'park',
+      'campground',
+      'natural_feature',
+      'beach',
+      'national_park',
+      'hiking_area',
+      'garden',
+      'zoo',
+    }).isNotEmpty) {
       return 'Nature';
     }
-    if (t.intersection({'hospital', 'pharmacy', 'medical_clinic', 'dentist'}).isNotEmpty) {
+    if (t.intersection({
+      'hospital',
+      'pharmacy',
+      'medical_clinic',
+      'dentist',
+    }).isNotEmpty) {
       return 'Medical';
     }
-    if (t.intersection({'tourist_attraction', 'museum', 'art_gallery', 'historical_landmark', 'place_of_worship', 'church', 'hindu_temple', 'mosque', 'synagogue', 'buddhist_temple', 'amusement_park', 'aquarium', 'cultural_center'}).isNotEmpty) {
+    if (t.intersection({
+      'tourist_attraction',
+      'museum',
+      'art_gallery',
+      'historical_landmark',
+      'place_of_worship',
+      'church',
+      'hindu_temple',
+      'mosque',
+      'synagogue',
+      'buddhist_temple',
+      'amusement_park',
+      'aquarium',
+      'cultural_center',
+    }).isNotEmpty) {
       return 'Attractions';
     }
-    if (t.intersection({'shopping_mall', 'store', 'department_store', 'clothing_store', 'supermarket', 'grocery_store', 'convenience_store', 'gift_shop', 'book_store', 'electronics_store', 'jewelry_store', 'shoe_store'}).isNotEmpty) {
+    if (t.intersection({
+      'shopping_mall',
+      'store',
+      'department_store',
+      'clothing_store',
+      'supermarket',
+      'grocery_store',
+      'convenience_store',
+      'gift_shop',
+      'book_store',
+      'electronics_store',
+      'jewelry_store',
+      'shoe_store',
+    }).isNotEmpty) {
       return 'Shopping';
     }
     return 'Attractions';
@@ -325,7 +399,8 @@ class GooglePlacesService {
           ((leg['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
       final durationSec =
           ((leg['duration'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
-      final encoded = (route['overview_polyline'] as Map?)?['points'] as String?;
+      final encoded =
+          (route['overview_polyline'] as Map?)?['points'] as String?;
       final points = (encoded != null && encoded.isNotEmpty)
           ? _decodePolyline(encoded)
           : <LatLng>[];
@@ -380,18 +455,38 @@ class GooglePlacesService {
         queryParameters: {
           'input': input,
           'location': '$latitude,$longitude',
-          'radius': 10000, // 10km bias
+          'radius': 50000, // 50km bias
+          'origin': '$latitude,$longitude',
         },
       );
 
       if (response.statusCode == 200) {
         final data = response.data;
         final List<dynamic> predictions = data['predictions'] as List? ?? [];
-        return predictions.map((p) => {
-          'description': p['description'] as String? ?? '',
-          'place_id': p['place_id'] as String? ?? '',
-          'main_text': (p['structured_formatting']?['main_text'] as String?) ?? '',
-        }).toList();
+
+        final mapped = predictions
+            .map(
+              (p) => {
+                'description': p['description'] as String? ?? '',
+                'place_id': p['place_id'] as String? ?? '',
+                'main_text':
+                    (p['structured_formatting']?['main_text'] as String?) ?? '',
+                'distance_meters': p['distance_meters'] as num?,
+              },
+            )
+            .toList();
+
+        // Sort dynamically: items with distances first, ascending
+        mapped.sort((a, b) {
+          final distA = a['distance_meters'] as num?;
+          final distB = b['distance_meters'] as num?;
+          if (distA != null && distB != null) return distA.compareTo(distB);
+          if (distA != null) return -1;
+          if (distB != null) return 1;
+          return 0;
+        });
+
+        return mapped;
       }
       return [];
     } catch (e) {
@@ -416,7 +511,9 @@ class GooglePlacesService {
         if (result != null) {
           final name = result['name'] as String? ?? 'Unknown';
           final geom = result['geometry'] as Map<String, dynamic>?;
-          final loc = geom != null ? geom['location'] as Map<String, dynamic>? : null;
+          final loc = geom != null
+              ? geom['location'] as Map<String, dynamic>?
+              : null;
           final lat = loc != null ? (loc['lat'] as num).toDouble() : 0.0;
           final lng = loc != null ? (loc['lng'] as num).toDouble() : 0.0;
           final address = result['formatted_address'] as String? ?? '';
@@ -451,4 +548,3 @@ class GooglePlacesService {
     }
   }
 }
-

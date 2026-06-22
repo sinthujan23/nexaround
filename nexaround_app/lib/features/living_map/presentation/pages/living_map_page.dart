@@ -99,7 +99,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
-    
+
     _globeController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 16),
@@ -107,18 +107,18 @@ class _LivingMapPageState extends State<LivingMapPage>
     _globePoints = _generateWorldMapPoints();
     // Notable cities/places highlighted as yellow pins on the globe
     _globePlacePoints = [
-      _SpotlightPoint3D(40.7, -74.0),   // New York
-      _SpotlightPoint3D(51.5, -0.1),    // London
-      _SpotlightPoint3D(35.7, 139.7),   // Tokyo
-      _SpotlightPoint3D(48.9, 2.3),     // Paris
-      _SpotlightPoint3D(-33.9, 151.2),  // Sydney
-      _SpotlightPoint3D(25.2, 55.3),    // Dubai
-      _SpotlightPoint3D(-22.9, -43.2),  // Rio de Janeiro
-      _SpotlightPoint3D(-33.9, 18.4),   // Cape Town
-      _SpotlightPoint3D(19.1, 72.9),    // Mumbai
-      _SpotlightPoint3D(1.3, 103.8),    // Singapore
-      _SpotlightPoint3D(41.9, 12.5),    // Rome
-      _SpotlightPoint3D(30.0, 31.2),    // Cairo
+      _SpotlightPoint3D(40.7, -74.0), // New York
+      _SpotlightPoint3D(51.5, -0.1), // London
+      _SpotlightPoint3D(35.7, 139.7), // Tokyo
+      _SpotlightPoint3D(48.9, 2.3), // Paris
+      _SpotlightPoint3D(-33.9, 151.2), // Sydney
+      _SpotlightPoint3D(25.2, 55.3), // Dubai
+      _SpotlightPoint3D(-22.9, -43.2), // Rio de Janeiro
+      _SpotlightPoint3D(-33.9, 18.4), // Cape Town
+      _SpotlightPoint3D(19.1, 72.9), // Mumbai
+      _SpotlightPoint3D(1.3, 103.8), // Singapore
+      _SpotlightPoint3D(41.9, 12.5), // Rome
+      _SpotlightPoint3D(30.0, 31.2), // Cairo
     ];
 
     _checkLocationAndInit();
@@ -128,7 +128,13 @@ class _LivingMapPageState extends State<LivingMapPage>
     final List<_SpotlightPoint3D> points = [];
     final random = Random(42); // Seeded for consistency
 
-    void addLandmass(double minLat, double maxLat, double minLng, double maxLng, int count) {
+    void addLandmass(
+      double minLat,
+      double maxLat,
+      double minLng,
+      double maxLng,
+      int count,
+    ) {
       for (int i = 0; i < count; i++) {
         final lat = minLat + random.nextDouble() * (maxLat - minLat);
         final lng = minLng + random.nextDouble() * (maxLng - minLng);
@@ -181,11 +187,11 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Then check if location service (GPS) is on
     final serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
-    
+
     if (mounted) {
       setState(() => _isLocationServiceEnabled = serviceEnabled);
     }
-    
+
     if (serviceEnabled && _positionSubscription == null) {
       _fetchInitialData();
       _startLocationTracking();
@@ -193,36 +199,41 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   void _startLocationTracking() {
-    _positionSubscription = geo.Geolocator.getPositionStream(
-      locationSettings: const geo.LocationSettings(
-        accuracy: geo.LocationAccuracy.high,
-        distanceFilter: 300,
-      ),
-    ).listen((position) async {
-      final details = await GooglePlacesService.reverseGeocodeDetailed(
-        position.latitude,
-        position.longitude,
-      );
-      final locationName = details['location_name'] ?? 'Nearby';
-      final district = details['district'] ?? 'Nearby';
+    _positionSubscription =
+        geo.Geolocator.getPositionStream(
+          locationSettings: const geo.LocationSettings(
+            accuracy: geo.LocationAccuracy.high,
+            distanceFilter: 300,
+          ),
+        ).listen((position) async {
+          final details = await GooglePlacesService.reverseGeocodeDetailed(
+            position.latitude,
+            position.longitude,
+          );
+          final locationName = details['location_name'] ?? 'Nearby';
+          final district = details['district'] ?? 'Nearby';
 
-      if (mounted) {
-        final districtChanged = _currentDistrict != district;
-        setState(() {
-          _userLatitude = position.latitude;
-          _userLongitude = position.longitude;
-          _currentLocationName = locationName;
-          _currentDistrict = district;
+          if (mounted) {
+            final districtChanged = _currentDistrict != district;
+            setState(() {
+              _userLatitude = position.latitude;
+              _userLongitude = position.longitude;
+              _currentLocationName = locationName;
+              _currentDistrict = district;
+            });
+
+            if (districtChanged) {
+              _fetchGeminiTrending(
+                district,
+                position.latitude,
+                position.longitude,
+              );
+            }
+
+            _fetchMiniTourPlaces(position.latitude, position.longitude);
+            _preFetchArPlaces(position.latitude, position.longitude);
+          }
         });
-
-        if (districtChanged) {
-          _fetchGeminiTrending(district, position.latitude, position.longitude);
-        }
-
-        _fetchMiniTourPlaces(position.latitude, position.longitude);
-        _preFetchArPlaces(position.latitude, position.longitude);
-      }
-    });
   }
 
   bool _isTrendingSpot(AttractionEntity place) {
@@ -231,11 +242,37 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Exclude utility keywords in the name
     final utilityKeywords = [
-      'pharmacy', 'hospital', 'clinic', 'medical', 'doctor', 'dentist',
-      'bank', 'atm', 'office', 'school', 'college', 'university', 'class',
-      'gas station', 'petrol', 'fuel', 'garage', 'repair', 'grocery',
-      'supermarket', 'mart', 'store', 'shop', 'hardware', 'laundry',
-      'residential', 'apartment', 'flat', 'villa', 'complex', 'house'
+      'pharmacy',
+      'hospital',
+      'clinic',
+      'medical',
+      'doctor',
+      'dentist',
+      'bank',
+      'atm',
+      'office',
+      'school',
+      'college',
+      'university',
+      'class',
+      'gas station',
+      'petrol',
+      'fuel',
+      'garage',
+      'repair',
+      'grocery',
+      'supermarket',
+      'mart',
+      'store',
+      'shop',
+      'hardware',
+      'laundry',
+      'residential',
+      'apartment',
+      'flat',
+      'villa',
+      'complex',
+      'house',
     ];
 
     for (final kw in utilityKeywords) {
@@ -244,10 +281,22 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Exclude official Google Places types/tags
     final utilityTags = [
-      'pharmacy', 'hospital', 'doctor', 'dentist', 'bank', 'atm', 'school',
-      'university', 'gas_station', 'grocery_or_supermarket', 'supermarket',
-      'store', 'local_government_office', 'general_contractor', 'physiotherapist',
-      'real_estate_agency'
+      'pharmacy',
+      'hospital',
+      'doctor',
+      'dentist',
+      'bank',
+      'atm',
+      'school',
+      'university',
+      'gas_station',
+      'grocery_or_supermarket',
+      'supermarket',
+      'store',
+      'local_government_office',
+      'general_contractor',
+      'physiotherapist',
+      'real_estate_agency',
     ];
 
     if (tags.any((t) => utilityTags.contains(t))) return false;
@@ -255,9 +304,15 @@ class _LivingMapPageState extends State<LivingMapPage>
     return true;
   }
 
-  Future<void> _fetchGeminiTrending(String district, double lat, double lng) async {
+  Future<void> _fetchGeminiTrending(
+    String district,
+    double lat,
+    double lng,
+  ) async {
     if (_lastFetchedDistrict == district && _geminiTrendingMarkdown != null) {
-      debugPrint('ℹ️ Gemini trending already loaded for district "$district". Skipping request.');
+      debugPrint(
+        'ℹ️ Gemini trending already loaded for district "$district". Skipping request.',
+      );
       return;
     }
     if (_loadingGeminiTrending) return;
@@ -268,18 +323,16 @@ class _LivingMapPageState extends State<LivingMapPage>
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/trending',
-        queryParameters: {
-          'district': district,
-          'lat': lat,
-          'lng': lng,
-        },
+        queryParameters: {'district': district, 'lat': lat, 'lng': lng},
       );
 
       if (response.statusCode == 200) {
         final data = response.data;
         final markdown = data['markdown'] as String? ?? '';
         final List<dynamic> placesList = data['places'] as List? ?? [];
-        final resolvedPlaces = placesList.map((p) => AttractionModel.fromJson(p)).toList();
+        final resolvedPlaces = placesList
+            .map((p) => AttractionModel.fromJson(p))
+            .toList();
 
         if (mounted) {
           setState(() {
@@ -304,7 +357,9 @@ class _LivingMapPageState extends State<LivingMapPage>
   void _resolveUnresolvedCardPhotos() {
     for (final exp in _aiExperiences) {
       final lowerExpName = exp.name.toLowerCase().trim();
-      bool isResolved = _geminiTrendingPlaces.any((p) => p.name.toLowerCase().trim() == lowerExpName);
+      bool isResolved = _geminiTrendingPlaces.any(
+        (p) => p.name.toLowerCase().trim() == lowerExpName,
+      );
       if (!isResolved) {
         _searchPhotoForUnresolved(exp.name);
       }
@@ -320,7 +375,8 @@ class _LivingMapPageState extends State<LivingMapPage>
         'fields': 'photos',
       };
       if (_userLatitude != null && _userLongitude != null) {
-        queryParams['locationbias'] = 'circle:5000@$_userLatitude,$_userLongitude';
+        queryParams['locationbias'] =
+            'circle:5000@$_userLatitude,$_userLongitude';
       }
       final response = await ApiClient.instance.get(
         '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
@@ -346,10 +402,35 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   bool _shareSignificantWords(String name1, String name2) {
-    final stopWords = {'and', 'the', 'of', 'in', 'at', 'with', 'for', 'a', 'an', '&', 'to', 'or', 'on', 'by', 'harbor', 'harbour'};
-    final words1 = name1.split(RegExp(r'\s+')).map((w) => w.replaceAll(RegExp(r'[^\w]'), '')).where((w) => w.length > 2 && !stopWords.contains(w)).toSet();
-    final words2 = name2.split(RegExp(r'\s+')).map((w) => w.replaceAll(RegExp(r'[^\w]'), '')).where((w) => w.length > 2 && !stopWords.contains(w)).toSet();
-    
+    final stopWords = {
+      'and',
+      'the',
+      'of',
+      'in',
+      'at',
+      'with',
+      'for',
+      'a',
+      'an',
+      '&',
+      'to',
+      'or',
+      'on',
+      'by',
+      'harbor',
+      'harbour',
+    };
+    final words1 = name1
+        .split(RegExp(r'\s+'))
+        .map((w) => w.replaceAll(RegExp(r'[^\w]'), ''))
+        .where((w) => w.length > 2 && !stopWords.contains(w))
+        .toSet();
+    final words2 = name2
+        .split(RegExp(r'\s+'))
+        .map((w) => w.replaceAll(RegExp(r'[^\w]'), ''))
+        .where((w) => w.length > 2 && !stopWords.contains(w))
+        .toSet();
+
     final intersection = words1.intersection(words2);
     if (intersection.isNotEmpty) {
       if (intersection.length >= 2) return true;
@@ -361,19 +442,19 @@ class _LivingMapPageState extends State<LivingMapPage>
   void _parseMarkdownDetails(String markdown) {
     _parsedAiDetails.clear();
     _aiExperiences.clear();
-    
+
     final segments = markdown.split('###');
     if (segments.length <= 1) return;
-    
+
     final hiddenGemsIndex = markdown.toLowerCase().indexOf('hidden gem');
-    
+
     for (int i = 1; i < segments.length; i++) {
       final segment = segments[i].trim();
       if (segment.isEmpty) continue;
-      
+
       final segmentIndex = markdown.indexOf(segments[i]);
       final isGem = hiddenGemsIndex != -1 && segmentIndex > hiddenGemsIndex;
-      
+
       final lines = segment.split('\n');
       var rawName = lines[0].trim();
       if (rawName.startsWith('[') && rawName.endsWith(']')) {
@@ -382,7 +463,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         final closingBracket = rawName.indexOf(']');
         rawName = rawName.substring(1, closingBracket).trim();
       }
-      
+
       final lowerName = rawName.toLowerCase().trim();
       if (lowerName.contains("why it's worth leaving home for") ||
           lowerName.contains("why locals love it") ||
@@ -391,46 +472,64 @@ class _LivingMapPageState extends State<LivingMapPage>
           lowerName.contains("hidden gem name")) {
         continue;
       }
-      
+
       final Map<String, String> details = {};
       String currentKey = '';
       StringBuffer currentValue = StringBuffer();
-      
+
       for (int j = 1; j < lines.length; j++) {
         final line = lines[j].trim();
         if (line.isEmpty) continue;
         if (line.startsWith('---')) continue;
-        
+
         final lowerLine = line.toLowerCase();
-        if (lowerLine.startsWith("why you'll love it:") || lowerLine.startsWith("why locals love it:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+        if (lowerLine.startsWith("why you'll love it:") ||
+            lowerLine.startsWith("why locals love it:")) {
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'why';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("distance:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'distance';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("travel time:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'travelTime';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("when:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'when';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("cost:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'cost';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("best for:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'bestFor';
-          currentValue = StringBuffer()..write(line.substring(line.indexOf(':') + 1).trim());
+          currentValue = StringBuffer()
+            ..write(line.substring(line.indexOf(':') + 1).trim());
         } else if (lowerLine.startsWith("confidence score:")) {
-          if (currentKey.isNotEmpty) details[currentKey] = currentValue.toString().trim();
+          if (currentKey.isNotEmpty)
+            details[currentKey] = currentValue.toString().trim();
           currentKey = 'confidence';
           final rawVal = line.substring(line.indexOf(':') + 1).trim();
-          final cleanVal = rawVal.split(RegExp(r'\s*\-\s*')).first.replaceAll(RegExp(r'[\s\-]+$'), '').trim();
+          final cleanVal = rawVal
+              .split(RegExp(r'\s*\-\s*'))
+              .first
+              .replaceAll(RegExp(r'[\s\-]+$'), '')
+              .trim();
           currentValue = StringBuffer()..write(cleanVal);
         } else {
           if (currentKey.isNotEmpty) {
@@ -441,19 +540,21 @@ class _LivingMapPageState extends State<LivingMapPage>
       if (currentKey.isNotEmpty) {
         details[currentKey] = currentValue.toString().trim();
       }
-      
+
       _parsedAiDetails[lowerName] = details;
-      _aiExperiences.add(AiExperience(
-        name: rawName,
-        type: isGem ? 'gem' : 'event',
-        why: details['why'] ?? '',
-        distance: details['distance'] ?? '',
-        travelTime: details['travelTime'] ?? '',
-        when: details['when'] ?? '',
-        cost: details['cost'] ?? '',
-        bestFor: details['bestFor'] ?? '',
-        confidence: details['confidence'] ?? '',
-      ));
+      _aiExperiences.add(
+        AiExperience(
+          name: rawName,
+          type: isGem ? 'gem' : 'event',
+          why: details['why'] ?? '',
+          distance: details['distance'] ?? '',
+          travelTime: details['travelTime'] ?? '',
+          when: details['when'] ?? '',
+          cost: details['cost'] ?? '',
+          bestFor: details['bestFor'] ?? '',
+          confidence: details['confidence'] ?? '',
+        ),
+      );
     }
     _resolveUnresolvedCardPhotos();
   }
@@ -466,11 +567,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         _useFallbackLocation();
         return;
       }
-      
+
       // Reverse geocode to get human readable address and district
       final details = await GooglePlacesService.reverseGeocodeDetailed(
-        position.latitude, 
-        position.longitude
+        position.latitude,
+        position.longitude,
       );
       final locationName = details['location_name'] ?? 'Nearby';
       final district = details['district'] ?? 'Nearby';
@@ -485,11 +586,13 @@ class _LivingMapPageState extends State<LivingMapPage>
 
         _fetchGeminiTrending(district, position.latitude, position.longitude);
 
-        context.read<MapBloc>().add(FetchNearbyAttractions(
-          latitude: position.latitude,
-          longitude: position.longitude,
-          useLegacy: false,
-        ));
+        context.read<MapBloc>().add(
+          FetchNearbyAttractions(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            useLegacy: false,
+          ),
+        );
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
         _preFetchArPlaces(position.latitude, position.longitude);
@@ -512,11 +615,13 @@ class _LivingMapPageState extends State<LivingMapPage>
       _fetchGeminiTrending('Colombo District', 6.9271, 79.8612);
 
       // Still fetch data with fallback location
-      context.read<MapBloc>().add(FetchNearbyAttractions(
-        latitude: 6.9271,
-        longitude: 79.8612,
-        useLegacy: false,
-      ));
+      context.read<MapBloc>().add(
+        FetchNearbyAttractions(
+          latitude: 6.9271,
+          longitude: 79.8612,
+          useLegacy: false,
+        ),
+      );
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
       _preFetchArPlaces(6.9271, 79.8612);
@@ -534,17 +639,18 @@ class _LivingMapPageState extends State<LivingMapPage>
         categoryName: 'Attractions',
         useLegacy: false,
       );
-      
+
       final uniquePlaces = <String, AttractionEntity>{};
       for (final p in places) {
         if (p.distanceM != null && p.distanceM! <= 3000) {
           final normName = p.name.trim().toLowerCase();
-          if (!uniquePlaces.containsKey(normName) && !uniquePlaces.values.any((x) => x.id == p.id)) {
+          if (!uniquePlaces.containsKey(normName) &&
+              !uniquePlaces.values.any((x) => x.id == p.id)) {
             uniquePlaces[normName] = p;
           }
         }
       }
-      
+
       final usable = uniquePlaces.values.toList()
         ..sort((a, b) {
           if (b.rating != a.rating) return b.rating.compareTo(a.rating);
@@ -570,12 +676,16 @@ class _LivingMapPageState extends State<LivingMapPage>
       return;
     }
     if (_isPreFetching) {
-      debugPrint('🚀 AR: Background pre-fetching already in progress, skipping duplicate call.');
+      debugPrint(
+        '🚀 AR: Background pre-fetching already in progress, skipping duplicate call.',
+      );
       return;
     }
     _isPreFetching = true;
-    debugPrint('🚀 Starting background AR pre-fetching (ranges sequential, categories parallel)...');
-    
+    debugPrint(
+      '🚀 Starting background AR pre-fetching (ranges sequential, categories parallel)...',
+    );
+
     final ranges = [2000, 50000];
     final categories = [
       null,
@@ -590,10 +700,12 @@ class _LivingMapPageState extends State<LivingMapPage>
     Future.microtask(() async {
       try {
         debugPrint('🚀 Starting sequential background AR pre-fetching...');
-        
+
         for (final radius in ranges) {
           if (!mounted) return;
-          debugPrint('📥 Pre-fetching ALL categories for radius $radius m in parallel...');
+          debugPrint(
+            '📥 Pre-fetching ALL categories for radius $radius m in parallel...',
+          );
 
           // Fetch all categories for this range simultaneously
           final results = await Future.wait(
@@ -616,31 +728,37 @@ class _LivingMapPageState extends State<LivingMapPage>
           // Merge all category results and cache them immediately
           final allPlaces = results.expand((x) => x).toList();
           if (allPlaces.isNotEmpty) {
-            final attractionJsons = allPlaces.map((p) => {
-              'id': p.id,
-              'name': p.name,
-              'description': p.description,
-              'history': p.history,
-              'latitude': p.latitude,
-              'longitude': p.longitude,
-              'category_id': p.categoryId,
-              'category_name': p.categoryName,
-              'address': p.address,
-              'opening_hours': p.openingHours,
-              'entry_fee': p.entryFee,
-              'currency': p.currency,
-              'rating': p.rating,
-              'review_count': p.reviewCount,
-              'photo_urls': p.photoUrls,
-              'tags': p.tags,
-              'geofence_radius_m': p.geofenceRadiusM,
-              'distance_m': p.distanceM,
-              'is_active': p.isActive,
-              'created_at': p.createdAt.toIso8601String(),
-            }).toList();
-            
+            final attractionJsons = allPlaces
+                .map(
+                  (p) => {
+                    'id': p.id,
+                    'name': p.name,
+                    'description': p.description,
+                    'history': p.history,
+                    'latitude': p.latitude,
+                    'longitude': p.longitude,
+                    'category_id': p.categoryId,
+                    'category_name': p.categoryName,
+                    'address': p.address,
+                    'opening_hours': p.openingHours,
+                    'entry_fee': p.entryFee,
+                    'currency': p.currency,
+                    'rating': p.rating,
+                    'review_count': p.reviewCount,
+                    'photo_urls': p.photoUrls,
+                    'tags': p.tags,
+                    'geofence_radius_m': p.geofenceRadiusM,
+                    'distance_m': p.distanceM,
+                    'is_active': p.isActive,
+                    'created_at': p.createdAt.toIso8601String(),
+                  },
+                )
+                .toList();
+
             await CacheService.mergeAndCacheAttractions(attractionJsons);
-            debugPrint('✅ Cached ${allPlaces.length} places for radius $radius m');
+            debugPrint(
+              '✅ Cached ${allPlaces.length} places for radius $radius m',
+            );
           }
         }
         debugPrint('✅ Background AR pre-fetching complete.');
@@ -675,29 +793,47 @@ class _LivingMapPageState extends State<LivingMapPage>
                   child: SafeArea(
                     child: Container(
                       margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.warning.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+                        border: Border.all(
+                          color: AppColors.warning.withOpacity(0.3),
+                        ),
                       ),
                       child: Row(
                         children: [
-                          Icon(Icons.location_off, color: AppColors.warning, size: 20),
+                          Icon(
+                            Icons.location_off,
+                            color: AppColors.warning,
+                            size: 20,
+                          ),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               'Location is off. Enable location for nearby attractions.',
-                              style: TextStyle(color: AppColors.warning, fontSize: 13),
+                              style: TextStyle(
+                                color: AppColors.warning,
+                                fontSize: 13,
+                              ),
                             ),
                           ),
                           TextButton(
-                            onPressed: () => geo.Geolocator.openLocationSettings(),
+                            onPressed: () =>
+                                geo.Geolocator.openLocationSettings(),
                             style: TextButton.styleFrom(
                               foregroundColor: AppColors.warning,
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                              ),
                             ),
-                            child: const Text('ENABLE', style: TextStyle(fontWeight: FontWeight.w700)),
+                            child: const Text(
+                              'ENABLE',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
                           ),
                         ],
                       ),
@@ -719,7 +855,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                     flexibleSpace: ClipRRect(
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                        child: Container(color: AppColors.background.withOpacity(0.5)),
+                        child: Container(
+                          color: AppColors.background.withOpacity(0.5),
+                        ),
                       ),
                     ),
                     title: _buildExploringCard(),
@@ -734,14 +872,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                             onTap: () => Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (_) => const NotificationsPage()),
+                                builder: (_) => const NotificationsPage(),
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ],
                   ),
-      
+
                   // Greeting + AI prompt
                   SliverToBoxAdapter(
                     child: Padding(
@@ -758,10 +897,12 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     ),
                   ),
-      
+
                   // Computed lists
                   ...() {
-                    if (state.status == MapStatus.loading || state.status == MapStatus.initial || state.attractions.isEmpty) {
+                    if (state.status == MapStatus.loading ||
+                        state.status == MapStatus.initial ||
+                        state.attractions.isEmpty) {
                       return [
                         // Travel Stories (Where Was I?)
                         SliverToBoxAdapter(
@@ -775,9 +916,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(
-                          child: _buildTravelStoriesFeed(),
-                        ),
+                        SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
 
                         // Around You Shimmer
                         SliverToBoxAdapter(
@@ -790,7 +929,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(child: _buildShimmerHiddenGemCards()),
+                        SliverToBoxAdapter(
+                          child: _buildShimmerHiddenGemCards(),
+                        ),
 
                         // Curated For You Shimmer
                         SliverToBoxAdapter(
@@ -812,40 +953,74 @@ class _LivingMapPageState extends State<LivingMapPage>
                     bool isPublicSpot(AttractionEntity place) {
                       final name = place.name.toLowerCase();
                       final desc = (place.description ?? '').toLowerCase();
-                      final tags = place.tags.map((t) => t.toLowerCase()).toList();
-                      
+                      final tags = place.tags
+                          .map((t) => t.toLowerCase())
+                          .toList();
+
                       final privateKeywords = [
-                        'home', 'house', 'residence', "'s place", 'my place', 'my home', 
-                        'private', 'personal', 'apartment', 'flat', 'villa',
-                        'homestay', 'guest house', 'guesthouse', '3bhk', '2bhk', '4bhk', '1bhk', 'cottage', 'bungalow', 'stay'
+                        'home',
+                        'house',
+                        'residence',
+                        "'s place",
+                        'my place',
+                        'my home',
+                        'private',
+                        'personal',
+                        'apartment',
+                        'flat',
+                        'villa',
+                        'homestay',
+                        'guest house',
+                        'guesthouse',
+                        '3bhk',
+                        '2bhk',
+                        '4bhk',
+                        '1bhk',
+                        'cottage',
+                        'bungalow',
+                        'stay',
                       ];
-                      
+
                       // Check name/description for private indicators
                       for (final keyword in privateKeywords) {
                         if (name.contains(keyword)) {
                           // Allow public historic/museum houses
-                          if (name.contains('museum') || name.contains('historic') || name.contains('heritage') || name.contains('public')) {
+                          if (name.contains('museum') ||
+                              name.contains('historic') ||
+                              name.contains('heritage') ||
+                              name.contains('public')) {
                             continue;
                           }
                           return false;
                         }
                       }
-                      
+
                       // Filter out residential tags
-                      if (tags.any((t) => t.contains('home') || t.contains('private') || t.contains('residential') || t.contains('personal'))) {
+                      if (tags.any(
+                        (t) =>
+                            t.contains('home') ||
+                            t.contains('private') ||
+                            t.contains('residential') ||
+                            t.contains('personal'),
+                      )) {
                         return false;
                       }
-                      
+
                       return true;
                     }
 
-                    final publicAttractions = state.attractions.where(isPublicSpot).toList();
-                    final trendingPlaces = _geminiTrendingPlaces.isNotEmpty 
-                        ? _geminiTrendingPlaces 
-                        : (List<AttractionEntity>.from(publicAttractions)
-                          ..sort((a, b) => _trendingScore(b).compareTo(_trendingScore(a))));
+                    final publicAttractions = state.attractions
+                        .where(isPublicSpot)
+                        .toList();
+                    final trendingPlaces = _geminiTrendingPlaces.isNotEmpty
+                        ? _geminiTrendingPlaces
+                        : (List<AttractionEntity>.from(publicAttractions)..sort(
+                            (a, b) =>
+                                _trendingScore(b).compareTo(_trendingScore(a)),
+                          ));
 
-                    final showTrendingLoading = _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
+                    final showTrendingLoading =
+                        _loadingGeminiTrending && _geminiTrendingPlaces.isEmpty;
 
                     return [
                       // Travel Stories (Where Was I?)
@@ -860,9 +1035,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                       ),
-                      SliverToBoxAdapter(
-                        child: _buildTravelStoriesFeed(),
-                      ),
+                      SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
 
                       // Around You
                       if (publicAttractions.isNotEmpty) ...[
@@ -870,13 +1043,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Around You', 
+                              'Around You',
                               null,
                               imageIconPath: 'assets/images/near.png',
                             ),
                           ),
                         ),
-                        SliverToBoxAdapter(child: _buildHiddenGemCards(publicAttractions)),
+                        SliverToBoxAdapter(
+                          child: _buildHiddenGemCards(publicAttractions),
+                        ),
                       ],
 
                       // Curated For You
@@ -894,20 +1069,29 @@ class _LivingMapPageState extends State<LivingMapPage>
                       if (_loadingGeminiTrending && _aiExperiences.isEmpty)
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards())
                       else if (_aiExperiences.isNotEmpty)
-                        SliverToBoxAdapter(child: _buildTrendingPlacesList(state))
+                        SliverToBoxAdapter(
+                          child: _buildTrendingPlacesList(state),
+                        )
                       else
                         const SliverToBoxAdapter(
                           child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                            child: Text('No popular recommendations found nearby.', style: TextStyle(color: AppColors.textSecondary)),
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 16,
+                            ),
+                            child: Text(
+                              'No popular recommendations found nearby.',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
                           ),
                         ),
                     ];
                   }(),
-      
+
                   // Cluster suggestion
                   ...() {
-                    if (_miniTourPlaces != null && _miniTourPlaces!.length >= 3) {
+                    if (_miniTourPlaces != null &&
+                        _miniTourPlaces!.length >= 3) {
                       return <Widget>[
                         SliverToBoxAdapter(
                           child: Padding(
@@ -923,50 +1107,90 @@ class _LivingMapPageState extends State<LivingMapPage>
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.all(24),
-                            child: Container(
-                              width: double.infinity,
-                              height: 220,
-                              decoration: BoxDecoration(
-                                color: Colors.grey.shade100,
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.all(20),
-                                    child: Row(
-                                      children: [
-                                        Container(width: 34, height: 34, decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.grey.shade300)),
-                                        const SizedBox(width: 12),
-                                        Container(width: 100, height: 14, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(6))),
-                                      ],
+                            child:
+                                Container(
+                                      width: double.infinity,
+                                      height: 220,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade100,
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.all(20),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  width: 34,
+                                                  height: 34,
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    color: Colors.grey.shade300,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Container(
+                                                  width: 100,
+                                                  height: 14,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey.shade300,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          ...List.generate(
+                                            3,
+                                            (_) => Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 20,
+                                                    vertical: 6,
+                                                  ),
+                                              child: Container(
+                                                height: 12,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade200,
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    )
+                                    .animate(onPlay: (c) => c.repeat())
+                                    .shimmer(
+                                      duration: 1200.ms,
+                                      color: Colors.white54,
                                     ),
-                                  ),
-                                  ...List.generate(3, (_) => Padding(
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                                    child: Container(height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(4))),
-                                  )),
-                                ],
-                              ),
-                            ).animate(onPlay: (c) => c.repeat()).shimmer(duration: 1200.ms, color: Colors.white54),
                           ),
                         ),
                       ];
                     }
 
-                    return <Widget>[const SliverToBoxAdapter(child: SizedBox.shrink())];
+                    return <Widget>[
+                      const SliverToBoxAdapter(child: SizedBox.shrink()),
+                    ];
                   }(),
-      
+
                   const SliverToBoxAdapter(child: SizedBox(height: 120)),
                 ],
               ),
 
               // Proximity alert bottom sheet
-            if (_showProximityAlert && state.attractions.isNotEmpty) 
-              _buildProximityAlert(state.attractions.first),
-          ],
-        ),
+              if (_showProximityAlert && state.attractions.isNotEmpty)
+                _buildProximityAlert(state.attractions.first),
+            ],
+          ),
         );
       },
     );
@@ -996,9 +1220,18 @@ class _LivingMapPageState extends State<LivingMapPage>
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: AppColors.primaryGradient,
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withOpacity(0.3),
+                      blurRadius: 10,
+                    ),
+                  ],
                 ),
-                child: const Icon(Icons.near_me_rounded, color: Colors.white, size: 14),
+                child: const Icon(
+                  Icons.near_me_rounded,
+                  color: Colors.white,
+                  size: 14,
+                ),
               ),
               const SizedBox(width: 10),
               Flexible(
@@ -1009,7 +1242,12 @@ class _LivingMapPageState extends State<LivingMapPage>
                   children: [
                     const Text(
                       'EXPLORING',
-                      style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.brandGreen, letterSpacing: 2),
+                      style: TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.brandGreen,
+                        letterSpacing: 2,
+                      ),
                     ),
                     _currentLocationName == 'Locating...'
                         ? SizedBox(
@@ -1028,7 +1266,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                           )
                         : Text(
                             _currentLocationName,
-                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -1042,7 +1284,11 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildGlassCircle(IconData icon, {VoidCallback? onTap, int badge = 0}) {
+  Widget _buildGlassCircle(
+    IconData icon, {
+    VoidCallback? onTap,
+    int badge = 0,
+  }) {
     final circle = ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -1105,8 +1351,10 @@ class _LivingMapPageState extends State<LivingMapPage>
 
         final hour = DateTime.now().hour;
         String timeGreeting = 'Good Morning';
-        if (hour >= 12 && hour < 17) timeGreeting = 'Good Afternoon';
-        else if (hour >= 17 || hour < 5) timeGreeting = 'Good Evening';
+        if (hour >= 12 && hour < 17)
+          timeGreeting = 'Good Afternoon';
+        else if (hour >= 17 || hour < 5)
+          timeGreeting = 'Good Evening';
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1150,11 +1398,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           gradient: const LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF1B2838),
-              Color(0xFF0F1923),
-              Color(0xFF0A1018),
-            ],
+            colors: [Color(0xFF1B2838), Color(0xFF0F1923), Color(0xFF0A1018)],
           ),
           border: Border.all(color: Colors.white.withOpacity(0.08)),
         ),
@@ -1188,64 +1432,115 @@ class _LivingMapPageState extends State<LivingMapPage>
               // ── Subtle environment dots (simulating a night cityscape) ──
               ...List.generate(8, (i) {
                 final positions = [
-                  [0.1, 0.7], [0.25, 0.5], [0.4, 0.65], [0.55, 0.45],
-                  [0.7, 0.6], [0.85, 0.4], [0.15, 0.85], [0.6, 0.8],
+                  [0.1, 0.7],
+                  [0.25, 0.5],
+                  [0.4, 0.65],
+                  [0.55, 0.45],
+                  [0.7, 0.6],
+                  [0.85, 0.4],
+                  [0.15, 0.85],
+                  [0.6, 0.8],
                 ];
                 final colors = [
-                  const Color(0xFFFFB74D), const Color(0xFF4FC3F7),
-                  const Color(0xFFAED581), const Color(0xFFFF8A65),
-                  const Color(0xFF81D4FA), const Color(0xFFFFD54F),
-                  const Color(0xFFA5D6A7), const Color(0xFFCE93D8),
+                  const Color(0xFFFFB74D),
+                  const Color(0xFF4FC3F7),
+                  const Color(0xFFAED581),
+                  const Color(0xFFFF8A65),
+                  const Color(0xFF81D4FA),
+                  const Color(0xFFFFD54F),
+                  const Color(0xFFA5D6A7),
+                  const Color(0xFFCE93D8),
                 ];
                 return Positioned(
                   left: positions[i][0] * 350,
                   top: positions[i][1] * 200,
-                  child: Container(
-                    width: 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: colors[i].withOpacity(0.3),
-                    ),
-                  ).animate(onPlay: (c) => c.repeat(reverse: true))
-                      .fade(begin: 0.2, end: 0.6, duration: Duration(milliseconds: 1500 + i * 300)),
+                  child:
+                      Container(
+                            width: 4,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: colors[i].withOpacity(0.3),
+                            ),
+                          )
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .fade(
+                            begin: 0.2,
+                            end: 0.6,
+                            duration: Duration(milliseconds: 1500 + i * 300),
+                          ),
                 );
               }),
 
               // ── Viewfinder corner brackets ──
-              const Positioned(top: 14, left: 14, child: _ArCorner(top: true, left: true)),
-              const Positioned(top: 14, right: 14, child: _ArCorner(top: true, left: false)),
-              const Positioned(bottom: 14, left: 14, child: _ArCorner(top: false, left: true)),
-              const Positioned(bottom: 14, right: 14, child: _ArCorner(top: false, left: false)),
+              const Positioned(
+                top: 14,
+                left: 14,
+                child: _ArCorner(top: true, left: true),
+              ),
+              const Positioned(
+                top: 14,
+                right: 14,
+                child: _ArCorner(top: true, left: false),
+              ),
+              const Positioned(
+                bottom: 14,
+                left: 14,
+                child: _ArCorner(top: false, left: true),
+              ),
+              const Positioned(
+                bottom: 14,
+                right: 14,
+                child: _ArCorner(top: false, left: false),
+              ),
 
               // ── Floating place card 1 (left side) ──
               Positioned(
                 left: 20,
                 top: 30,
-                child: _buildMiniPlaceCard(
-                  name: 'Café Mocha',
-                  category: 'Food & Drink',
-                  distance: '85 m',
-                  rating: '4.6',
-                  color: AppColors.brandGreen,
-                ).animate(onPlay: (c) => c.repeat(reverse: true))
-                    .moveY(begin: -5, end: 5, duration: 2800.ms, curve: Curves.easeInOut)
-                    .fade(begin: 0.7, end: 1.0, duration: 2800.ms),
+                child:
+                    _buildMiniPlaceCard(
+                          name: 'Café Mocha',
+                          category: 'Food & Drink',
+                          distance: '85 m',
+                          rating: '4.6',
+                          color: AppColors.brandGreen,
+                        )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .moveY(
+                          begin: -5,
+                          end: 5,
+                          duration: 2800.ms,
+                          curve: Curves.easeInOut,
+                        )
+                        .fade(begin: 0.7, end: 1.0, duration: 2800.ms),
               ),
 
               // ── Floating place card 2 (right side) ──
               Positioned(
                 right: 16,
                 top: 50,
-                child: _buildMiniPlaceCard(
-                  name: 'City Museum',
-                  category: 'Attraction',
-                  distance: '320 m',
-                  rating: '4.9',
-                  color: const Color(0xFFEF5350),
-                ).animate(onPlay: (c) => c.repeat(reverse: true))
-                    .moveY(begin: 4, end: -4, duration: 3200.ms, curve: Curves.easeInOut)
-                    .moveX(begin: -2, end: 2, duration: 4000.ms, curve: Curves.easeInOut),
+                child:
+                    _buildMiniPlaceCard(
+                          name: 'City Museum',
+                          category: 'Attraction',
+                          distance: '320 m',
+                          rating: '4.9',
+                          color: const Color(0xFFEF5350),
+                        )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .moveY(
+                          begin: 4,
+                          end: -4,
+                          duration: 3200.ms,
+                          curve: Curves.easeInOut,
+                        )
+                        .moveX(
+                          begin: -2,
+                          end: 2,
+                          duration: 4000.ms,
+                          curve: Curves.easeInOut,
+                        ),
               ),
 
               // ── Floating pin marker 1 (emerald - Coffee) ──
@@ -1319,7 +1614,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                           children: [
                             Row(
                               children: [
-                                const Icon(Icons.view_in_ar_rounded, color: Color(0xFF4FC3F7), size: 16),
+                                const Icon(
+                                  Icons.view_in_ar_rounded,
+                                  color: Color(0xFF4FC3F7),
+                                  size: 16,
+                                ),
                                 const SizedBox(width: 6),
                                 const Text(
                                   'AR VIEW',
@@ -1332,14 +1631,21 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 ),
                                 const SizedBox(width: 8),
                                 Container(
-                                  width: 5,
-                                  height: 5,
-                                  decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: AppColors.brandGreen,
-                                  ),
-                                ).animate(onPlay: (c) => c.repeat(reverse: true))
-                                    .fade(begin: 0.3, end: 1.0, duration: 900.ms),
+                                      width: 5,
+                                      height: 5,
+                                      decoration: const BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: AppColors.brandGreen,
+                                      ),
+                                    )
+                                    .animate(
+                                      onPlay: (c) => c.repeat(reverse: true),
+                                    )
+                                    .fade(
+                                      begin: 0.3,
+                                      end: 1.0,
+                                      duration: 900.ms,
+                                    ),
                               ],
                             ),
                             const SizedBox(height: 4),
@@ -1356,7 +1662,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                       // CTA button
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(24),
                           color: Colors.white,
@@ -1364,7 +1673,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.camera_alt_rounded, size: 15, color: Color(0xFF0A1018)),
+                            Icon(
+                              Icons.camera_alt_rounded,
+                              size: 15,
+                              color: Color(0xFF0A1018),
+                            ),
                             SizedBox(width: 6),
                             Text(
                               'Open AR',
@@ -1402,9 +1715,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         borderRadius: BorderRadius.circular(14),
         color: Colors.white.withOpacity(0.1),
         border: Border.all(color: color.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(color: color.withOpacity(0.15), blurRadius: 12),
-        ],
+        boxShadow: [BoxShadow(color: color.withOpacity(0.15), blurRadius: 12)],
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1435,16 +1746,28 @@ class _LivingMapPageState extends State<LivingMapPage>
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.star_rounded, size: 10, color: const Color(0xFFFFD700)),
+                  Icon(
+                    Icons.star_rounded,
+                    size: 10,
+                    color: const Color(0xFFFFD700),
+                  ),
                   const SizedBox(width: 2),
                   Text(
                     rating,
-                    style: TextStyle(fontSize: 9, color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: Colors.white.withOpacity(0.7),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Text(
                     distance,
-                    style: TextStyle(fontSize: 9, color: color.withOpacity(0.8), fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: color.withOpacity(0.8),
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -1464,29 +1787,30 @@ class _LivingMapPageState extends State<LivingMapPage>
     final size = small ? 24.0 : 32.0;
     final iconSize = small ? 12.0 : 16.0;
     return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: const Color(0xFF0D1520),
-        border: Border.all(color: color, width: 2),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.5),
-            blurRadius: 8,
-            spreadRadius: 1,
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: const Color(0xFF0D1520),
+            border: Border.all(color: color, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.5),
+                blurRadius: 8,
+                spreadRadius: 1,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Center(
-        child: Icon(
-          icon,
-          color: color,
-          size: iconSize,
-        ),
-      ),
-    ).animate(onPlay: (c) => c.repeat(reverse: true))
-        .scale(begin: const Offset(0.9, 0.9), end: const Offset(1.1, 1.1), duration: 1600.ms)
+          child: Center(
+            child: Icon(icon, color: color, size: iconSize),
+          ),
+        )
+        .animate(onPlay: (c) => c.repeat(reverse: true))
+        .scale(
+          begin: const Offset(0.9, 0.9),
+          end: const Offset(1.1, 1.1),
+          duration: 1600.ms,
+        )
         .moveY(begin: -2, end: 2, duration: 2000.ms, curve: Curves.easeInOut);
   }
 
@@ -1540,7 +1864,12 @@ class _LivingMapPageState extends State<LivingMapPage>
           future: CurrencyService.getExchangeRates(baseCurrency),
           builder: (context, snapshot) {
             final rates = snapshot.data ?? {};
-            final topRates = ['USD', 'EUR', 'LKR', 'INR'].where((c) => c != baseCurrency).take(3).toList();
+            final topRates = [
+              'USD',
+              'EUR',
+              'LKR',
+              'INR',
+            ].where((c) => c != baseCurrency).take(3).toList();
 
             return GlassCard(
               padding: const EdgeInsets.all(20),
@@ -1556,25 +1885,44 @@ class _LivingMapPageState extends State<LivingMapPage>
                         children: [
                           const Text(
                             'CURRENCY INTELLIGENCE',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.actionTeal, letterSpacing: 1.5),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.actionTeal,
+                              letterSpacing: 1.5,
+                            ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             'Base: $baseCurrency',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
                         ],
                       ),
                       Container(
                         padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(color: AppColors.actionTeal.withOpacity(0.1), shape: BoxShape.circle),
-                        child: const Icon(Icons.currency_exchange_rounded, color: AppColors.actionTeal, size: 18),
+                        decoration: BoxDecoration(
+                          color: AppColors.actionTeal.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.currency_exchange_rounded,
+                          color: AppColors.actionTeal,
+                          size: 18,
+                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   if (snapshot.connectionState == ConnectionState.waiting)
-                    const LinearProgressIndicator(minHeight: 2, backgroundColor: Colors.transparent)
+                    const LinearProgressIndicator(
+                      minHeight: 2,
+                      backgroundColor: Colors.transparent,
+                    )
                   else
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1583,11 +1931,22 @@ class _LivingMapPageState extends State<LivingMapPage>
                         return Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(code, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.textTertiary)),
+                            Text(
+                              code,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textTertiary,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               rate.toStringAsFixed(2),
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         );
@@ -1614,10 +1973,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF003D3E),
-              Color(0xFF001F20),
-            ],
+            colors: [Color(0xFF003D3E), Color(0xFF001F20)],
           ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
@@ -1645,8 +2001,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                       width: 1.2,
                     ),
                   ),
-                  child: const Icon(Icons.explore_rounded,
-                      color: AppColors.brandGreen, size: 24),
+                  child: const Icon(
+                    Icons.explore_rounded,
+                    color: AppColors.brandGreen,
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 const Expanded(
@@ -1683,8 +2042,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                     shape: BoxShape.circle,
                     color: AppColors.brandGreen,
                   ),
-                  child: const Icon(Icons.arrow_forward_rounded,
-                      color: Colors.white, size: 17),
+                  child: const Icon(
+                    Icons.arrow_forward_rounded,
+                    color: Colors.white,
+                    size: 17,
+                  ),
                 ),
               ],
             ),
@@ -1730,38 +2092,40 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// A green dotted "voyage" route with stops, evoking an odyssey/journey.
   Widget _odysseyRouteLine() {
     Widget dot({double size = 7}) => Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: AppColors.brandGreen,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                  color: AppColors.brandGreen.withOpacity(0.5), blurRadius: 6),
-            ],
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.brandGreen,
+        shape: BoxShape.circle,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandGreen.withOpacity(0.5),
+            blurRadius: 6,
           ),
-        );
+        ],
+      ),
+    );
     Widget dashes() => Expanded(
-          child: LayoutBuilder(
-            builder: (ctx, c) {
-              final int n = (c.maxWidth / 9).floor().clamp(3, 40).toInt();
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: List.generate(
-                  n,
-                  (_) => Container(
-                    width: 4,
-                    height: 2,
-                    decoration: BoxDecoration(
-                      color: AppColors.brandGreen.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(1),
-                    ),
-                  ),
+      child: LayoutBuilder(
+        builder: (ctx, c) {
+          final int n = (c.maxWidth / 9).floor().clamp(3, 40).toInt();
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(
+              n,
+              (_) => Container(
+                width: 4,
+                height: 2,
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(1),
                 ),
-              );
-            },
-          ),
-        );
+              ),
+            ),
+          );
+        },
+      ),
+    );
     return Row(
       children: [
         dot(),
@@ -1782,8 +2146,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildCategoryScroller(List<CategoryEntity> categories) {
-    final List<CategoryEntity> resolvedCategories = categories.isNotEmpty 
-        ? categories 
+    final List<CategoryEntity> resolvedCategories = categories.isNotEmpty
+        ? categories
         : const [
             CategoryEntity(id: '1', name: 'Attractions', sortOrder: 1),
             CategoryEntity(id: '2', name: 'Food & Drink', sortOrder: 2),
@@ -1793,8 +2157,13 @@ class _LivingMapPageState extends State<LivingMapPage>
             CategoryEntity(id: '6', name: 'Medical', sortOrder: 6),
           ];
 
-    final displayCategories = ['All', ...resolvedCategories.map((c) => c.name).where((name) => name != 'Transport')];
-    
+    final displayCategories = [
+      'All',
+      ...resolvedCategories
+          .map((c) => c.name)
+          .where((name) => name != 'Transport'),
+    ];
+
     return SizedBox(
       height: 44,
       child: ListView.builder(
@@ -1804,26 +2173,30 @@ class _LivingMapPageState extends State<LivingMapPage>
         itemBuilder: (context, index) {
           final catName = displayCategories[index];
           final isActive = _selectedCategory == catName;
-          
+
           return GestureDetector(
             onTap: () async {
               setState(() => _selectedCategory = catName);
-              
+
               // Fetch nearby places for this category
               final position = await geo.Geolocator.getCurrentPosition();
               String? catId;
               if (catName != 'All') {
-                catId = resolvedCategories.firstWhere((c) => c.name == catName).id;
+                catId = resolvedCategories
+                    .firstWhere((c) => c.name == catName)
+                    .id;
               }
-              
+
               if (mounted) {
-                context.read<MapBloc>().add(FetchNearbyAttractions(
-                  latitude: position.latitude,
-                  longitude: position.longitude,
-                  categoryId: catId,
-                  categoryName: catName == 'All' ? null : catName,
-                  useLegacy: false,
-                ));
+                context.read<MapBloc>().add(
+                  FetchNearbyAttractions(
+                    latitude: position.latitude,
+                    longitude: position.longitude,
+                    categoryId: catId,
+                    categoryName: catName == 'All' ? null : catName,
+                    useLegacy: false,
+                  ),
+                );
               }
             },
             child: AnimatedContainer(
@@ -1832,12 +2205,19 @@ class _LivingMapPageState extends State<LivingMapPage>
               padding: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                color: isActive ? AppColors.brandGreen : AppColors.surfaceVariant,
+                color: isActive
+                    ? AppColors.brandGreen
+                    : AppColors.surfaceVariant,
                 border: Border.all(
                   color: isActive ? Colors.transparent : AppColors.border,
                 ),
                 boxShadow: isActive
-                    ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 10)]
+                    ? [
+                        BoxShadow(
+                          color: AppColors.brandGreen.withOpacity(0.3),
+                          blurRadius: 10,
+                        ),
+                      ]
                     : null,
               ),
               child: Center(
@@ -1929,12 +2309,14 @@ class _LivingMapPageState extends State<LivingMapPage>
               author = authState.user.displayName;
             }
             setState(() {
-              story.comments.add(TravelStoryComment(
-                author: author,
-                text: commentText,
-                imageIndex: imgIndex,
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-              ));
+              story.comments.add(
+                TravelStoryComment(
+                  author: author,
+                  text: commentText,
+                  imageIndex: imgIndex,
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                ),
+              );
             });
             TravelStoriesService().addComment(story.id, commentText, imgIndex);
           },
@@ -1957,14 +2339,18 @@ class _LivingMapPageState extends State<LivingMapPage>
               color: Colors.black.withOpacity(0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
-            )
+            ),
           ],
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.photo_library_outlined, size: 36, color: Colors.grey[400]),
+              Icon(
+                Icons.photo_library_outlined,
+                size: 36,
+                color: Colors.grey[400],
+              ),
               const SizedBox(height: 12),
               Text(
                 'No travel stories posted yet',
@@ -1977,10 +2363,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               const SizedBox(height: 4),
               Text(
                 'Tap "+ Share" to post your experience!',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: Colors.grey[500],
-                ),
+                style: TextStyle(fontSize: 11.5, color: Colors.grey[500]),
               ),
             ],
           ),
@@ -1988,7 +2371,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
     }
     return SizedBox(
-      height: 340,
+      height: 480,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
         scrollDirection: Axis.horizontal,
@@ -2091,7 +2474,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   Widget _buildNevaReportButton() {
     final hasReport = _geminiTrendingMarkdown != null;
-    
+
     Widget buttonContent = GestureDetector(
       onTap: hasReport ? _showAiReportBottomSheet : null,
       child: Container(
@@ -2100,20 +2483,27 @@ class _LivingMapPageState extends State<LivingMapPage>
           borderRadius: BorderRadius.circular(20),
           gradient: LinearGradient(
             colors: hasReport
-                ? [AppColors.primary.withOpacity(0.9), AppColors.actionTeal.withOpacity(0.9)]
+                ? [
+                    AppColors.primary.withOpacity(0.9),
+                    AppColors.actionTeal.withOpacity(0.9),
+                  ]
                 : [Colors.grey.shade800, Colors.grey.shade900],
           ),
           border: Border.all(
-            color: hasReport ? AppColors.actionTeal.withOpacity(0.5) : Colors.white24,
+            color: hasReport
+                ? AppColors.actionTeal.withOpacity(0.5)
+                : Colors.white24,
             width: 1,
           ),
-          boxShadow: hasReport ? [
-            BoxShadow(
-              color: AppColors.actionTeal.withOpacity(0.3),
-              blurRadius: 8,
-              spreadRadius: 1,
-            ),
-          ] : [],
+          boxShadow: hasReport
+              ? [
+                  BoxShadow(
+                    color: AppColors.actionTeal.withOpacity(0.3),
+                    blurRadius: 8,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : [],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -2150,15 +2540,22 @@ class _LivingMapPageState extends State<LivingMapPage>
               const SizedBox(width: 4),
               // Pulse/Live indicator dot
               Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: Colors.redAccent,
-                  shape: BoxShape.circle,
-                ),
-              ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-               .scale(begin: const Offset(1, 1), end: const Offset(1.5, 1.5), duration: 800.ms)
-               .fadeIn(duration: 800.ms),
+                    width: 6,
+                    height: 6,
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                  )
+                  .animate(
+                    onPlay: (controller) => controller.repeat(reverse: true),
+                  )
+                  .scale(
+                    begin: const Offset(1, 1),
+                    end: const Offset(1.5, 1.5),
+                    duration: 800.ms,
+                  )
+                  .fadeIn(duration: 800.ms),
             ],
           ],
         ),
@@ -2176,7 +2573,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             curve: Curves.easeInOutSine,
           );
     }
-    
+
     return buttonContent;
   }
 
@@ -2185,28 +2582,60 @@ class _LivingMapPageState extends State<LivingMapPage>
     final tags = place.tags.map((t) => t.toLowerCase()).toList();
     final cat = (place.categoryName ?? '').toLowerCase();
 
-    if (name.contains('park') || tags.any((t) => t.contains('park') || t.contains('nature') || t.contains('garden'))) {
+    if (name.contains('park') ||
+        tags.any(
+          (t) =>
+              t.contains('park') ||
+              t.contains('nature') ||
+              t.contains('garden'),
+        )) {
       return _LocalEvent(
         title: 'Farmers Market & Food Fest',
         time: 'Sat & Sun · 9 AM - 6 PM',
-        isOngoing: DateTime.now().weekday == DateTime.saturday || DateTime.now().weekday == DateTime.sunday,
+        isOngoing:
+            DateTime.now().weekday == DateTime.saturday ||
+            DateTime.now().weekday == DateTime.sunday,
       );
     }
-    if (name.contains('museum') || name.contains('art') || name.contains('gallery') || tags.any((t) => t.contains('museum') || t.contains('art') || t.contains('gallery') || t.contains('culture'))) {
+    if (name.contains('museum') ||
+        name.contains('art') ||
+        name.contains('gallery') ||
+        tags.any(
+          (t) =>
+              t.contains('museum') ||
+              t.contains('art') ||
+              t.contains('gallery') ||
+              t.contains('culture'),
+        )) {
       return _LocalEvent(
         title: 'Art Exhibition & History Tour',
         time: 'Daily · 10 AM - 5 PM',
         isOngoing: true,
       );
     }
-    if (name.contains('cafe') || name.contains('coffee') || name.contains('restaurant') || name.contains('pub') || name.contains('bar') || cat.contains('food')) {
+    if (name.contains('cafe') ||
+        name.contains('coffee') ||
+        name.contains('restaurant') ||
+        name.contains('pub') ||
+        name.contains('bar') ||
+        cat.contains('food')) {
       return _LocalEvent(
         title: 'Live Acoustic Session',
         time: 'Tonight · 7 PM - 10 PM',
         isOngoing: true,
       );
     }
-    if (name.contains('stadium') || name.contains('hall') || name.contains('center') || name.contains('college') || name.contains('school') || tags.any((t) => t.contains('stadium') || t.contains('college') || t.contains('education'))) {
+    if (name.contains('stadium') ||
+        name.contains('hall') ||
+        name.contains('center') ||
+        name.contains('college') ||
+        name.contains('school') ||
+        tags.any(
+          (t) =>
+              t.contains('stadium') ||
+              t.contains('college') ||
+              t.contains('education'),
+        )) {
       return _LocalEvent(
         title: 'Community Music Fest',
         time: 'Live Now · 4 PM - 9 PM',
@@ -2239,8 +2668,10 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Buzz: review count, log-scaled so 500 reviews ≫ 5 reviews but doesn't
     // 100× dominate. log10(reviews + 1) / 3 ≈ 1.0 around 1000 reviews.
-    final double buzz =
-        (log(place.reviewCount + 1) / ln10 / 3.0).clamp(0.0, 1.0);
+    final double buzz = (log(place.reviewCount + 1) / ln10 / 3.0).clamp(
+      0.0,
+      1.0,
+    );
 
     // Proximity: closer = higher. Full credit at 0 m, none beyond 5 km. When
     // distance is unknown (null/0) this is 1.0, so quality + buzz decide.
@@ -2279,7 +2710,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         itemCount: _aiExperiences.length,
         itemBuilder: (context, index) {
           final exp = _aiExperiences[index];
-          
+
           // Try to find a resolved Google Place matching the AI recommendation name
           final lowerExpName = exp.name.toLowerCase().trim();
           AttractionEntity? resolvedPlace;
@@ -2293,7 +2724,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               break;
             }
           }
-          
+
           if (resolvedPlace == null) {
             for (final p in state.attractions) {
               final lowerPName = p.name.toLowerCase().trim();
@@ -2306,7 +2737,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               }
             }
           }
-          
+
           if (resolvedPlace != null) {
             return _buildPlaceCard(resolvedPlace, index);
           } else {
@@ -2319,7 +2750,9 @@ class _LivingMapPageState extends State<LivingMapPage>
               rating: 4.5,
               reviewCount: 0,
               categoryName: exp.type == 'event' ? 'Event' : 'Gem',
-              photoUrls: customImageUrl != null && customImageUrl.isNotEmpty ? [customImageUrl] : [],
+              photoUrls: customImageUrl != null && customImageUrl.isNotEmpty
+                  ? [customImageUrl]
+                  : [],
               tags: [],
               createdAt: DateTime.now(),
             );
@@ -2329,7 +2762,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       ),
     );
   }
-
 
   Widget _buildAiExperienceList() {
     return SizedBox(
@@ -2352,11 +2784,16 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildAiExperienceCard(AiExperience exp, int index) {
     final isEvent = exp.type == 'event';
     final badgeColor = isEvent ? AppColors.actionTeal : AppColors.ratingGold;
-    final badgeBg = isEvent ? AppColors.actionTeal.withOpacity(0.1) : AppColors.ratingGold.withOpacity(0.1);
-    
+    final badgeBg = isEvent
+        ? AppColors.actionTeal.withOpacity(0.1)
+        : AppColors.ratingGold.withOpacity(0.1);
+
     String matchText = '90%';
     if (exp.confidence.isNotEmpty) {
-      final cleanConf = exp.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
+      final cleanConf = exp.confidence
+          .replaceAll('/100', '')
+          .replaceAll('%', '')
+          .trim();
       if (int.tryParse(cleanConf) != null) {
         matchText = '$cleanConf%';
       } else {
@@ -2365,95 +2802,135 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     return GestureDetector(
-      onTap: () => _showAiExperienceDetailsBottomSheet(exp),
-      child: Container(
-        width: 220,
-        margin: const EdgeInsets.only(right: 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Badge Row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: badgeBg,
-                  ),
-                  child: Text(
-                    isEvent ? 'EVENT' : 'GEM',
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w900,
-                      color: badgeColor,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: AppColors.actionTeal.withOpacity(0.08),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.bolt_rounded, size: 10, color: AppColors.actionTeal),
-                      const SizedBox(width: 2),
-                      Text(
-                        matchText,
-                        style: const TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.actionTeal,
-                        ),
-                      ),
-                    ],
-                  ),
+          onTap: () => _showAiExperienceDetailsBottomSheet(exp),
+          child: Container(
+            width: 220,
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: AppColors.border, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
-            const Spacer(),
-            // Title
-            Text(
-              exp.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14.5,
-                fontWeight: FontWeight.w800,
-                color: Colors.black87,
-                height: 1.25,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // When Info
-            if (exp.when.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Top Badge Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Icon(Icons.calendar_today_rounded, size: 11, color: AppColors.actionTeal),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: badgeBg,
+                      ),
+                      child: Text(
+                        isEvent ? 'EVENT' : 'GEM',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                          color: badgeColor,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: AppColors.actionTeal.withOpacity(0.08),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.bolt_rounded,
+                            size: 10,
+                            color: AppColors.actionTeal,
+                          ),
+                          const SizedBox(width: 2),
+                          Text(
+                            matchText,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.actionTeal,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                // Title
+                Text(
+                  exp.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black87,
+                    height: 1.25,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // When Info
+                if (exp.when.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.calendar_today_rounded,
+                          size: 11,
+                          color: AppColors.actionTeal,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            exp.when,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10.5,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                // Distance Info
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_rounded,
+                      size: 11,
+                      color: AppColors.actionTeal,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        exp.when,
+                        exp.distance.isNotEmpty
+                            ? '${exp.distance}${exp.travelTime.isNotEmpty ? ' (${exp.travelTime})' : ''}'
+                            : 'Nearby',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -2465,47 +2942,28 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                   ],
                 ),
-              ),
-            // Distance Info
-            Row(
-              children: [
-                const Icon(Icons.location_on_rounded, size: 11, color: AppColors.actionTeal),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    exp.distance.isNotEmpty 
-                        ? '${exp.distance}${exp.travelTime.isNotEmpty ? ' (${exp.travelTime})' : ''}'
-                        : 'Nearby',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 10.5,
-                      color: AppColors.textSecondary,
-                      fontWeight: FontWeight.w500,
-                    ),
+                const SizedBox(height: 10),
+                const Divider(height: 1, color: AppColors.border),
+                const SizedBox(height: 8),
+                // Description / Why you'll love it
+                Text(
+                  exp.why,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    color: AppColors.textSecondary.withOpacity(0.85),
+                    height: 1.3,
+                    fontStyle: FontStyle.italic,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            const Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 8),
-            // Description / Why you'll love it
-            Text(
-              exp.why,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10.5,
-                color: AppColors.textSecondary.withOpacity(0.85),
-                height: 1.3,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.1, end: 0);
+          ),
+        )
+        .animate()
+        .fade(delay: Duration(milliseconds: 80 * index))
+        .slideX(begin: 0.1, end: 0);
   }
 
   void _showAiExperienceDetailsBottomSheet(AiExperience exp) {
@@ -2536,10 +2994,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: AppColors.border, width: 1.5),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 24,
-              ),
+              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24),
             ],
           ),
           child: ClipRRect(
@@ -2560,10 +3015,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                               placeholder: (_, __) => Container(
                                 color: AppColors.surfaceVariant,
                                 child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.actionTeal),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppColors.actionTeal,
+                                  ),
                                 ),
                               ),
-                              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                              errorWidget: (_, __, ___) =>
+                                  Container(color: AppColors.surfaceVariant),
                             )
                           : Container(
                               decoration: const BoxDecoration(
@@ -2625,7 +3084,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                         radius: 18,
                         child: IconButton(
                           padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.close, color: Colors.black87, size: 18),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.black87,
+                            size: 18,
+                          ),
                           onPressed: () => Navigator.pop(context),
                         ),
                       ),
@@ -2642,12 +3105,23 @@ class _LivingMapPageState extends State<LivingMapPage>
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                color: (exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold).withOpacity(0.15),
+                                color:
+                                    (exp.type == 'event'
+                                            ? AppColors.actionTeal
+                                            : AppColors.ratingGold)
+                                        .withOpacity(0.15),
                                 border: Border.all(
-                                  color: (exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold).withOpacity(0.3),
+                                  color:
+                                      (exp.type == 'event'
+                                              ? AppColors.actionTeal
+                                              : AppColors.ratingGold)
+                                          .withOpacity(0.3),
                                 ),
                               ),
                               child: Text(
@@ -2655,18 +3129,27 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
-                                  color: exp.type == 'event' ? AppColors.actionTeal : AppColors.ratingGold,
+                                  color: exp.type == 'event'
+                                      ? AppColors.actionTeal
+                                      : AppColors.ratingGold,
                                 ),
                               ),
                             ),
                             if (exp.confidence.isNotEmpty) ...[
                               const SizedBox(width: 10),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(8),
                                   color: AppColors.actionTeal.withOpacity(0.15),
-                                  border: Border.all(color: AppColors.actionTeal.withOpacity(0.3)),
+                                  border: Border.all(
+                                    color: AppColors.actionTeal.withOpacity(
+                                      0.3,
+                                    ),
+                                  ),
                                 ),
                                 child: Text(
                                   'Match Score: ${exp.confidence}',
@@ -2693,7 +3176,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              const Icon(Icons.star_rounded, size: 16, color: AppColors.ratingGold),
+                              const Icon(
+                                Icons.star_rounded,
+                                size: 16,
+                                color: AppColors.ratingGold,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 '${matchedPlace.rating} (${matchedPlace.reviewCount})',
@@ -2707,23 +3194,45 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ],
                         const SizedBox(height: 20),
-                        
+
                         // Metadata Grid
-                        _buildDetailMetadataRow(Icons.calendar_today_rounded, 'When', exp.when),
-                        _buildDetailMetadataRow(Icons.location_on_rounded, 'Distance', exp.distance.isNotEmpty ? exp.distance : 'Nearby'),
+                        _buildDetailMetadataRow(
+                          Icons.calendar_today_rounded,
+                          'When',
+                          exp.when,
+                        ),
+                        _buildDetailMetadataRow(
+                          Icons.location_on_rounded,
+                          'Distance',
+                          exp.distance.isNotEmpty ? exp.distance : 'Nearby',
+                        ),
                         if (exp.travelTime.isNotEmpty)
-                          _buildDetailMetadataRow(Icons.directions_run_rounded, 'Travel Time', exp.travelTime),
-                        _buildDetailMetadataRow(Icons.attach_money_rounded, 'Cost', exp.cost.isNotEmpty ? exp.cost : 'N/A'),
+                          _buildDetailMetadataRow(
+                            Icons.directions_run_rounded,
+                            'Travel Time',
+                            exp.travelTime,
+                          ),
+                        _buildDetailMetadataRow(
+                          Icons.attach_money_rounded,
+                          'Cost',
+                          exp.cost.isNotEmpty ? exp.cost : 'N/A',
+                        ),
                         if (exp.bestFor.isNotEmpty)
-                          _buildDetailMetadataRow(Icons.people_rounded, 'Best For', exp.bestFor),
-                        
+                          _buildDetailMetadataRow(
+                            Icons.people_rounded,
+                            'Best For',
+                            exp.bestFor,
+                          ),
+
                         const SizedBox(height: 20),
                         const Divider(height: 1, color: AppColors.border),
                         const SizedBox(height: 16),
-                        
+
                         // Why you'll love it
                         Text(
-                          exp.type == 'event' ? "Why You'll Love It" : "Why Locals Love It",
+                          exp.type == 'event'
+                              ? "Why You'll Love It"
+                              : "Why Locals Love It",
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
@@ -2739,9 +3248,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                             height: 1.4,
                           ),
                         ),
-                        
+
                         const SizedBox(height: 30),
-                        
+
                         // Locate on Map Action Button
                         _buildLocateOnMapButton(exp, matchedPlace),
                         const SizedBox(height: 40),
@@ -2771,7 +3280,10 @@ class _LivingMapPageState extends State<LivingMapPage>
               text: TextSpan(
                 style: const TextStyle(fontSize: 13, color: Colors.black87),
                 children: [
-                  TextSpan(text: '$label: ', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  TextSpan(
+                    text: '$label: ',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   TextSpan(text: value),
                 ],
               ),
@@ -2782,7 +3294,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildLocateOnMapButton(AiExperience exp, AttractionEntity? matchedPlace) {
+  Widget _buildLocateOnMapButton(
+    AiExperience exp,
+    AttractionEntity? matchedPlace,
+  ) {
     bool locating = false;
     return StatefulBuilder(
       builder: (context, setSheetState) {
@@ -2856,7 +3371,10 @@ class _LivingMapPageState extends State<LivingMapPage>
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : const Icon(Icons.map_rounded),
           label: Text(locating ? 'Searching Map...' : 'Locate on Map'),
@@ -2867,7 +3385,10 @@ class _LivingMapPageState extends State<LivingMapPage>
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
             ),
-            textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+            ),
           ),
         );
       },
@@ -2935,7 +3456,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                         const Text('🤖', style: TextStyle(fontSize: 24)),
                         const Spacer(),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(8),
                             color: AppColors.actionTeal.withOpacity(0.2),
@@ -3015,10 +3539,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
             border: Border.all(color: AppColors.border, width: 1.5),
             boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 24,
-              ),
+              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 24),
             ],
           ),
           child: ClipRRect(
@@ -3067,11 +3588,33 @@ class _LivingMapPageState extends State<LivingMapPage>
                     child: Markdown(
                       data: _geminiTrendingMarkdown ?? '',
                       styleSheet: MarkdownStyleSheet(
-                        p: TextStyle(color: Colors.black87.withOpacity(0.85), fontSize: 14, height: 1.4),
-                        h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.w800, height: 1.5),
-                        h2: const TextStyle(color: AppColors.actionTeal, fontSize: 18, fontWeight: FontWeight.w800, height: 1.5),
-                        h3: const TextStyle(color: AppColors.ratingGold, fontSize: 15, fontWeight: FontWeight.w700, height: 1.4),
-                        listBullet: const TextStyle(color: AppColors.actionTeal, fontSize: 14),
+                        p: TextStyle(
+                          color: Colors.black87.withOpacity(0.85),
+                          fontSize: 14,
+                          height: 1.4,
+                        ),
+                        h1: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          height: 1.5,
+                        ),
+                        h2: const TextStyle(
+                          color: AppColors.actionTeal,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          height: 1.5,
+                        ),
+                        h3: const TextStyle(
+                          color: AppColors.ratingGold,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          height: 1.4,
+                        ),
+                        listBullet: const TextStyle(
+                          color: AppColors.actionTeal,
+                          fontSize: 14,
+                        ),
                         horizontalRuleDecoration: BoxDecoration(
                           border: Border(
                             top: BorderSide(
@@ -3250,14 +3793,27 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   double _getAccurateDistanceM(AttractionEntity place) {
-    if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
-      return geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, place.latitude, place.longitude);
+    if (_userLatitude != null &&
+        _userLongitude != null &&
+        place.latitude != 0 &&
+        place.longitude != 0) {
+      return geo.Geolocator.distanceBetween(
+        _userLatitude!,
+        _userLongitude!,
+        place.latitude,
+        place.longitude,
+      );
     }
     return place.distanceM?.toDouble() ?? 0.0;
   }
 
-  String _getAccurateDistanceString(AttractionEntity place, [AiExperience? matchedExp]) {
-    if (matchedExp != null && (place.distanceM == null || place.distanceM == 0) && place.latitude == 0) {
+  String _getAccurateDistanceString(
+    AttractionEntity place, [
+    AiExperience? matchedExp,
+  ]) {
+    if (matchedExp != null &&
+        (place.distanceM == null || place.distanceM == 0) &&
+        place.latitude == 0) {
       return matchedExp.distance.isNotEmpty ? matchedExp.distance : 'Nearby';
     }
     final distM = _getAccurateDistanceM(place);
@@ -3273,281 +3829,333 @@ class _LivingMapPageState extends State<LivingMapPage>
         break;
       }
     }
-    final isEvent = matchedExp != null ? matchedExp.type == 'event' : (_getEventForPlace(place) != null);
+    final isEvent = matchedExp != null
+        ? matchedExp.type == 'event'
+        : (_getEventForPlace(place) != null);
     final isGem = matchedExp != null ? matchedExp.type == 'gem' : false;
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AttractionDetailPage(
-              id: place.id,
-              name: place.name,
-              category: place.categoryName ?? (isEvent ? 'Event' : 'Gem'),
-              rating: place.rating,
-              distance: _getAccurateDistanceString(place, matchedExp),
-              emoji: isEvent ? '📅' : '✨',
-              imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-              latitude: place.latitude,
-              longitude: place.longitude,
-              reviewCount: place.reviewCount,
-              aiWhy: matchedExp?.why,
-              aiWhen: matchedExp?.when,
-              aiCost: matchedExp?.cost,
-              aiBestFor: matchedExp?.bestFor,
-              aiConfidence: matchedExp?.confidence,
-            ),
-          ),
-        );
-      },
-      child: Container(
-        width: 200,
-        margin: const EdgeInsets.only(right: 16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.2),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: (() {
-                  final hasImage = place.photoUrls.isNotEmpty;
-                  final imageUrl = hasImage ? place.photoUrls.first : null;
-                  final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
-                      ? '${ApiConstants.baseUrl}$imageUrl'
-                      : imageUrl;
-
-                  Widget buildFallbackBackground() {
-                    return Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(24),
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [
-                            AppColors.primary.withOpacity(0.3),
-                            AppColors.surfaceVariant,
-                          ],
-                        ),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Center(
-                        child: Opacity(
-                          opacity: 0.15,
-                          child: Icon(
-                            _getCategoryIcon(place.categoryName ?? 'Attraction', place.name),
-                            size: 100,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-
-                  return resolvedUrl != null && resolvedUrl.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: resolvedUrl,
-                          fit: BoxFit.cover,
-                          placeholder: (_, __) => Container(
-                            color: AppColors.surfaceVariant,
-                            child: const Center(
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
-                            ),
-                          ),
-                          errorWidget: (_, __, ___) => buildFallbackBackground(),
-                        )
-                      : buildFallbackBackground();
-                })(),
-              ),
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                      colors: [
-                        Colors.black.withOpacity(0.9),
-                        Colors.black.withOpacity(0.2),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AttractionDetailPage(
+                  id: place.id,
+                  name: place.name,
+                  category: place.categoryName ?? (isEvent ? 'Event' : 'Gem'),
+                  rating: place.rating,
+                  distance: _getAccurateDistanceString(place, matchedExp),
+                  emoji: isEvent ? '📅' : '✨',
+                  imageUrl: place.photoUrls.isNotEmpty
+                      ? place.photoUrls.first
+                      : null,
+                  latitude: place.latitude,
+                  longitude: place.longitude,
+                  reviewCount: place.reviewCount,
+                  aiWhy: matchedExp?.why,
+                  aiWhen: matchedExp?.when,
+                  aiCost: matchedExp?.cost,
+                  aiBestFor: matchedExp?.bestFor,
+                  aiConfidence: matchedExp?.confidence,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Text('📍', style: TextStyle(fontSize: 28)),
-                        const Spacer(),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            );
+          },
+          child: Container(
+            width: 200,
+            margin: const EdgeInsets.only(right: 16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: (() {
+                      final hasImage = place.photoUrls.isNotEmpty;
+                      final imageUrl = hasImage ? place.photoUrls.first : null;
+                      final resolvedUrl =
+                          imageUrl != null && imageUrl.startsWith('/')
+                          ? '${ApiConstants.baseUrl}$imageUrl'
+                          : imageUrl;
+
+                      Widget buildFallbackBackground() {
+                        return Container(
                           decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: isEvent 
-                                ? AppColors.actionTeal.withOpacity(0.85)
-                                : isGem 
-                                    ? AppColors.ratingGold.withOpacity(0.85)
-                                    : Colors.white.withOpacity(0.2),
-                          ),
-                          child: Text(
-                            isEvent 
-                                ? 'EVENT' 
-                                : isGem 
-                                    ? 'GEM' 
-                                    : (place.categoryName ?? 'LANDMARK').toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppColors.primary.withOpacity(0.3),
+                                AppColors.surfaceVariant,
+                              ],
                             ),
+                            border: Border.all(color: AppColors.border),
                           ),
-                        ),
-                        if (matchedExp != null && matchedExp.confidence.isNotEmpty) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              color: Colors.white.withOpacity(0.25),
-                            ),
-                            child: Text(
-                              (() {
-                                final cleanConf = matchedExp!.confidence.replaceAll('/100', '').replaceAll('%', '').trim();
-                                if (int.tryParse(cleanConf) != null) {
-                                  return '$cleanConf%';
-                                }
-                                return matchedExp!.confidence;
-                              })(),
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
+                          child: Center(
+                            child: Opacity(
+                              opacity: 0.15,
+                              child: Icon(
+                                _getCategoryIcon(
+                                  place.categoryName ?? 'Attraction',
+                                  place.name,
+                                ),
+                                size: 100,
                                 color: Colors.white,
                               ),
                             ),
                           ),
-                        ],
+                        );
+                      }
 
-                      ],
-                    ),
-                    const Spacer(),
-                    (() {
-                      final eventInfo = _getEventOrTrendingInfo(place);
-                      final displayTitle = matchedExp != null ? matchedExp.when : eventInfo.title;
-                      final isEventCard = matchedExp != null ? matchedExp.type == 'event' : (_getEventForPlace(place) != null);
-                      
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: isEventCard ? Colors.red.withOpacity(0.4) : AppColors.brandGreen.withOpacity(0.25),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: isEventCard ? Colors.red.withOpacity(0.6) : AppColors.brandGreen.withOpacity(0.4),
-                            width: 1,
-                          ),
+                      return resolvedUrl != null && resolvedUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: resolvedUrl,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: AppColors.surfaceVariant,
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white24,
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (_, __, ___) =>
+                                  buildFallbackBackground(),
+                            )
+                          : buildFallbackBackground();
+                    })(),
+                  ),
+                  Positioned.fill(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withOpacity(0.9),
+                            Colors.black.withOpacity(0.2),
+                            Colors.transparent,
+                          ],
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(18),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Icon(
-                              isEventCard ? Icons.calendar_today_rounded : Icons.auto_awesome_rounded,
-                              size: 11,
-                              color: Colors.white,
+                            const Text('📍', style: TextStyle(fontSize: 28)),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isEvent
+                                    ? AppColors.actionTeal.withOpacity(0.85)
+                                    : isGem
+                                    ? AppColors.ratingGold.withOpacity(0.85)
+                                    : Colors.white.withOpacity(0.2),
+                              ),
+                              child: Text(
+                                isEvent
+                                    ? 'EVENT'
+                                    : isGem
+                                    ? 'GEM'
+                                    : (place.categoryName ?? 'LANDMARK')
+                                          .toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                            if (matchedExp != null &&
+                                matchedExp.confidence.isNotEmpty) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  color: Colors.white.withOpacity(0.25),
+                                ),
+                                child: Text(
+                                  (() {
+                                    final cleanConf = matchedExp!.confidence
+                                        .replaceAll('/100', '')
+                                        .replaceAll('%', '')
+                                        .trim();
+                                    if (int.tryParse(cleanConf) != null) {
+                                      return '$cleanConf%';
+                                    }
+                                    return matchedExp!.confidence;
+                                  })(),
+                                  style: const TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                        const Spacer(),
+                        (() {
+                          final eventInfo = _getEventOrTrendingInfo(place);
+                          final displayTitle = matchedExp != null
+                              ? matchedExp.when
+                              : eventInfo.title;
+                          final isEventCard = matchedExp != null
+                              ? matchedExp.type == 'event'
+                              : (_getEventForPlace(place) != null);
+
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isEventCard
+                                  ? Colors.red.withOpacity(0.4)
+                                  : AppColors.brandGreen.withOpacity(0.25),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isEventCard
+                                    ? Colors.red.withOpacity(0.6)
+                                    : AppColors.brandGreen.withOpacity(0.4),
+                                width: 1,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  isEventCard
+                                      ? Icons.calendar_today_rounded
+                                      : Icons.auto_awesome_rounded,
+                                  size: 11,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    displayTitle,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        })(),
+                        Text(
+                          place.name,
+                          style: const TextStyle(
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            height: 1.2,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 14,
+                              color: AppColors.ratingGold,
                             ),
                             const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                displayTitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 9.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
-                                ),
+                            Text(
+                              '${place.rating} (${place.reviewCount})',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Icon(
+                              Icons.location_on_rounded,
+                              size: 12,
+                              color: Colors.white.withOpacity(0.7),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              _getAccurateDistanceString(place, matchedExp),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.white.withOpacity(0.7),
                               ),
                             ),
                           ],
                         ),
-                      );
-                    })(),
-                    Text(
-                      place.name,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        height: 1.2,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${place.rating} (${place.reviewCount})',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
-                        const SizedBox(width: 3),
-                        Text(
-                          _getAccurateDistanceString(place, matchedExp),
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.white.withOpacity(0.7),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            gradient: AppColors.primaryGradient,
+                          ),
+                          child: const Text(
+                            'Explore →',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: AppColors.primaryGradient,
-                      ),
-                      child: const Text(
-                        'Explore →',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideX(begin: 0.1, end: 0);
+        )
+        .animate()
+        .fade(delay: Duration(milliseconds: 100 * index))
+        .slideX(begin: 0.1, end: 0);
   }
 
-  void _showAiPlaceDetailsBottomSheet(AttractionEntity place, Map<String, String> aiDetails) {
+  void _showAiPlaceDetailsBottomSheet(
+    AttractionEntity place,
+    Map<String, String> aiDetails,
+  ) {
     final distText = _getAccurateDistanceString(place);
     final hasImage = place.photoUrls.isNotEmpty;
     final imageUrl = hasImage ? place.photoUrls.first : null;
@@ -3565,7 +4173,10 @@ class _LivingMapPageState extends State<LivingMapPage>
           decoration: BoxDecoration(
             color: const Color(0xFF0A1018), // Dark theme matching app
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1.5),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.12),
+              width: 1.5,
+            ),
           ),
           child: ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
@@ -3585,24 +4196,34 @@ class _LivingMapPageState extends State<LivingMapPage>
                               placeholder: (_, __) => Container(
                                 color: AppColors.surfaceVariant,
                                 child: const Center(
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white24),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white24,
+                                  ),
                                 ),
                               ),
-                              errorWidget: (_, __, ___) => Container(color: AppColors.surfaceVariant),
+                              errorWidget: (_, __, ___) =>
+                                  Container(color: AppColors.surfaceVariant),
                             )
                           : Container(
                               decoration: const BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [Color(0xFF0F1E36), Color(0xFF050B14)],
+                                  colors: [
+                                    Color(0xFF0F1E36),
+                                    Color(0xFF050B14),
+                                  ],
                                 ),
                               ),
                               child: Center(
                                 child: Opacity(
                                   opacity: 0.15,
                                   child: Icon(
-                                    _getCategoryIcon(place.categoryName ?? 'Attraction', place.name),
+                                    _getCategoryIcon(
+                                      place.categoryName ?? 'Attraction',
+                                      place.name,
+                                    ),
                                     size: 80,
                                     color: Colors.white,
                                   ),
@@ -3647,7 +4268,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                         radius: 18,
                         child: IconButton(
                           padding: EdgeInsets.zero,
-                          icon: const Icon(Icons.close, color: Colors.white, size: 18),
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 18,
+                          ),
                           onPressed: () => Navigator.pop(context),
                         ),
                       ),
@@ -3663,14 +4288,20 @@ class _LivingMapPageState extends State<LivingMapPage>
                         Row(
                           children: [
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
                                 color: AppColors.actionTeal.withOpacity(0.15),
-                                border: Border.all(color: AppColors.actionTeal.withOpacity(0.3)),
+                                border: Border.all(
+                                  color: AppColors.actionTeal.withOpacity(0.3),
+                                ),
                               ),
                               child: Text(
-                                place.categoryName?.toUpperCase() ?? 'ATTRACTION',
+                                place.categoryName?.toUpperCase() ??
+                                    'ATTRACTION',
                                 style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
@@ -3681,11 +4312,18 @@ class _LivingMapPageState extends State<LivingMapPage>
                             if (aiDetails['confidence'] != null) ...[
                               const SizedBox(width: 10),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(8),
                                   color: AppColors.ratingGold.withOpacity(0.15),
-                                  border: Border.all(color: AppColors.ratingGold.withOpacity(0.3)),
+                                  border: Border.all(
+                                    color: AppColors.ratingGold.withOpacity(
+                                      0.3,
+                                    ),
+                                  ),
                                 ),
                                 child: Text(
                                   'Confidence: ${aiDetails['confidence']}',
@@ -3711,7 +4349,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                         const SizedBox(height: 8),
                         Row(
                           children: [
-                            const Icon(Icons.star_rounded, size: 16, color: AppColors.ratingGold),
+                            const Icon(
+                              Icons.star_rounded,
+                              size: 16,
+                              color: AppColors.ratingGold,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               '${place.rating} (${place.reviewCount})',
@@ -3722,7 +4364,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                               ),
                             ),
                             const SizedBox(width: 16),
-                            const Icon(Icons.location_on_rounded, size: 14, color: AppColors.textSecondary),
+                            const Icon(
+                              Icons.location_on_rounded,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               distText,
@@ -3745,7 +4391,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          aiDetails['why'] ?? 'A highly rated local recommendation.',
+                          aiDetails['why'] ??
+                              'A highly rated local recommendation.',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.white.withOpacity(0.9),
@@ -3761,15 +4408,27 @@ class _LivingMapPageState extends State<LivingMapPage>
                           children: [
                             if (aiDetails['when'] != null)
                               Expanded(
-                                child: _buildInfoGridCell('When', aiDetails['when']!, Icons.access_time_filled_rounded),
+                                child: _buildInfoGridCell(
+                                  'When',
+                                  aiDetails['when']!,
+                                  Icons.access_time_filled_rounded,
+                                ),
                               ),
                             if (aiDetails['cost'] != null)
                               Expanded(
-                                child: _buildInfoGridCell('Cost', aiDetails['cost']!, Icons.attach_money_rounded),
+                                child: _buildInfoGridCell(
+                                  'Cost',
+                                  aiDetails['cost']!,
+                                  Icons.attach_money_rounded,
+                                ),
                               ),
                             if (aiDetails['bestFor'] != null)
                               Expanded(
-                                child: _buildInfoGridCell('Best For', aiDetails['bestFor']!, Icons.people_alt_rounded),
+                                child: _buildInfoGridCell(
+                                  'Best For',
+                                  aiDetails['bestFor']!,
+                                  Icons.people_alt_rounded,
+                                ),
                               ),
                           ],
                         ),
@@ -3787,11 +4446,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                                   builder: (_) => AttractionDetailPage(
                                     id: place.id,
                                     name: place.name,
-                                    category: place.categoryName ?? 'Attraction',
+                                    category:
+                                        place.categoryName ?? 'Attraction',
                                     rating: place.rating,
                                     distance: distText,
                                     emoji: '📍',
-                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                    imageUrl: place.photoUrls.isNotEmpty
+                                        ? place.photoUrls.first
+                                        : null,
                                     latitude: place.latitude,
                                     longitude: place.longitude,
                                     reviewCount: place.reviewCount,
@@ -3877,11 +4539,16 @@ class _LivingMapPageState extends State<LivingMapPage>
   String _getCategoryImagePath(String category) {
     final cat = category.toLowerCase();
     if (cat.contains('nature')) return 'assets/images/cat_nature.png';
-    if (cat.contains('hotel') || cat.contains('stay')) return 'assets/images/cat_hotels.png';
+    if (cat.contains('hotel') || cat.contains('stay'))
+      return 'assets/images/cat_hotels.png';
     if (cat.contains('shop')) return 'assets/images/cat_shopping.png';
     if (cat.contains('food')) return 'assets/images/cat_food.png';
-    if (cat.contains('medical') || cat.contains('hospital')) return 'assets/images/cat_medical.png';
-    if (cat.contains('historic') || cat.contains('history') || cat.contains('museum')) return 'assets/images/cat_historical.png';
+    if (cat.contains('medical') || cat.contains('hospital'))
+      return 'assets/images/cat_medical.png';
+    if (cat.contains('historic') ||
+        cat.contains('history') ||
+        cat.contains('museum'))
+      return 'assets/images/cat_historical.png';
     return 'assets/images/cat_nature.png'; // default
   }
 
@@ -3915,15 +4582,20 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
-  String _getDirectionString(double? userLat, double? userLng, double placeLat, double placeLng) {
+  String _getDirectionString(
+    double? userLat,
+    double? userLng,
+    double placeLat,
+    double placeLng,
+  ) {
     if (userLat == null || userLng == null) return '';
     final latDiff = placeLat - userLat;
     final lngDiff = placeLng - userLng;
-    
+
     // Simple 8-point compass calculation
     final angle = atan2(lngDiff, latDiff) * 180 / pi;
     final normalizedAngle = (angle + 360) % 360;
-    
+
     if (normalizedAngle >= 337.5 || normalizedAngle < 22.5) return 'N';
     if (normalizedAngle >= 22.5 && normalizedAngle < 67.5) return 'NE';
     if (normalizedAngle >= 67.5 && normalizedAngle < 112.5) return 'E';
@@ -3934,7 +4606,11 @@ class _LivingMapPageState extends State<LivingMapPage>
     return 'NW';
   }
 
-  Widget _buildCategoryCard(String categoryName, List<AttractionEntity> places, int index) {
+  Widget _buildCategoryCard(
+    String categoryName,
+    List<AttractionEntity> places,
+    int index,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24, top: 12),
       child: Stack(
@@ -3944,7 +4620,9 @@ class _LivingMapPageState extends State<LivingMapPage>
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.25), // Dark frosted glass style
+                color: Colors.black.withOpacity(
+                  0.25,
+                ), // Dark frosted glass style
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
                   color: _getCategoryBorderColor(categoryName),
@@ -3999,7 +4677,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
@@ -4019,14 +4700,23 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     ),
                     Padding(
-                      padding: const EdgeInsets.only(right: 90), // Shift left to clear the larger top-right 3D icon
+                      padding: const EdgeInsets.only(
+                        right: 90,
+                      ), // Shift left to clear the larger top-right 3D icon
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
-                          color: _getCategoryBorderColor(categoryName).withOpacity(0.12),
+                          color: _getCategoryBorderColor(
+                            categoryName,
+                          ).withOpacity(0.12),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: _getCategoryBorderColor(categoryName).withOpacity(0.35),
+                            color: _getCategoryBorderColor(
+                              categoryName,
+                            ).withOpacity(0.35),
                             width: 0.6,
                           ),
                         ),
@@ -4036,15 +4726,20 @@ class _LivingMapPageState extends State<LivingMapPage>
                             Icon(
                               Icons.radar_rounded,
                               size: 11,
-                              color: _getCategoryBorderColor(categoryName).withOpacity(0.95),
+                              color: _getCategoryBorderColor(
+                                categoryName,
+                              ).withOpacity(0.95),
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              categoryName == 'Attractions' || categoryName == 'Medical'
+                              categoryName == 'Attractions' ||
+                                      categoryName == 'Medical'
                                   ? '0-50 km'
                                   : '0-15 km',
                               style: TextStyle(
-                                color: _getCategoryBorderColor(categoryName).withOpacity(0.95),
+                                color: _getCategoryBorderColor(
+                                  categoryName,
+                                ).withOpacity(0.95),
                                 fontSize: 9.5,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -4076,7 +4771,12 @@ class _LivingMapPageState extends State<LivingMapPage>
                       return finalPlaces.asMap().entries.map((entry) {
                         final place = entry.value;
                         final distText = _getAccurateDistanceString(place);
-                        final dirText = _getDirectionString(_userLatitude, _userLongitude, place.latitude, place.longitude);
+                        final dirText = _getDirectionString(
+                          _userLatitude,
+                          _userLongitude,
+                          place.latitude,
+                          place.longitude,
+                        );
 
                         return GestureDetector(
                           onTap: () => Navigator.push(
@@ -4089,7 +4789,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 rating: place.rating,
                                 distance: distText,
                                 emoji: '📍',
-                                imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                imageUrl: place.photoUrls.isNotEmpty
+                                    ? place.photoUrls.first
+                                    : null,
                                 latitude: place.latitude,
                                 longitude: place.longitude,
                                 reviewCount: place.reviewCount,
@@ -4106,7 +4808,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                                   child: Icon(
                                     Icons.location_on_rounded,
                                     size: 14,
-                                    color: AppColors.brandGreen.withOpacity(0.8),
+                                    color: AppColors.brandGreen.withOpacity(
+                                      0.8,
+                                    ),
                                   ),
                                 ),
                                 const SizedBox(width: 8),
@@ -4124,7 +4828,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 ),
                                 const SizedBox(width: 12),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 3,
+                                  ),
                                   decoration: BoxDecoration(
                                     color: Colors.white.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(8),
@@ -4145,12 +4852,19 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 if (dirText.isNotEmpty) ...[
                                   const SizedBox(width: 6),
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 3,
+                                    ),
                                     decoration: BoxDecoration(
-                                      color: _getCategoryBorderColor(categoryName).withOpacity(0.15),
+                                      color: _getCategoryBorderColor(
+                                        categoryName,
+                                      ).withOpacity(0.15),
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
-                                        color: _getCategoryBorderColor(categoryName).withOpacity(0.3),
+                                        color: _getCategoryBorderColor(
+                                          categoryName,
+                                        ).withOpacity(0.3),
                                         width: 0.5,
                                       ),
                                     ),
@@ -4192,10 +4906,77 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Expanded place types for better discovery
     final allowedTypes = {
-      'Medical': {'hospital', 'pharmacy', 'doctor', 'dentist', 'health', 'physiotherapist', 'veterinary_care', 'clinic', 'medical_lab', 'optician'},
-      'Food': {'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery', 'food', 'bar', 'night_club', 'ice_cream_shop', 'coffee_shop', 'juice_bar'},
-      'Shopping': {'shopping_mall', 'supermarket', 'store', 'department_store', 'convenience_store', 'clothing_store', 'electronics_store', 'book_store', 'jewelry_store', 'shoe_store', 'furniture_store', 'pet_store', 'hardware_store', 'gift_shop', 'market'},
-      'Attractions': {'tourist_attraction', 'museum', 'park', 'zoo', 'aquarium', 'art_gallery', 'amusement_park', 'church', 'hindu_temple', 'mosque', 'synagogue', 'stadium', 'casino', 'movie_theater', 'bowling_alley', 'campground', 'national_park', 'historical_landmark', 'performing_arts_theater', 'cultural_center', 'monument', 'waterfall', 'beach', 'viewpoint', 'garden', 'fort', 'palace'},
+      'Medical': {
+        'hospital',
+        'pharmacy',
+        'doctor',
+        'dentist',
+        'health',
+        'physiotherapist',
+        'veterinary_care',
+        'clinic',
+        'medical_lab',
+        'optician',
+      },
+      'Food': {
+        'restaurant',
+        'cafe',
+        'bakery',
+        'meal_takeaway',
+        'meal_delivery',
+        'food',
+        'bar',
+        'night_club',
+        'ice_cream_shop',
+        'coffee_shop',
+        'juice_bar',
+      },
+      'Shopping': {
+        'shopping_mall',
+        'supermarket',
+        'store',
+        'department_store',
+        'convenience_store',
+        'clothing_store',
+        'electronics_store',
+        'book_store',
+        'jewelry_store',
+        'shoe_store',
+        'furniture_store',
+        'pet_store',
+        'hardware_store',
+        'gift_shop',
+        'market',
+      },
+      'Attractions': {
+        'tourist_attraction',
+        'museum',
+        'park',
+        'zoo',
+        'aquarium',
+        'art_gallery',
+        'amusement_park',
+        'church',
+        'hindu_temple',
+        'mosque',
+        'synagogue',
+        'stadium',
+        'casino',
+        'movie_theater',
+        'bowling_alley',
+        'campground',
+        'national_park',
+        'historical_landmark',
+        'performing_arts_theater',
+        'cultural_center',
+        'monument',
+        'waterfall',
+        'beach',
+        'viewpoint',
+        'garden',
+        'fort',
+        'palace',
+      },
     };
 
     // Custom comparator: Sort by distance (nearest first) and then by rating (highest first when distances are within 100 meters)
@@ -4216,15 +4997,22 @@ class _LivingMapPageState extends State<LivingMapPage>
 
       // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
       final catLower = (place.categoryName ?? '').toLowerCase();
-      if (catLower.contains('hotel') || 
-          catLower.contains('lodging') || 
-          catLower.contains('accommodation') || 
-          catLower.contains('stay') || 
-          catLower.contains('resort') || 
-          catLower.contains('guest_house') || 
-          catLower.contains('bed_and_breakfast') || 
+      if (catLower.contains('hotel') ||
+          catLower.contains('lodging') ||
+          catLower.contains('accommodation') ||
+          catLower.contains('stay') ||
+          catLower.contains('resort') ||
+          catLower.contains('guest_house') ||
+          catLower.contains('bed_and_breakfast') ||
           catLower.contains('hostel') ||
-          tags.any((t) => t.contains('lodging') || t.contains('hotel') || t.contains('resort') || t.contains('guest_house') || t.contains('hostel'))) {
+          tags.any(
+            (t) =>
+                t.contains('lodging') ||
+                t.contains('hotel') ||
+                t.contains('resort') ||
+                t.contains('guest_house') ||
+                t.contains('hostel'),
+          )) {
         continue;
       }
 
@@ -4233,14 +5021,19 @@ class _LivingMapPageState extends State<LivingMapPage>
       final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
       final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
       final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
+      final isAttraction = tags.any(
+        (t) => allowedTypes['Attractions']!.contains(t),
+      );
 
       String? bestCategory;
       if (isMedical && !isFood && !isShopping) {
         bestCategory = 'Medical';
       } else if (isFood && !isMedical) {
         // Food but NOT medical — exclude places that are primarily shopping
-        final primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
+        final primaryShop = tags.any(
+          (t) =>
+              {'shopping_mall', 'department_store', 'supermarket'}.contains(t),
+        );
         if (!primaryShop) {
           bestCategory = 'Food';
         }
@@ -4249,14 +5042,17 @@ class _LivingMapPageState extends State<LivingMapPage>
       } else if (isAttraction && !isMedical && !isFood && !isShopping) {
         bestCategory = 'Attractions';
       }
-      // If place matches multiple categories (e.g. a supermarket tagged as 'food' + 'store'), 
+      // If place matches multiple categories (e.g. a supermarket tagged as 'food' + 'store'),
       // it only goes to the first matching priority category above.
       // If it matches NONE, skip it entirely.
 
       if (bestCategory == null) continue;
 
       // Apply distance limits per category
-      final maxDist = (bestCategory == 'Attractions' || bestCategory == 'Medical') ? 50.0 : 15.0;
+      final maxDist =
+          (bestCategory == 'Attractions' || bestCategory == 'Medical')
+          ? 50.0
+          : 15.0;
       if (distKm > maxDist) continue;
 
       if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
@@ -4266,15 +5062,28 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Balance Attractions category to ensure at least one place is 25km or further away
     final attractionsCategoryList = grouped['Attractions'] ?? [];
-    var farAttractions = attractionsCategoryList.where((p) => (p.distanceM ?? 0) >= 25000).toList();
-    var closeAttractions = attractionsCategoryList.where((p) => (p.distanceM ?? 0) < 25000).toList();
-    
+    var farAttractions = attractionsCategoryList
+        .where((p) => (p.distanceM ?? 0) >= 25000)
+        .toList();
+    var closeAttractions = attractionsCategoryList
+        .where((p) => (p.distanceM ?? 0) < 25000)
+        .toList();
+
     if (closeAttractions.length < 7) {
       for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 && !closeAttractions.any((x) => x.id == p.id)) {
+        if ((p.distanceM ?? 0) < 25000 &&
+            !closeAttractions.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
-                               !tags.any((t) => {'store', 'shopping_mall', 'supermarket', 'department_store'}.contains(t));
+          final isAttraction =
+              tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
+              !tags.any(
+                (t) => {
+                  'store',
+                  'shopping_mall',
+                  'supermarket',
+                  'department_store',
+                }.contains(t),
+              );
           if (isAttraction) {
             closeAttractions.add(p);
             if (closeAttractions.length >= 7) break;
@@ -4282,20 +5091,35 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
     }
-    
-    if (farAttractions.isEmpty && _userLatitude != null && _userLongitude != null) {
+
+    if (farAttractions.isEmpty &&
+        _userLatitude != null &&
+        _userLongitude != null) {
       // Fallback: search cache
       final cached = CacheService.getCachedAttractions();
       for (final json in cached) {
         final lat = (json['latitude'] as num?)?.toDouble();
         final lng = (json['longitude'] as num?)?.toDouble();
         if (lat != null && lng != null) {
-          final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, lat, lng);
+          final distM = geo.Geolocator.distanceBetween(
+            _userLatitude!,
+            _userLongitude!,
+            lat,
+            lng,
+          );
           if (distM >= 25000 && distM <= 55000) {
             final model = AttractionModel.fromJson(json);
             final tags = model.tags.map((t) => t.toLowerCase()).toSet();
-            final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
-                                 !tags.any((t) => {'store', 'shopping_mall', 'supermarket', 'department_store'}.contains(t));
+            final isAttraction =
+                tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
+                !tags.any(
+                  (t) => {
+                    'store',
+                    'shopping_mall',
+                    'supermarket',
+                    'department_store',
+                  }.contains(t),
+                );
             if (isAttraction) {
               final updated = AttractionModel(
                 id: model.id,
@@ -4326,33 +5150,43 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     }
 
-    if (farAttractions.isEmpty && _userLatitude != null && _userLongitude != null) {
+    if (farAttractions.isEmpty &&
+        _userLatitude != null &&
+        _userLongitude != null) {
       final simLat = _userLatitude! + 0.22;
       final simLng = _userLongitude! + 0.18;
-      final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, simLat, simLng);
-      farAttractions.add(AttractionModel(
-        id: 'sim_attraction_far',
-        name: 'Scenic Overlook & Heritage Site',
-        description: 'A beautiful historic viewpoint located in the wider region.',
-        latitude: simLat,
-        longitude: simLng,
-        categoryName: 'Attractions',
-        distanceM: distM,
-        createdAt: DateTime.now(),
-        address: 'Heritage Way, Region',
-        openingHours: const {},
-        entryFee: 0.0,
-        currency: 'USD',
-        rating: 4.5,
-        reviewCount: 120,
-        photoUrls: const [],
-        tags: const ['tourist_attraction', 'park'],
-      ));
+      final distM = geo.Geolocator.distanceBetween(
+        _userLatitude!,
+        _userLongitude!,
+        simLat,
+        simLng,
+      );
+      farAttractions.add(
+        AttractionModel(
+          id: 'sim_attraction_far',
+          name: 'Scenic Overlook & Heritage Site',
+          description:
+              'A beautiful historic viewpoint located in the wider region.',
+          latitude: simLat,
+          longitude: simLng,
+          categoryName: 'Attractions',
+          distanceM: distM,
+          createdAt: DateTime.now(),
+          address: 'Heritage Way, Region',
+          openingHours: const {},
+          entryFee: 0.0,
+          currency: 'USD',
+          rating: 4.5,
+          reviewCount: 120,
+          photoUrls: const [],
+          tags: const ['tourist_attraction', 'park'],
+        ),
+      );
     }
 
     closeAttractions.sort(compareDistanceAndRating);
     farAttractions.sort(compareDistanceAndRating);
-    
+
     final List<AttractionEntity> balancedAttractions = [];
     balancedAttractions.addAll(closeAttractions.take(7));
     for (final far in farAttractions) {
@@ -4365,15 +5199,23 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     // Balance Medical category to ensure at least one place is 25km or further away
     final medicalCategoryList = grouped['Medical'] ?? [];
-    var farMedical = medicalCategoryList.where((p) => (p.distanceM ?? 0) >= 25000).toList();
-    var closeMedical = medicalCategoryList.where((p) => (p.distanceM ?? 0) < 25000).toList();
-    
+    var farMedical = medicalCategoryList
+        .where((p) => (p.distanceM ?? 0) >= 25000)
+        .toList();
+    var closeMedical = medicalCategoryList
+        .where((p) => (p.distanceM ?? 0) < 25000)
+        .toList();
+
     if (closeMedical.length < 7) {
       for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 && !closeMedical.any((x) => x.id == p.id)) {
+        if ((p.distanceM ?? 0) < 25000 &&
+            !closeMedical.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
-                            !tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store');
+          final isMedical =
+              tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
+              !tags.contains('bar') &&
+              !tags.contains('pub') &&
+              !tags.contains('liquor_store');
           if (isMedical) {
             closeMedical.add(p);
             if (closeMedical.length >= 7) break;
@@ -4381,7 +5223,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
     }
-    
+
     if (farMedical.isEmpty && _userLatitude != null && _userLongitude != null) {
       // Fallback: search cache
       final cached = CacheService.getCachedAttractions();
@@ -4389,12 +5231,20 @@ class _LivingMapPageState extends State<LivingMapPage>
         final lat = (json['latitude'] as num?)?.toDouble();
         final lng = (json['longitude'] as num?)?.toDouble();
         if (lat != null && lng != null) {
-          final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, lat, lng);
+          final distM = geo.Geolocator.distanceBetween(
+            _userLatitude!,
+            _userLongitude!,
+            lat,
+            lng,
+          );
           if (distM >= 25000 && distM <= 55000) {
             final model = AttractionModel.fromJson(json);
             final tags = model.tags.map((t) => t.toLowerCase()).toSet();
-            final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
-                              !tags.contains('bar') && !tags.contains('pub') && !tags.contains('liquor_store');
+            final isMedical =
+                tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
+                !tags.contains('bar') &&
+                !tags.contains('pub') &&
+                !tags.contains('liquor_store');
             if (isMedical) {
               final updated = AttractionModel(
                 id: model.id,
@@ -4428,30 +5278,38 @@ class _LivingMapPageState extends State<LivingMapPage>
     if (farMedical.isEmpty && _userLatitude != null && _userLongitude != null) {
       final simLat = _userLatitude! - 0.22;
       final simLng = _userLongitude! - 0.18;
-      final distM = geo.Geolocator.distanceBetween(_userLatitude!, _userLongitude!, simLat, simLng);
-      farMedical.add(AttractionModel(
-        id: 'sim_medical_far',
-        name: 'Regional General Hospital & Care Center',
-        description: 'Fully equipped regional medical facility and trauma center.',
-        latitude: simLat,
-        longitude: simLng,
-        categoryName: 'Medical',
-        distanceM: distM,
-        createdAt: DateTime.now(),
-        address: 'Hospital Blvd, Region',
-        openingHours: const {},
-        entryFee: 0.0,
-        currency: 'USD',
-        rating: 4.2,
-        reviewCount: 95,
-        photoUrls: const [],
-        tags: const ['hospital'],
-      ));
+      final distM = geo.Geolocator.distanceBetween(
+        _userLatitude!,
+        _userLongitude!,
+        simLat,
+        simLng,
+      );
+      farMedical.add(
+        AttractionModel(
+          id: 'sim_medical_far',
+          name: 'Regional General Hospital & Care Center',
+          description:
+              'Fully equipped regional medical facility and trauma center.',
+          latitude: simLat,
+          longitude: simLng,
+          categoryName: 'Medical',
+          distanceM: distM,
+          createdAt: DateTime.now(),
+          address: 'Hospital Blvd, Region',
+          openingHours: const {},
+          entryFee: 0.0,
+          currency: 'USD',
+          rating: 4.2,
+          reviewCount: 95,
+          photoUrls: const [],
+          tags: const ['hospital'],
+        ),
+      );
     }
 
     closeMedical.sort(compareDistanceAndRating);
     farMedical.sort(compareDistanceAndRating);
-    
+
     final List<AttractionEntity> balancedMedical = [];
     balancedMedical.addAll(closeMedical.take(7));
     for (final far in farMedical) {
@@ -4478,7 +5336,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       ),
     );
   }
-
 
   Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {
     if (attractions.isEmpty) return const SizedBox.shrink();
@@ -4512,7 +5369,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                   shape: BoxShape.circle,
                   gradient: AppColors.brandGradient,
                 ),
-                child: const Icon(Icons.route_rounded, color: Colors.white, size: 18),
+                child: const Icon(
+                  Icons.route_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -4535,7 +5396,9 @@ class _LivingMapPageState extends State<LivingMapPage>
             final dist = p.distanceM;
             final distLabel = dist == null
                 ? '—'
-                : (dist < 1000 ? '${dist.toInt()} m' : '${(dist / 1000).toStringAsFixed(1)} km');
+                : (dist < 1000
+                      ? '${dist.toInt()} m'
+                      : '${(dist / 1000).toStringAsFixed(1)} km');
             final walkMin = dist == null ? 0 : (dist / 80).round();
             final walkLabel = walkMin <= 0 ? '' : ' · $walkMin min walk';
             final info = '$distLabel$walkLabel';
@@ -4553,7 +5416,9 @@ class _LivingMapPageState extends State<LivingMapPage>
             child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: AppColors.brandGreen.withOpacity(0.35)),
+                border: Border.all(
+                  color: AppColors.brandGreen.withOpacity(0.35),
+                ),
               ),
               child: TextButton(
                 onPressed: () => launchMiniTour(
@@ -4592,14 +5457,31 @@ class _LivingMapPageState extends State<LivingMapPage>
             border: Border.all(color: Colors.black.withOpacity(0.1)),
           ),
           child: Center(
-            child: Text(num, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black)),
+            child: Text(
+              num,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+            ),
           ),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          child: Text(
+            name,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
         ),
-        Text(info, style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+        Text(
+          info,
+          style: TextStyle(fontSize: 11, color: AppColors.textTertiary),
+        ),
       ],
     );
   }
@@ -4616,149 +5498,227 @@ class _LivingMapPageState extends State<LivingMapPage>
       bottom: 110,
       left: 20,
       right: 20,
-      child: GlassCard(
-        padding: const EdgeInsets.all(20),
-        glowColor: AppColors.primary,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: AppColors.primary.withOpacity(0.15),
-                  ),
-                  child: Icon(Icons.location_on_rounded, color: AppColors.primary, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'PROXIMITY ALERT',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.primary,
-                          letterSpacing: 1.5,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'You are near ${place.name}',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                      ),
-                    ],
-                  ),
-                ),
-                GestureDetector(
-                  onTap: () => setState(() => _showProximityAlert = false),
-                  child: Icon(Icons.close_rounded, color: AppColors.textTertiary, size: 20),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      gradient: AppColors.primaryGradient,
-                    ),
-                    child: TextButton(
-                      onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AttractionDetailPage(
-                        id: place.id,
-                        name: place.name,
-                        category: place.categoryName ?? 'Attraction', 
-                        rating: place.rating, 
-                        distance: _getAccurateDistanceString(place), 
-                        emoji: '📍', 
-                        imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                        latitude: place.latitude,
-                        longitude: place.longitude,
-                        reviewCount: place.reviewCount,
-                      ))),
-                      child: const Text('View Details', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 13)),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Container(
-                    height: 44,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.secondary.withOpacity(0.4)),
-                    ),
-                    child: TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ArCameraPage(
-                            initialPlace: {
-                              'name': place.name,
-                              'category': place.categoryName ?? 'Attraction',
-                              'distance': '${(_getAccurateDistanceM(place)).toStringAsFixed(0)} m',
-                              'distanceM': _getAccurateDistanceM(place),
-                              'rating': place.rating ?? 0.0,
-                              'latitude': place.latitude,
-                              'longitude': place.longitude,
-                            },
+      child:
+          GlassCard(
+                padding: const EdgeInsets.all(20),
+                glowColor: AppColors.primary,
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.primary.withOpacity(0.15),
+                          ),
+                          child: Icon(
+                            Icons.location_on_rounded,
+                            color: AppColors.primary,
+                            size: 22,
                           ),
                         ),
-                      ),
-                      child: Text('Start AR', style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.w700, fontSize: 13)),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'PROXIMITY ALERT',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.primary,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'You are near ${place.name}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () =>
+                              setState(() => _showProximityAlert = false),
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: AppColors.textTertiary,
+                            size: 20,
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              gradient: AppColors.primaryGradient,
+                            ),
+                            child: TextButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AttractionDetailPage(
+                                    id: place.id,
+                                    name: place.name,
+                                    category:
+                                        place.categoryName ?? 'Attraction',
+                                    rating: place.rating,
+                                    distance: _getAccurateDistanceString(place),
+                                    emoji: '📍',
+                                    imageUrl: place.photoUrls.isNotEmpty
+                                        ? place.photoUrls.first
+                                        : null,
+                                    latitude: place.latitude,
+                                    longitude: place.longitude,
+                                    reviewCount: place.reviewCount,
+                                  ),
+                                ),
+                              ),
+                              child: const Text(
+                                'View Details',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            height: 44,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.secondary.withOpacity(0.4),
+                              ),
+                            ),
+                            child: TextButton(
+                              onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ArCameraPage(
+                                    initialPlace: {
+                                      'name': place.name,
+                                      'category':
+                                          place.categoryName ?? 'Attraction',
+                                      'distance':
+                                          '${(_getAccurateDistanceM(place)).toStringAsFixed(0)} m',
+                                      'distanceM': _getAccurateDistanceM(place),
+                                      'rating': place.rating ?? 0.0,
+                                      'latitude': place.latitude,
+                                      'longitude': place.longitude,
+                                    },
+                                  ),
+                                ),
+                              ),
+                              child: Text(
+                                'Start AR',
+                                style: TextStyle(
+                                  color: AppColors.secondary,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
-      ).animate().slideY(begin: 1, end: 0, duration: 500.ms, curve: Curves.easeOutBack).fade(),
+              )
+              .animate()
+              .slideY(
+                begin: 1,
+                end: 0,
+                duration: 500.ms,
+                curve: Curves.easeOutBack,
+              )
+              .fade(),
     );
   }
 
   IconData _getCategoryIcon(String category, String name) {
     final cat = category.toLowerCase();
     final nm = name.toLowerCase();
-    
-    if (cat.contains('food') || cat.contains('drink') || cat.contains('restaurant') || cat.contains('cafe') || nm.contains('cafe') || nm.contains('restaurant')) {
-      if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+
+    if (cat.contains('food') ||
+        cat.contains('drink') ||
+        cat.contains('restaurant') ||
+        cat.contains('cafe') ||
+        nm.contains('cafe') ||
+        nm.contains('restaurant')) {
+      if (cat.contains('cafe') ||
+          cat.contains('coffee') ||
+          nm.contains('cafe') ||
+          nm.contains('coffee')) {
         return Icons.coffee_rounded;
       }
-      if (cat.contains('street') || cat.contains('fast') || nm.contains('burger') || nm.contains('pizza')) {
+      if (cat.contains('street') ||
+          cat.contains('fast') ||
+          nm.contains('burger') ||
+          nm.contains('pizza')) {
         return Icons.local_pizza_rounded;
       }
       return Icons.restaurant_rounded;
     }
-    
-    if (cat.contains('shop') || cat.contains('mall') || cat.contains('market') || cat.contains('store')) {
-      if (cat.contains('clothing') || cat.contains('fashion') || nm.contains('fashion') || nm.contains('boutique')) {
+
+    if (cat.contains('shop') ||
+        cat.contains('mall') ||
+        cat.contains('market') ||
+        cat.contains('store')) {
+      if (cat.contains('clothing') ||
+          cat.contains('fashion') ||
+          nm.contains('fashion') ||
+          nm.contains('boutique')) {
         return Icons.shopping_bag_rounded;
       }
-      if (cat.contains('market') || cat.contains('local') || nm.contains('market') || nm.contains('bazaar')) {
+      if (cat.contains('market') ||
+          cat.contains('local') ||
+          nm.contains('market') ||
+          nm.contains('bazaar')) {
         return Icons.storefront_rounded;
       }
       return Icons.shopping_cart_rounded;
     }
-    
-    if (cat.contains('hotel') || cat.contains('accommodation') || cat.contains('stay') || cat.contains('lodging')) {
+
+    if (cat.contains('hotel') ||
+        cat.contains('accommodation') ||
+        cat.contains('stay') ||
+        cat.contains('lodging')) {
       return Icons.hotel_rounded;
     }
-    
-    if (cat.contains('park') || cat.contains('nature') || cat.contains('garden') || cat.contains('forest') || cat.contains('beach')) {
+
+    if (cat.contains('park') ||
+        cat.contains('nature') ||
+        cat.contains('garden') ||
+        cat.contains('forest') ||
+        cat.contains('beach')) {
       return Icons.park_rounded;
     }
-    
-    if (cat.contains('museum') || cat.contains('gallery') || nm.contains('museum') || nm.contains('gallery')) {
+
+    if (cat.contains('museum') ||
+        cat.contains('gallery') ||
+        nm.contains('museum') ||
+        nm.contains('gallery')) {
       return Icons.museum_rounded;
     }
-    
+
     return Icons.attractions_rounded;
   }
 
@@ -4782,19 +5742,32 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildEmojiThumbnail(String? category) {
     final cat = (category ?? '').toLowerCase();
     final String emoji;
-    if (cat.contains('food') || cat.contains('drink') || cat.contains('restaurant') || cat.contains('cafe')) {
+    if (cat.contains('food') ||
+        cat.contains('drink') ||
+        cat.contains('restaurant') ||
+        cat.contains('cafe')) {
       emoji = '🍽';
-    } else if (cat.contains('shop') || cat.contains('mall') || cat.contains('market')) {
+    } else if (cat.contains('shop') ||
+        cat.contains('mall') ||
+        cat.contains('market')) {
       emoji = '🛍';
     } else if (cat.contains('hotel') || cat.contains('accommodation')) {
       emoji = '🏨';
-    } else if (cat.contains('park') || cat.contains('nature') || cat.contains('garden')) {
+    } else if (cat.contains('park') ||
+        cat.contains('nature') ||
+        cat.contains('garden')) {
       emoji = '🌿';
-    } else if (cat.contains('museum') || cat.contains('heritage') || cat.contains('historic')) {
+    } else if (cat.contains('museum') ||
+        cat.contains('heritage') ||
+        cat.contains('historic')) {
       emoji = '🏛';
-    } else if (cat.contains('beach') || cat.contains('coast') || cat.contains('sea')) {
+    } else if (cat.contains('beach') ||
+        cat.contains('coast') ||
+        cat.contains('sea')) {
       emoji = '🏖';
-    } else if (cat.contains('temple') || cat.contains('religious') || cat.contains('church')) {
+    } else if (cat.contains('temple') ||
+        cat.contains('religious') ||
+        cat.contains('church')) {
       emoji = '⛩';
     } else {
       emoji = '📌';
@@ -4847,7 +5820,10 @@ class _MiniCorner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final side = BorderSide(color: const Color(0xFF00E5FF).withOpacity(0.6), width: 1.5);
+    final side = BorderSide(
+      color: const Color(0xFF00E5FF).withOpacity(0.6),
+      width: 1.5,
+    );
     return SizedBox(
       width: 10,
       height: 10,
@@ -4882,7 +5858,7 @@ class _SpotlightWorldMapPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
-    
+
     // Draw outer glow and sphere boundary
     final spherePaint = Paint()
       ..shader = RadialGradient(
@@ -4924,12 +5900,16 @@ class _SpotlightWorldMapPainter extends CustomPainter {
     // Draw meridians (longitude lines) every 45 degrees
     for (double lngDeg = 0; lngDeg < 180; lngDeg += 45) {
       final lngRad = (lngDeg * pi / 180) + rotation;
-      
+
       canvas.save();
       canvas.translate(center.dx, center.dy);
       canvas.rotate(tilt);
       canvas.drawOval(
-        Rect.fromCenter(center: Offset.zero, width: (radius * 2 * sin(lngRad)).abs(), height: radius * 2),
+        Rect.fromCenter(
+          center: Offset.zero,
+          width: (radius * 2 * sin(lngRad)).abs(),
+          height: radius * 2,
+        ),
         linePaint,
       );
       canvas.restore();
@@ -4941,7 +5921,7 @@ class _SpotlightWorldMapPainter extends CustomPainter {
     for (final pt in points) {
       // Rotate around Y-axis (spin)
       final rotLng = pt.lng + rotation;
-      
+
       // 3D coordinates before tilt
       final x3d = radius * cos(pt.lat) * sin(rotLng);
       final y3d = radius * sin(pt.lat);
@@ -4954,7 +5934,7 @@ class _SpotlightWorldMapPainter extends CustomPainter {
 
       // Depth transparency (front = solid/bright, back = dimmed)
       final isFront = zTilted >= 0;
-      final opacity = isFront 
+      final opacity = isFront
           ? (0.15 + 0.5 * (zTilted / radius)).clamp(0.1, 0.7)
           : (0.02 + 0.05 * (1.0 + zTilted / radius)).clamp(0.01, 0.08);
 
@@ -4977,7 +5957,7 @@ class _SpotlightWorldMapPainter extends CustomPainter {
     for (final pt in placePoints) {
       // Rotate around Y-axis (spin)
       final rotLng = pt.lng + rotation;
-      
+
       // 3D coordinates before tilt
       final x3d = radius * cos(pt.lat) * sin(rotLng);
       final y3d = radius * sin(pt.lat);
@@ -4991,7 +5971,7 @@ class _SpotlightWorldMapPainter extends CustomPainter {
       // We only draw them if they are on the front side (facing viewer) for clean occlusion
       if (zTilted >= 0) {
         final opacity = (0.5 + 0.4 * (zTilted / radius)).clamp(0.2, 0.9);
-        
+
         // Draw outer ring
         ringPaint.color = const Color(0xFFFFD54F).withOpacity(opacity * 0.4);
         canvas.drawCircle(
@@ -5013,7 +5993,9 @@ class _SpotlightWorldMapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SpotlightWorldMapPainter old) {
-    return old.rotation != rotation || old.tilt != tilt || old.placePoints != placePoints;
+    return old.rotation != rotation ||
+        old.tilt != tilt ||
+        old.placePoints != placePoints;
   }
 }
 
@@ -5022,8 +6004,8 @@ class _SpotlightPoint3D {
   final double lng; // in radians
 
   _SpotlightPoint3D(double latDeg, double lngDeg)
-      : lat = latDeg * pi / 180,
-        lng = lngDeg * pi / 180;
+    : lat = latDeg * pi / 180,
+      lng = lngDeg * pi / 180;
 }
 
 class AiExperience {
