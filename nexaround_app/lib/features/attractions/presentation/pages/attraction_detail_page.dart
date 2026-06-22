@@ -458,9 +458,9 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('hours_skel'))
                         : _weekdayHours.isNotEmpty
                             ? _buildOpeningHoursCard(key: const ValueKey('hours_real'))
-                            : const SizedBox.shrink(key: ValueKey('hours_none')),
+                            : _buildEmptyStateCard('Opening Hours', Icons.schedule_rounded, 'No opening hours available for this location.', key: const ValueKey('hours_none')),
                   ),
-                  if (_isLoadingPlaces || _weekdayHours.isNotEmpty) const SizedBox(height: 16),
+                  const SizedBox(height: 16),
 
                   // Visitor Reviews
                   AnimatedSwitcher(
@@ -469,7 +469,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         ? _buildSkeletonSection(key: const ValueKey('rev_skel'))
                         : _realReviews.isNotEmpty
                             ? _buildReviewsCard(key: const ValueKey('rev_real'))
-                            : const SizedBox.shrink(key: ValueKey('rev_none')),
+                            : _buildEmptyStateCard('Visitor Reviews', Icons.rate_review_rounded, 'No reviews available yet.', key: const ValueKey('rev_none')),
                   ),
 
                   const SizedBox(height: 32),
@@ -698,9 +698,17 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(day, style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-          Text(hours, style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              hours, 
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary, fontWeight: FontWeight.w600),
+              textAlign: TextAlign.right,
+            ),
+          ),
         ],
       ),
     );

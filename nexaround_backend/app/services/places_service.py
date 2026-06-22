@@ -49,16 +49,6 @@ def offset_lat_lng(lat: float, lng: float, bearing_deg: float, distance_m: float
 
 
 def get_min_radius(radius: int) -> int:
-    if radius == 5000:
-        return 2000
-    elif radius == 10000:
-        return 2000
-    elif radius == 15000:
-        return 0
-    elif radius == 25000:
-        return 10000
-    elif radius == 50000:
-        return 25000
     return 0
 
 
