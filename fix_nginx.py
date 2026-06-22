@@ -31,14 +31,13 @@ server {
     }
 
     listen 443 ssl; # managed by Certbot
-    ssl_certificate /etc/letsencrypt/live/api.nexaround.com/fullchain.pem; # managed by Certbot
-    ssl_certificate_key /etc/letsencrypt/live/api.nexaround.com/privkey.pem; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/admin.nexaround.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/admin.nexaround.com/privkey.pem; # managed by Certbot
     include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 }
 
 server {
-    listen 80;
     server_name nexaround.com www.nexaround.com;
 
     root /var/www/nexaround/nexaround_landing/dist;
@@ -47,6 +46,13 @@ server {
     location / {
         try_files $uri $uri/ /index.html;
     }
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/nexaround.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/nexaround.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
 }
 
 server {
@@ -60,6 +66,20 @@ server {
     listen 80;
     server_name api.nexaround.com admin.nexaround.com;
     return 404; # managed by Certbot
+}
+
+server {
+    if ($host = www.nexaround.com) {
+        return 301 https://nexaround.com$request_uri;
+    }
+    if ($host = nexaround.com) {
+        return 301 https://nexaround.com$request_uri;
+    }
+
+    listen 80;
+    listen [::]:80;
+    server_name nexaround.com www.nexaround.com;
+    return 404;
 }
 """
 with open("/etc/nginx/sites-available/nexaround", "w") as f:
