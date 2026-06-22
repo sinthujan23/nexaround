@@ -4969,7 +4969,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           uniquePlaces.add(p);
                         }
                       }
-                      final finalPlaces = uniquePlaces.take(10).toList();
+                      final finalPlaces = uniquePlaces.take(20).toList();
 
                       return finalPlaces.asMap().entries.map((entry) {
                         final place = entry.value;

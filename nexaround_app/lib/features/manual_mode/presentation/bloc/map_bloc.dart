@@ -174,23 +174,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       try {
         final mainFutures = categoriesToFetch.expand((cat) {
           if (cat == 'Attractions' || cat == 'Medical') {
-            // Concentric rings to fetch wide 50km categories evenly
-            // without hitting API result caps in a single localized area.
+            // Backend now handles distance distribution (bucketing) natively for 50km
             return [
-              _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: 5000.0,
-                categoryName: cat,
-                useLegacy: event.useLegacy,
-              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-              _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: 20000.0,
-                categoryName: cat,
-                useLegacy: event.useLegacy,
-              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
               _repository.getNearbyAttractions(
                 latitude: event.latitude,
                 longitude: event.longitude,
@@ -200,7 +185,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
             ];
           } else {
-            // Single 15km ring for regular categories (Food, Shopping, Hotels)
+            // Backend handles distance distribution for 15km as well
             return [
               _repository.getNearbyAttractions(
                 latitude: event.latitude,
