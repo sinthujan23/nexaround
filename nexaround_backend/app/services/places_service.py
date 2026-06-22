@@ -428,9 +428,7 @@ async def get_nearby(
     
     # Otherwise, query Google Places API as a fallback
     import asyncio
-    min_radius = get_min_radius(radius)
-    
-    if min_radius == 0:
+    if radius < 25000:
         # Standard single query at center
         if use_legacy:
             raw_places = await google_places_client.nearby_search_legacy(
@@ -448,10 +446,10 @@ async def get_nearby(
             )
     else:
         # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
-        mid = (min_radius + radius) / 2.0
-        sample_radius = int((radius - min_radius) / 2.0)
+        mid = radius * 0.7
+        sample_radius = int(radius * 0.5)
         
-        # Scale centers: reduced from 8 to 4 to speed up search and minimize API costs
+        # Scale centers: 4 offsets to get more places
         num_centers = 4
         bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
         offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
