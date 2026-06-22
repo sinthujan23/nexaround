@@ -112,8 +112,8 @@ export default function App() {
       <header className={`navbar ${mobileMenuOpen ? 'navbar-open' : ''}`}>
         <div className="container nav-container">
           <a href="#" className="logo-section">
-            <img src="/app_icon.png" alt="nexARound Icon" style={{ width: '32px', height: '32px', borderRadius: '8px' }} />
-            <span>nex<span className="text-teal">AR</span>ound</span>
+            <img src="/app_icon.png" alt="nexARound Icon" />
+            <span className="gradient-text-primary">nexARound</span>
           </a>
           
           <nav className="nav-links">
@@ -433,7 +433,7 @@ export default function App() {
         <div className="container footer-container">
           <div className="footer-brand">
             <img src="/app_icon.png" alt="nexARound Icon" style={{ width: '24px', height: '24px', borderRadius: '6px' }} />
-            <span>nex<span className="text-teal">AR</span>ound</span>
+            <span className="gradient-text-primary">nexARound</span>
           </div>
           <p>© {new Date().getFullYear()} nexARound Smart Tourism. All rights reserved.</p>
           <div className="footer-links">
