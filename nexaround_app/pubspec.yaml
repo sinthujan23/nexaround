@@ -66,13 +66,14 @@ dependencies:
   flutter_compass: ^0.8.1
   google_generative_ai: ^0.4.5
   http: ^1.2.1
-  google_sign_in: ^6.2.1
+  # Social Auth
+  google_sign_in: ^7.2.0
   sign_in_with_apple: ^6.1.1
   flutter_markdown: ^0.7.7+1
   flutter_appauth: ^12.0.1
   googleapis: ^16.0.0
   googleapis_auth: ^2.3.2
-  extension_google_sign_in_as_googleapis_auth: ^2.0.13
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
 
 dependency_overrides:
   latlong2:
