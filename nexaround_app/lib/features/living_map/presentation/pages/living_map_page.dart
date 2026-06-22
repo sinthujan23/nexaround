@@ -87,6 +87,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   final Map<String, Map<String, String>> _parsedAiDetails = {};
   List<AiExperience> _aiExperiences = [];
   final Map<String, String> _unresolvedPhotos = {};
+  String? _geminiError;
+  final Map<String, double> _routeDistanceCache = {};
 
   @override
   void initState() {
@@ -319,6 +321,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     setState(() {
       _loadingGeminiTrending = true;
       _geminiTrendingMarkdown = null;
+      _geminiError = null;
     });
     try {
       final response = await ApiClient.instance.get(
@@ -341,15 +344,21 @@ class _LivingMapPageState extends State<LivingMapPage>
             _geminiTrendingPlaces = resolvedPlaces;
             _loadingGeminiTrending = false;
             _lastFetchedDistrict = district;
+            _geminiError = null;
           });
+          // Batch-fetch route distances for resolved places
+          _batchFetchRouteDistances(resolvedPlaces);
         }
       } else {
-        throw Exception('Failed to load trending endpoint');
+        throw Exception('Server returned ${response.statusCode}');
       }
     } catch (e) {
       debugPrint('Error in _fetchGeminiTrending: $e');
       if (mounted) {
-        setState(() => _loadingGeminiTrending = false);
+        setState(() {
+          _loadingGeminiTrending = false;
+          _geminiError = 'Could not load recommendations. Tap to retry.';
+        });
       }
     }
   }
@@ -443,16 +452,42 @@ class _LivingMapPageState extends State<LivingMapPage>
     _parsedAiDetails.clear();
     _aiExperiences.clear();
 
-    final segments = markdown.split('###');
-    if (segments.length <= 1) return;
+    // Robust split: handle ### , ## , and ** headings from Gemini
+    final headerPattern = RegExp(r'#{2,3}\s+');
+    final segments = markdown.split(headerPattern);
+    if (segments.length <= 1) {
+      // Fallback: try splitting on bold markers (**Name**)
+      final boldPattern = RegExp(r'\*\*([^*]+)\*\*');
+      final boldMatches = boldPattern.allMatches(markdown).toList();
+      if (boldMatches.length >= 3) {
+        // Reconstruct segments from bold headers
+        final reconstructed = <String>[];
+        for (int i = 0; i < boldMatches.length; i++) {
+          final end = i + 1 < boldMatches.length
+              ? boldMatches[i + 1].start
+              : markdown.length;
+          final name = boldMatches[i].group(1) ?? '';
+          final body = markdown.substring(boldMatches[i].end, end);
+          reconstructed.add('$name\n$body');
+        }
+        _parseSegments(reconstructed, markdown);
+        return;
+      }
+      return;
+    }
+    _parseSegments(segments.sublist(1), markdown);
+  }
+
+  void _parseSegments(List<String> segments, String markdown) {
 
     final hiddenGemsIndex = markdown.toLowerCase().indexOf('hidden gem');
 
-    for (int i = 1; i < segments.length; i++) {
+    for (int i = 0; i < segments.length; i++) {
       final segment = segments[i].trim();
       if (segment.isEmpty) continue;
 
-      final segmentIndex = markdown.indexOf(segments[i]);
+      // Try to find the original position in the full markdown
+      final segmentIndex = markdown.indexOf(segment.substring(0, segment.length.clamp(0, 30)));
       final isGem = hiddenGemsIndex != -1 && segmentIndex > hiddenGemsIndex;
 
       final lines = segment.split('\n');
@@ -1071,6 +1106,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                       else if (_aiExperiences.isNotEmpty)
                         SliverToBoxAdapter(
                           child: _buildTrendingPlacesList(state),
+                        )
+                      else if (_geminiError != null)
+                        SliverToBoxAdapter(
+                          child: _buildCuratedErrorCard(),
                         )
                       else
                         const SliverToBoxAdapter(
@@ -2701,63 +2740,188 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  Widget _buildCuratedErrorCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: GestureDetector(
+        onTap: () {
+          if (_currentDistrict != null &&
+              _userLatitude != null &&
+              _userLongitude != null) {
+            setState(() {
+              _geminiError = null;
+              _lastFetchedDistrict = null;
+            });
+            _fetchGeminiTrending(
+              _currentDistrict!,
+              _userLatitude!,
+              _userLongitude!,
+            );
+          }
+        },
+        child: Container(
+          height: 120,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                const Color(0xFF1A1E2E),
+                const Color(0xFF0D1117),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.redAccent.withOpacity(0.3),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.redAccent.withOpacity(0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              const SizedBox(width: 20),
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.redAccent.withOpacity(0.15),
+                  border: Border.all(
+                    color: Colors.redAccent.withOpacity(0.3),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.wifi_off_rounded,
+                  color: Colors.redAccent,
+                  size: 22,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Could not load recommendations',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Check your connection and try again',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                margin: const EdgeInsets.only(right: 20),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00E5FF), Color(0xFF00B8D4)],
+                  ),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.refresh_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Retry',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTrendingPlacesList(MapState state) {
+    // Pre-filter AI experiences to only those that resolve to a real Google Place
+    final resolvedExperiences = <AiExperience>[];
+    final resolvedMap = <AiExperience, AttractionEntity>{};
+
+    for (final exp in _aiExperiences) {
+      final lowerExpName = exp.name.toLowerCase().trim();
+      AttractionEntity? resolvedPlace;
+      
+      // Try to find a resolved Google Place matching the AI recommendation name
+      for (final p in _geminiTrendingPlaces) {
+        final lowerPName = p.name.toLowerCase().trim();
+        if (lowerPName == lowerExpName ||
+            lowerPName.contains(lowerExpName) ||
+            lowerExpName.contains(lowerPName) ||
+            _shareSignificantWords(lowerPName, lowerExpName)) {
+          resolvedPlace = p;
+          break;
+        }
+      }
+
+      if (resolvedPlace == null) {
+        for (final p in state.attractions) {
+          final lowerPName = p.name.toLowerCase().trim();
+          if (lowerPName == lowerExpName ||
+              lowerPName.contains(lowerExpName) ||
+              lowerExpName.contains(lowerPName) ||
+              _shareSignificantWords(lowerPName, lowerExpName)) {
+            resolvedPlace = p;
+            break;
+          }
+        }
+      }
+
+      if (resolvedPlace != null) {
+        resolvedExperiences.add(exp);
+        resolvedMap[exp] = resolvedPlace;
+      }
+    }
+
+    if (resolvedExperiences.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: Text(
+          'No popular recommendations found nearby.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 240,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
         scrollDirection: Axis.horizontal,
-        itemCount: _aiExperiences.length,
+        itemCount: resolvedExperiences.length,
         itemBuilder: (context, index) {
-          final exp = _aiExperiences[index];
-
-          // Try to find a resolved Google Place matching the AI recommendation name
-          final lowerExpName = exp.name.toLowerCase().trim();
-          AttractionEntity? resolvedPlace;
-          for (final p in _geminiTrendingPlaces) {
-            final lowerPName = p.name.toLowerCase().trim();
-            if (lowerPName == lowerExpName ||
-                lowerPName.contains(lowerExpName) ||
-                lowerExpName.contains(lowerPName) ||
-                _shareSignificantWords(lowerPName, lowerExpName)) {
-              resolvedPlace = p;
-              break;
-            }
-          }
-
-          if (resolvedPlace == null) {
-            for (final p in state.attractions) {
-              final lowerPName = p.name.toLowerCase().trim();
-              if (lowerPName == lowerExpName ||
-                  lowerPName.contains(lowerExpName) ||
-                  lowerExpName.contains(lowerPName) ||
-                  _shareSignificantWords(lowerPName, lowerExpName)) {
-                resolvedPlace = p;
-                break;
-              }
-            }
-          }
-
-          if (resolvedPlace != null) {
-            return _buildPlaceCard(resolvedPlace, index);
-          } else {
-            final customImageUrl = _unresolvedPhotos[exp.name];
-            final fakePlace = AttractionEntity(
-              id: 'ai_exp_${exp.name}',
-              name: exp.name,
-              latitude: 0,
-              longitude: 0,
-              rating: 4.5,
-              reviewCount: 0,
-              categoryName: exp.type == 'event' ? 'Event' : 'Gem',
-              photoUrls: customImageUrl != null && customImageUrl.isNotEmpty
-                  ? [customImageUrl]
-                  : [],
-              tags: [],
-              createdAt: DateTime.now(),
-            );
-            return _buildPlaceCard(fakePlace, index);
-          }
+          final exp = resolvedExperiences[index];
+          final resolvedPlace = resolvedMap[exp]!;
+          return _buildPlaceCard(resolvedPlace, index);
         },
       ),
     );
@@ -3793,6 +3957,10 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   double _getAccurateDistanceM(AttractionEntity place) {
+    // Prefer cached route distance (actual road distance from Google Directions)
+    if (_routeDistanceCache.containsKey(place.id)) {
+      return _routeDistanceCache[place.id]!;
+    }
     if (_userLatitude != null &&
         _userLongitude != null &&
         place.latitude != 0 &&
@@ -3817,7 +3985,38 @@ class _LivingMapPageState extends State<LivingMapPage>
       return matchedExp.distance.isNotEmpty ? matchedExp.distance : 'Nearby';
     }
     final distM = _getAccurateDistanceM(place);
-    return '${(distM / 1000).toStringAsFixed(1)} km';
+    final isRouteDistance = _routeDistanceCache.containsKey(place.id);
+    final distKm = (distM / 1000).toStringAsFixed(1);
+    return isRouteDistance ? '$distKm km' : '~$distKm km';
+  }
+
+  /// Batch-fetch actual road distances for a list of places using Google Directions API.
+  Future<void> _batchFetchRouteDistances(List<AttractionEntity> places) async {
+    if (_userLatitude == null || _userLongitude == null) return;
+    for (final place in places) {
+      if (place.latitude == 0 && place.longitude == 0) continue;
+      if (_routeDistanceCache.containsKey(place.id)) continue;
+      try {
+        final result = await GooglePlacesService.getDirections(
+          originLat: _userLatitude!,
+          originLng: _userLongitude!,
+          destLat: place.latitude,
+          destLng: place.longitude,
+          profile: 'driving',
+        );
+        if (result != null && mounted) {
+          final distM = result['distance_meters'] as double? ?? 0.0;
+          if (distM > 0) {
+            setState(() {
+              _routeDistanceCache[place.id] = distM;
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Route distance fetch failed for ${place.name}: $e');
+        // Silently fall back to Haversine — UI already shows ~X.X km
+      }
+    }
   }
 
   Widget _buildPlaceCard(AttractionEntity place, int index) {
@@ -4111,11 +4310,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                               color: Colors.white.withOpacity(0.7),
                             ),
                             const SizedBox(width: 3),
-                            Text(
-                              _getAccurateDistanceString(place, matchedExp),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.white.withOpacity(0.7),
+                            Expanded(
+                              child: Text(
+                                _getAccurateDistanceString(place, matchedExp),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white.withOpacity(0.7),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],

@@ -18,7 +18,7 @@ _BASE = "https://maps.googleapis.com/maps/api"
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Attractions": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
-        "amusement_park"
+        "amusement_park", "national_park", "hiking_area", "beach"
     ],
     "Food & Drink": [
         "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"
