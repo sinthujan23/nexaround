@@ -166,7 +166,10 @@ class TravelStoriesService {
         );
       }
 
-      final formData = FormData.fromMap({'files': files});
+      final formData = FormData();
+      for (var file in files) {
+        formData.files.add(MapEntry('files', file));
+      }
 
       final response = await _dio.post(
         '${ApiConstants.travelStories}/upload',
