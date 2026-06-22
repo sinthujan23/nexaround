@@ -18,32 +18,42 @@ _BASE = "https://maps.googleapis.com/maps/api"
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Attractions": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
-        "amusement_park", "national_park", "hiking_area", "beach"
+        "amusement_park", "national_park", "hiking_area", "beach",
+        "historical_landmark", "place_of_worship", "hindu_temple", "church", 
+        "mosque", "buddhist_temple", "cultural_center", "marina", "visitor_center",
+        "observation_deck", "nature_reserve", "scenic_point", "waterfall", 
+        "monument", "castle"
     ],
     "Food & Drink": [
-        "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"
+        "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food",
+        "bar", "night_club", "ice_cream_shop", "coffee_shop"
     ],
     "Hotels": [
-        "lodging", "hotel", "motel"
+        "lodging", "hotel", "motel", "resort", "bed_and_breakfast", "hostel",
+        "guest_house", "campground"
     ],
     "Shopping": [
         "shopping_mall", "supermarket", "store", "department_store",
-        "convenience_store"
+        "convenience_store", "clothing_store", "electronics_store", "market",
+        "grocery_store", "pharmacy"
     ],
     "Experiences": [
-        "amusement_park", "aquarium", "zoo", "museum", "art_gallery"
+        "amusement_park", "aquarium", "zoo", "museum", "art_gallery",
+        "bowling_alley", "movie_theater", "spa", "casino", "golf_course"
     ],
     "Transport": [
-        "transit_station"
+        "transit_station", "airport", "bus_station", "train_station", "taxi_stand"
     ],
     "Medical": [
-        "hospital", "pharmacy", "doctor", "dentist", "health"
+        "hospital", "pharmacy", "doctor", "dentist", "health", "physiotherapist",
+        "veterinary_care", "medical_clinic"
     ],
     "Nature": [
-        "park", "campground", "national_park", "zoo", "tourist_attraction"
+        "park", "campground", "national_park", "zoo", "tourist_attraction",
+        "nature_reserve", "hiking_area", "beach", "waterfall"
     ],
     "Beach": [
-        "park", "tourist_attraction"
+        "park", "tourist_attraction", "beach"
     ],
 }
 

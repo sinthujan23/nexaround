@@ -44,7 +44,7 @@ def build_key(lat: float, lng: float, category: Optional[str], radius: int) -> s
     # The :v2 namespace invalidates pre-fix entries that were cached from
     # unfiltered searches (e.g. banks stored under an unrecognized 'food'/
     # 'shopping' label). Old keys simply expire on their own TTL.
-    return f"places:nearby:v3:{_snap(lat)}:{_snap(lng)}:{cat}:r{radius}"
+    return f"places:nearby:v4:{_snap(lat)}:{_snap(lng)}:{cat}:r{radius}"
 
 
 async def get_cached(key: str) -> Optional[list[dict]]:
