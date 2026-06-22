@@ -47,6 +47,14 @@ class TravelStory {
   final DateTime createdAt;
   bool isLiked;
   final bool isPublic;
+  
+  // Journal Features
+  final bool isJournal;
+  final DateTime? journalDate;
+  final double totalSpend;
+  final String spendCurrency;
+  final String? cloudProvider;
+  final String? cloudFolderUrl;
 
   TravelStory({
     required this.id,
@@ -65,6 +73,12 @@ class TravelStory {
     required this.createdAt,
     this.isLiked = false,
     this.isPublic = true,
+    this.isJournal = false,
+    this.journalDate,
+    this.totalSpend = 0.0,
+    this.spendCurrency = 'USD',
+    this.cloudProvider,
+    this.cloudFolderUrl,
   });
 
   TravelStory copyWith({
@@ -84,6 +98,12 @@ class TravelStory {
     DateTime? createdAt,
     bool? isLiked,
     bool? isPublic,
+    bool? isJournal,
+    DateTime? journalDate,
+    double? totalSpend,
+    String? spendCurrency,
+    String? cloudProvider,
+    String? cloudFolderUrl,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -102,6 +122,12 @@ class TravelStory {
       createdAt: createdAt ?? this.createdAt,
       isLiked: isLiked ?? this.isLiked,
       isPublic: isPublic ?? this.isPublic,
+      isJournal: isJournal ?? this.isJournal,
+      journalDate: journalDate ?? this.journalDate,
+      totalSpend: totalSpend ?? this.totalSpend,
+      spendCurrency: spendCurrency ?? this.spendCurrency,
+      cloudProvider: cloudProvider ?? this.cloudProvider,
+      cloudFolderUrl: cloudFolderUrl ?? this.cloudFolderUrl,
     );
   }
 
@@ -138,6 +164,14 @@ class TravelStory {
           : DateTime.now(),
       isLiked: json['is_liked'] as bool? ?? false,
       isPublic: json['is_public'] as bool? ?? true,
+      isJournal: json['is_journal'] as bool? ?? false,
+      journalDate: json['journal_date'] != null 
+          ? DateTime.parse(json['journal_date'] as String) 
+          : null,
+      totalSpend: (json['total_spend'] as num?)?.toDouble() ?? 0.0,
+      spendCurrency: json['spend_currency'] as String? ?? 'USD',
+      cloudProvider: json['cloud_provider'] as String?,
+      cloudFolderUrl: json['cloud_folder_url'] as String?,
     );
   }
 
@@ -151,6 +185,12 @@ class TravelStory {
       'latitude': latitude,
       'longitude': longitude,
       'is_public': isPublic,
+      'is_journal': isJournal,
+      'journal_date': journalDate?.toIso8601String(),
+      'total_spend': totalSpend,
+      'spend_currency': spendCurrency,
+      'cloud_provider': cloudProvider,
+      'cloud_folder_url': cloudFolderUrl,
     };
   }
 }

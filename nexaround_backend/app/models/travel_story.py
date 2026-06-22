@@ -23,6 +23,14 @@ class TravelStory(Base):
     latitude: Mapped[float] = mapped_column(nullable=True)
     longitude: Mapped[float] = mapped_column(nullable=True)
     is_public: Mapped[bool] = mapped_column(default=True)
+    
+    # Journal Features
+    is_journal: Mapped[bool] = mapped_column(default=False)
+    journal_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_spend: Mapped[float] = mapped_column(default=0.0)
+    spend_currency: Mapped[str] = mapped_column(String(10), default="USD")
+    cloud_provider: Mapped[str] = mapped_column(String(50), nullable=True)
+    cloud_folder_url: Mapped[str] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

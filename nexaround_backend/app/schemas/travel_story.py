@@ -31,6 +31,14 @@ class TravelStoryBase(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     is_public: bool = True
+    
+    # Journal Features
+    is_journal: bool = False
+    journal_date: Optional[datetime] = None
+    total_spend: float = 0.0
+    spend_currency: str = "USD"
+    cloud_provider: Optional[str] = None
+    cloud_folder_url: Optional[str] = None
 
 class TravelStoryCreate(TravelStoryBase):
     pass

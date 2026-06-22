@@ -25,6 +25,7 @@ async def get_travel_stories(
 ):
     """Get all travel stories, sorted newest first."""
     stmt = select(TravelStory).where(
+        TravelStory.is_journal == False,
         or_(TravelStory.is_public == True, TravelStory.user_id == current_user.id)
     ).order_by(TravelStory.created_at.desc())
     res = await db.execute(stmt)
@@ -32,45 +33,73 @@ async def get_travel_stories(
     
     response_list = []
     for s in stories:
-        # Check if logged-in user liked this story
         is_liked = any(like.user_id == current_user.id for like in s.likes)
         
         comments_list = []
         for c in s.comments:
             comments_list.append(
                 TravelStoryCommentResponse(
-                    id=c.id,
-                    story_id=c.story_id,
-                    user_id=c.user_id,
-                    user_display_name=c.user.display_name,
-                    user_avatar_url=c.user.avatar_url,
-                    comment_text=c.comment_text,
-                    image_index=c.image_index,
-                    created_at=c.created_at
+                    id=c.id, story_id=c.story_id, user_id=c.user_id,
+                    user_display_name=c.user.display_name, user_avatar_url=c.user.avatar_url,
+                    comment_text=c.comment_text, image_index=c.image_index, created_at=c.created_at
                 )
             )
             
         response_list.append(
             TravelStoryResponse(
-                id=s.id,
-                user_id=s.user_id,
-                user_display_name=s.user.display_name,
-                user_avatar_url=s.user.avatar_url,
-                location_name=s.location_name,
-                category=s.category,
-                description=s.description,
-                image_url=s.image_url,
-                image_urls=s.image_urls,
-                latitude=s.latitude,
-                longitude=s.longitude,
-                is_public=s.is_public,
-                likes_count=len(s.likes),
-                is_liked=is_liked,
-                created_at=s.created_at,
-                comments=comments_list
+                id=s.id, user_id=s.user_id, user_display_name=s.user.display_name,
+                user_avatar_url=s.user.avatar_url, location_name=s.location_name,
+                category=s.category, description=s.description, image_url=s.image_url,
+                image_urls=s.image_urls, latitude=s.latitude, longitude=s.longitude,
+                is_public=s.is_public, likes_count=len(s.likes), is_liked=is_liked,
+                is_journal=s.is_journal, journal_date=s.journal_date,
+                total_spend=s.total_spend, spend_currency=s.spend_currency,
+                cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
+                created_at=s.created_at, comments=comments_list
             )
         )
         
+    return response_list
+
+@router.get("/journal", response_model=List[TravelStoryResponse])
+async def get_travel_journal(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Get all private journal entries for the current user, ordered by journal_date."""
+    stmt = select(TravelStory).where(
+        TravelStory.user_id == current_user.id,
+        TravelStory.is_journal == True
+    ).order_by(TravelStory.journal_date.desc().nulls_last(), TravelStory.created_at.desc())
+    
+    res = await db.execute(stmt)
+    stories = res.scalars().all()
+    
+    response_list = []
+    for s in stories:
+        comments_list = []
+        for c in s.comments:
+            comments_list.append(
+                TravelStoryCommentResponse(
+                    id=c.id, story_id=c.story_id, user_id=c.user_id,
+                    user_display_name=c.user.display_name, user_avatar_url=c.user.avatar_url,
+                    comment_text=c.comment_text, image_index=c.image_index, created_at=c.created_at
+                )
+            )
+            
+        response_list.append(
+            TravelStoryResponse(
+                id=s.id, user_id=s.user_id, user_display_name=s.user.display_name,
+                user_avatar_url=s.user.avatar_url, location_name=s.location_name,
+                category=s.category, description=s.description, image_url=s.image_url,
+                image_urls=s.image_urls, latitude=s.latitude, longitude=s.longitude,
+                is_public=s.is_public, likes_count=len(s.likes), is_liked=False,
+                is_journal=s.is_journal, journal_date=s.journal_date,
+                total_spend=s.total_spend, spend_currency=s.spend_currency,
+                cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
+                created_at=s.created_at, comments=comments_list
+            )
+        )
     return response_list
 
 
@@ -90,7 +119,13 @@ async def create_travel_story(
         image_urls=data.image_urls,
         latitude=data.latitude,
         longitude=data.longitude,
-        is_public=data.is_public
+        is_public=data.is_public,
+        is_journal=data.is_journal,
+        journal_date=data.journal_date,
+        total_spend=data.total_spend,
+        spend_currency=data.spend_currency,
+        cloud_provider=data.cloud_provider,
+        cloud_folder_url=data.cloud_folder_url
     )
     db.add(story)
     await db.flush()  # Populate id and created_at
@@ -114,6 +149,12 @@ async def create_travel_story(
         latitude=refreshed_story.latitude,
         longitude=refreshed_story.longitude,
         is_public=refreshed_story.is_public,
+        is_journal=refreshed_story.is_journal,
+        journal_date=refreshed_story.journal_date,
+        total_spend=refreshed_story.total_spend,
+        spend_currency=refreshed_story.spend_currency,
+        cloud_provider=refreshed_story.cloud_provider,
+        cloud_folder_url=refreshed_story.cloud_folder_url,
         likes_count=0,
         is_liked=False,
         created_at=refreshed_story.created_at,
