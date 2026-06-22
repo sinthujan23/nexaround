@@ -392,7 +392,7 @@ async def get_nearby(
             category_id=category_id,
             limit=db_limit,
             is_active=True,
-            min_radius_m=float(min_rad) if min_rad > 0 else None
+            sort_by_popularity=(radius >= 10000)
         )
 
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
@@ -587,14 +587,13 @@ async def get_nearby(
         await session.commit()
 
         # Re-query the database to get the complete unified set
-        min_rad = get_min_radius(radius)
         nearby_db_attractions = await repo.get_nearby(
             latitude=latitude,
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
             limit=db_limit,
-            min_radius_m=float(min_rad) if min_rad > 0 else None
+            sort_by_popularity=(radius >= 10000)
         )
 
         place_dicts = [

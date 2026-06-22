@@ -193,7 +193,8 @@ async def nearby_search(
                 },
                 "radius": eff_radius
             }
-        }
+        },
+        "rankPreference": "POPULARITY"
     }
 
     # Work on a mutable copy so the self-heal loop below can prune types.
