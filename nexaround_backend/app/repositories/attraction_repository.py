@@ -92,8 +92,7 @@ class AttractionRepository:
         limit: int = 50,
         sort_by_away: bool = False,
         is_active: Optional[bool] = None,
-        min_radius_m: Optional[float] = None,
-        sort_by_popularity: bool = False
+        min_radius_m: Optional[float] = None
     ) -> List[Tuple[Attraction, float]]:
         """Get attractions within a certain radius, with distance calculation."""
         center_point = create_point(latitude, longitude)
@@ -123,9 +122,7 @@ class AttractionRepository:
         if category_id:
             query = query.where(Attraction.category_id == category_id)
             
-        if sort_by_popularity:
-            query = query.order_by(desc(Attraction.review_count).nulls_last(), desc(Attraction.rating))
-        elif min_radius_m is not None:
+        if min_radius_m is not None:
             query = query.order_by(desc(Attraction.rating), desc("distance") if sort_by_away else "distance")
         else:
             if sort_by_away:
