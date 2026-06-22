@@ -72,6 +72,7 @@ android {
         // Inject the admin-managed Google Maps key (env / gradle.properties / backend)
         // into the AndroidManifest placeholder used by the Maps SDK.
         manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = resolveGoogleMapsApiKey(project)
+        manifestPlaceholders["appAuthRedirectScheme"] = "nexaround"
     }
 
     val keystorePropertiesFile = rootProject.file("key.properties")

@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/onboarding_page.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/pages/map_page.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/utils/go_router_refresh_stream.dart';
@@ -86,6 +87,16 @@ class AppRouter {
           pageBuilder: (context, state) => CustomTransitionPage(
             key: state.pageKey,
             child: const MapPage(),
+            transitionsBuilder: (context, animation, secondaryAnimation, child) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+          ),
+        ),
+        GoRoute(
+          path: '/journal',
+          pageBuilder: (context, state) => CustomTransitionPage(
+            key: state.pageKey,
+            child: const TravelJournalPage(),
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },

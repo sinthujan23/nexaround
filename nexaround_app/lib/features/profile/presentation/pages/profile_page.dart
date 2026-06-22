@@ -16,6 +16,7 @@ import 'package:nexaround_app/features/attractions/data/models/attraction_model.
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
+import 'package:go_router/go_router.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -455,6 +456,14 @@ class _ProfilePageState extends State<ProfilePage> {
             Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const HelpSupportPage()),
             );
+          },
+        ),
+        _buildMenuItem(
+          Icons.book_rounded, 
+          'My Travel Journal', 
+          'Private',
+          onTap: () {
+            context.push('/journal');
           },
         ),
         const SizedBox(height: 20),

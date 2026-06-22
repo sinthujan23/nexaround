@@ -84,6 +84,7 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.501648798743-kqev2d391necv2mvlqeoitmch9i05rv5</string>
+				<string>nexaround</string>
 			</array>
 		</dict>
 	</array>

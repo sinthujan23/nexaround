@@ -11,6 +11,7 @@ import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 /// Handles FCM messages while the app is backgrounded/terminated. Must be a
 /// top-level function and runs in its own isolate. The OS renders the
@@ -41,6 +42,10 @@ void main() async {
   await CacheService.init();
   // Clear attractions cache on app startup to force a fresh fetch from Google Places
   await CacheService.cacheAttractions([]);
+
+  // Initialize Hive Local Database for Travel Stories
+  await Hive.initFlutter();
+  await Hive.openBox('travel_stories_box');
 
   // Firebase + push notifications (FCM). Non-fatal if it fails so the app
   // still runs without notifications.

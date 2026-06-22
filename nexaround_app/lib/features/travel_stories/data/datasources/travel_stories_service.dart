@@ -1,225 +1,169 @@
 import 'dart:convert';
-import 'package:dio/dio.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../../core/network/api_client.dart';
-import '../../../../core/constants/api_constants.dart';
 import '../models/travel_story.dart';
 
 class TravelStoriesService {
   // Singleton instance
-  static final TravelStoriesService _instance =
-      TravelStoriesService._internal();
+  static final TravelStoriesService _instance = TravelStoriesService._internal();
   factory TravelStoriesService() => _instance;
   TravelStoriesService._internal();
 
-  final Dio _dio = ApiClient.instance;
-
-  // In-memory fallback list in case backend is offline
-  final List<TravelStory> _fallbackStories = [];
+  // Reference to the Hive Box we initialized in main.dart
+  Box get _box => Hive.box('travel_stories_box');
 
   Future<List<TravelStory>> getStories() async {
-    final prefs = await SharedPreferences.getInstance();
     try {
-      final response = await _dio.get(ApiConstants.travelStories);
-      if (response.statusCode == 200 && response.data != null) {
-        final List<dynamic> data = response.data;
-        final stories = data.map((json) => TravelStory.fromJson(json)).toList();
-        await prefs.setString('cached_travel_stories', jsonEncode(data));
-        return stories;
-      }
-    } catch (e) {
-      print(
-        '⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using fallback/cached data.',
-      );
-    }
+      final List<TravelStory> stories = [];
 
-    final cachedData = prefs.getString('cached_travel_stories');
-    if (cachedData != null) {
-      final List<dynamic> data = jsonDecode(cachedData);
-      return data.map((json) => TravelStory.fromJson(json)).toList();
+      // MIGRATION: If we have old stories in SharedPreferences, import them to Hive
+      final prefs = await SharedPreferences.getInstance();
+      final cachedData = prefs.getString('cached_travel_stories');
+      if (cachedData != null) {
+        final List<dynamic> oldData = jsonDecode(cachedData);
+        for (var json in oldData) {
+          final s = TravelStory.fromJson(json);
+          // Only add if not already in Hive
+          bool exists = false;
+          for (var i = 0; i < _box.length; i++) {
+            final raw = _box.getAt(i);
+            if (raw != null) {
+              final mapped = Map<String, dynamic>.from(raw);
+              if (mapped['id'] == s.id) exists = true;
+            }
+          }
+          if (!exists) {
+            await _box.add(s.toJson());
+          }
+        }
+        // Delete old cache so we don't migrate again
+        await prefs.remove('cached_travel_stories');
+      }
+
+      // Read all saved stories from Hive
+      for (var i = 0; i < _box.length; i++) {
+        final Map<dynamic, dynamic>? raw = _box.getAt(i);
+        if (raw != null) {
+          // Convert Hive Map to standard Map<String, dynamic>
+          final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+          stories.add(TravelStory.fromJson(jsonMap));
+        }
+      }
+      // Sort by descending date
+      stories.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return stories;
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to fetch stories from Hive ($e).');
+      return [];
     }
-    return List.from(_fallbackStories);
   }
 
   Future<TravelStory?> addStory(TravelStory story) async {
-    final prefs = await SharedPreferences.getInstance();
-    TravelStory? returnedStory;
     try {
-      final response = await _dio.post(
-        ApiConstants.travelStories,
-        data: story.toJson(),
-      );
-      if ((response.statusCode == 200 || response.statusCode == 201) &&
-          response.data != null) {
-        returnedStory = TravelStory.fromJson(response.data);
-      }
+      // Save directly into the Hive box
+      await _box.add(story.toJson());
+      return story;
     } catch (e) {
-      print(
-        '⚠️ TravelStoriesService: Failed to post story to backend ($e). Saving locally in fallback list.',
-      );
-      // Append to fallback stories locally
-      _fallbackStories.insert(0, story);
-      returnedStory = story;
+      print('⚠️ TravelStoriesService: Failed to post story to Hive ($e).');
+      return null;
     }
-
-    if (returnedStory != null) {
-      final cachedData = prefs.getString('cached_travel_stories');
-      if (cachedData != null) {
-        final List<dynamic> data = jsonDecode(cachedData);
-        data.insert(0, returnedStory.toJson());
-        await prefs.setString('cached_travel_stories', jsonEncode(data));
-      } else {
-        await prefs.setString(
-          'cached_travel_stories',
-          jsonEncode([returnedStory.toJson()]),
-        );
-      }
-    }
-
-    return returnedStory;
   }
 
   Future<void> toggleLike(String id) async {
     try {
-      await _dio.post('${ApiConstants.travelStories}/$id/like');
-    } catch (e) {
-      print(
-        '⚠️ TravelStoriesService: Failed to toggle like on backend ($e). Toggling locally.',
-      );
-      // Toggle locally on fallback list
-      final index = _fallbackStories.indexWhere((s) => s.id == id);
-      if (index != -1) {
-        final story = _fallbackStories[index];
-        if (story.isLiked) {
-          story.isLiked = false;
-          story.likesCount--;
-        } else {
-          story.isLiked = true;
-          story.likesCount++;
+      for (var i = 0; i < _box.length; i++) {
+        final Map<dynamic, dynamic>? raw = _box.getAt(i);
+        if (raw != null) {
+          final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+          if (jsonMap['id'] == id) {
+            final story = TravelStory.fromJson(jsonMap);
+            // Toggle like state
+            if (story.isLiked) {
+              story.isLiked = false;
+              story.likesCount--;
+            } else {
+              story.isLiked = true;
+              story.likesCount++;
+            }
+            // Overwrite the specific index in Hive
+            await _box.putAt(i, story.toJson());
+            break;
+          }
         }
       }
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to toggle like in Hive ($e).');
     }
   }
 
   Future<void> addComment(String id, String commentText, int imageIndex) async {
     try {
-      await _dio.post(
-        '${ApiConstants.travelStories}/$id/comment',
-        data: {'comment_text': commentText, 'image_index': imageIndex},
-      );
-    } catch (e) {
-      print(
-        '⚠️ TravelStoriesService: Failed to post comment to backend ($e). Saving locally in fallback.',
-      );
-      final index = _fallbackStories.indexWhere((s) => s.id == id);
-      if (index != -1) {
-        _fallbackStories[index].comments.add(
-          TravelStoryComment(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            author: 'You',
-            text: commentText,
-            imageIndex: imageIndex,
-          ),
-        );
+      for (var i = 0; i < _box.length; i++) {
+        final Map<dynamic, dynamic>? raw = _box.getAt(i);
+        if (raw != null) {
+          final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+          if (jsonMap['id'] == id) {
+            final story = TravelStory.fromJson(jsonMap);
+            // Add comment
+            story.comments.add(
+              TravelStoryComment(
+                id: DateTime.now().millisecondsSinceEpoch.toString(),
+                author: 'You',
+                text: commentText,
+                imageIndex: imageIndex,
+              ),
+            );
+            // Overwrite the specific index in Hive
+            await _box.putAt(i, story.toJson());
+            break;
+          }
+        }
       }
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to post comment to Hive ($e).');
     }
   }
 
-  Future<TravelStory?> updateStory(
-    String storyId,
-    TravelStory updatedStory,
-  ) async {
+  Future<TravelStory?> updateStory(String storyId, TravelStory updatedStory) async {
     try {
-      final response = await _dio.put(
-        '${ApiConstants.travelStories}/$storyId',
-        data: updatedStory.toJson(),
-      );
-      if (response.statusCode == 200 && response.data != null) {
-        return TravelStory.fromJson(response.data);
+      for (var i = 0; i < _box.length; i++) {
+        final Map<dynamic, dynamic>? raw = _box.getAt(i);
+        if (raw != null) {
+          final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+          if (jsonMap['id'] == storyId) {
+            await _box.putAt(i, updatedStory.toJson());
+            return updatedStory;
+          }
+        }
       }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to update story ($e).');
+      print('⚠️ TravelStoriesService: Failed to update story in Hive ($e).');
     }
     return null;
   }
 
   Future<void> deleteStory(String storyId) async {
     try {
-      await _dio.delete('${ApiConstants.travelStories}/$storyId');
+      for (var i = 0; i < _box.length; i++) {
+        final Map<dynamic, dynamic>? raw = _box.getAt(i);
+        if (raw != null) {
+          final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+          if (jsonMap['id'] == storyId) {
+            await _box.deleteAt(i);
+            break;
+          }
+        }
+      }
     } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to delete story ($e).');
+      print('⚠️ TravelStoriesService: Failed to delete story from Hive ($e).');
       rethrow;
     }
   }
 
   Future<List<String>?> uploadImages(List<String> filePaths) async {
-    if (filePaths.isEmpty) return [];
-
-    try {
-      final List<MultipartFile> files = [];
-      for (var path in filePaths) {
-        files.add(
-          await MultipartFile.fromFile(
-            path,
-            filename: path.split('/').last.split('\\').last,
-          ),
-        );
-      }
-
-      final formData = FormData();
-      for (var file in files) {
-        formData.files.add(MapEntry('files', file));
-      }
-
-      final response = await _dio.post(
-        '${ApiConstants.travelStories}/upload',
-        data: formData,
-      );
-
-      if ((response.statusCode == 200 || response.statusCode == 201) &&
-          response.data != null) {
-        final List<dynamic> urls = response.data['urls'];
-        return urls.map((e) => e.toString()).toList();
-      }
-    } catch (e) {
-      print('⚠️ TravelStoriesService: Failed to upload images ($e).');
-    }
-    return null;
-  }
-
-  // Pre-defined template images for mocked upload
-  static List<Map<String, String>> getPresetPhotos() {
-    return [
-      {
-        'title': 'Ella Train',
-        'url':
-            'https://images.unsplash.com/photo-1546708973-b339540b5162?w=600&auto=format&fit=crop',
-      },
-      {
-        'title': 'Pidurangala Sunrise',
-        'url':
-            'https://images.unsplash.com/photo-1588598126702-8611846b036c?w=600&auto=format&fit=crop',
-      },
-      {
-        'title': 'Tropical Cove',
-        'url':
-            'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=600&auto=format&fit=crop',
-      },
-      {
-        'title': 'Tea Plantation',
-        'url':
-            'https://images.unsplash.com/photo-1555899434-94d1368aa7af?w=600&auto=format&fit=crop',
-      },
-      {
-        'title': 'Safari Gathering',
-        'url':
-            'https://images.unsplash.com/photo-1516426122078-c23e76319801?w=600&auto=format&fit=crop',
-      },
-      {
-        'title': 'Ancient Temple',
-        'url':
-            'https://images.unsplash.com/photo-1568790308560-f4ca6469cfbe?w=600&auto=format&fit=crop',
-      },
-    ];
+    // The images are actually stored locally and uploaded to Google Drive.
+    // This is just a passthrough that returns the local paths so the TravelStory uses the local cache URI
+    // for displaying the image in the feed.
+    return filePaths;
   }
 }

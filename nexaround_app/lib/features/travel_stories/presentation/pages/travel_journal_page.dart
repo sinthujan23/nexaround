@@ -4,6 +4,9 @@ import 'package:nexaround_app/features/travel_stories/data/models/travel_story.d
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:nexaround_app/features/travel_stories/presentation/widgets/create_journal_sheet.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
+
 class TravelJournalPage extends StatefulWidget {
   const TravelJournalPage({Key? key}) : super(key: key);
 
@@ -23,16 +26,50 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
 
   Future<void> _fetchJournalEntries() async {
     setState(() => _isLoading = true);
-    // TODO: Connect this to the actual API repository 
-    // using the new GET /api/v1/travel-stories/journal endpoint
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    final stories = await TravelStoriesService().getStories();
+    
+    // Filter only journal entries
+    final journals = stories.where((s) => s.isJournal == true).toList();
+    
+    if (mounted) {
+      setState(() {
+        _journalEntries.clear();
+        _journalEntries.addAll(journals);
+        _isLoading = false;
+      });
+    }
   }
 
   void _openCloudFolder(String? url) async {
-    if (url != null && await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    if (url != null) {
+      try {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not open link: $url')),
+          );
+        }
+      }
     }
+  }
+
+  void _openCreateSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CreateJournalSheet(
+        onJournalSubmitted: (newEntry) async {
+          // Save to Hive Local Database
+          await TravelStoriesService().addStory(newEntry);
+          
+          setState(() {
+            _journalEntries.insert(0, newEntry);
+          });
+        },
+      ),
+    );
   }
 
   @override
@@ -43,12 +80,7 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            onPressed: () {
-              // TODO: Open Journal Creation Form
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Journal Creation coming soon!')),
-              );
-            },
+            onPressed: _openCreateSheet,
           ),
         ],
       ),
@@ -78,7 +110,7 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
-            onPressed: () {},
+            onPressed: _openCreateSheet,
             icon: const Icon(Icons.add),
             label: const Text('Add Entry'),
           )
@@ -131,10 +163,10 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
                   OutlinedButton.icon(
                     onPressed: () => _openCloudFolder(entry.cloudFolderUrl),
                     icon: Icon(
-                      entry.cloudProvider == 'dropbox' ? Icons.cloud_done : Icons.folder_shared,
+                      _getCloudProviderIcon(entry.cloudProvider),
                       color: Colors.blue,
                     ),
-                    label: Text('View Photos in ${entry.cloudProvider ?? "Cloud"}'),
+                    label: Text('View Photos in ${_formatCloudProviderName(entry.cloudProvider)}'),
                   ),
               ],
             ),
@@ -142,5 +174,27 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
         );
       },
     );
+  }
+
+  IconData _getCloudProviderIcon(String? provider) {
+    switch (provider) {
+      case 'dropbox':
+        return Icons.cloud_done;
+      case 'one_drive':
+        return Icons.cloud;
+      default:
+        return Icons.folder_shared;
+    }
+  }
+
+  String _formatCloudProviderName(String? provider) {
+    switch (provider) {
+      case 'dropbox':
+        return 'Dropbox';
+      case 'one_drive':
+        return 'OneDrive';
+      default:
+        return 'Cloud';
+    }
   }
 }
