@@ -147,9 +147,36 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         );
       }
 
+      // Filter out private residences and personal markers to keep only public/walkable spots
+      bool isPublicSpot(AttractionEntity place) {
+        final name = place.name.toLowerCase();
+        final desc = (place.description ?? '').toLowerCase();
+        final tags = place.tags.map((t) => t.toLowerCase()).toList();
+        
+        final privateKeywords = [
+          'home', 'house', 'residence', "'s place", 'my place', 'my home', 
+          'private', 'personal', 'apartment', 'flat', 'villa'
+        ];
+        
+        for (final keyword in privateKeywords) {
+          if (name.contains(keyword)) {
+            if (name.contains('museum') || name.contains('historic') || name.contains('heritage') || name.contains('public')) {
+              continue;
+            }
+            return false;
+          }
+        }
+        
+        if (tags.any((t) => t.contains('home') || t.contains('private') || t.contains('residential') || t.contains('personal'))) {
+          return false;
+        }
+        
+        return true;
+      }
+
       // Filter places within 3 km and prefer those with known distance/rating.
       final usable = places
-          .where((p) => p.distanceM != null && p.distanceM! <= 3000)
+          .where((p) => p.distanceM != null && p.distanceM! <= 3000 && isPublicSpot(p))
           .toList()
         ..sort((a, b) {
           // Primary: sort by rating (highest first for famous spots)
