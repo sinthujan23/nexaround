@@ -449,15 +449,29 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        currentStory.userName,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 13,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      BlocBuilder<AuthBloc, AuthState>(
+                                        builder: (context, authState) {
+                                          String display = currentStory.userName;
+                                          if (display.trim().isEmpty || display.trim().toLowerCase() == 'anonymous') {
+                                            if (authState is AuthAuthenticated) {
+                                              display = authState.user.displayName.isNotEmpty && authState.user.displayName.toLowerCase() != 'anonymous' 
+                                                  ? authState.user.displayName 
+                                                  : (authState.user.email.isNotEmpty ? authState.user.email.split('@')[0] : 'Explorer');
+                                            } else {
+                                              display = 'Explorer';
+                                            }
+                                          }
+                                          return Text(
+                                            display,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          );
+                                        },
                                       ),
                                       if (_currentImageIndex == 0)
                                         Text(

@@ -381,6 +381,37 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.actionTeal, letterSpacing: 1),
                         ),
                       ),
+                      if (widget.rating >= 4.5 && (_totalReviews ?? widget.reviewCount ?? 0) >= 20 && (_totalReviews ?? widget.reviewCount ?? 0) <= 300) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [
+                                Color(0xFF00F2FE),
+                                Color(0xFF4FACFE),
+                              ],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Color(0xFF00F2FE).withOpacity(0.3),
+                                blurRadius: 4,
+                                offset: Offset(0, 1),
+                              ),
+                            ],
+                          ),
+                          child: const Text(
+                            '💎 HIDDEN GEM',
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 10),
                       const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
                       const SizedBox(width: 4),

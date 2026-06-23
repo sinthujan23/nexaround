@@ -5,6 +5,9 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../../../core/constants/api_constants.dart';
 import '../../data/models/travel_story.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 
 class TravelStoryCard extends StatefulWidget {
   final TravelStory story;
@@ -255,15 +258,29 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.story.userName,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          BlocBuilder<AuthBloc, AuthState>(
+                            builder: (context, authState) {
+                              String display = widget.story.userName;
+                              if (display.trim().isEmpty || display.trim().toLowerCase() == 'anonymous') {
+                                if (authState is AuthAuthenticated) {
+                                  display = authState.user.displayName.isNotEmpty && authState.user.displayName.toLowerCase() != 'anonymous' 
+                                      ? authState.user.displayName 
+                                      : (authState.user.email.isNotEmpty ? authState.user.email.split('@')[0] : 'Explorer');
+                                } else {
+                                  display = 'Explorer';
+                                }
+                              }
+                              return Text(
+                                display,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              );
+                            },
                           ),
                           Text(
                             _timeAgo(widget.story.createdAt),

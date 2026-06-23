@@ -26,10 +26,7 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
 
   Future<void> _fetchJournalEntries() async {
     setState(() => _isLoading = true);
-    final stories = await TravelStoriesService().getStories();
-    
-    // Filter only journal entries
-    final journals = stories.where((s) => s.isJournal == true).toList();
+    final journals = await TravelStoriesService().getJournals();
     
     if (mounted) {
       setState(() {

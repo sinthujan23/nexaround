@@ -14,7 +14,7 @@ class TravelStoryComment {
   factory TravelStoryComment.fromJson(Map<String, dynamic> json) {
     return TravelStoryComment(
       id: (json['id'] ?? '').toString(),
-      author: json['user_display_name'] as String? ?? 'Anonymous',
+      author: json['user_display_name'] as String? ?? json['author'] as String? ?? json['userName'] as String? ?? json['user_name'] as String? ?? 'Anonymous',
       text: json['comment_text'] as String? ?? '',
       imageIndex: json['image_index'] as int? ?? 0,
     );
@@ -147,8 +147,8 @@ class TravelStory {
     return TravelStory(
       id: (json['id'] ?? '').toString(),
       userId: (json['user_id'] ?? '').toString(),
-      userName: json['user_display_name'] as String? ?? 'Anonymous',
-      userAvatar: json['user_avatar_url'] as String? ?? '',
+      userName: json['user_display_name'] as String? ?? json['userName'] as String? ?? json['user_name'] as String? ?? 'Anonymous',
+      userAvatar: json['user_avatar_url'] as String? ?? json['userAvatar'] as String? ?? '',
       locationName: json['location_name'] as String? ?? '',
       category: json['category'] as String? ?? '',
       description: json['description'] as String? ?? '',
@@ -177,6 +177,10 @@ class TravelStory {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
+      'user_id': userId,
+      'user_display_name': userName,
+      'user_avatar_url': userAvatar,
       'location_name': locationName,
       'category': category,
       'description': description,
@@ -184,6 +188,10 @@ class TravelStory {
       'image_urls': imageUrls,
       'latitude': latitude,
       'longitude': longitude,
+      'likes_count': likesCount,
+      'is_liked': isLiked,
+      'comments': comments.map((c) => c.toJson()).toList(),
+      'created_at': createdAt.toIso8601String(),
       'is_public': isPublic,
       'is_journal': isJournal,
       'journal_date': journalDate?.toIso8601String(),

@@ -75,6 +75,14 @@ class _AppViewState extends State<AppView> {
       darkTheme: AppTheme.darkTheme,
       routerConfig: _router,
       debugShowCheckedModeBanner: false,
+      builder: (context, child) {
+        return GestureDetector(
+          onTap: () {
+            FocusManager.instance.primaryFocus?.unfocus();
+          },
+          child: child,
+        );
+      },
     );
   }
 }

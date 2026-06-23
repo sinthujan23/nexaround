@@ -7,6 +7,7 @@ import 'package:nexaround_app/features/travel_stories/data/models/travel_story.d
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 
 class CreateJournalSheet extends StatefulWidget {
   final Function(TravelStory) onJournalSubmitted;
@@ -76,6 +77,11 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
         _selectedImages.map((f) => f.path).toList()
       );
 
+      // 1.5 Upload to backend so they can be shown in the Nexaround app
+      final uploadedImageUrls = await TravelStoriesService().uploadImages(
+        _selectedImages.map((f) => f.path).toList()
+      );
+
       // 2. Create TravelStory model
       final authState = context.read<AuthBloc>().state;
       String userId = '';
@@ -84,6 +90,9 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
       if (authState is AuthAuthenticated) {
         userId = authState.user.id;
         userName = authState.user.displayName;
+        if (userName.trim().isEmpty || userName.trim().toLowerCase() == 'anonymous') {
+          userName = authState.user.email.isNotEmpty ? authState.user.email.split('@')[0] : 'Journaler';
+        }
       }
 
       final newJournal = TravelStory(
@@ -94,7 +103,8 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
         locationName: _locationController.text,
         category: 'Journal',
         description: _descController.text,
-        imageUrl: '',
+        imageUrl: (uploadedImageUrls != null && uploadedImageUrls.isNotEmpty) ? uploadedImageUrls.first : '',
+        imageUrls: uploadedImageUrls ?? [],
         comments: [],
         createdAt: DateTime.now(),
         isPublic: false,

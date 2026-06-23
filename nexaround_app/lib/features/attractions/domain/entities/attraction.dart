@@ -35,6 +35,8 @@ class AttractionEntity {
   final double? distanceM;
   final bool isActive;
   final DateTime createdAt;
+  final double? discoveryScore;
+  final bool isHiddenGem;
 
   const AttractionEntity({
     required this.id,
@@ -57,5 +59,7 @@ class AttractionEntity {
     this.distanceM,
     this.isActive = true,
     required this.createdAt,
+    this.discoveryScore,
+    this.isHiddenGem = false,
   });
 }

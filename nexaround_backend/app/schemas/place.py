@@ -19,6 +19,7 @@ class PlaceResponse(BaseModel):
     longitude: float
     category_id: Optional[str] = None
     category_name: Optional[str] = None
+    category: Optional[str] = None
     address: Optional[str] = None
     opening_hours: dict = {}
     entry_fee: float = 0.0
@@ -26,11 +27,14 @@ class PlaceResponse(BaseModel):
     rating: float = 0.0
     review_count: int = 0
     photo_urls: list[str] = []
+    photo_url: Optional[str] = None
     tags: list[str] = []
     geofence_radius_m: int = 100
     distance_m: Optional[float] = None
     is_active: bool = True
     created_at: datetime
+    discovery_score: float = 0.0
+    is_hidden_gem: bool = False
 
 
 class PlacesNearbyResponse(BaseModel):

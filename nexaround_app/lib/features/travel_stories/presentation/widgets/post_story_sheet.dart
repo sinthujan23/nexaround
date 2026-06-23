@@ -269,6 +269,9 @@ class _PostStorySheetState extends State<PostStorySheet> {
     if (authState is AuthAuthenticated) {
       userId = authState.user.id;
       userName = authState.user.displayName;
+      if (userName.trim().isEmpty || userName.trim().toLowerCase() == 'anonymous') {
+        userName = authState.user.email.isNotEmpty ? authState.user.email.split('@')[0] : 'Explorer';
+      }
       userAvatar = authState.user.avatarUrl ?? '';
     }
 
