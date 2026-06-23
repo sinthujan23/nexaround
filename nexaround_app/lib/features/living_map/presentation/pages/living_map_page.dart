@@ -76,6 +76,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   List<AttractionEntity>? _miniTourPlaces;
   bool _loadingMiniTour = false;
   bool _isPreFetching = false;
+  List<AttractionEntity> _aroundYouPlaces = [];
+  bool _loadingAroundYou = false;
 
   String? _currentDistrict;
   String? _lastFetchedDistrict;
@@ -233,6 +235,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             }
 
             _fetchMiniTourPlaces(position.latitude, position.longitude);
+            _fetchAroundYouPlaces(position.latitude, position.longitude);
             _preFetchArPlaces(position.latitude, position.longitude);
           }
         });
@@ -630,6 +633,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         );
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
+        _fetchAroundYouPlaces(position.latitude, position.longitude);
         _preFetchArPlaces(position.latitude, position.longitude);
       }
     } catch (e) {
@@ -659,7 +663,32 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
+      _fetchAroundYouPlaces(6.9271, 79.8612);
       _preFetchArPlaces(6.9271, 79.8612);
+    }
+  }
+
+  Future<void> _fetchAroundYouPlaces(double lat, double lng) async {
+    if (_loadingAroundYou) return;
+    setState(() => _loadingAroundYou = true);
+    try {
+      final places = await GooglePlacesService.fetchNearbyPlaces(
+        latitude: lat,
+        longitude: lng,
+        radius: 50000,
+        aroundYou: true,
+      );
+      if (mounted) {
+        setState(() {
+          _aroundYouPlaces = places;
+          _loadingAroundYou = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching around you places: $e');
+      if (mounted) {
+        setState(() => _loadingAroundYou = false);
+      }
     }
   }
 
@@ -937,7 +966,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ...() {
                     if (state.status == MapStatus.loading ||
                         state.status == MapStatus.initial ||
-                        state.attractions.isEmpty) {
+                        state.attractions.isEmpty ||
+                        (_loadingAroundYou && _aroundYouPlaces.isEmpty)) {
                       return [
                         // Travel Stories (Where Was I?)
                         SliverToBoxAdapter(
@@ -984,72 +1014,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ];
                     }
 
-                    // Filter out private residences and personal markers to keep only public/walkable spots
-                    bool isPublicSpot(AttractionEntity place) {
-                      final name = place.name.toLowerCase();
-                      final desc = (place.description ?? '').toLowerCase();
-                      final tags = place.tags
-                          .map((t) => t.toLowerCase())
-                          .toList();
-
-                      final privateKeywords = [
-                        'home',
-                        'house',
-                        'residence',
-                        "'s place",
-                        'my place',
-                        'my home',
-                        'private',
-                        'personal',
-                        'apartment',
-                        'flat',
-                        'villa',
-                        'homestay',
-                        'guest house',
-                        'guesthouse',
-                        '3bhk',
-                        '2bhk',
-                        '4bhk',
-                        '1bhk',
-                        'cottage',
-                        'bungalow',
-                        'stay',
-                      ];
-
-                      // Check name/description for private indicators
-                      for (final keyword in privateKeywords) {
-                        if (name.contains(keyword)) {
-                          // Allow public historic/museum houses
-                          if (name.contains('museum') ||
-                              name.contains('historic') ||
-                              name.contains('heritage') ||
-                              name.contains('public')) {
-                            continue;
-                          }
-                          return false;
-                        }
-                      }
-
-                      // Filter out residential tags
-                      if (tags.any(
-                        (t) =>
-                            t.contains('home') ||
-                            t.contains('private') ||
-                            t.contains('residential') ||
-                            t.contains('personal'),
-                      )) {
-                        return false;
-                      }
-
-                      return true;
-                    }
-
-                    final publicAttractions = state.attractions
-                        .where(isPublicSpot)
-                        .toList();
                     final trendingPlaces = _geminiTrendingPlaces.isNotEmpty
                         ? _geminiTrendingPlaces
-                        : (List<AttractionEntity>.from(publicAttractions)..sort(
+                        : (List<AttractionEntity>.from(state.attractions)..sort(
                             (a, b) =>
                                 _trendingScore(b).compareTo(_trendingScore(a)),
                           ));
@@ -1073,7 +1040,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
 
                       // Around You
-                      if (publicAttractions.isNotEmpty) ...[
+                      if (_aroundYouPlaces.isNotEmpty) ...[
                         SliverToBoxAdapter(
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
@@ -1085,7 +1052,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(
-                          child: _buildHiddenGemCards(publicAttractions),
+                          child: _buildHiddenGemCards(_aroundYouPlaces),
                         ),
                       ],
 
@@ -5018,15 +4985,47 @@ class _LivingMapPageState extends State<LivingMapPage>
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
-                                  child: Text(
-                                    place.name,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          place.name,
+                                          style: const TextStyle(
+                                            color: AppColors.textPrimary,
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      if (place.isHiddenGem) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.purple.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(6),
+                                            border: Border.all(
+                                              color: Colors.purple.withOpacity(0.5),
+                                              width: 0.5,
+                                            ),
+                                          ),
+                                          child: const Text(
+                                            '💎 Gem',
+                                            style: TextStyle(
+                                              color: Colors.purpleAccent,
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -5107,155 +5106,23 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Medical': [],
     };
 
-    // Expanded place types for better discovery
-    final allowedTypes = {
-      'Medical': {
-        'hospital',
-        'pharmacy',
-        'doctor',
-        'dentist',
-        'health',
-        'physiotherapist',
-        'veterinary_care',
-        'clinic',
-        'medical_lab',
-        'optician',
-      },
-      'Food': {
-        'restaurant',
-        'cafe',
-        'bakery',
-        'meal_takeaway',
-        'meal_delivery',
-        'food',
-        'bar',
-        'night_club',
-        'ice_cream_shop',
-        'coffee_shop',
-        'juice_bar',
-      },
-      'Shopping': {
-        'shopping_mall',
-        'supermarket',
-        'store',
-        'department_store',
-        'convenience_store',
-        'clothing_store',
-        'electronics_store',
-        'book_store',
-        'jewelry_store',
-        'shoe_store',
-        'furniture_store',
-        'pet_store',
-        'hardware_store',
-        'gift_shop',
-        'market',
-      },
-      'Attractions': {
-        'tourist_attraction',
-        'museum',
-        'park',
-        'zoo',
-        'aquarium',
-        'art_gallery',
-        'amusement_park',
-        'church',
-        'hindu_temple',
-        'mosque',
-        'synagogue',
-        'stadium',
-        'casino',
-        'movie_theater',
-        'bowling_alley',
-        'campground',
-        'national_park',
-        'historical_landmark',
-        'performing_arts_theater',
-        'cultural_center',
-        'monument',
-        'waterfall',
-        'beach',
-        'viewpoint',
-        'garden',
-        'fort',
-        'palace',
-      },
-    };
-
-    // Custom comparator: Sort by distance (nearest first) and then by rating (highest first when distances are within 100 meters)
-    int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
-      final distA = a.distanceM ?? 0;
-      final distB = b.distanceM ?? 0;
-      if ((distA - distB).abs() < 100) {
-        final rateA = a.rating ?? 0.0;
-        final rateB = b.rating ?? 0.0;
-        return rateB.compareTo(rateA);
-      }
-      return distA.compareTo(distB);
-    }
-
     for (final place in attractions) {
-      final tags = place.tags.map((t) => t.toLowerCase()).toSet();
-      final distKm = _getAccurateDistanceM(place) / 1000.0;
-
-      // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
-      final catLower = (place.categoryName ?? '').toLowerCase();
-      if (catLower.contains('hotel') ||
-          catLower.contains('lodging') ||
-          catLower.contains('accommodation') ||
-          catLower.contains('stay') ||
-          catLower.contains('resort') ||
-          catLower.contains('guest_house') ||
-          catLower.contains('bed_and_breakfast') ||
-          catLower.contains('hostel') ||
-          tags.any(
-            (t) =>
-                t.contains('lodging') ||
-                t.contains('hotel') ||
-                t.contains('resort') ||
-                t.contains('guest_house') ||
-                t.contains('hostel'),
-          )) {
-        continue;
-      }
-
-      // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
-      // Priority: Medical > Food > Shopping > Attractions
-      final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
-      final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
-      final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isAttraction = tags.any(
-        (t) => allowedTypes['Attractions']!.contains(t),
-      );
-
+      final category = (place.categoryName ?? '').toLowerCase();
       String? bestCategory;
-      if (isMedical && !isFood && !isShopping) {
-        bestCategory = 'Medical';
-      } else if (isFood && !isMedical) {
-        // Food but NOT medical — exclude places that are primarily shopping
-        final primaryShop = tags.any(
-          (t) =>
-              {'shopping_mall', 'department_store', 'supermarket'}.contains(t),
-        );
-        if (!primaryShop) {
-          bestCategory = 'Food';
-        }
-      } else if (isShopping && !isMedical && !isFood) {
-        bestCategory = 'Shopping';
-      } else if (isAttraction && !isMedical && !isFood && !isShopping) {
+      if (category.contains('food') || category.contains('drink') || category.contains('cafe') || category.contains('restaurant')) {
+        bestCategory = 'Food';
+      } else if (category.contains('attraction') || category.contains('experience') || category.contains('beach') || category.contains('park') || category.contains('museum')) {
         bestCategory = 'Attractions';
+      } else if (category.contains('shop') || category.contains('store') || category.contains('mall') || category.contains('market')) {
+        bestCategory = 'Shopping';
+      } else if (category.contains('medic') || category.contains('hospital') || category.contains('clinic')) {
+        bestCategory = 'Medical';
       }
-      // If place matches multiple categories (e.g. a supermarket tagged as 'food' + 'store'),
-      // it only goes to the first matching priority category above.
-      // If it matches NONE, skip it entirely.
 
       if (bestCategory == null) continue;
 
-      // Apply distance limits per category
-      final maxDist =
-          (bestCategory == 'Attractions' || bestCategory == 'Medical')
-          ? 50.0
-          : 15.0;
+      final distKm = (place.distanceM ?? 0.0) / 1000.0;
+      final maxDist = (bestCategory == 'Attractions' || bestCategory == 'Medical') ? 50.0 : 15.0;
       if (distKm > maxDist) continue;
 
       if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
@@ -5263,94 +5130,21 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     }
 
-    // Balance Attractions category to ensure at least one place is 25km or further away
-    final attractionsCategoryList = grouped['Attractions'] ?? [];
-    var farAttractions = attractionsCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 25000)
-        .toList();
-    var closeAttractions = attractionsCategoryList
-        .where((p) => (p.distanceM ?? 0) < 25000)
-        .toList();
-
-    if (closeAttractions.length < 7) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 &&
-            !closeAttractions.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isAttraction =
-              tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
-              !tags.any(
-                (t) => {
-                  'store',
-                  'shopping_mall',
-                  'supermarket',
-                  'department_store',
-                }.contains(t),
-              );
-          if (isAttraction) {
-            closeAttractions.add(p);
-            if (closeAttractions.length >= 7) break;
-          }
-        }
+    int compareDiscoveryScore(AttractionEntity a, AttractionEntity b) {
+      final scoreA = a.discoveryScore ?? 0.0;
+      final scoreB = b.discoveryScore ?? 0.0;
+      if (scoreA != scoreB) {
+        return scoreB.compareTo(scoreA);
       }
+      final distA = a.distanceM ?? 0.0;
+      final distB = b.distanceM ?? 0.0;
+      return distA.compareTo(distB);
     }
 
-    closeAttractions.sort(compareDistanceAndRating);
-    farAttractions.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedAttractions = [];
-    balancedAttractions.addAll(closeAttractions.take(7));
-    for (final far in farAttractions) {
-      if (balancedAttractions.length >= 10) break;
-      if (!balancedAttractions.any((x) => x.id == far.id)) {
-        balancedAttractions.add(far);
-      }
-    }
-    grouped['Attractions'] = balancedAttractions;
-
-    // Balance Medical category to ensure at least one place is 25km or further away
-    final medicalCategoryList = grouped['Medical'] ?? [];
-    var farMedical = medicalCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 25000)
-        .toList();
-    var closeMedical = medicalCategoryList
-        .where((p) => (p.distanceM ?? 0) < 25000)
-        .toList();
-
-    if (closeMedical.length < 7) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 &&
-            !closeMedical.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isMedical =
-              tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
-              !tags.contains('bar') &&
-              !tags.contains('pub') &&
-              !tags.contains('liquor_store');
-          if (isMedical) {
-            closeMedical.add(p);
-            if (closeMedical.length >= 7) break;
-          }
-        }
-      }
-    }
-
-    closeMedical.sort(compareDistanceAndRating);
-    farMedical.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedMedical = [];
-    balancedMedical.addAll(closeMedical.take(7));
-    for (final far in farMedical) {
-      if (balancedMedical.length >= 10) break;
-      if (!balancedMedical.any((x) => x.id == far.id)) {
-        balancedMedical.add(far);
-      }
-    }
-    grouped['Medical'] = balancedMedical;
-
-    // Sort Food and Shopping lists strictly by distance and rating
-    grouped['Food']?.sort(compareDistanceAndRating);
-    grouped['Shopping']?.sort(compareDistanceAndRating);
+    grouped['Food']?.sort(compareDiscoveryScore);
+    grouped['Attractions']?.sort(compareDiscoveryScore);
+    grouped['Shopping']?.sort(compareDiscoveryScore);
+    grouped['Medical']?.sort(compareDiscoveryScore);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
@@ -5647,7 +5441,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                                       'distance':
                                           '${(_getAccurateDistanceM(place)).toStringAsFixed(0)} m',
                                       'distanceM': _getAccurateDistanceM(place),
-                                      'rating': place.rating ?? 0.0,
+                                      'rating': place.rating,
                                       'latitude': place.latitude,
                                       'longitude': place.longitude,
                                     },
@@ -5750,66 +5544,6 @@ class _LivingMapPageState extends State<LivingMapPage>
     return Icons.attractions_rounded;
   }
 
-  ImageProvider _getImageProvider(String? url, String category, String name) {
-    return PlaceImageHelper.getImageProvider(url, category, name);
-  }
-
-  ImageProvider? _getNetworkImageProvider(String? url) {
-    if (url == null || url.isEmpty || url == 'null') return null;
-    String resolvedUrl = url;
-    if (resolvedUrl.startsWith('/')) {
-      resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
-    }
-    return CachedNetworkImageProvider(resolvedUrl);
-  }
-
-  bool _shouldShowImageForPlace(AttractionEntity place) {
-    return true;
-  }
-
-  Widget _buildEmojiThumbnail(String? category) {
-    final cat = (category ?? '').toLowerCase();
-    final String emoji;
-    if (cat.contains('food') ||
-        cat.contains('drink') ||
-        cat.contains('restaurant') ||
-        cat.contains('cafe')) {
-      emoji = '🍽';
-    } else if (cat.contains('shop') ||
-        cat.contains('mall') ||
-        cat.contains('market')) {
-      emoji = '🛍';
-    } else if (cat.contains('hotel') || cat.contains('accommodation')) {
-      emoji = '🏨';
-    } else if (cat.contains('park') ||
-        cat.contains('nature') ||
-        cat.contains('garden')) {
-      emoji = '🌿';
-    } else if (cat.contains('museum') ||
-        cat.contains('heritage') ||
-        cat.contains('historic')) {
-      emoji = '🏛';
-    } else if (cat.contains('beach') ||
-        cat.contains('coast') ||
-        cat.contains('sea')) {
-      emoji = '🏖';
-    } else if (cat.contains('temple') ||
-        cat.contains('religious') ||
-        cat.contains('church')) {
-      emoji = '⛩';
-    } else {
-      emoji = '📌';
-    }
-    return Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
-    );
-  }
 }
 
 /// L-shaped viewfinder bracket used to frame the AR spotlight card,
@@ -5839,35 +5573,6 @@ class _ArCorner extends StatelessWidget {
   }
 }
 
-/// Smaller viewfinder corner brackets for the mini AR preview inside the
-/// homepage AR spotlight card.
-class _MiniCorner extends StatelessWidget {
-  final bool top;
-  final bool left;
-  const _MiniCorner({required this.top, required this.left});
-
-  @override
-  Widget build(BuildContext context) {
-    final side = BorderSide(
-      color: const Color(0xFF00E5FF).withOpacity(0.6),
-      width: 1.5,
-    );
-    return SizedBox(
-      width: 10,
-      height: 10,
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(
-            top: top ? side : BorderSide.none,
-            bottom: top ? BorderSide.none : side,
-            left: left ? side : BorderSide.none,
-            right: left ? BorderSide.none : side,
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 class _SpotlightWorldMapPainter extends CustomPainter {
   final double rotation;
