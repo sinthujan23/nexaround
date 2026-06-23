@@ -370,7 +370,33 @@ class CacheService {
     await _prefs.remove('last_fetch_lng');
   }
 
+  // Hybrid Places Caching (Expires after 24 hours)
+  static Future<void> cacheHybridPlaces(String locationName, String categoryName, List<Map<String, dynamic>> placesJson) async {
+    final key = 'hybrid_places_${locationName.replaceAll(' ', '_')}_$categoryName';
+    await _prefs.setString(key, json.encode(placesJson));
+    await _prefs.setInt('${key}_time', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  static List<Map<String, dynamic>>? getCachedHybridPlaces(String locationName, String categoryName) {
+    final key = 'hybrid_places_${locationName.replaceAll(' ', '_')}_$categoryName';
+    final timestamp = _prefs.getInt('${key}_time') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    
+    // 24 hours expiry (86,400,000 milliseconds)
+    if (now - timestamp > 86400000) return null;
+    
+    final jsonStr = _prefs.getString(key);
+    if (jsonStr == null) return null;
+    try {
+      final decoded = json.decode(jsonStr) as List<dynamic>;
+      return decoded.map((e) => e as Map<String, dynamic>).toList();
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }
 }
+

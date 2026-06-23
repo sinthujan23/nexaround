@@ -1,6 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
@@ -172,29 +173,45 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
-        final mainFutures = categoriesToFetch.expand((cat) {
+        final mainFutures = categoriesToFetch.map((cat) async {
           if (cat == 'Attractions' || cat == 'Medical') {
-            // Backend now handles distance distribution (bucketing) natively for 50km
-            return [
-              _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: 50000.0,
-                categoryName: cat,
-                useLegacy: event.useLegacy,
-              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r)),
-            ];
+            // Retrieve geocoded location name bias
+            String locationName = 'Nearby';
+            try {
+              locationName = await GooglePlacesService.reverseGeocode(event.latitude, event.longitude);
+            } catch (_) {}
+            if (locationName == 'Nearby' || locationName.trim().isEmpty) {
+              locationName = 'Aluva';
+            }
+            
+            final hybridList = await GooglePlacesService.fetchHybridPlaces(
+              latitude: event.latitude,
+              longitude: event.longitude,
+              categoryName: cat,
+              locationName: locationName,
+            );
+            if (hybridList.isNotEmpty) {
+              return hybridList;
+            }
+            
+            // Fallback
+            final repoRes = await _repository.getNearbyAttractions(
+              latitude: event.latitude,
+              longitude: event.longitude,
+              radius: 50000.0,
+              categoryName: cat,
+              useLegacy: event.useLegacy,
+            );
+            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
           } else {
-            // Backend handles distance distribution for 15km as well
-            return [
-              _repository.getNearbyAttractions(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                radius: 15000.0,
-                categoryName: cat,
-                useLegacy: event.useLegacy,
-              ).then((res) => res.fold((_) => <AttractionEntity>[], (r) => r))
-            ];
+            final repoRes = await _repository.getNearbyAttractions(
+              latitude: event.latitude,
+              longitude: event.longitude,
+              radius: 15000.0,
+              categoryName: cat,
+              useLegacy: event.useLegacy,
+            );
+            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
           }
         }).toList();
 

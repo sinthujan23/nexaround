@@ -6,6 +6,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -22,6 +23,9 @@ class PlacesFetchException implements Exception {
 /// Service to fetch real place data from Google Maps Places API
 /// and reverse-geocode current location via backend proxy.
 class GooglePlacesService {
+  static String lastAttractionsError = '';
+  static String lastMedicalError = '';
+
   // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
     'Attractions': 'tourist_attraction',
@@ -455,7 +459,8 @@ class GooglePlacesService {
         queryParameters: {
           'input': input,
           'location': '$latitude,$longitude',
-          'radius': 50000, // 50km bias
+          'radius': 50000, // 50km strict bound
+          'strictbounds': true, // Only return results within the radius
           'origin': '$latitude,$longitude',
         },
       );
@@ -545,6 +550,197 @@ class GooglePlacesService {
     } catch (e) {
       debugPrint('Place Details error: $e');
       return null;
+    }
+  }
+
+  /// Find a place by name, biased towards the user's location, using Google's Find Place API.
+  static Future<AttractionEntity?> findPlaceByName({
+    required String name,
+    required double userLat,
+    required double userLng,
+    String? categoryName,
+  }) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
+        queryParameters: {
+          'input': name,
+          'inputtype': 'textquery',
+          'fields': 'place_id,name,geometry,rating,user_ratings_total,photos,formatted_address',
+          'locationbias': 'circle:50000@$userLat,$userLng',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final candidates = response.data['candidates'] as List?;
+        if (candidates != null && candidates.isNotEmpty) {
+          final candidate = candidates[0] as Map<String, dynamic>;
+          final placeId = candidate['place_id'] as String? ?? '';
+          final placeName = candidate['name'] as String? ?? name;
+          final rating = (candidate['rating'] as num?)?.toDouble() ?? 4.0;
+          final userRatingsTotal = (candidate['user_ratings_total'] as num?)?.toInt() ?? 0;
+
+          final geom = candidate['geometry'] as Map<String, dynamic>?;
+          final loc = geom != null ? geom['location'] as Map<String, dynamic>? : null;
+          final plat = loc != null ? (loc['lat'] as num).toDouble() : userLat;
+          final plng = loc != null ? (loc['lng'] as num).toDouble() : userLng;
+
+          final distanceM = geo.Geolocator.distanceBetween(
+            userLat,
+            userLng,
+            plat,
+            plng,
+          );
+
+          // Map photo reference to our backend photo proxy URL
+          final photos = candidate['photos'] as List? ?? [];
+          final List<String> photoUrls = [];
+          if (photos.isNotEmpty) {
+            final ref = photos[0]['photo_reference'] as String?;
+            if (ref != null && ref.isNotEmpty) {
+              photoUrls.add('/api/v1/places/photo?ref=$ref');
+            }
+          }
+
+          return AttractionModel(
+            id: placeId,
+            name: placeName,
+            description: candidate['formatted_address'] as String? ?? '',
+            latitude: plat,
+            longitude: plng,
+            categoryId: null,
+            categoryName: categoryName,
+            address: candidate['formatted_address'] as String? ?? '',
+            openingHours: const {},
+            entryFee: 0.0,
+            currency: 'USD',
+            rating: rating,
+            reviewCount: userRatingsTotal,
+            photoUrls: photoUrls,
+            tags: categoryName != null ? [categoryName.toLowerCase()] : const [],
+            geofenceRadiusM: 100,
+            distanceM: distanceM,
+            isActive: true,
+            createdAt: DateTime.now(),
+          );
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error finding place by name "$name": $e');
+      return null;
+    }
+  }
+
+  /// Fetch places using a hybrid Gemini AI + Google Places Find Place approach.
+  /// Calls Gemini to get a curated list of prominent places for a category,
+  /// then resolves their details using parallel Find Place text queries.
+  static Future<List<AttractionEntity>> fetchHybridPlaces({
+    required double latitude,
+    required double longitude,
+    required String categoryName,
+    required String locationName,
+  }) async {
+    try {
+      if (categoryName == 'Attractions') lastAttractionsError = '';
+      if (categoryName == 'Medical') lastMedicalError = '';
+
+      // 1. Check local Cache first
+      final cachedList = CacheService.getCachedHybridPlaces(locationName, categoryName);
+      if (cachedList != null && cachedList.isNotEmpty) {
+        print('⚡ Loaded hybrid places from cache for $locationName - $categoryName');
+        return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
+      }
+
+      final gemini = GeminiService();
+      String prompt = '';
+      if (categoryName == 'Medical') {
+        prompt = '''
+Analyze and provide a list of up to 15 major hospital names within a radius of 50 km from coordinates ($latitude, $longitude) near $locationName, Kerala, India with distance and direction. Don’t provide a map but just a table.
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Hospital Name",
+    "distance_km": 12.5,
+    "direction": "South-East"
+  }
+]
+''';
+      } else if (categoryName == 'Attractions') {
+        prompt = '''
+Analyze and provide a list of up to 25 major tourist attraction names (categories: tourist_attraction, museum, park, zoo, aquarium, art_gallery, amusement_park, church, hindu_temple, mosque, synagogue, stadium, casino, movie_theater, bowling_alley, campground, national_park, historical_landmark) within a radius of 50 km from coordinates ($latitude, $longitude) near $locationName, Kerala, India with distance and direction. Don’t provide a map but just a table.
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Attraction Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
+  }
+]
+''';
+      } else {
+        return [];
+      }
+
+      print('🤖 Prompting Gemini for category $categoryName near $locationName ($latitude, $longitude)...');
+      final rawResponse = await gemini.getResponse(
+        prompt,
+      );
+
+      // Clean the response from markdown block codes robustly by finding [ and ]
+      final firstBracket = rawResponse.indexOf('[');
+      final lastBracket = rawResponse.lastIndexOf(']');
+      if (firstBracket == -1 || lastBracket == -1 || lastBracket <= firstBracket) {
+        final errMsg = 'Format error: Missing JSON array. Response starts with: ${rawResponse.substring(0, math.min(100, rawResponse.length))}';
+        if (categoryName == 'Attractions') lastAttractionsError = errMsg;
+        if (categoryName == 'Medical') lastMedicalError = errMsg;
+        throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
+      }
+      final cleanJson = rawResponse.substring(firstBracket, lastBracket + 1).trim();
+
+      final List<dynamic> decoded = jsonDecode(cleanJson);
+      final List<Future<AttractionEntity?>> futures = [];
+
+      for (final item in decoded) {
+        final name = item['name'] as String?;
+        if (name != null && name.isNotEmpty) {
+          futures.add(
+            findPlaceByName(
+              name: name,
+              userLat: latitude,
+              userLng: longitude,
+              categoryName: categoryName,
+            ),
+          );
+        }
+      }
+
+      print('🔍 Resolving ${futures.length} places in parallel using findplacefromtext...');
+      final results = await Future.wait(futures);
+      final List<AttractionEntity> resolvedPlaces = results.whereType<AttractionEntity>().toList();
+
+      if (resolvedPlaces.isEmpty) {
+        final errMsg = 'No places could be geocoded by Google Places API.';
+        if (categoryName == 'Attractions') lastAttractionsError = errMsg;
+        if (categoryName == 'Medical') lastMedicalError = errMsg;
+      }
+
+      // 2. Cache the resolved places
+      if (resolvedPlaces.isNotEmpty) {
+        final placesJson = resolvedPlaces.map((e) => (e as AttractionModel).toJson()).toList();
+        await CacheService.cacheHybridPlaces(locationName, categoryName, placesJson);
+        print('💾 Cached ${resolvedPlaces.length} hybrid places for $locationName - $categoryName');
+      }
+
+      return resolvedPlaces;
+    } catch (e) {
+      print('❌ Exception fetching hybrid places: $e');
+      final errMsg = 'Error: $e';
+      if (categoryName == 'Attractions') lastAttractionsError = errMsg;
+      if (categoryName == 'Medical') lastMedicalError = errMsg;
+      return [];
     }
   }
 }

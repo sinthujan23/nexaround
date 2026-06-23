@@ -5,6 +5,7 @@ import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 enum CloudProvider {
   dropbox,
@@ -26,7 +27,10 @@ class CloudStorageService {
   bool _initialized = false;
   Future<void> _ensureInitialized() async {
     if (!_initialized) {
-      await _googleSignIn.initialize();
+      await _googleSignIn.initialize(
+        clientId: ApiConstants.googleClientId.isNotEmpty ? ApiConstants.googleClientId : null,
+        serverClientId: ApiConstants.googleServerClientId.isNotEmpty ? ApiConstants.googleServerClientId : null,
+      );
       _initialized = true;
     }
   }
@@ -190,5 +194,55 @@ class CloudStorageService {
       print("Dropbox Integration Error: $e");
       rethrow;
     }
+  }
+
+  Future<void> deleteFromCloud(CloudProvider provider, String folderUrl) async {
+    if (provider == CloudProvider.googleDrive) {
+      await _deleteFromGoogleDrive(folderUrl);
+    } else if (provider == CloudProvider.dropbox) {
+      await _deleteFromDropbox(folderUrl);
+    }
+  }
+
+  Future<void> _deleteFromGoogleDrive(String webViewLink) async {
+    try {
+      final regExp = RegExp(r'folders/([a-zA-Z0-9_-]+)|d/([a-zA-Z0-9_-]+)');
+      final match = regExp.firstMatch(webViewLink);
+      String? folderId;
+      if (match != null) {
+        folderId = match.group(1) ?? match.group(2);
+      }
+      
+      if (folderId == null || folderId.isEmpty) {
+        throw Exception("Could not extract Google Drive folder ID from link");
+      }
+
+      await _ensureInitialized();
+      GoogleSignInAccount? account;
+      try {
+        account = await _googleSignIn.authenticate();
+      } catch (e) {
+        throw Exception("Failed to authenticate with Google: $e");
+      }
+      if (account == null) throw Exception("User not signed in to Google.");
+
+      final scopes = [drive.DriveApi.driveFileScope];
+      final clientAuth = await account.authorizationClient.authorizeScopes(scopes);
+      final authClient = clientAuth.authClient(scopes: scopes);
+
+      final driveApi = drive.DriveApi(authClient);
+      await driveApi.files.delete(folderId);
+
+    } catch (e) {
+      print("Google Drive Deletion Error: $e");
+      rethrow;
+    }
+  }
+
+  Future<void> _deleteFromDropbox(String webUrl) async {
+    // Note: Dropbox deletion using only a shared web link is not natively supported
+    // without the internal file path. Since the backend schema doesn't store the path,
+    // we bypass cloud deletion for Dropbox here. The post will still be deleted in the app.
+    print("Dropbox cloud deletion skipped: path unavailable from shared link.");
   }
 }

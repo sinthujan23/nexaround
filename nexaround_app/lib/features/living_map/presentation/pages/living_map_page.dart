@@ -42,6 +42,7 @@ import 'package:nexaround_app/features/travel_stories/presentation/widgets/trave
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/post_story_sheet.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/stories_comments_dialog.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_stories_page.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
 
 class _LocalEvent {
   final String title;
@@ -952,6 +953,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
+                        SliverToBoxAdapter(child: _buildJournalBanner()),
 
                         // Around You Shimmer
                         SliverToBoxAdapter(
@@ -1071,6 +1073,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                       ),
                       SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
+                      SliverToBoxAdapter(child: _buildJournalBanner()),
 
                       // Around You
                       if (publicAttractions.isNotEmpty) ...[
@@ -1085,7 +1088,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(
-                          child: _buildHiddenGemCards(publicAttractions),
+                          child: _buildHiddenGemCards(publicAttractions, state.status),
                         ),
                       ],
 
@@ -2410,7 +2413,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
     }
     return SizedBox(
-      height: 480,
+      height: 425,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(24, 12, 6, 0),
         scrollDirection: Axis.horizontal,
@@ -2435,6 +2438,87 @@ class _LivingMapPageState extends State<LivingMapPage>
           );
         },
       ),
+    );
+  }
+
+  Widget _buildJournalBanner() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TravelJournalPage()),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: AppColors.brandGradient,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Text('📖', style: TextStyle(fontSize: 24)),
+              ),
+              const SizedBox(width: 16),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'MY TRAVEL JOURNAL',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Document Your Odyssey',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Save memories & upload photos to your drive',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.arrow_forward_ios_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+            ],
+          ),
+        ),
+      ).animate().fade().slideY(begin: 0.1, end: 0),
     );
   }
 
@@ -4813,6 +4897,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     String categoryName,
     List<AttractionEntity> places,
     int index,
+    MapStatus status,
   ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 24, top: 12),
@@ -4953,142 +5038,102 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                // Places list
-                Padding(
-                  padding: EdgeInsets.zero,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: () {
-                      // Show unique available items up to 5, without duplicating them
-                      final Set<String> seenIds = {};
-                      final List<AttractionEntity> uniquePlaces = [];
-                      for (final p in places) {
-                        if (!seenIds.contains(p.id)) {
-                          seenIds.add(p.id);
-                          uniquePlaces.add(p);
-                        }
-                      }
-                      final finalPlaces = uniquePlaces.take(20).toList();
-
-                      return finalPlaces.asMap().entries.map((entry) {
-                        final place = entry.value;
-                        final distText = _getAccurateDistanceString(place);
-                        final dirText = _getDirectionString(
-                          _userLatitude,
-                          _userLongitude,
-                          place.latitude,
-                          place.longitude,
-                        );
-
-                        return GestureDetector(
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AttractionDetailPage(
-                                id: place.id,
-                                name: place.name,
-                                category: place.categoryName ?? 'Attraction',
-                                rating: place.rating,
-                                distance: distText,
-                                emoji: '📍',
-                                imageUrl: place.photoUrls.isNotEmpty
-                                    ? place.photoUrls.first
-                                    : null,
-                                latitude: place.latitude,
-                                longitude: place.longitude,
-                                reviewCount: place.reviewCount,
+                const SizedBox(height: 12),
+                // Places horizontal carousel!
+                places.isEmpty
+                    ? (status == MapStatus.loading
+                        ? SizedBox(
+                            height: 200,
+                            child: Shimmer.fromColors(
+                              baseColor: Colors.white.withOpacity(0.06),
+                              highlightColor: Colors.white.withOpacity(0.18),
+                              child: ListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                padding: const EdgeInsets.only(bottom: 8),
+                                itemCount: 3,
+                                itemBuilder: (context, idx) {
+                                  return Container(
+                                    width: 170,
+                                    margin: const EdgeInsets.only(right: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                    ),
+                                  );
+                                },
                               ),
                             ),
-                          ),
-                          behavior: HitTestBehavior.opaque,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 2),
-                                  child: Icon(
-                                    Icons.location_on_rounded,
-                                    size: 14,
-                                    color: AppColors.brandGreen.withOpacity(
-                                      0.8,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    place.name,
-                                    style: const TextStyle(
-                                      color: AppColors.textPrimary,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 3,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: Colors.white.withOpacity(0.1),
-                                      width: 0.5,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    distText,
-                                    style: const TextStyle(
-                                      color: AppColors.textSecondary,
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                                if (dirText.isNotEmpty) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 3,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: _getCategoryBorderColor(
-                                        categoryName,
-                                      ).withOpacity(0.15),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: _getCategoryBorderColor(
-                                          categoryName,
-                                        ).withOpacity(0.3),
-                                        width: 0.5,
+                          )
+                        : () {
+                            final String err = categoryName == 'Attractions'
+                                ? GooglePlacesService.lastAttractionsError
+                                : (categoryName == 'Medical'
+                                    ? GooglePlacesService.lastMedicalError
+                                    : '');
+                            return SizedBox(
+                              height: 200,
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        categoryName == 'Medical'
+                                            ? Icons.local_hospital_outlined
+                                            : Icons.map_outlined,
+                                        color: Colors.white.withOpacity(0.35),
+                                        size: 36,
                                       ),
-                                    ),
-                                    child: Text(
-                                      dirText,
-                                      style: const TextStyle(
-                                        color: Colors.black87,
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w900,
+                                      const SizedBox(height: 10),
+                                      Text(
+                                        err.isNotEmpty
+                                            ? err
+                                            : 'No $categoryName found within 50 km.',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.55),
+                                          fontSize: 12.5,
+                                          fontStyle: FontStyle.italic,
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList();
-                    }(),
-                  ),
-                ),
+                                ),
+                              ),
+                            );
+                          }())
+                    : SizedBox(
+                        height: 200,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(bottom: 8),
+                          itemCount: () {
+                            final Set<String> seenIds = {};
+                            final List<AttractionEntity> uniquePlaces = [];
+                            for (final p in places) {
+                              if (!seenIds.contains(p.id)) {
+                                seenIds.add(p.id);
+                                uniquePlaces.add(p);
+                              }
+                            }
+                            return uniquePlaces.take(15).length;
+                          }(),
+                          itemBuilder: (context, idx) {
+                            final Set<String> seenIds = {};
+                            final List<AttractionEntity> uniquePlaces = [];
+                            for (final p in places) {
+                              if (!seenIds.contains(p.id)) {
+                                seenIds.add(p.id);
+                                uniquePlaces.add(p);
+                              }
+                            }
+                            final finalPlaces = uniquePlaces.take(15).toList();
+                            final place = finalPlaces[idx];
+                            return _buildCategoryPlaceCard(place, categoryName);
+                          },
+                        ),
+                      ),
               ],
             ),
           ),
@@ -5097,7 +5142,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildHiddenGemCards(List<AttractionEntity> attractions) {
+  Widget _buildHiddenGemCards(List<AttractionEntity> attractions, MapStatus status) {
     if (attractions.isEmpty) return const SizedBox.shrink();
 
     final Map<String, List<AttractionEntity>> grouped = {
@@ -5356,10 +5401,10 @@ class _LivingMapPageState extends State<LivingMapPage>
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
       child: Column(
         children: [
-          _buildCategoryCard('Food', grouped['Food']!, 0),
-          _buildCategoryCard('Attractions', grouped['Attractions']!, 1),
-          _buildCategoryCard('Shopping', grouped['Shopping']!, 2),
-          _buildCategoryCard('Medical', grouped['Medical']!, 3),
+          _buildCategoryCard('Food', grouped['Food']!, 0, status),
+          _buildCategoryCard('Attractions', grouped['Attractions']!, 1, status),
+          _buildCategoryCard('Shopping', grouped['Shopping']!, 2, status),
+          _buildCategoryCard('Medical', grouped['Medical']!, 3, status),
         ],
       ),
     );
@@ -5808,6 +5853,215 @@ class _LivingMapPageState extends State<LivingMapPage>
         borderRadius: BorderRadius.circular(16),
       ),
       child: Center(child: Text(emoji, style: const TextStyle(fontSize: 24))),
+    );
+  }
+
+  Widget _buildCategoryPlaceCard(AttractionEntity place, String categoryName) {
+    final distText = _getAccurateDistanceString(place);
+    final dirText = _getDirectionString(
+      _userLatitude,
+      _userLongitude,
+      place.latitude,
+      place.longitude,
+    );
+
+    final hasImage = place.photoUrls.isNotEmpty;
+    final imageUrl = hasImage ? place.photoUrls.first : null;
+    final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
+        ? '${ApiConstants.baseUrl}$imageUrl'
+        : imageUrl;
+
+    Widget buildFallbackBackground() {
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withOpacity(0.05),
+              Colors.white.withOpacity(0.12),
+            ],
+          ),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
+        ),
+        child: Center(
+          child: Opacity(
+            opacity: 0.15,
+            child: Icon(
+              _getCategoryIcon(categoryName, place.name),
+              size: 50,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AttractionDetailPage(
+            id: place.id,
+            name: place.name,
+            category: place.categoryName ?? categoryName,
+            rating: place.rating,
+            distance: distText,
+            emoji: '📍',
+            imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+            latitude: place.latitude,
+            longitude: place.longitude,
+            reviewCount: place.reviewCount,
+          ),
+        ),
+      ),
+      child: Container(
+        width: 170,
+        margin: const EdgeInsets.only(right: 12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Photo background
+              resolvedUrl != null && resolvedUrl.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: resolvedUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        color: Colors.black.withOpacity(0.3),
+                        child: const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white24,
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => buildFallbackBackground(),
+                    )
+                  : buildFallbackBackground(),
+              // Gradient Overlay
+              Positioned.fill(
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.85),
+                        Colors.black.withOpacity(0.2),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // Text Content
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Rating
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, color: AppColors.ratingGold, size: 12),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${place.rating ?? 4.0}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        if (place.reviewCount > 0) ...[
+                          const SizedBox(width: 2),
+                          Text(
+                            '(${place.reviewCount})',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white.withOpacity(0.6),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    // Title
+                    Text(
+                      place.name,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    // Distance & Direction Badge
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            distText,
+                            style: const TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        if (dirText.isNotEmpty) ...[
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: _getCategoryBorderColor(categoryName).withOpacity(0.35),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: _getCategoryBorderColor(categoryName).withOpacity(0.6),
+                                width: 0.5,
+                              ),
+                            ),
+                            child: Text(
+                              dirText,
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

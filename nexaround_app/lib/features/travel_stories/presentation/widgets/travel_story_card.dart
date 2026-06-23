@@ -8,6 +8,9 @@ import '../../data/models/travel_story.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
+import 'package:nexaround_app/core/services/cloud_storage_service.dart';
+import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 
 class TravelStoryCard extends StatefulWidget {
   final TravelStory story;
@@ -60,7 +63,14 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     return Colors.teal;
   }
 
-  Widget _buildImage(String url) {
+  Widget _buildImage(String url, int index, List<String> allUrls) {
+    return GestureDetector(
+      onTap: () => _openFullScreenViewer(index, allUrls),
+      child: _buildImageContent(url),
+    );
+  }
+
+  Widget _buildImageContent(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
       return CachedNetworkImage(
         imageUrl: url,
@@ -136,6 +146,37 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     }
   }
 
+  void _openFullScreenViewer(int initialIndex, List<String> allUrls) {
+    final authState = context.read<AuthBloc>().state;
+    final currentUserId = authState is AuthAuthenticated ? authState.user.id : null;
+    final isAuthor = currentUserId == widget.story.userId;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => FullScreenImageViewer(
+          imageUrls: allUrls,
+          initialIndex: initialIndex,
+          showDeleteOption: isAuthor,
+          onDelete: () async {
+            if (widget.story.cloudFolderUrl != null && widget.story.cloudProvider != null) {
+              final provider = widget.story.cloudProvider == 'google_drive' 
+                  ? CloudProvider.googleDrive 
+                  : CloudProvider.dropbox;
+              try {
+                await CloudStorageService().deleteFromCloud(provider, widget.story.cloudFolderUrl!);
+              } catch (e) {
+                print("Failed to delete from cloud: $e");
+                // We still proceed to delete the post from the app
+              }
+            }
+            await TravelStoriesService().deleteStory(widget.story.id);
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _buildImageGrid(List<String> urls) {
     if (urls.isEmpty) return const SizedBox.shrink();
 
@@ -144,16 +185,16 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     final isDouble = images.length == 2;
 
     if (isSingle) {
-      return _buildImage(images[0]);
+      return _buildImage(images[0], 0, urls);
     }
 
     if (isDouble) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(child: _buildImage(images[0])),
+          Expanded(child: _buildImage(images[0], 0, urls)),
           const SizedBox(width: 2),
-          Expanded(child: _buildImage(images[1])),
+          Expanded(child: _buildImage(images[1], 1, urls)),
         ],
       );
     }
@@ -161,20 +202,20 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(flex: 2, child: _buildImage(images[0])),
+        Expanded(flex: 2, child: _buildImage(images[0], 0, urls)),
         const SizedBox(width: 2),
         Expanded(
           flex: 1,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: _buildImage(images[1])),
+              Expanded(child: _buildImage(images[1], 1, urls)),
               const SizedBox(height: 2),
               Expanded(
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    _buildImage(images[2]),
+                    _buildImage(images[2], 2, urls),
                     if (urls.length > 3)
                       Container(
                         color: Colors.black.withOpacity(0.5),
@@ -292,28 +333,45 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
                         ],
                       ),
                     ),
-                    // Category Tag
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: catColor.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: catColor.withOpacity(0.3),
-                          width: 0.8,
+                    // Category Tag and Spend
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: catColor.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: catColor.withOpacity(0.3),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: Text(
+                            widget.story.category,
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: catColor,
+                            ),
+                          ),
                         ),
-                      ),
-                      child: Text(
-                        widget.story.category,
-                        style: TextStyle(
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: catColor,
-                        ),
-                      ),
+                        if (widget.story.isJournal && widget.story.totalSpend > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6.0),
+                            child: Text(
+                              '${widget.story.spendCurrency} ${widget.story.totalSpend.toStringAsFixed(0)}',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ],
                 ),

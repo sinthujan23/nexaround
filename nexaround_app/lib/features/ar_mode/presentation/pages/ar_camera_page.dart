@@ -3686,34 +3686,31 @@ class _ArCameraPageState extends State<ArCameraPage>
                         const SizedBox(width: 14),
                         // Global Compass
                         Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 3,
-                          ),
+                          width: 42,
+                          height: 42,
                           decoration: BoxDecoration(
                             color: Colors.black.withOpacity(0.5),
-                            borderRadius: BorderRadius.circular(8),
+                            shape: BoxShape.circle,
                             border: Border.all(
                               color: const Color(0xFF00E5FF).withOpacity(0.4),
-                              width: 1,
+                              width: 1.2,
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(
                                 Icons.explore_outlined,
                                 color: Color(0xFF00E5FF),
-                                size: 12,
+                                size: 16,
                               ),
-                              const SizedBox(width: 4),
                               Text(
                                 _cardinalFromHeading(_heading),
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 10,
+                                  fontSize: 9,
                                   fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.2,
+                                  letterSpacing: 0.5,
                                 ),
                               ),
                             ],

@@ -1,5 +1,6 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 class SocialAuthService {
   GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
@@ -7,7 +8,10 @@ class SocialAuthService {
   bool _initialized = false;
   Future<void> _ensureInitialized() async {
     if (!_initialized) {
-      await _googleSignIn.initialize();
+      await _googleSignIn.initialize(
+        clientId: ApiConstants.googleClientId.isNotEmpty ? ApiConstants.googleClientId : null,
+        serverClientId: ApiConstants.googleServerClientId.isNotEmpty ? ApiConstants.googleServerClientId : null,
+      );
       _initialized = true;
     }
   }

@@ -37,6 +37,10 @@ class TravelStoriesService {
     return _getStoriesFromHive(isJournal: false);
   }
 
+  List<TravelStory> getCachedJournals() {
+    return _getStoriesFromHive(isJournal: true);
+  }
+
   Future<List<TravelStory>> getJournals() async {
     try {
       final response = await _dio.get('${ApiConstants.travelStories}/journal');

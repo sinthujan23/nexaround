@@ -95,6 +95,10 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
         }
       }
 
+      final String currency = (authState is AuthAuthenticated) 
+          ? (authState.user.preferences['currency'] ?? 'USD') 
+          : 'USD';
+
       final newJournal = TravelStory(
         id: 'journal_${DateTime.now().millisecondsSinceEpoch}',
         userId: userId,
@@ -111,7 +115,7 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
         isJournal: true,
         journalDate: _selectedDate,
         totalSpend: double.tryParse(_spendController.text) ?? 0.0,
-        spendCurrency: 'USD',
+        spendCurrency: currency,
         cloudProvider: _cloudProvider == CloudProvider.dropbox
           ? 'dropbox'
           : 'google_drive',
@@ -132,6 +136,11 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final authState = context.read<AuthBloc>().state;
+    final currentCurrency = (authState is AuthAuthenticated) 
+        ? (authState.user.preferences['currency'] ?? 'USD') 
+        : 'USD';
+
     return Container(
       padding: EdgeInsets.only(
         bottom: MediaQuery.of(context).viewInsets.bottom,
@@ -257,7 +266,7 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
             TextField(
               controller: _spendController,
               keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Total Spend (USD)', border: OutlineInputBorder()),
+              decoration: InputDecoration(labelText: 'Total Spend ($currentCurrency)', border: const OutlineInputBorder()),
             ),
             const SizedBox(height: 20),
             
