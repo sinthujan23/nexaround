@@ -50,7 +50,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         return;
       }
 
-      final authentication = await googleUser.authentication;
+      final authentication = googleUser.authentication;
       final idToken = authentication.idToken;
 
       if (idToken == null) {

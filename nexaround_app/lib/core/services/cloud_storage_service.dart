@@ -21,11 +21,15 @@ class CloudStorageService {
   final String? dropboxAccessToken = '';
 
   // We configure Google Sign In to ask for the Drive permission.
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: [
-      drive.DriveApi.driveFileScope,
-    ],
-  );
+  GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
+
+  bool _initialized = false;
+  Future<void> _ensureInitialized() async {
+    if (!_initialized) {
+      await _googleSignIn.initialize();
+      _initialized = true;
+    }
+  }
 
   Future<String?> connectAndUpload(CloudProvider provider, List<String> localImagePaths) async {
     if (provider == CloudProvider.dropbox) {
@@ -38,25 +42,24 @@ class CloudStorageService {
 
   Future<String?> _uploadToGoogleDrive(List<String> localImagePaths) async {
     try {
+      await _ensureInitialized();
+
       // 1. Force Sign Out before Signing In.
       // This is the CRITICAL line: it prevents the app from automatically using the Firebase email,
       // and forces the "Choose an Account" screen to appear every time!
-      if (await _googleSignIn.isSignedIn()) {
+      try {
         await _googleSignIn.signOut();
-      }
+      } catch (_) {}
+      
       // Also disconnect to completely clear the cache
       try { await _googleSignIn.disconnect(); } catch (_) {}
       
-      final GoogleSignInAccount? account = await _googleSignIn.signIn();
-      if (account == null) {
-        throw Exception("Google Sign-In was cancelled by the user.");
-      }
+      final GoogleSignInAccount account = await _googleSignIn.authenticate();
 
       // 2. Get Authenticated Client for Google APIs
-      final authClient = await _googleSignIn.authenticatedClient();
-      if (authClient == null) {
-        throw Exception("Failed to get authenticated client for Google APIs.");
-      }
+      final scopes = [drive.DriveApi.driveFileScope];
+      final clientAuth = await account.authorizationClient.authorizeScopes(scopes);
+      final authClient = clientAuth.authClient(scopes: scopes);
 
       final driveApi = drive.DriveApi(authClient);
 

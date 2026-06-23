@@ -2,14 +2,21 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class SocialAuthService {
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    scopes: ['email', 'profile'],
-  );
+  GoogleSignIn get _googleSignIn => GoogleSignIn.instance;
+
+  bool _initialized = false;
+  Future<void> _ensureInitialized() async {
+    if (!_initialized) {
+      await _googleSignIn.initialize();
+      _initialized = true;
+    }
+  }
 
   Future<GoogleSignInAccount?> signInWithGoogle() async {
     try {
+      await _ensureInitialized();
       await _googleSignIn.signOut();
-      return await _googleSignIn.signIn();
+      return await _googleSignIn.authenticate();
     } catch (e) {
       rethrow;
     }
@@ -33,6 +40,7 @@ class SocialAuthService {
   }
 
   Future<void> signOut() async {
+    await _ensureInitialized();
     await _googleSignIn.signOut();
   }
 }
