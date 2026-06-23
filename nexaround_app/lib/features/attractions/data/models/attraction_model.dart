@@ -52,8 +52,6 @@ class AttractionModel extends AttractionEntity {
     super.distanceM,
     super.isActive,
     required super.createdAt,
-    super.discoveryScore,
-    super.isHiddenGem = false,
   });
 
   factory AttractionModel.fromJson(Map<String, dynamic> json) {
@@ -84,8 +82,6 @@ class AttractionModel extends AttractionEntity {
       distanceM: json['distance_m'] != null ? (json['distance_m'] as num).toDouble() : null,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
-      discoveryScore: json['discovery_score'] != null ? (json['discovery_score'] as num).toDouble() : null,
-      isHiddenGem: json['is_hidden_gem'] as bool? ?? false,
     );
   }
 
@@ -111,8 +107,6 @@ class AttractionModel extends AttractionEntity {
       'distance_m': distanceM,
       'is_active': isActive,
       'created_at': createdAt.toIso8601String(),
-      'discovery_score': discoveryScore,
-      'is_hidden_gem': isHiddenGem,
     };
   }
 }

@@ -103,7 +103,6 @@ class GooglePlacesService {
     String? categoryName,
     int radius = 5000,
     bool useLegacy = false,
-    bool aroundYou = false,
   }) async {
     try {
       final response = await ApiClient.instance.get(
@@ -114,7 +113,6 @@ class GooglePlacesService {
           'category': categoryName,
           'radius': radius,
           'use_legacy': useLegacy,
-          'around_you': aroundYou,
         },
       );
 

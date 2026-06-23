@@ -1,5 +1,4 @@
 """Top-level Places service: cache-first, Google as fallback."""
-import json
 import math
 from typing import Optional
 from app.services import google_places_client, place_cache_service
@@ -336,129 +335,6 @@ def attraction_to_place_dict(attraction: Attraction, distance_m: float) -> dict:
     }
 
 
-# --- Around You Optimization Constants & Helpers ---
-
-ALLOWED_TYPES = {
-    # High Priority
-    "tourist_attraction", "museum", "park", "zoo", "aquarium", "amusement_park",
-    "art_gallery", "landmark", "historical_landmark", "cultural_center",
-    "hindu_temple", "buddhist_temple", "church", "mosque", "national_park",
-    "nature_reserve", "event_venue",
-    # Medium Priority
-    "shopping_mall", "bookstore", "market", "public_square"
-}
-
-EXCLUDED_TYPES = {
-    "lodging", "hotel", "motel", "apartment_complex", "residential",
-    "housing_complex", "real_estate_agency", "private_property", "accommodation"
-}
-
-FOOD_TYPES = {
-    "restaurant", "cafe", "bakery", "food", "bar", "coffee_shop"
-}
-
-CATEGORY_IMPORTANCE_WEIGHTS = {
-    "tourist_attraction": 100.0,
-    "museum": 95.0,
-    "historical_landmark": 95.0,
-    "landmark": 95.0,
-    "park": 85.0,
-    "zoo": 85.0,
-    "aquarium": 85.0,
-    "amusement_park": 85.0,
-    "art_gallery": 85.0,
-    "cultural_center": 85.0,
-    "hindu_temple": 85.0,
-    "buddhist_temple": 85.0,
-    "church": 85.0,
-    "mosque": 85.0,
-    "national_park": 85.0,
-    "nature_reserve": 85.0,
-    "event_venue": 85.0,
-    "shopping_mall": 70.0,
-    "bookstore": 65.0,
-    "market": 65.0,
-    "public_square": 65.0,
-}
-
-PRIVATE_KEYWORDS = {
-    "home", "house", "residence", "'s place", "my place", "my home", "private",
-    "personal", "apartment", "flat", "villa", "homestay", "guest house",
-    "guesthouse", "3bhk", "2bhk", "4bhk", "1bhk", "cottage", "bungalow", "stay"
-}
-PUBLIC_ALLOWWORDS = {"museum", "historic", "heritage", "public"}
-
-
-def _calculate_distance_score(distance_m: float) -> float:
-    if distance_m <= 200:
-        return 100.0
-    elif distance_m <= 1000:
-        return 100.0 - (distance_m - 200.0) / 800.0 * 15.0
-    elif distance_m <= 3000:
-        return 85.0 - (distance_m - 1000.0) / 2000.0 * 25.0
-    elif distance_m <= 10000:
-        return 60.0 - (distance_m - 3000.0) / 7000.0 * 40.0
-    else:
-        return max(20.0 - (distance_m - 10000.0) / 40000.0 * 20.0, 0.0)
-
-
-def _calculate_rating_score(rating: float) -> float:
-    return float(rating) * 20.0
-
-
-def _calculate_review_score(review_count: int) -> float:
-    if review_count <= 0:
-        return 0.0
-    if review_count >= 1000:
-        return 100.0
-    if review_count < 10:
-        return float(review_count)
-    import math
-    log_val = math.log10(review_count)
-    return 10.0 + (log_val - 1.0) / 2.0 * 90.0
-
-
-def _calculate_category_importance(types: list[str]) -> float:
-    max_weight = 50.0
-    for t in types:
-        if t in CATEGORY_IMPORTANCE_WEIGHTS:
-            max_weight = max(max_weight, CATEGORY_IMPORTANCE_WEIGHTS[t])
-    return max_weight
-
-
-def _calculate_discovery_score(distance_m: float, rating: float, review_count: int, types: list[str]) -> float:
-    dist_s = _calculate_distance_score(distance_m)
-    rate_s = _calculate_rating_score(rating)
-    rev_s = _calculate_review_score(review_count)
-    cat_s = _calculate_category_importance(types)
-    return 0.40 * dist_s + 0.25 * rate_s + 0.20 * rev_s + 0.15 * cat_s
-
-
-def _check_is_hidden_gem(rating: float, review_count: int) -> bool:
-    return rating >= 4.5 and 20 <= review_count <= 300
-
-
-def _fallback_is_public(name: str, description: str) -> bool:
-    name_lower = name.lower()
-    desc_lower = (description or "").lower()
-    for word in PRIVATE_KEYWORDS:
-        if word in name_lower or word in desc_lower:
-            if any(allow in name_lower or allow in desc_lower for allow in PUBLIC_ALLOWWORDS):
-                continue
-            return False
-    return True
-
-
-def _classify_place(place_dict: dict) -> bool:
-    tags = place_dict.get("tags") or []
-    if tags:
-        if any(t in EXCLUDED_TYPES for t in tags):
-            return False
-        return any(t in ALLOWED_TYPES for t in tags) or any(t in FOOD_TYPES for t in tags)
-    else:
-        return _fallback_is_public(place_dict.get("name", ""), place_dict.get("description", ""))
-
-
 async def get_nearby(
     *,
     latitude: float,
@@ -466,7 +342,6 @@ async def get_nearby(
     category: Optional[str],
     radius: int,
     use_legacy: bool = False,
-    around_you: bool = False,
 ) -> PlacesNearbyResponse:
     # Canonicalize once at the entry point so the cache key, the Google call,
     # and the filter_food decision below all agree on the same category value.
@@ -474,77 +349,18 @@ async def get_nearby(
     key = place_cache_service.build_key(latitude, longitude, category, radius)
     if use_legacy:
         key = f"{key}:legacy"
-    if around_you:
-        key = f"{key}:around_you"
 
-    # 1. Redis Cache Check
-    # If around_you=True, check the Redis Geospatial Cache
-    if around_you:
-        client = place_cache_service._get_client()
-        try:
-            place_ids = await client.execute_command("GEORADIUS", "places:geo", longitude, latitude, radius, "m")
-        except Exception as e:
-            print(f"⚠️ Redis GEORADIUS error: {e}")
-            place_ids = []
+    cached = await place_cache_service.get_cached(key)
+    if cached is not None:
+        return PlacesNearbyResponse(
+            places=[PlaceResponse.model_validate(p) for p in cached],
+            cached=True,
+            source="cache",
+        )
 
-        if place_ids:
-            pipeline = client.pipeline()
-            for pid in place_ids:
-                pipeline.get(f"places:detail:{pid}")
-            raw_details = await pipeline.execute()
-
-            cached_places = []
-            for raw_detail in raw_details:
-                if raw_detail:
-                    try:
-                        p_dict = json.loads(raw_detail)
-                        plat = p_dict["latitude"]
-                        plng = p_dict["longitude"]
-                        dist_m = _haversine_m(latitude, longitude, plat, plng)
-                        
-                        p_dict["distance_m"] = dist_m
-                        p_dict["discovery_score"] = _calculate_discovery_score(
-                            dist_m, p_dict.get("rating", 0.0), p_dict.get("review_count", 0), p_dict.get("tags", [])
-                        )
-                        p_dict["is_hidden_gem"] = _check_is_hidden_gem(p_dict.get("rating", 0.0), p_dict.get("review_count", 0))
-                        
-                        p_dict["category"] = p_dict.get("category_name")
-                        p_dict["photo_url"] = p_dict["photo_urls"][0] if p_dict.get("photo_urls") else ""
-                        
-                        # Apply category filtering if specified
-                        if category:
-                            if p_dict.get("category_name") == category or p_dict.get("category") == category:
-                                cached_places.append(p_dict)
-                        else:
-                            cached_places.append(p_dict)
-                    except Exception as e:
-                        print(f"⚠️ Error parsing cached detail: {e}")
-
-            # Sort and validate coverage
-            cached_places.sort(key=lambda p: p.get("discovery_score", 0.0), reverse=True)
-            min_count = 10 if radius >= 5000 else 5
-            if len(cached_places) >= min_count:
-                return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in cached_places],
-                    cached=True,
-                    source="cache",
-                )
-    else:
-        # Standard Grid Key Cache Check
-        cached = await place_cache_service.get_cached(key)
-        if cached is not None:
-            # Map standard compatibility fields
-            for p in cached:
-                p["category"] = p.get("category_name")
-                p["photo_url"] = p["photo_urls"][0] if p.get("photo_urls") else ""
-            return PlacesNearbyResponse(
-                places=[PlaceResponse.model_validate(p) for p in cached],
-                cached=True,
-                source="cache",
-            )
-
-    # 2. Redis Cache Missed. Query local PostgreSQL database
+    # Redis missed. Query local PostgreSQL database first
     async with async_session() as session:
+        # Find category ID mapping if category is specified
         category_id = None
         if category:
             stmt = select(Category).where(Category.name == category)
@@ -553,6 +369,9 @@ async def get_nearby(
             if cat_obj:
                 category_id = cat_obj.id
 
+        # Query database attractions
+        # Use a higher limit for wide-area searches so 25–50km results aren't
+        # truncated to only the closest 100.
         db_limit = 100 if radius <= 10000 else 200
         min_rad = get_min_radius(radius)
         repo = AttractionRepository(session)
@@ -566,91 +385,51 @@ async def get_nearby(
             min_radius_m=float(min_rad) if min_rad > 0 else None
         )
 
-        if around_you:
-            db_places = []
-            for attr, dist in nearby_db_attractions:
-                p_dict = attraction_to_place_dict(attr, dist)
-                plat = p_dict["latitude"]
-                plng = p_dict["longitude"]
-                dist_m = _haversine_m(latitude, longitude, plat, plng)
-                p_dict["distance_m"] = dist_m
+        # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
+        # adequately (e.g. at least one is in the outer 30% of the radius, or the radius is small <= 2000m)
+        has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
+        
+        # Optimize: if database already has a reasonable number of places (e.g. >= 10), return them
+        # immediately to prevent user delay, and run the revalidation/seeding from Google in the background.
+        if len(nearby_db_attractions) >= 10:
+            place_dicts = [
+                attraction_to_place_dict(attr, dist)
+                for attr, dist in nearby_db_attractions
+            ]
+            place_dicts = _enforce_distance_distribution(place_dicts, radius)
+            
+            # Revalidate in the background if the coverage is not adequate yet
+            if not has_adequate_coverage:
+                import asyncio
+                asyncio.create_task(seed_places_from_google_bg(
+                    latitude=latitude,
+                    longitude=longitude,
+                    category=category,
+                    radius=radius,
+                    use_legacy=use_legacy,
+                    category_id=category_id,
+                    key=key
+                ))
+            
+            await place_cache_service.set_cached(key, place_dicts)
+            return PlacesNearbyResponse(
+                places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                cached=False,
+                source="database",
+            )
 
-                # Classify
-                if not _classify_place(p_dict):
-                    continue
-
-                p_dict["discovery_score"] = _calculate_discovery_score(
-                    dist_m, p_dict.get("rating", 0.0), p_dict.get("review_count", 0), p_dict.get("tags", [])
-                )
-                p_dict["is_hidden_gem"] = _check_is_hidden_gem(p_dict.get("rating", 0.0), p_dict.get("review_count", 0))
-                p_dict["category"] = p_dict.get("category_name")
-                p_dict["photo_url"] = p_dict["photo_urls"][0] if p_dict.get("photo_urls") else ""
-                db_places.append(p_dict)
-
-            min_count = 10 if radius >= 5000 else 5
-            if len(db_places) >= min_count:
-                # Store in Redis Geospatial Cache
-                try:
-                    client = place_cache_service._get_client()
-                    pipeline = client.pipeline()
-                    for p in db_places:
-                        pid = p["id"]
-                        pipeline.set(f"places:detail:{pid}", json.dumps(p), ex=7 * 24 * 60 * 60)
-                        pipeline.execute_command("GEOADD", "places:geo", p["longitude"], p["latitude"], pid)
-                    await pipeline.execute()
-                except Exception as e:
-                    print(f"⚠️ Redis GEO Cache write error: {e}")
-
-                db_places.sort(key=lambda p: p.get("discovery_score", 0.0), reverse=True)
-                return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in db_places],
-                    cached=False,
-                    source="database",
-                )
-        else:
-            # Standard Database handling (has_adequate_coverage checks)
-            has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
-            if len(nearby_db_attractions) >= 10:
-                place_dicts = [
-                    attraction_to_place_dict(attr, dist)
-                    for attr, dist in nearby_db_attractions
-                ]
-                place_dicts = _enforce_distance_distribution(place_dicts, radius)
-
-                if not has_adequate_coverage:
-                    import asyncio
-                    asyncio.create_task(seed_places_from_google_bg(
-                        latitude=latitude,
-                        longitude=longitude,
-                        category=category,
-                        radius=radius,
-                        use_legacy=use_legacy,
-                        category_id=category_id,
-                        key=key
-                    ))
-
-                # Map standard compatibility fields
-                for p in place_dicts:
-                    p["category"] = p.get("category_name")
-                    p["photo_url"] = p["photo_urls"][0] if p.get("photo_urls") else ""
-
-                await place_cache_service.set_cached(key, place_dicts)
-                return PlacesNearbyResponse(
-                    places=[PlaceResponse.model_validate(p) for p in place_dicts],
-                    cached=False,
-                    source="database",
-                )
-
+        # Keep a list of existing attraction names and coordinates to prevent duplicates
         existing_records = [
             (get_lat_lng(attr.location), attr.name)
             for attr, _ in nearby_db_attractions
         ]
 
     # Session closed here! No connection is held during the slow Google query.
-
-    # 3. Query Google Places API as a fallback
+    
+    # Otherwise, query Google Places API as a fallback
     import asyncio
     if radius < 25000:
+        # Standard single query at center
         if use_legacy:
             raw_places = await google_places_client.nearby_search_legacy(
                 latitude=latitude,
@@ -666,15 +445,20 @@ async def get_nearby(
                 radius=radius,
             )
     else:
+        # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
         mid = radius * 0.7
         sample_radius = int(radius * 0.5)
+        
+        # Scale centers: 4 offsets to get more places
         num_centers = 4
         bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
         offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+        
+        # Add center query as well to ensure total coverage
         all_queries = [(latitude, longitude, radius)] + [
             (olat, olng, sample_radius) for olat, olng in offset_coords
         ]
-
+        
         async def fetch_one(lat: float, lng: float, rad: int) -> list:
             try:
                 if use_legacy:
@@ -694,8 +478,11 @@ async def get_nearby(
             except Exception as e:
                 print(f"⚠️ Error fetching offset nearby search in get_nearby: {e}")
                 return []
-
+        
+        # Fetch all in parallel
         results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
+        
+        # Merge and deduplicate
         raw_places = []
         seen_ids = set()
         for r_list in results:
@@ -704,8 +491,8 @@ async def get_nearby(
                 if pid and pid not in seen_ids:
                     seen_ids.add(pid)
                     raw_places.append(p)
-
-    # Convert raw places to PlaceResponse format dicts
+    
+    # Convert raw places to PlaceResponses
     if use_legacy:
         place_dicts = [
             google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
@@ -715,7 +502,8 @@ async def get_nearby(
         if category == "Food & Drink":
             raw_places = google_places_client.filter_food(raw_places)
         elif category != "Beach":
-            raw_places = raw_places[:100]
+            raw_places = raw_places[:100] # cap merged result
+            
         place_dicts = [
             google_places_client.to_place_dict(p, latitude, longitude, category, _photo_url)
             for p in raw_places
@@ -733,6 +521,7 @@ async def get_nearby(
             if not p_name or plat is None or plng is None:
                 continue
 
+            # Check duplicates using the coordinate snapshot
             existing_attraction = None
             for (alat, alng), name in existing_records:
                 dist = _haversine_m(plat, plng, alat, alng)
@@ -796,46 +585,16 @@ async def get_nearby(
             min_radius_m=float(min_rad) if min_rad > 0 else None
         )
 
-        final_places = []
-        for attr, dist in nearby_db_attractions:
-            p_dict = attraction_to_place_dict(attr, dist)
-            plat = p_dict["latitude"]
-            plng = p_dict["longitude"]
-            dist_m = _haversine_m(latitude, longitude, plat, plng)
-            p_dict["distance_m"] = dist_m
+        place_dicts = [
+            attraction_to_place_dict(attr, dist)
+            for attr, dist in nearby_db_attractions
+        ]
+        place_dicts = _enforce_distance_distribution(place_dicts, radius)
 
-            if around_you:
-                if not _classify_place(p_dict):
-                    continue
-                p_dict["discovery_score"] = _calculate_discovery_score(
-                    dist_m, p_dict.get("rating", 0.0), p_dict.get("review_count", 0), p_dict.get("tags", [])
-                )
-                p_dict["is_hidden_gem"] = _check_is_hidden_gem(p_dict.get("rating", 0.0), p_dict.get("review_count", 0))
-            
-            p_dict["category"] = p_dict.get("category_name")
-            p_dict["photo_url"] = p_dict["photo_urls"][0] if p_dict.get("photo_urls") else ""
-            final_places.append(p_dict)
-
-        if around_you:
-            # Cache details and geo index
-            try:
-                client = place_cache_service._get_client()
-                pipeline = client.pipeline()
-                for p in final_places:
-                    pid = p["id"]
-                    pipeline.set(f"places:detail:{pid}", json.dumps(p), ex=7 * 24 * 60 * 60)
-                    pipeline.execute_command("GEOADD", "places:geo", p["longitude"], p["latitude"], pid)
-                await pipeline.execute()
-            except Exception as e:
-                print(f"⚠️ Redis GEO Cache write error: {e}")
-            
-            final_places.sort(key=lambda p: p.get("discovery_score", 0.0), reverse=True)
-        else:
-            final_places = _enforce_distance_distribution(final_places, radius)
-            await place_cache_service.set_cached(key, final_places)
+    await place_cache_service.set_cached(key, place_dicts)
 
     return PlacesNearbyResponse(
-        places=[PlaceResponse.model_validate(p) for p in final_places],
+        places=[PlaceResponse.model_validate(p) for p in place_dicts],
         cached=False,
         source="google",
     )

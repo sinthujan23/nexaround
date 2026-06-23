@@ -23,7 +23,6 @@ async def get_nearby_places(
     category: Optional[str] = Query(None, description="App-side category name"),
     radius: int = Query(5000, ge=100, le=50000),
     use_legacy: bool = Query(False, description="Whether to use legacy Google Places API"),
-    around_you: bool = Query(False, description="Whether to apply Around You classification and ranking"),
 ):
     """Return Google Places near a coordinate. Cached server-side for 7 days."""
     return await places_service.get_nearby(
@@ -32,7 +31,6 @@ async def get_nearby_places(
         category=category,
         radius=radius,
         use_legacy=use_legacy,
-        around_you=around_you,
     )
 
 
