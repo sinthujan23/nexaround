@@ -191,14 +191,26 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName: locationName,
             );
             
-            final repoRes = await _repository.getNearbyAttractions(
+            var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
               radius: 50000.0,
               categoryName: cat,
               useLegacy: event.useLegacy,
             );
-            final fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            var fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+
+            if (fallbackList.isEmpty && !event.useLegacy) {
+              print('⚠️ Fallback list empty for $cat. Retrying with useLegacy=true');
+              repoRes = await _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 50000.0,
+                categoryName: cat,
+                useLegacy: true,
+              );
+              fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            }
 
             // Merge fallback and hybrid lists to ensure rich listings
             final Map<String, AttractionEntity> mergedMap = {};
@@ -217,14 +229,27 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             }
             return <AttractionEntity>[];
           } else {
-            final repoRes = await _repository.getNearbyAttractions(
+            var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
               radius: 15000.0,
               categoryName: cat,
               useLegacy: event.useLegacy,
             );
-            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            var list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+
+            if (list.isEmpty && !event.useLegacy) {
+              print('⚠️ Fallback list empty for $cat. Retrying with useLegacy=true');
+              repoRes = await _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 15000.0,
+                categoryName: cat,
+                useLegacy: true,
+              );
+              list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            }
+            return list;
           }
         }).toList();
 

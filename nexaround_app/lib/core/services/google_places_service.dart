@@ -647,7 +647,8 @@ class GooglePlacesService {
 
       // 1. Check local Cache first
       final cachedList = CacheService.getCachedHybridPlaces(locationName, categoryName);
-      if (cachedList != null && cachedList.isNotEmpty) {
+      final threshold = categoryName == 'Medical' ? 10 : 15;
+      if (cachedList != null && cachedList.length >= threshold) {
         print('⚡ Loaded hybrid places from cache for $locationName - $categoryName');
         return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
       }
@@ -669,7 +670,6 @@ class GooglePlacesService {
       }
 
       // Check if we have enough places to satisfy the request without calling APIs
-      final threshold = categoryName == 'Medical' ? 10 : 15;
       if (nearbyCached.length >= threshold) {
         print('⚡ Found enough (${nearbyCached.length} >= $threshold) cached places within 50km for $categoryName. Skipping API call.');
         
@@ -764,9 +764,14 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       for (final item in decoded) {
         final name = item['name'] as String?;
         if (name != null && name.isNotEmpty) {
+          final queryInput = (locationName != 'Nearby' &&
+                  locationName != 'current location' &&
+                  !name.toLowerCase().contains(locationName.toLowerCase()))
+              ? '$name, $locationName'
+              : name;
           futures.add(
             findPlaceByName(
-              name: name,
+              name: queryInput,
               userLat: latitude,
               userLng: longitude,
               categoryName: categoryName,
