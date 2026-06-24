@@ -56,6 +56,10 @@ class TravelStory {
   final String? cloudProvider;
   final String? cloudFolderUrl;
 
+  // New Fields
+  final String? country;
+  final DateTime? travelDate;
+
   TravelStory({
     required this.id,
     required this.userId,
@@ -79,6 +83,8 @@ class TravelStory {
     this.spendCurrency = 'USD',
     this.cloudProvider,
     this.cloudFolderUrl,
+    this.country,
+    this.travelDate,
   });
 
   TravelStory copyWith({
@@ -104,6 +110,8 @@ class TravelStory {
     String? spendCurrency,
     String? cloudProvider,
     String? cloudFolderUrl,
+    String? country,
+    DateTime? travelDate,
   }) {
     return TravelStory(
       id: id ?? this.id,
@@ -128,6 +136,8 @@ class TravelStory {
       spendCurrency: spendCurrency ?? this.spendCurrency,
       cloudProvider: cloudProvider ?? this.cloudProvider,
       cloudFolderUrl: cloudFolderUrl ?? this.cloudFolderUrl,
+      country: country ?? this.country,
+      travelDate: travelDate ?? this.travelDate,
     );
   }
 
@@ -172,6 +182,10 @@ class TravelStory {
       spendCurrency: json['spend_currency'] as String? ?? 'USD',
       cloudProvider: json['cloud_provider'] as String?,
       cloudFolderUrl: json['cloud_folder_url'] as String?,
+      country: json['country'] as String?,
+      travelDate: json['travel_date'] != null 
+          ? DateTime.parse(json['travel_date'] as String) 
+          : null,
     );
   }
 
@@ -199,6 +213,8 @@ class TravelStory {
       'spend_currency': spendCurrency,
       'cloud_provider': cloudProvider,
       'cloud_folder_url': cloudFolderUrl,
+      'country': country,
+      'travel_date': travelDate?.toIso8601String(),
     };
   }
 }

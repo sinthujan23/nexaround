@@ -23,6 +23,7 @@ import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
@@ -946,8 +947,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
                               'Travel Stories',
-                              '+ Share',
-                              onTap: _showPostStorySheet,
+                              null,
+                              customAction: _buildTravelStoriesHeaderAction(),
                               onTitleTap: () => _navigateToTravelStories(0),
                             ),
                           ),
@@ -1066,8 +1067,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                           padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                           child: _buildSectionHeader(
                             'Travel Stories',
-                            '+ Share',
-                            onTap: _showPostStorySheet,
+                            null,
+                            customAction: _buildTravelStoriesHeaderAction(),
                             onTitleTap: () => _navigateToTravelStories(0),
                           ),
                         ),
@@ -2279,9 +2280,75 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  String _selectedCountryFilter = 'Global';
+
+  Widget _buildTravelStoriesHeaderAction() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButtonHideUnderline(
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              canvasColor: Colors.white,
+            ),
+            child: DropdownButton<String>(
+              value: _selectedCountryFilter,
+              icon: const Icon(Icons.arrow_drop_down, color: AppColors.brandGreen, size: 20),
+              style: const TextStyle(
+                color: AppColors.brandGreen,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+              dense: true,
+              onChanged: (String? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedCountryFilter = newValue;
+                  });
+                  _loadTravelStories();
+                }
+              },
+              items: [
+                const DropdownMenuItem<String>(
+                  value: 'Global',
+                  child: Text('🌐 Global'),
+                ),
+                ...countriesList.map<DropdownMenuItem<String>>((String country) {
+                  return DropdownMenuItem<String>(
+                    value: country,
+                    child: Text(country),
+                  );
+                }).toList(),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        GestureDetector(
+          onTap: _showPostStorySheet,
+          child: ShaderMask(
+            shaderCallback: (b) => AppColors.primaryGradient.createShader(
+              Rect.fromLTWH(0, 0, b.width, b.height),
+            ),
+            child: const Text(
+              '+ Share',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _loadTravelStories() async {
     try {
-      final stories = await TravelStoriesService().getStories();
+      final stories = await TravelStoriesService().getStories(
+        country: _selectedCountryFilter == 'Global' ? null : _selectedCountryFilter,
+      );
       if (mounted) {
         setState(() {
           _travelStories = stories.where((s) => !s.isJournal).toList();

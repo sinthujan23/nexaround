@@ -39,6 +39,8 @@ class TravelStoryBase(BaseModel):
     spend_currency: str = "USD"
     cloud_provider: Optional[str] = None
     cloud_folder_url: Optional[str] = None
+    travel_date: Optional[datetime] = None
+    country: Optional[str] = None
 
 class TravelStoryCreate(TravelStoryBase):
     pass

@@ -1,6 +1,6 @@
 import os
 import uuid
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/travel-stories", tags=["travel-stories"])
 
 @router.get("", response_model=List[TravelStoryResponse])
 async def get_travel_stories(
+    country: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -27,7 +28,10 @@ async def get_travel_stories(
     stmt = select(TravelStory).where(
         TravelStory.is_journal == False,
         or_(TravelStory.is_public == True, TravelStory.user_id == current_user.id)
-    ).order_by(TravelStory.created_at.desc())
+    )
+    if country:
+        stmt = stmt.where(TravelStory.country == country)
+    stmt = stmt.order_by(TravelStory.created_at.desc())
     res = await db.execute(stmt)
     stories = res.scalars().all()
     
@@ -55,6 +59,7 @@ async def get_travel_stories(
                 is_journal=s.is_journal, journal_date=s.journal_date,
                 total_spend=s.total_spend, spend_currency=s.spend_currency,
                 cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
+                travel_date=s.travel_date, country=s.country,
                 created_at=s.created_at, comments=comments_list
             )
         )
@@ -97,6 +102,7 @@ async def get_travel_journal(
                 is_journal=s.is_journal, journal_date=s.journal_date,
                 total_spend=s.total_spend, spend_currency=s.spend_currency,
                 cloud_provider=s.cloud_provider, cloud_folder_url=s.cloud_folder_url,
+                travel_date=s.travel_date, country=s.country,
                 created_at=s.created_at, comments=comments_list
             )
         )
@@ -125,7 +131,9 @@ async def create_travel_story(
         total_spend=data.total_spend,
         spend_currency=data.spend_currency,
         cloud_provider=data.cloud_provider,
-        cloud_folder_url=data.cloud_folder_url
+        cloud_folder_url=data.cloud_folder_url,
+        travel_date=data.travel_date,
+        country=data.country
     )
     db.add(story)
     await db.flush()  # Populate id and created_at
@@ -155,6 +163,8 @@ async def create_travel_story(
         spend_currency=refreshed_story.spend_currency,
         cloud_provider=refreshed_story.cloud_provider,
         cloud_folder_url=refreshed_story.cloud_folder_url,
+        travel_date=refreshed_story.travel_date,
+        country=refreshed_story.country,
         likes_count=0,
         is_liked=False,
         created_at=refreshed_story.created_at,

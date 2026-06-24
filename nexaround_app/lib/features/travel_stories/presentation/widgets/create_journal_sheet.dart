@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 
 class CreateJournalSheet extends StatefulWidget {
   final Function(TravelStory) onJournalSubmitted;
@@ -24,11 +25,12 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
   final _spendController = TextEditingController();
   
   DateTime _selectedDate = DateTime.now();
-  CloudProvider _cloudProvider = CloudProvider.dropbox;
+  CloudProvider _cloudProvider = CloudProvider.googleDrive;
   bool _isUploading = false;
   
   final List<File> _selectedImages = [];
   final ImagePicker _picker = ImagePicker();
+  String? _selectedCountry;
 
   Future<void> _pickImages() async {
     try {
@@ -120,6 +122,7 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
           ? 'dropbox'
           : 'google_drive',
         cloudFolderUrl: folderUrl,
+        country: _selectedCountry,
       );
 
       widget.onJournalSubmitted(newJournal);
@@ -172,6 +175,38 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(labelText: 'Location Name', border: OutlineInputBorder()),
+            ),
+            const SizedBox(height: 12),
+
+            // Country Selection
+            const Text('Select Country', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.grey),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _selectedCountry,
+                  isExpanded: true,
+                  hint: const Text('Select Country', style: TextStyle(fontSize: 14)),
+                  icon: const Icon(Icons.arrow_drop_down),
+                  style: const TextStyle(color: Colors.black87, fontSize: 14),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCountry = newValue;
+                    });
+                  },
+                  items: countriesList.map<DropdownMenuItem<String>>((String value) {
+                    return DropdownMenuItem<String>(
+                      value: value,
+                      child: Text(value),
+                    );
+                  }).toList(),
+                ),
+              ),
             ),
             const SizedBox(height: 12),
             

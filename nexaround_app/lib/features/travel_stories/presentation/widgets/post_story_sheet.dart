@@ -13,6 +13,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../core/services/google_places_service.dart';
 import '../../data/models/travel_story.dart';
 import '../../data/datasources/travel_stories_service.dart';
+import '../../../../core/constants/countries.dart';
 
 class PostStorySheet extends StatefulWidget {
   final Function(TravelStory) onStorySubmitted;
@@ -44,6 +45,9 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
   double? _selectedLatitude;
   double? _selectedLongitude;
+
+  String? _selectedCountry;
+  DateTime? _selectedTravelDate;
 
   final List<String> _categories = [
     '💎 Hidden Gem',
@@ -125,6 +129,8 @@ class _PostStorySheetState extends State<PostStorySheet> {
       _existingImageUrls = story.imageUrls.isNotEmpty
           ? story.imageUrls
           : [story.imageUrl];
+      _selectedCountry = story.country;
+      _selectedTravelDate = story.travelDate;
     }
   }
 
@@ -294,6 +300,8 @@ class _PostStorySheetState extends State<PostStorySheet> {
       createdAt: widget.editStory?.createdAt ?? DateTime.now(),
       isLiked: widget.editStory?.isLiked ?? false,
       isPublic: _isPublic,
+      country: _selectedCountry,
+      travelDate: _selectedTravelDate,
     );
 
     widget.onStorySubmitted(newStory);
@@ -597,6 +605,111 @@ class _PostStorySheetState extends State<PostStorySheet> {
                             ),
                           );
                         },
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Travel Date (When)
+                    const Text(
+                      'When did you visit? (Date)',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () async {
+                        final DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: _selectedTravelDate ?? DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                          builder: (context, child) {
+                            return Theme(
+                              data: Theme.of(context).copyWith(
+                                colorScheme: const ColorScheme.light(
+                                  primary: AppColors.brandGreen,
+                                  onPrimary: Colors.white,
+                                  onSurface: Colors.black87,
+                                ),
+                              ),
+                              child: child!,
+                            );
+                          },
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _selectedTravelDate = picked;
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _selectedTravelDate == null
+                                  ? 'Choose Date'
+                                  : "${_selectedTravelDate!.day}/${_selectedTravelDate!.month}/${_selectedTravelDate!.year}",
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: _selectedTravelDate == null ? Colors.grey[400] : Colors.black87,
+                              ),
+                            ),
+                            const Icon(Icons.calendar_month, color: Colors.grey, size: 20),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Country Selection
+                    const Text(
+                      'Select Country',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey[50],
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.grey[300]!),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _selectedCountry,
+                          isExpanded: true,
+                          hint: Text(
+                            'Select Country',
+                            style: TextStyle(color: Colors.grey[400], fontSize: 13.5),
+                          ),
+                          icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                          style: const TextStyle(color: Colors.black87, fontSize: 13.5),
+                          onChanged: (String? newValue) {
+                            setState(() {
+                              _selectedCountry = newValue;
+                            });
+                          },
+                          items: countriesList.map<DropdownMenuItem<String>>((String value) {
+                            return DropdownMenuItem<String>(
+                              value: value,
+                              child: Text(value),
+                            );
+                          }).toList(),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),

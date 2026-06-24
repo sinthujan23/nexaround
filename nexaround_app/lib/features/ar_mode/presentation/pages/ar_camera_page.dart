@@ -3689,10 +3689,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                           width: 42,
                           height: 42,
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.5),
+                            color: const Color(0xFFFFD600), // Yellow background
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFF00E5FF).withOpacity(0.4),
+                              color: Colors.black.withOpacity(0.15),
                               width: 1.2,
                             ),
                           ),
@@ -3701,13 +3701,13 @@ class _ArCameraPageState extends State<ArCameraPage>
                             children: [
                               const Icon(
                                 Icons.explore_outlined,
-                                color: Color(0xFF00E5FF),
+                                color: Colors.black, // Black needle
                                 size: 16,
                               ),
                               Text(
                                 _cardinalFromHeading(_heading),
                                 style: const TextStyle(
-                                  color: Colors.white,
+                                  color: Colors.black, // Black text
                                   fontSize: 9,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,

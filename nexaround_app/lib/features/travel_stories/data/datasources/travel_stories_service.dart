@@ -17,24 +17,34 @@ class TravelStoriesService {
   // Reference to the Hive Box we initialized in main.dart
   Box get _box => Hive.box('travel_stories_box');
 
-  Future<List<TravelStory>> getStories() async {
+  Future<List<TravelStory>> getStories({String? country}) async {
     try {
-      final response = await _dio.get(ApiConstants.travelStories);
+      final response = await _dio.get(
+        ApiConstants.travelStories,
+        queryParameters: country != null && country != 'Global' ? {'country': country} : null,
+      );
       if (response.statusCode == 200 && response.data != null) {
         final List<dynamic> data = response.data;
         final stories = data.map((json) => TravelStory.fromJson(json)).toList();
         
-        // Cache to Hive
-        await _box.clear();
-        for (var s in stories) {
-          await _box.add(s.toJson());
+        // Cache to Hive (only cache global/all list)
+        if (country == null || country == 'Global') {
+          await _box.clear();
+          for (var s in stories) {
+            await _box.add(s.toJson());
+          }
         }
         return stories;
       }
     } catch (e) {
       print('⚠️ TravelStoriesService: Failed to fetch stories from backend ($e). Using Hive fallback.');
     }
-    return _getStoriesFromHive(isJournal: false);
+    // Hive fallback: retrieve all and filter locally
+    final allStories = _getStoriesFromHive(isJournal: false);
+    if (country != null && country != 'Global') {
+      return allStories.where((s) => s.country == country).toList();
+    }
+    return allStories;
   }
 
   List<TravelStory> getCachedJournals() {

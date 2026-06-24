@@ -31,6 +31,8 @@ class TravelStory(Base):
     spend_currency: Mapped[str] = mapped_column(String(10), default="USD")
     cloud_provider: Mapped[str] = mapped_column(String(50), nullable=True)
     cloud_folder_url: Mapped[str] = mapped_column(String(500), nullable=True)
+    travel_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    country: Mapped[str] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

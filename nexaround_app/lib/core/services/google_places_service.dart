@@ -249,6 +249,21 @@ class GooglePlacesService {
     }
   }
 
+  /// Helper to clean noise words like "near me", "nearby", or "near" from queries.
+  static String _cleanSearchQuery(String query) {
+    String cleaned = query.trim();
+    final nearMeRegex = RegExp(r'\s+near\s+me\b', caseSensitive: false);
+    final nearbyRegex = RegExp(r'\s+nearby\b', caseSensitive: false);
+    final nearRegex = RegExp(r'\s+near\b', caseSensitive: false);
+    
+    cleaned = cleaned
+        .replaceAll(nearMeRegex, '')
+        .replaceAll(nearbyRegex, '')
+        .replaceAll(nearRegex, '')
+        .trim();
+    return cleaned;
+  }
+
   /// Search places by text query biased towards current coordinates (New API)
   static Future<List<AttractionEntity>> searchPlaces({
     required String query,
@@ -256,9 +271,12 @@ class GooglePlacesService {
     required double longitude,
   }) async {
     try {
+      final cleanedQuery = _cleanSearchQuery(query);
+      if (cleanedQuery.isEmpty) return [];
+
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/search',
-        queryParameters: {'query': query, 'lat': latitude, 'lng': longitude},
+        queryParameters: {'query': cleanedQuery, 'lat': latitude, 'lng': longitude},
       );
 
       if (response.statusCode == 200) {
@@ -267,10 +285,29 @@ class GooglePlacesService {
         final models = placesList
             .map((p) => AttractionModel.fromJson(p))
             .toList();
+
+        // Filter results strictly within 15km
+        final filteredModels = models.where((m) {
+          final distM = geo.Geolocator.distanceBetween(
+            latitude,
+            longitude,
+            m.latitude,
+            m.longitude,
+          );
+          return distM <= 15000;
+        }).toList();
+
+        // Sort by distance ascending
+        filteredModels.sort((a, b) {
+          final distA = a.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, a.latitude, a.longitude);
+          final distB = b.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, b.latitude, b.longitude);
+          return distA.compareTo(distB);
+        });
+
         print(
-          '✅ Places searched: ${models.length} items (Source: ${data['source']})',
+          '✅ Places searched and filtered within 15km: ${filteredModels.length} items',
         );
-        return models;
+        return filteredModels;
       }
       return [];
     } on DioException catch (e) {
@@ -454,50 +491,126 @@ class GooglePlacesService {
     required double latitude,
     required double longitude,
   }) async {
-    if (input.isEmpty) return [];
+    final cleanedInput = _cleanSearchQuery(input);
+    if (cleanedInput.isEmpty) return [];
+
     try {
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
-        queryParameters: {
-          'input': input,
-          'location': '$latitude,$longitude',
-          'radius': 50000, // 50km strict bound
-          'strictbounds': true, // Only return results within the radius
-          'origin': '$latitude,$longitude',
-        },
-      );
+      // 1. Fetch autocomplete suggestions from Google (restricted to 15km)
+      List<Map<String, dynamic>> autocompleteResults = [];
+      try {
+        final response = await ApiClient.instance.get(
+          '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
+          queryParameters: {
+            'input': cleanedInput,
+            'location': '$latitude,$longitude',
+            'radius': 15000, // 15km strict bound
+            'strictbounds': true, // Only return results within the radius
+            'origin': '$latitude,$longitude',
+          },
+        );
 
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final List<dynamic> predictions = data['predictions'] as List? ?? [];
-
-        final mapped = predictions
-            .map(
-              (p) => {
-                'description': p['description'] as String? ?? '',
-                'place_id': p['place_id'] as String? ?? '',
-                'main_text':
-                    (p['structured_formatting']?['main_text'] as String?) ?? '',
-                'distance_meters': p['distance_meters'] as num?,
-              },
-            )
-            .toList();
-
-        // Sort dynamically: items with distances first, ascending
-        mapped.sort((a, b) {
-          final distA = a['distance_meters'] as num?;
-          final distB = b['distance_meters'] as num?;
-          if (distA != null && distB != null) return distA.compareTo(distB);
-          if (distA != null) return -1;
-          if (distB != null) return 1;
-          return 0;
-        });
-
-        return mapped;
+        if (response.statusCode == 200) {
+          final data = response.data;
+          final List<dynamic> predictions = data['predictions'] as List? ?? [];
+          autocompleteResults = predictions
+              .map(
+                (p) => {
+                  'description': p['description'] as String? ?? '',
+                  'place_id': p['place_id'] as String? ?? '',
+                  'main_text': (p['structured_formatting']?['main_text'] as String?) ?? '',
+                  'distance_meters': p['distance_meters'] as num?,
+                },
+              )
+              .toList();
+        }
+      } catch (e) {
+        debugPrint('Autocomplete request error: $e');
       }
-      return [];
+
+      // 2. Fetch semantic search results from our backend /places/search
+      List<Map<String, dynamic>> searchResults = [];
+      try {
+        final response = await ApiClient.instance.get(
+          '${ApiConstants.apiVersion}/places/search',
+          queryParameters: {
+            'query': cleanedInput,
+            'lat': latitude,
+            'lng': longitude,
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final data = response.data;
+          final List<dynamic> placesList = data['places'] as List? ?? [];
+          for (final p in placesList) {
+            final lat = (p['latitude'] as num?)?.toDouble();
+            final lng = (p['longitude'] as num?)?.toDouble();
+            double? distanceMeters;
+            if (lat != null && lng != null) {
+              distanceMeters = geo.Geolocator.distanceBetween(
+                latitude,
+                longitude,
+                lat,
+                lng,
+              );
+            }
+
+            // Strictly filter out results further than 15km
+            if (distanceMeters != null && distanceMeters > 15000) {
+              continue;
+            }
+
+            searchResults.add({
+              'description': p['address'] as String? ?? p['description'] as String? ?? '',
+              'place_id': p['id'] as String? ?? '',
+              'main_text': p['name'] as String? ?? '',
+              'distance_meters': distanceMeters,
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Semantic text search error in suggestions: $e');
+      }
+
+      // 3. Merge results and deduplicate by place_id
+      final Map<String, Map<String, dynamic>> merged = {};
+
+      for (final item in autocompleteResults) {
+        final id = item['place_id'] as String;
+        if (id.isNotEmpty) {
+          merged[id] = item;
+        }
+      }
+
+      for (final item in searchResults) {
+        final id = item['place_id'] as String;
+        if (id.isNotEmpty) {
+          if (!merged.containsKey(id)) {
+            merged[id] = item;
+          } else {
+            // Update distance if semantic search has a more precise one
+            if (item['distance_meters'] != null) {
+              merged[id]!['distance_meters'] = item['distance_meters'];
+            }
+          }
+        }
+      }
+
+      final mergedList = merged.values.toList();
+
+      // 4. Sort by distance (closest first)
+      mergedList.sort((a, b) {
+        final distA = a['distance_meters'] as num?;
+        final distB = b['distance_meters'] as num?;
+        if (distA != null && distB != null) return distA.compareTo(distB);
+        if (distA != null) return -1;
+        if (distB != null) return 1;
+        return 0;
+      });
+
+      return mergedList;
     } catch (e) {
-      debugPrint('Autocomplete error: $e');
+      debugPrint('Autocomplete main error: $e');
       return [];
     }
   }
