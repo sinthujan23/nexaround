@@ -25,6 +25,8 @@ class PlacesFetchException implements Exception {
 class GooglePlacesService {
   static String lastAttractionsError = '';
   static String lastMedicalError = '';
+  static String lastFoodError = '';
+  static String lastShoppingError = '';
 
   // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
@@ -617,7 +619,13 @@ class GooglePlacesService {
             rating: rating,
             reviewCount: userRatingsTotal,
             photoUrls: photoUrls,
-            tags: categoryName != null ? [categoryName.toLowerCase()] : const [],
+            tags: categoryName != null
+                ? [
+                    categoryName.toLowerCase(),
+                    if (categoryName.toLowerCase().contains('food')) 'food',
+                    if (categoryName.toLowerCase().contains('shop')) 'shopping_mall',
+                  ]
+                : const [],
             geofenceRadiusM: 100,
             distanceM: distanceM,
             isActive: true,
@@ -644,6 +652,8 @@ class GooglePlacesService {
     try {
       if (categoryName == 'Attractions') lastAttractionsError = '';
       if (categoryName == 'Medical') lastMedicalError = '';
+      if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = '';
+      if (categoryName == 'Shopping') lastShoppingError = '';
 
       // 1. Check local Cache first
       final cachedList = CacheService.getCachedHybridPlaces(locationName, categoryName);
@@ -653,9 +663,10 @@ class GooglePlacesService {
         return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
       }
 
-      // Check all cached hybrid places for the given category across all locations within 50km
+      // Check all cached hybrid places for the given category across all locations within the appropriate radius
       final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
       final List<AttractionModel> nearbyCached = [];
+      final double searchRadiusM = (categoryName == 'Attractions' || categoryName == 'Medical') ? 50000.0 : 15000.0;
       for (final json in allCached) {
         final model = AttractionModel.fromJson(json);
         final distM = geo.Geolocator.distanceBetween(
@@ -664,14 +675,14 @@ class GooglePlacesService {
           model.latitude,
           model.longitude,
         );
-        if (distM <= 50000) {
+        if (distM <= searchRadiusM) {
           nearbyCached.add(model);
         }
       }
 
       // Check if we have enough places to satisfy the request without calling APIs
       if (nearbyCached.length >= threshold) {
-        print('⚡ Found enough (${nearbyCached.length} >= $threshold) cached places within 50km for $categoryName. Skipping API call.');
+        print('⚡ Found enough (${nearbyCached.length} >= $threshold) cached places within ${searchRadiusM / 1000}km for $categoryName. Skipping API call.');
         
         // Update distances relative to current user coordinates
         return nearbyCached.map((m) {
@@ -741,6 +752,38 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
   }
 ]
 ''';
+      } else if (categoryName == 'Food & Drink' || categoryName == 'Food') {
+        prompt = '''
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+
+restaurant, cafe, bakery, meal_takeaway, meal_delivery, food_shop, bar, night_club, ice_cream_shop, coffee_shop, juice_bar
+
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Food_Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
+  }
+]
+''';
+      } else if (categoryName == 'Shopping') {
+        prompt = '''
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+
+shopping_mall, supermarket, market, general_store, department_store, convenience_store, clothing_store, electronics_store, book_store, jewelry_store, shoe_store, furniture_store, pet_store, hardware_store, gift_shop, 
+
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Shopping_Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
+  }
+]
+''';
       } else {
         return [];
       }
@@ -757,6 +800,8 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         final errMsg = 'Format error: Missing JSON array. Response starts with: ${rawResponse.substring(0, math.min(100, rawResponse.length))}';
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
+        if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+        if (categoryName == 'Shopping') lastShoppingError = errMsg;
         throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
       }
       final cleanJson = rawResponse.substring(firstBracket, lastBracket + 1).trim();
@@ -764,13 +809,27 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       final List<dynamic> decoded = jsonDecode(cleanJson);
       final List<Future<AttractionEntity?>> futures = [];
 
+      // Get detailed geocoded district/city for query input biasing
+      String biasRegion = 'Nearby';
+      try {
+        final detailed = await reverseGeocodeDetailed(latitude, longitude);
+        final distStr = detailed['district'];
+        if (distStr != null && distStr != 'Nearby' && distStr.trim().isNotEmpty) {
+          biasRegion = distStr.trim();
+        } else {
+          final locStr = detailed['location_name'];
+          if (locStr != null && locStr != 'Nearby' && locStr.trim().isNotEmpty) {
+            biasRegion = locStr.trim();
+          }
+        }
+      } catch (_) {}
+
       for (final item in decoded) {
         final name = item['name'] as String?;
         if (name != null && name.isNotEmpty) {
-          final queryInput = (locationName != 'Nearby' &&
-                  locationName != 'current location' &&
-                  !name.toLowerCase().contains(locationName.toLowerCase()))
-              ? '$name, $locationName'
+          final queryInput = (biasRegion != 'Nearby' &&
+                  !name.toLowerCase().contains(biasRegion.toLowerCase()))
+              ? '$name, $biasRegion'
               : name;
           futures.add(
             findPlaceByName(
@@ -791,6 +850,8 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         final errMsg = 'No places could be geocoded by Google Places API.';
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
+        if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+        if (categoryName == 'Shopping') lastShoppingError = errMsg;
       }
 
       // 2. Cache the resolved places
@@ -806,6 +867,8 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       final errMsg = 'Error: $e';
       if (categoryName == 'Attractions') lastAttractionsError = errMsg;
       if (categoryName == 'Medical') lastMedicalError = errMsg;
+      if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+      if (categoryName == 'Shopping') lastShoppingError = errMsg;
       return [];
     }
   }

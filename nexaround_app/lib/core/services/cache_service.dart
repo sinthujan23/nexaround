@@ -372,13 +372,13 @@ class CacheService {
 
   // Hybrid Places Caching (Expires after 24 hours)
   static Future<void> cacheHybridPlaces(String locationName, String categoryName, List<Map<String, dynamic>> placesJson) async {
-    final key = 'hybrid_places_${locationName.replaceAll(' ', '_')}_$categoryName';
+    final key = 'hybrid_places_v2_${locationName.replaceAll(' ', '_')}_$categoryName';
     await _prefs.setString(key, json.encode(placesJson));
     await _prefs.setInt('${key}_time', DateTime.now().millisecondsSinceEpoch);
   }
 
   static List<Map<String, dynamic>>? getCachedHybridPlaces(String locationName, String categoryName) {
-    final key = 'hybrid_places_${locationName.replaceAll(' ', '_')}_$categoryName';
+    final key = 'hybrid_places_v2_${locationName.replaceAll(' ', '_')}_$categoryName';
     final timestamp = _prefs.getInt('${key}_time') ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
     
@@ -400,7 +400,7 @@ class CacheService {
     final List<Map<String, dynamic>> allPlaces = [];
     final keys = _prefs.getKeys();
     for (final key in keys) {
-      if (key.startsWith('hybrid_places_') && key.endsWith('_$categoryName') && !key.endsWith('_time')) {
+      if (key.startsWith('hybrid_places_v2_') && key.endsWith('_$categoryName') && !key.endsWith('_time')) {
         final timestamp = _prefs.getInt('${key}_time') ?? 0;
         final now = DateTime.now().millisecondsSinceEpoch;
         

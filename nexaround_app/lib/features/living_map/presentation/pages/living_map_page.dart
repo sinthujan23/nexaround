@@ -5389,7 +5389,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     return SizedBox(
-      height: 480,
+      height: 530,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -5407,13 +5407,38 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildCategoryPanel(String categoryName, List<AttractionEntity> places, MapStatus status) {
+    Color themeColor;
+    switch (categoryName) {
+      case 'Food':
+        themeColor = Colors.orange;
+        break;
+      case 'Attractions':
+        themeColor = Colors.teal;
+        break;
+      case 'Shopping':
+        themeColor = Colors.blue;
+        break;
+      case 'Medical':
+        themeColor = Colors.red;
+        break;
+      default:
+        themeColor = Colors.grey;
+    }
+
     if (status == MapStatus.loading) {
       return Container(
         width: 320,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.25),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+          border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
@@ -5423,12 +5448,19 @@ class _LivingMapPageState extends State<LivingMapPage>
       return Container(
         width: 320,
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.25),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+          border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Center(
-          child: Text('No $categoryName nearby', style: const TextStyle(color: Colors.white)),
+          child: Text('No $categoryName nearby', style: const TextStyle(color: AppColors.textSecondary)),
         ),
       );
     }
@@ -5438,13 +5470,20 @@ class _LivingMapPageState extends State<LivingMapPage>
     return Container(
       width: 320,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.25),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+        border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Colors.black.withOpacity(0.35), _getCategoryColor(categoryName)],
+          colors: [Colors.white, themeColor.withOpacity(0.08)],
         ),
       ),
       child: Stack(
@@ -5466,11 +5505,11 @@ class _LivingMapPageState extends State<LivingMapPage>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.1),
+                    color: Colors.black.withOpacity(0.03),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: _getCategoryBorderColor(categoryName), width: 0.6),
+                    border: Border.all(color: Colors.black.withOpacity(0.12), width: 0.8),
                   ),
                   child: Text(
                     categoryName,
@@ -5480,14 +5519,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                 const SizedBox(height: 4),
                 Text(
                   'Range: $maxRange',
-                  style: const TextStyle(color: AppColors.textTertiary, fontSize: 10, fontWeight: FontWeight.w600),
+                  style: TextStyle(color: Colors.black.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
                   child: ListView.separated(
                     padding: EdgeInsets.zero,
                     itemCount: places.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    separatorBuilder: (context, index) => const SizedBox(height: 8),
                     itemBuilder: (context, index) {
                       final place = places[index];
                       final distKm = _getAccurateDistanceM(place) / 1000.0;
@@ -5514,46 +5553,33 @@ class _LivingMapPageState extends State<LivingMapPage>
                           );
                         },
                         child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: _getCategoryBorderColor(categoryName).withOpacity(0.2),
-                              ),
-                              child: Icon(Icons.location_on, color: _getCategoryColor(categoryName), size: 16),
-                            ),
-                            const SizedBox(width: 12),
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    place.name,
-                                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Text(distStr, style: const TextStyle(color: AppColors.textTertiary, fontSize: 11)),
-                                      const SizedBox(width: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.actionTeal.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          direction,
-                                          style: const TextStyle(color: AppColors.actionTeal, fontSize: 9, fontWeight: FontWeight.w700),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
+                              child: Text(
+                                place.name,
+                                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              distStr,
+                              style: TextStyle(color: Colors.black.withOpacity(0.35), fontSize: 11.5, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 32,
+                              height: 18,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: themeColor.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                direction,
+                                style: TextStyle(color: themeColor.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w900),
                               ),
                             ),
                           ],
