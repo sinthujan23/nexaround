@@ -4834,7 +4834,8 @@ class _LivingMapPageState extends State<LivingMapPage>
       return 'assets/images/cat_medical.png';
     if (cat.contains('historic') ||
         cat.contains('history') ||
-        cat.contains('museum'))
+        cat.contains('museum') ||
+        cat.contains('attraction'))
       return 'assets/images/cat_historical.png';
     return 'assets/images/cat_nature.png'; // default
   }
@@ -5314,7 +5315,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         .where((p) => (p.distanceM ?? 0) < 25000)
         .toList();
 
-    if (closeAttractions.length < 7) {
+    if (closeAttractions.length < 10) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 &&
             !closeAttractions.any((x) => x.id == p.id)) {
@@ -5322,7 +5323,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
           if (isAttraction) {
             closeAttractions.add(p);
-            if (closeAttractions.length >= 7) break;
+            if (closeAttractions.length >= 10) break;
           }
         }
       }
@@ -5332,9 +5333,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     farAttractions.sort(compareDistanceAndRating);
 
     final List<AttractionEntity> balancedAttractions = [];
-    balancedAttractions.addAll(closeAttractions.take(7));
+    balancedAttractions.addAll(closeAttractions.take(10));
     for (final far in farAttractions) {
-      if (balancedAttractions.length >= 10) break;
+      if (balancedAttractions.length >= 15) break;
       if (!balancedAttractions.any((x) => x.id == far.id)) {
         balancedAttractions.add(far);
       }
@@ -5350,7 +5351,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         .where((p) => (p.distanceM ?? 0) < 25000)
         .toList();
 
-    if (closeMedical.length < 7) {
+    if (closeMedical.length < 10) {
       for (final p in attractions) {
         if ((p.distanceM ?? 0) < 25000 &&
             !closeMedical.any((x) => x.id == p.id)) {
@@ -5358,7 +5359,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
           if (isMedical) {
             closeMedical.add(p);
-            if (closeMedical.length >= 7) break;
+            if (closeMedical.length >= 10) break;
           }
         }
       }
@@ -5368,27 +5369,202 @@ class _LivingMapPageState extends State<LivingMapPage>
     farMedical.sort(compareDistanceAndRating);
 
     final List<AttractionEntity> balancedMedical = [];
-    balancedMedical.addAll(closeMedical.take(7));
+    balancedMedical.addAll(closeMedical.take(10));
     for (final far in farMedical) {
-      if (balancedMedical.length >= 10) break;
+      if (balancedMedical.length >= 15) break;
       if (!balancedMedical.any((x) => x.id == far.id)) {
         balancedMedical.add(far);
       }
     }
     grouped['Medical'] = balancedMedical;
 
-    // Sort Food and Shopping lists strictly by distance and rating
+    // Sort Food and Shopping lists strictly by distance and rating, limit to 15
     grouped['Food']?.sort(compareDistanceAndRating);
+    if (grouped['Food'] != null && grouped['Food']!.length > 15) {
+      grouped['Food'] = grouped['Food']!.take(15).toList();
+    }
     grouped['Shopping']?.sort(compareDistanceAndRating);
+    if (grouped['Shopping'] != null && grouped['Shopping']!.length > 15) {
+      grouped['Shopping'] = grouped['Shopping']!.take(15).toList();
+    }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-      child: Column(
+    return SizedBox(
+      height: 480,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         children: [
-          _buildCategoryCard('Food', grouped['Food']!, 0, status),
-          _buildCategoryCard('Attractions', grouped['Attractions']!, 1, status),
-          _buildCategoryCard('Shopping', grouped['Shopping']!, 2, status),
-          _buildCategoryCard('Medical', grouped['Medical']!, 3, status),
+          _buildCategoryPanel('Food', grouped['Food']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Medical', grouped['Medical']!, status),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryPanel(String categoryName, List<AttractionEntity> places, MapStatus status) {
+    if (status == MapStatus.loading) {
+      return Container(
+        width: 320,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+        ),
+        child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+    
+    if (places.isEmpty) {
+      return Container(
+        width: 320,
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+        ),
+        child: Center(
+          child: Text('No $categoryName nearby', style: const TextStyle(color: Colors.white)),
+        ),
+      );
+    }
+
+    final maxRange = (categoryName == 'Attractions' || categoryName == 'Medical') ? '0-50 kms' : '0-15 kms';
+
+    return Container(
+      width: 320,
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.25),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: _getCategoryBorderColor(categoryName), width: 1.0),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.black.withOpacity(0.35), _getCategoryColor(categoryName)],
+        ),
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            top: -20,
+            right: -10,
+            child: Image.asset(
+              _getCategoryImagePath(categoryName),
+              width: 90,
+              height: 90,
+              fit: BoxFit.contain,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: _getCategoryBorderColor(categoryName), width: 0.6),
+                  ),
+                  child: Text(
+                    categoryName,
+                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Range: $maxRange',
+                  style: const TextStyle(color: AppColors.textTertiary, fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: ListView.separated(
+                    padding: EdgeInsets.zero,
+                    itemCount: places.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final place = places[index];
+                      final distKm = _getAccurateDistanceM(place) / 1000.0;
+                      final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+                      final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
+
+                      return GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AttractionDetailPage(
+                                id: place.id,
+                                name: place.name,
+                                category: place.categoryName ?? 'Gem',
+                                rating: place.rating,
+                                distance: distStr,
+                                emoji: '📍',
+                                imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                latitude: place.latitude,
+                                longitude: place.longitude,
+                              ),
+                            ),
+                          );
+                        },
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: _getCategoryBorderColor(categoryName).withOpacity(0.2),
+                              ),
+                              child: Icon(Icons.location_on, color: _getCategoryColor(categoryName), size: 16),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    place.name,
+                                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Text(distStr, style: const TextStyle(color: AppColors.textTertiary, fontSize: 11)),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.actionTeal.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          direction,
+                                          style: const TextStyle(color: AppColors.actionTeal, fontSize: 9, fontWeight: FontWeight.w700),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

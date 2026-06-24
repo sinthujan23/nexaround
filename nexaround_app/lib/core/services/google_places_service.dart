@@ -710,24 +710,27 @@ class GooglePlacesService {
       String prompt = '';
       if (categoryName == 'Medical') {
         prompt = '''
-Can you analyze and provide a list for the following categories upto 5 items each within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. Don’t provide a map but just a table.
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
-Medical: hospitals, pharmacy, dental clinics, health centers, physiotherapist, veterinary_care, medical clinics, medical_lab, optical centers
+hospitals, pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab
+
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Hospital Name",
-    "distance_km": 12.5,
-    "direction": "South-East"
+    "name": "Medical Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
   }
 ]
 ''';
       } else if (categoryName == 'Attractions') {
         prompt = '''
-Can you analyze and provide a list for the following categories upto 25 most important items within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. Don’t provide a map but just a table.
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
-tourist_attraction, museum, park, zoo, aquarium, art_gallery, amusement_park, church, hindu_temple, mosque, synagogue, stadium, casino, movie_theater, bowling_alley, campground, national_park, historical_landmark
+tourist_attraction, historical_landmark, beach, museum, park, zoo, aquarium, art_gallery, amusement_park, religious_places, casino, movie_theater, bowling_alley, campground, national_park, botanical_garden
+
+
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
