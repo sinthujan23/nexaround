@@ -5155,6 +5155,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     // Expanded place types for better discovery
     final allowedTypes = {
       'Medical': {
+        'medical',
         'hospital',
         'pharmacy',
         'doctor',
@@ -5197,6 +5198,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         'market',
       },
       'Attractions': {
+        'attractions',
         'tourist_attraction',
         'museum',
         'park',
@@ -5269,14 +5271,12 @@ class _LivingMapPageState extends State<LivingMapPage>
       final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
       final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
       final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isAttraction = tags.any(
-        (t) => allowedTypes['Attractions']!.contains(t),
-      );
+      final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
 
       String? bestCategory;
-      if (isMedical && !isFood && !isShopping) {
+      if (isMedical) {
         bestCategory = 'Medical';
-      } else if (isFood && !isMedical) {
+      } else if (isFood) {
         // Food but NOT medical — exclude places that are primarily shopping
         final primaryShop = tags.any(
           (t) =>
@@ -5285,14 +5285,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         if (!primaryShop) {
           bestCategory = 'Food';
         }
-      } else if (isShopping && !isMedical && !isFood) {
+      } else if (isShopping) {
         bestCategory = 'Shopping';
-      } else if (isAttraction && !isMedical && !isFood && !isShopping) {
+      } else if (isAttraction) {
         bestCategory = 'Attractions';
       }
-      // If place matches multiple categories (e.g. a supermarket tagged as 'food' + 'store'),
-      // it only goes to the first matching priority category above.
-      // If it matches NONE, skip it entirely.
 
       if (bestCategory == null) continue;
 
@@ -5322,16 +5319,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         if ((p.distanceM ?? 0) < 25000 &&
             !closeAttractions.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isAttraction =
-              tags.any((t) => allowedTypes['Attractions']!.contains(t)) &&
-              !tags.any(
-                (t) => {
-                  'store',
-                  'shopping_mall',
-                  'supermarket',
-                  'department_store',
-                }.contains(t),
-              );
+          final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
           if (isAttraction) {
             closeAttractions.add(p);
             if (closeAttractions.length >= 7) break;
@@ -5367,11 +5355,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         if ((p.distanceM ?? 0) < 25000 &&
             !closeMedical.any((x) => x.id == p.id)) {
           final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isMedical =
-              tags.any((t) => allowedTypes['Medical']!.contains(t)) &&
-              !tags.contains('bar') &&
-              !tags.contains('pub') &&
-              !tags.contains('liquor_store');
+          final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
           if (isMedical) {
             closeMedical.add(p);
             if (closeMedical.length >= 7) break;

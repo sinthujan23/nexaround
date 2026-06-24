@@ -652,11 +652,67 @@ class GooglePlacesService {
         return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
       }
 
+      // Check all cached hybrid places for the given category across all locations within 50km
+      final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
+      final List<AttractionModel> nearbyCached = [];
+      for (final json in allCached) {
+        final model = AttractionModel.fromJson(json);
+        final distM = geo.Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          model.latitude,
+          model.longitude,
+        );
+        if (distM <= 50000) {
+          nearbyCached.add(model);
+        }
+      }
+
+      // Check if we have enough places to satisfy the request without calling APIs
+      final threshold = categoryName == 'Medical' ? 10 : 15;
+      if (nearbyCached.length >= threshold) {
+        print('⚡ Found enough (${nearbyCached.length} >= $threshold) cached places within 50km for $categoryName. Skipping API call.');
+        
+        // Update distances relative to current user coordinates
+        return nearbyCached.map((m) {
+          final distM = geo.Geolocator.distanceBetween(
+            latitude,
+            longitude,
+            m.latitude,
+            m.longitude,
+          );
+          return AttractionModel(
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            history: m.history,
+            latitude: m.latitude,
+            longitude: m.longitude,
+            categoryId: m.categoryId,
+            categoryName: m.categoryName,
+            address: m.address,
+            openingHours: m.openingHours,
+            entryFee: m.entryFee,
+            currency: m.currency,
+            rating: m.rating,
+            reviewCount: m.reviewCount,
+            photoUrls: m.photoUrls,
+            tags: m.tags,
+            geofenceRadiusM: m.geofenceRadiusM,
+            distanceM: distM,
+            isActive: m.isActive,
+            createdAt: m.createdAt,
+          );
+        }).toList();
+      }
+
       final gemini = GeminiService();
       String prompt = '';
       if (categoryName == 'Medical') {
         prompt = '''
-Analyze and provide a list of up to 15 major hospital names within a radius of 50 km from coordinates ($latitude, $longitude) near $locationName, Kerala, India with distance and direction. Don’t provide a map but just a table.
+Can you analyze and provide a list for the following categories upto 5 items each within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. Don’t provide a map but just a table.
+
+Medical: hospitals, pharmacy, dental clinics, health centers, physiotherapist, veterinary_care, medical clinics, medical_lab, optical centers
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
@@ -669,7 +725,9 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 ''';
       } else if (categoryName == 'Attractions') {
         prompt = '''
-Analyze and provide a list of up to 25 major tourist attraction names (categories: tourist_attraction, museum, park, zoo, aquarium, art_gallery, amusement_park, church, hindu_temple, mosque, synagogue, stadium, casino, movie_theater, bowling_alley, campground, national_park, historical_landmark) within a radius of 50 km from coordinates ($latitude, $longitude) near $locationName, Kerala, India with distance and direction. Don’t provide a map but just a table.
+Can you analyze and provide a list for the following categories upto 25 most important items within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. Don’t provide a map but just a table.
+
+tourist_attraction, museum, park, zoo, aquarium, art_gallery, amusement_park, church, hindu_temple, mosque, synagogue, stadium, casino, movie_theater, bowling_alley, campground, national_park, historical_landmark
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [

@@ -428,9 +428,58 @@ async def get_nearby(
     
     # Otherwise, query Google Places API as a fallback
     import asyncio
-    if radius < 25000:
-        # Standard single query at center
-        if use_legacy:
+    raw_places = []
+    if not use_legacy:
+        try:
+            if radius < 25000:
+                raw_places = await google_places_client.nearby_search(
+                    latitude=latitude,
+                    longitude=longitude,
+                    category=category,
+                    radius=radius,
+                )
+            else:
+                # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
+                mid = radius * 0.7
+                sample_radius = int(radius * 0.5)
+                
+                # Scale centers: 4 offsets to get more places
+                num_centers = 4
+                bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
+                offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+                
+                # Add center query as well to ensure total coverage
+                all_queries = [(latitude, longitude, radius)] + [
+                    (olat, olng, sample_radius) for olat, olng in offset_coords
+                ]
+                
+                async def fetch_one(lat: float, lng: float, rad: int) -> list:
+                    return await google_places_client.nearby_search(
+                        latitude=lat,
+                        longitude=lng,
+                        category=category,
+                        radius=rad,
+                    )
+                
+                # Fetch all in parallel
+                results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
+                
+                # Merge and deduplicate
+                seen_ids = set()
+                for r_list in results:
+                    for p in r_list:
+                        pid = p.get("id") or p.get("place_id")
+                        if pid and pid not in seen_ids:
+                            seen_ids.add(pid)
+                            raw_places.append(p)
+        except Exception as e:
+            print(f"⚠️ Places API (New) failed with error: {e}. Falling back to Legacy Nearby Search API.")
+            use_legacy = True
+
+    # Execute legacy search if use_legacy is True (either requested or as fallback)
+    if use_legacy:
+        if radius < 25000:
+            # Standard single query at center
             raw_places = await google_places_client.nearby_search_legacy(
                 latitude=latitude,
                 longitude=longitude,
@@ -438,59 +487,43 @@ async def get_nearby(
                 radius=radius,
             )
         else:
-            raw_places = await google_places_client.nearby_search(
-                latitude=latitude,
-                longitude=longitude,
-                category=category,
-                radius=radius,
-            )
-    else:
-        # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
-        mid = radius * 0.7
-        sample_radius = int(radius * 0.5)
-        
-        # Scale centers: 4 offsets to get more places
-        num_centers = 4
-        bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
-        offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
-        
-        # Add center query as well to ensure total coverage
-        all_queries = [(latitude, longitude, radius)] + [
-            (olat, olng, sample_radius) for olat, olng in offset_coords
-        ]
-        
-        async def fetch_one(lat: float, lng: float, rad: int) -> list:
-            try:
-                if use_legacy:
+            # Annulus offset center queries to cover the entire band (since single query caps at 20 places)
+            mid = radius * 0.7
+            sample_radius = int(radius * 0.5)
+            
+            # Scale centers: 4 offsets to get more places
+            num_centers = 4
+            bearings = [(360.0 / num_centers) * i for i in range(num_centers)]
+            offset_coords = [offset_lat_lng(latitude, longitude, b, mid) for b in bearings]
+            
+            # Add center query as well to ensure total coverage
+            all_queries = [(latitude, longitude, radius)] + [
+                (olat, olng, sample_radius) for olat, olng in offset_coords
+            ]
+            
+            async def fetch_one_legacy(lat: float, lng: float, rad: int) -> list:
+                try:
                     return await google_places_client.nearby_search_legacy(
                         latitude=lat,
                         longitude=lng,
                         category=category,
                         radius=rad,
                     )
-                else:
-                    return await google_places_client.nearby_search(
-                        latitude=lat,
-                        longitude=lng,
-                        category=category,
-                        radius=rad,
-                    )
-            except Exception as e:
-                print(f"⚠️ Error fetching offset nearby search in get_nearby: {e}")
-                return []
-        
-        # Fetch all in parallel
-        results = await asyncio.gather(*(fetch_one(lat, lng, rad) for lat, lng, rad in all_queries))
-        
-        # Merge and deduplicate
-        raw_places = []
-        seen_ids = set()
-        for r_list in results:
-            for p in r_list:
-                pid = p.get("id") or p.get("place_id")
-                if pid and pid not in seen_ids:
-                    seen_ids.add(pid)
-                    raw_places.append(p)
+                except Exception as e:
+                    print(f"⚠️ Error fetching offset nearby search legacy in get_nearby: {e}")
+                    return []
+            
+            # Fetch all in parallel
+            results = await asyncio.gather(*(fetch_one_legacy(lat, lng, rad) for lat, lng, rad in all_queries))
+            
+            # Merge and deduplicate
+            seen_ids = set()
+            for r_list in results:
+                for p in r_list:
+                    pid = p.get("id") or p.get("place_id")
+                    if pid and pid not in seen_ids:
+                        seen_ids.add(pid)
+                        raw_places.append(p)
     
     # Convert raw places to PlaceResponses
     if use_legacy:

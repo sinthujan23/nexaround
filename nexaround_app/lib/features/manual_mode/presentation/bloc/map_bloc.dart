@@ -181,7 +181,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName = await GooglePlacesService.reverseGeocode(event.latitude, event.longitude);
             } catch (_) {}
             if (locationName == 'Nearby' || locationName.trim().isEmpty) {
-              locationName = 'Aluva';
+              locationName = 'current location';
             }
             
             final hybridList = await GooglePlacesService.fetchHybridPlaces(
@@ -190,11 +190,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               categoryName: cat,
               locationName: locationName,
             );
-            if (hybridList.isNotEmpty) {
-              return hybridList;
-            }
             
-            // Fallback
             final repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
@@ -202,7 +198,24 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               categoryName: cat,
               useLegacy: event.useLegacy,
             );
-            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            final fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+
+            // Merge fallback and hybrid lists to ensure rich listings
+            final Map<String, AttractionEntity> mergedMap = {};
+            for (final p in fallbackList) {
+              mergedMap[p.id] = p;
+              mergedMap[p.name.trim().toLowerCase()] = p;
+            }
+            for (final p in hybridList) {
+              mergedMap[p.id] = p;
+              mergedMap[p.name.trim().toLowerCase()] = p;
+            }
+
+            final mergedList = mergedMap.values.toSet().toList();
+            if (mergedList.isNotEmpty) {
+              return mergedList;
+            }
+            return <AttractionEntity>[];
           } else {
             final repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,

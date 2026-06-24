@@ -395,6 +395,39 @@ class CacheService {
     }
   }
 
+  // Get all cached hybrid places for a category across all locations within 24 hours
+  static List<Map<String, dynamic>> getAllCachedHybridPlacesForCategory(String categoryName) {
+    final List<Map<String, dynamic>> allPlaces = [];
+    final keys = _prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith('hybrid_places_') && key.endsWith('_$categoryName') && !key.endsWith('_time')) {
+        final timestamp = _prefs.getInt('${key}_time') ?? 0;
+        final now = DateTime.now().millisecondsSinceEpoch;
+        
+        // 24 hours expiry (86,400,000 milliseconds)
+        if (now - timestamp <= 86400000) {
+          final jsonStr = _prefs.getString(key);
+          if (jsonStr != null) {
+            try {
+              final decoded = json.decode(jsonStr) as List<dynamic>;
+              allPlaces.addAll(decoded.map((e) => e as Map<String, dynamic>));
+            } catch (_) {}
+          }
+        }
+      }
+    }
+    
+    // Deduplicate by place ID to avoid duplicate results from overlapping searches
+    final Map<String, Map<String, dynamic>> unique = {};
+    for (final p in allPlaces) {
+      final id = p['id'] as String?;
+      if (id != null) {
+        unique[id] = p;
+      }
+    }
+    return unique.values.toList();
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }
