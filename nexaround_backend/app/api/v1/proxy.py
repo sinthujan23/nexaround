@@ -58,7 +58,8 @@ async def proxy_gemini_generate(
                     headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
                     timeout=60.0
                 )
-                if resp.status_code in (429, 500, 503) and i < len(models) - 1:
+                if resp.status_code != 200 and i < len(models) - 1:
+                    print(f"⚠️ Model {model} returned status {resp.status_code}. Retrying next model...")
                     continue
                 break
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
