@@ -2271,6 +2271,15 @@ class _LivingMapPageState extends State<LivingMapPage>
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                     color: isActive ? Colors.white : AppColors.textSecondary,
                   ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   String _selectedCountryFilter = 'Global';
   String _modalSearchQuery = '';
 
