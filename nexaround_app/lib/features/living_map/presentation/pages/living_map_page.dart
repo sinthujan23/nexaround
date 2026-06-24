@@ -2271,56 +2271,151 @@ class _LivingMapPageState extends State<LivingMapPage>
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                     color: isActive ? Colors.white : AppColors.textSecondary,
                   ),
-                ),
+  String _selectedCountryFilter = 'Global';
+  String _modalSearchQuery = '';
+
+  void _showCountryFilterBottomSheet() {
+    _modalSearchQuery = '';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
               ),
-            ),
-          );
-        },
-      ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 5,
+                    margin: const EdgeInsets.only(top: 12, bottom: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Filter by Country',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(context),
+                          icon: const Icon(Icons.close, color: Colors.black54, size: 22),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1, color: AppColors.border),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.grey[100],
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: TextField(
+                        onChanged: (val) {
+                          setModalState(() {
+                            _modalSearchQuery = val.trim();
+                          });
+                        },
+                        style: const TextStyle(color: Colors.black87),
+                        decoration: const InputDecoration(
+                          hintText: 'Search country...',
+                          prefixIcon: Icon(Icons.search, color: Colors.grey),
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        ListTile(
+                          leading: const Text('🌐', style: TextStyle(fontSize: 18)),
+                          title: const Text('Global (All)', style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
+                          trailing: _selectedCountryFilter == 'Global'
+                              ? const Icon(Icons.check, color: AppColors.brandGreen)
+                              : null,
+                          onTap: () {
+                            setState(() {
+                              _selectedCountryFilter = 'Global';
+                            });
+                            _loadTravelStories();
+                            Navigator.pop(context);
+                          },
+                        ),
+                        const Divider(height: 1),
+                        ...countriesList
+                            .where((c) => _modalSearchQuery.isEmpty || c.toLowerCase().contains(_modalSearchQuery.toLowerCase()))
+                            .map((country) {
+                          final isSelected = _selectedCountryFilter == country;
+                          return ListTile(
+                            title: Text(country, style: const TextStyle(color: Colors.black87)),
+                            trailing: isSelected
+                                ? const Icon(Icons.check, color: AppColors.brandGreen)
+                                : null,
+                            onTap: () {
+                              setState(() {
+                                _selectedCountryFilter = country;
+                              });
+                              _loadTravelStories();
+                              Navigator.pop(context);
+                            },
+                          );
+                        }).toList(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
-
-  String _selectedCountryFilter = 'Global';
 
   Widget _buildTravelStoriesHeaderAction() {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        DropdownButtonHideUnderline(
-          child: Theme(
-            data: Theme.of(context).copyWith(
-              canvasColor: Colors.white,
-            ),
-            child: DropdownButton<String>(
-              value: _selectedCountryFilter,
-              icon: const Icon(Icons.arrow_drop_down, color: AppColors.brandGreen, size: 20),
-              style: const TextStyle(
-                color: AppColors.brandGreen,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-              dense: true,
-              onChanged: (String? newValue) {
-                if (newValue != null) {
-                  setState(() {
-                    _selectedCountryFilter = newValue;
-                  });
-                  _loadTravelStories();
-                }
-              },
-              items: [
-                const DropdownMenuItem<String>(
-                  value: 'Global',
-                  child: Text('🌐 Global'),
+        GestureDetector(
+          onTap: _showCountryFilterBottomSheet,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _selectedCountryFilter == 'Global'
+                    ? '🌐 Global'
+                    : (_selectedCountryFilter.length > 14
+                        ? '${_selectedCountryFilter.substring(0, 12)}...'
+                        : _selectedCountryFilter),
+                style: const TextStyle(
+                  color: AppColors.brandGreen,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
-                ...countriesList.map<DropdownMenuItem<String>>((String country) {
-                  return DropdownMenuItem<String>(
-                    value: country,
-                    child: Text(country),
-                  );
-                }).toList(),
-              ],
-            ),
+              ),
+              const Icon(Icons.arrow_drop_down, color: AppColors.brandGreen, size: 20),
+            ],
           ),
         ),
         const SizedBox(width: 12),

@@ -9,9 +9,7 @@ import 'package:nexaround_app/features/travel_stories/data/models/travel_story.d
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
-import '../../../../app/theme/app_colors.dart';
 import '../../../../core/services/google_places_service.dart';
-import '../../data/models/travel_story.dart';
 import '../../data/datasources/travel_stories_service.dart';
 import '../../../../core/constants/countries.dart';
 
