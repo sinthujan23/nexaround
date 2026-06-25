@@ -121,12 +121,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(color: AppColors.glassBorder, width: 1.5),
-                              gradient: RadialGradient(
-                                colors: [
-                                  AppColors.surfaceVariant,
-                                  AppColors.surface,
-                                ],
-                              ),
+                              color: const Color(0xFFFFF8DC),
                               boxShadow: [
                                 BoxShadow(
                                   color: AppColors.primary.withOpacity(0.2),

@@ -428,6 +428,15 @@ class CacheService {
     return unique.values.toList();
   }
 
+  static Future<void> clearHybridPlacesCache() async {
+    final keys = _prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith('hybrid_places_v2_')) {
+        await _prefs.remove(key);
+      }
+    }
+  }
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

@@ -665,6 +665,44 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
+  Future<void> _forceRefreshAroundYou() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Refreshing places around you...')),
+    );
+    await CacheService.clearHybridPlacesCache();
+    GooglePlacesService.clearErrors();
+    await _fetchInitialData();
+  }
+
+  Widget _buildAroundYouRefreshButton() {
+    return GestureDetector(
+      onTap: _forceRefreshAroundYou,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.glassWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.glassBorder),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.refresh_rounded, color: AppColors.brandGreen, size: 16),
+            SizedBox(width: 4),
+            Text(
+              'Refresh',
+              style: TextStyle(
+                color: AppColors.brandGreen,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _fetchMiniTourPlaces(double lat, double lng) async {
     if (_loadingMiniTour) return;
     setState(() => _loadingMiniTour = true);
@@ -964,6 +1002,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               'Around You',
                               null,
                               imageIconPath: 'assets/images/near.png',
+                              customAction: _buildAroundYouRefreshButton(),
                             ),
                           ),
                         ),
@@ -1085,6 +1124,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               'Around You',
                               null,
                               imageIconPath: 'assets/images/near.png',
+                              customAction: _buildAroundYouRefreshButton(),
                             ),
                           ),
                         ),
@@ -2430,9 +2470,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         const SizedBox(width: 12),
         GestureDetector(
           onTap: _showPostStorySheet,
-          child: ShaderMask(
-            shaderCallback: (b) => AppColors.primaryGradient.createShader(
-              Rect.fromLTWH(0, 0, b.width, b.height),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+            decoration: BoxDecoration(
+              color: const Color(0xFF00695C), // dark teal
+              borderRadius: BorderRadius.circular(20),
             ),
             child: const Text(
               '+ Share',
@@ -5620,11 +5662,53 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
     grouped['Hospital'] = balancedHospital;
 
-    // Sort Food and Shopping lists strictly by distance and rating, limit to 15
-    grouped['Food']?.sort(compareDistanceAndRating);
-    if (grouped['Food'] != null && grouped['Food']!.length > 15) {
-      grouped['Food'] = grouped['Food']!.take(15).toList();
+    // Balance Food category to ensure places beyond 1km are included
+    final foodCategoryList = grouped['Food'] ?? [];
+    var farFood = foodCategoryList
+        .where((p) => (p.distanceM ?? 0) >= 1000)
+        .toList();
+    var closeFood = foodCategoryList
+        .where((p) => (p.distanceM ?? 0) < 1000)
+        .toList();
+
+    if (closeFood.length < 10) {
+      for (final p in attractions) {
+        if ((p.distanceM ?? 0) < 1000 &&
+            !closeFood.any((x) => x.id == p.id)) {
+          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
+          final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
+          // Exclude places that are primarily shopping (same as grouping logic)
+          final primaryShop = tags.any(
+            (t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t),
+          );
+          if (isFood && !primaryShop) {
+            closeFood.add(p);
+            if (closeFood.length >= 10) break;
+          }
+        }
+      }
     }
+
+    closeFood.sort(compareDistanceAndRating);
+    farFood.sort(compareDistanceAndRating);
+
+    final List<AttractionEntity> balancedFood = [];
+    balancedFood.addAll(closeFood.take(10));
+    for (final far in farFood) {
+      if (balancedFood.length >= 15) break;
+      if (!balancedFood.any((x) => x.id == far.id)) {
+        balancedFood.add(far);
+      }
+    }
+    if (balancedFood.length < 15) {
+      for (final close in closeFood) {
+        if (balancedFood.length >= 15) break;
+        if (!balancedFood.any((x) => x.id == close.id)) {
+          balancedFood.add(close);
+        }
+      }
+    }
+    grouped['Food'] = balancedFood;
     grouped['Shopping']?.sort(compareDistanceAndRating);
     if (grouped['Shopping'] != null && grouped['Shopping']!.length > 15) {
       grouped['Shopping'] = grouped['Shopping']!.take(15).toList();
@@ -5769,7 +5853,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final String maxRange;
-    if (categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
+    if (categoryName == 'Attractions' || categoryName == 'Hospital') {
       maxRange = '0-50 kms';
     } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
       maxRange = '0-5 kms';

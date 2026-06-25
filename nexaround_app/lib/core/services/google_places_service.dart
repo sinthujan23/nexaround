@@ -29,6 +29,14 @@ class GooglePlacesService {
   static String lastFoodError = '';
   static String lastShoppingError = '';
 
+  static void clearErrors() {
+    lastAttractionsError = '';
+    lastMedicalError = '';
+    lastHospitalError = '';
+    lastFoodError = '';
+    lastShoppingError = '';
+  }
+
   // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
     'Attractions': 'tourist_attraction',
@@ -783,7 +791,7 @@ class GooglePlacesService {
       final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
       final List<AttractionModel> nearbyCached = [];
       final double searchRadiusM;
-      if (categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
+      if (categoryName == 'Attractions' || categoryName == 'Hospital') {
         searchRadiusM = 50000.0;
       } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
         searchRadiusM = 5000.0;
@@ -844,9 +852,9 @@ class GooglePlacesService {
       String prompt = '';
       if (categoryName == 'Medical') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
-hospitals, pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab
+pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab, 
 
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
