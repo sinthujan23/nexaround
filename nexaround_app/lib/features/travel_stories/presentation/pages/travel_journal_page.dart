@@ -13,6 +13,7 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 
 class TravelJournalPage extends StatefulWidget {
   const TravelJournalPage({Key? key}) : super(key: key);
@@ -24,6 +25,14 @@ class TravelJournalPage extends StatefulWidget {
 class _TravelJournalPageState extends State<TravelJournalPage> {
   final List<TravelStory> _journalEntries = [];
   bool _isLoading = false;
+  String _selectedCountryFilter = 'Global';
+
+  List<TravelStory> get _filteredEntries {
+    if (_selectedCountryFilter == 'Global') {
+      return _journalEntries;
+    }
+    return _journalEntries.where((entry) => entry.country == _selectedCountryFilter).toList();
+  }
 
   @override
   void initState() {
@@ -88,11 +97,61 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: AppColors.brandGreen))
-          : _journalEntries.isEmpty
-              ? _buildEmptyState()
-              : _buildTimeline(),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.grey.shade200, width: 1.0),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Filter by Country',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black54,
+                  ),
+                ),
+                DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedCountryFilter,
+                    dropdownColor: Colors.white,
+                    icon: const Icon(Icons.arrow_drop_down, color: Colors.black54),
+                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                    onChanged: (String? newValue) {
+                      if (newValue != null) {
+                        setState(() {
+                          _selectedCountryFilter = newValue;
+                        });
+                      }
+                    },
+                    items: <String>['Global', ...countriesList]
+                        .map<DropdownMenuItem<String>>((String value) {
+                      return DropdownMenuItem<String>(
+                        value: value,
+                        child: Text(value == 'Global' ? '🌐 Global' : value),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator(color: AppColors.brandGreen))
+                : _filteredEntries.isEmpty
+                    ? _buildEmptyState()
+                    : _buildTimeline(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -132,9 +191,9 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
   Widget _buildTimeline() {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: _journalEntries.length,
+      itemCount: _filteredEntries.length,
       itemBuilder: (context, index) {
-        final entry = _journalEntries[index];
+        final entry = _filteredEntries[index];
         final dateStr = entry.journalDate != null 
           ? '${entry.journalDate!.day}/${entry.journalDate!.month}/${entry.journalDate!.year}'
           : 'No Date';

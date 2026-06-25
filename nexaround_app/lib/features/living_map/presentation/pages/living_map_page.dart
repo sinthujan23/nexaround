@@ -5671,41 +5671,90 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     if (status == MapStatus.loading) {
-      return Container(
-        width: 320,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
+          child: Container(
+            width: 320,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.82),
+                  Colors.white.withOpacity(0.48),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: themeColor.withOpacity(0.24),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
+            child: Center(child: CircularProgressIndicator(color: themeColor)),
+          ),
         ),
-        child: const Center(child: CircularProgressIndicator(color: AppColors.primary)),
       );
     }
     
     if (places.isEmpty) {
-      return Container(
-        width: 320,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
+          child: Container(
+            width: 320,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withOpacity(0.82),
+                  Colors.white.withOpacity(0.48),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: themeColor.withOpacity(0.24),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Center(
-          child: Text('No $categoryName nearby', style: const TextStyle(color: Colors.black)),
+            child: Center(
+              child: Text(
+                'No $categoryName nearby',
+                style: const TextStyle(
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
         ),
       );
     }
@@ -5719,131 +5768,192 @@ class _LivingMapPageState extends State<LivingMapPage>
       maxRange = '0-15 kms';
     }
 
-    return Container(
-      width: 320,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: _getCategoryBorderColor(categoryName).withOpacity(0.3), width: 1.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Colors.white, themeColor.withOpacity(0.08)],
-        ),
-      ),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Positioned(
-            top: -20,
-            right: -10,
-            child: Image.asset(
-              _getCategoryImagePath(categoryName),
-              width: 90,
-              height: 90,
-              fit: BoxFit.contain,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
+        child: Container(
+          width: 320,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: themeColor.withOpacity(0.24),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.82),
+                Colors.white.withOpacity(0.48),
+              ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.03),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.black.withOpacity(0.12), width: 0.8),
-                  ),
-                  child: Text(
-                    categoryName,
-                    style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
-                  ),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Positioned(
+                top: -20,
+                right: -10,
+                child: Image.asset(
+                  _getCategoryImagePath(categoryName),
+                  width: 90,
+                  height: 90,
+                  fit: BoxFit.contain,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'Range: $maxRange',
-                  style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.separated(
-                    padding: EdgeInsets.zero,
-                    itemCount: places.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 8),
-                    itemBuilder: (context, index) {
-                      final place = places[index];
-                      final distKm = _getAccurateDistanceM(place) / 1000.0;
-                      final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()} m' : '${distKm.toStringAsFixed(1)} km';
-                      final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
-
-                      return GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AttractionDetailPage(
-                                id: place.id,
-                                name: place.name,
-                                category: place.categoryName ?? 'Gem',
-                                rating: place.rating,
-                                distance: distStr,
-                                emoji: '📍',
-                                imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                                latitude: place.latitude,
-                                longitude: place.longitude,
-                              ),
-                            ),
-                          );
-                        },
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.black.withOpacity(0.12), width: 0.8),
+                      ),
+                      child: Text(
+                        categoryName,
+                        style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Stack(
+                          alignment: Alignment.center,
                           children: [
-                            Expanded(
-                              child: Text(
-                                place.name,
-                                style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              distStr,
-                              style: const TextStyle(color: Colors.black, fontSize: 11.5, fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 6),
                             Container(
-                              width: 32,
-                              height: 18,
-                              alignment: Alignment.center,
+                              width: 14,
+                              height: 14,
                               decoration: BoxDecoration(
-                                color: themeColor.withOpacity(0.12),
-                                borderRadius: BorderRadius.circular(4),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: themeColor.withOpacity(0.35),
+                                  width: 1.2,
+                                ),
                               ),
-                              child: Text(
-                                direction,
-                                style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900),
+                            ),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: themeColor.withOpacity(0.60),
+                                  width: 1.0,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 3,
+                              height: 3,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: themeColor,
                               ),
                             ),
                           ],
                         ),
-                      );
-                    },
-                  ),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Range: $maxRange',
+                          style: const TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: ListView.separated(
+                        padding: EdgeInsets.zero,
+                        itemCount: places.length,
+                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        itemBuilder: (context, index) {
+                          final place = places[index];
+                          final distKm = _getAccurateDistanceM(place) / 1000.0;
+                          final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+                          final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
+
+                          return GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AttractionDetailPage(
+                                    id: place.id,
+                                    name: place.name,
+                                    category: place.categoryName ?? 'Gem',
+                                    rating: place.rating,
+                                    distance: distStr,
+                                    emoji: '📍',
+                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                    latitude: place.latitude,
+                                    longitude: place.longitude,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    place.name,
+                                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  distStr,
+                                  style: const TextStyle(color: Colors.black87, fontSize: 11.5, fontWeight: FontWeight.w500),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  width: 32,
+                                  height: 18,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: themeColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(
+                                      color: themeColor.withOpacity(0.20),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    direction,
+                                    style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
