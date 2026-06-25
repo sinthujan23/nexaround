@@ -454,7 +454,9 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
                       const Icon(Icons.place_rounded, size: 16, color: AppColors.brandGreen),
                       const SizedBox(width: 6),
                       Text(
-                        entry.locationName,
+                        entry.country != null && entry.country!.trim().isNotEmpty
+                            ? '${entry.locationName}, ${entry.country}'
+                            : entry.locationName,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w700,

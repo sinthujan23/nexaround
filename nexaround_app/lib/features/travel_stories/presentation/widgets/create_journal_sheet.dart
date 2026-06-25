@@ -62,6 +62,7 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
     if (_locationController.text.isEmpty || _descController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please fill out location and description')),

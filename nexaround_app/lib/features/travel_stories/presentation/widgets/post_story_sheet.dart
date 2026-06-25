@@ -218,6 +218,7 @@ class _PostStorySheetState extends State<PostStorySheet> {
   }
 
   Future<void> _submit() async {
+    FocusScope.of(context).unfocus();
     final location = _locationController.text.trim();
     final description = _descriptionController.text.trim();
 

@@ -147,9 +147,9 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 
     # 2. Test Food Prompt
     food_prompt = f"""
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ({lat}, {lng}) near Kinniya with distance and direction. 
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 5 kms from ({lat}, {lng}) near Kinniya with distance and direction. 
 
-restaurant, cafe, bakery, meal_takeaway, meal_delivery, food_shop, bar, night_club, ice_cream_shop, coffee_shop, juice_bar
+restaurant, cafe, bakery, meal_delivery, hotel, bar, night_club, ice_cream_shop, coffee_shop, diner
 
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):

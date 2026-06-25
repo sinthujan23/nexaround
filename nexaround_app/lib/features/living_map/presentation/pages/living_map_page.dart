@@ -5329,6 +5329,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Medical': {
         'medical',
         'hospital',
+        'multi_speciality_hospital',
         'pharmacy',
         'doctor',
         'dentist',
@@ -5511,6 +5512,14 @@ class _LivingMapPageState extends State<LivingMapPage>
         balancedAttractions.add(far);
       }
     }
+    if (balancedAttractions.length < 15) {
+      for (final close in closeAttractions) {
+        if (balancedAttractions.length >= 15) break;
+        if (!balancedAttractions.any((x) => x.id == close.id)) {
+          balancedAttractions.add(close);
+        }
+      }
+    }
     grouped['Attractions'] = balancedAttractions;
 
     // Balance Medical category to ensure at least one place is 25km or further away
@@ -5545,6 +5554,14 @@ class _LivingMapPageState extends State<LivingMapPage>
       if (balancedMedical.length >= 15) break;
       if (!balancedMedical.any((x) => x.id == far.id)) {
         balancedMedical.add(far);
+      }
+    }
+    if (balancedMedical.length < 15) {
+      for (final close in closeMedical) {
+        if (balancedMedical.length >= 15) break;
+        if (!balancedMedical.any((x) => x.id == close.id)) {
+          balancedMedical.add(close);
+        }
       }
     }
     grouped['Medical'] = balancedMedical;
@@ -5631,12 +5648,19 @@ class _LivingMapPageState extends State<LivingMapPage>
           ],
         ),
         child: Center(
-          child: Text('No $categoryName nearby', style: const TextStyle(color: AppColors.textSecondary)),
+          child: Text('No $categoryName nearby', style: const TextStyle(color: Colors.black)),
         ),
       );
     }
 
-    final maxRange = (categoryName == 'Attractions' || categoryName == 'Medical') ? '0-50 kms' : '0-15 kms';
+    final String maxRange;
+    if (categoryName == 'Attractions' || categoryName == 'Medical') {
+      maxRange = '0-50 kms';
+    } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
+      maxRange = '0-5 kms';
+    } else {
+      maxRange = '0-15 kms';
+    }
 
     return Container(
       width: 320,
@@ -5684,13 +5708,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ),
                   child: Text(
                     categoryName,
-                    style: const TextStyle(color: AppColors.textPrimary, fontSize: 11, fontWeight: FontWeight.w800),
+                    style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Range: $maxRange',
-                  style: TextStyle(color: Colors.black.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w600),
+                  style: const TextStyle(color: Colors.black, fontSize: 10, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 16),
                 Expanded(
@@ -5729,7 +5753,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             Expanded(
                               child: Text(
                                 place.name,
-                                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13, fontWeight: FontWeight.w600),
+                                style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -5737,7 +5761,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             const SizedBox(width: 8),
                             Text(
                               distStr,
-                              style: TextStyle(color: Colors.black.withOpacity(0.35), fontSize: 11.5, fontWeight: FontWeight.w500),
+                              style: const TextStyle(color: Colors.black, fontSize: 11.5, fontWeight: FontWeight.w500),
                             ),
                             const SizedBox(width: 6),
                             Container(
@@ -5750,7 +5774,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               ),
                               child: Text(
                                 direction,
-                                style: TextStyle(color: themeColor.withOpacity(0.85), fontSize: 9, fontWeight: FontWeight.w900),
+                                style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900),
                               ),
                             ),
                           ],

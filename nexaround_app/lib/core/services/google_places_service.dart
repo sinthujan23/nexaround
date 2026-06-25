@@ -770,7 +770,7 @@ class GooglePlacesService {
 
       // 1. Check local Cache first
       final cachedList = CacheService.getCachedHybridPlaces(locationName, categoryName);
-      final threshold = categoryName == 'Medical' ? 10 : 15;
+      final threshold = 15;
       if (cachedList != null && cachedList.length >= threshold) {
         print('⚡ Loaded hybrid places from cache for $locationName - $categoryName');
         return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
@@ -779,7 +779,14 @@ class GooglePlacesService {
       // Check all cached hybrid places for the given category across all locations within the appropriate radius
       final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
       final List<AttractionModel> nearbyCached = [];
-      final double searchRadiusM = (categoryName == 'Attractions' || categoryName == 'Medical') ? 50000.0 : 15000.0;
+      final double searchRadiusM;
+      if (categoryName == 'Attractions' || categoryName == 'Medical') {
+        searchRadiusM = 50000.0;
+      } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
+        searchRadiusM = 5000.0;
+      } else {
+        searchRadiusM = 15000.0;
+      }
       for (final json in allCached) {
         final model = AttractionModel.fromJson(json);
         final distM = geo.Geolocator.distanceBetween(
@@ -836,13 +843,13 @@ class GooglePlacesService {
         prompt = '''
 Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
-hospitals, pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab
+hospital, multi_speciality_hospital, 
 
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Medical Name",
+    "name": "Hospital Name",
     "distance_km": 15.0,
     "direction": "North-East"
   }
@@ -867,9 +874,9 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 ''';
       } else if (categoryName == 'Food & Drink' || categoryName == 'Food') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 5 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
-restaurant, cafe, bakery, meal_takeaway, meal_delivery, food_shop, bar, night_club, ice_cream_shop, coffee_shop, juice_bar
+restaurant, cafe, bakery, meal_delivery, hotel, bar, night_club, ice_cream_shop, coffee_shop, diner
 
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
