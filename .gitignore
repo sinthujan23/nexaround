@@ -28,3 +28,19 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Uploads
+nexaround_backend/app/static/uploads/
+
+# Local/Test Scripts
+nexaround_backend/debug_vps.py
+nexaround_backend/app/find_stories_db.py
+nexaround_backend/app/run_delete.py
+nexaround_backend/app/check_db.py
+nexaround_backend/check_db.py
+nexaround_backend/check_stories.py
+nexaround_backend/fix_templates.py
+fix_nginx.py
+*.json
+!nexaround_backend/alembic.ini
+
