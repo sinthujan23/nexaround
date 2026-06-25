@@ -5020,6 +5020,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       case 'Shopping':
         return Colors.blue.withOpacity(0.15);
       case 'Medical':
+      case 'Hospital':
         return Colors.red.withOpacity(0.15);
       default:
         return Colors.white.withOpacity(0.10);
@@ -5035,6 +5036,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       case 'Shopping':
         return Colors.blue.withOpacity(0.40);
       case 'Medical':
+      case 'Hospital':
         return Colors.red.withOpacity(0.40);
       default:
         return Colors.white.withOpacity(0.25);
@@ -5322,6 +5324,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Attractions': [],
       'Shopping': [],
       'Medical': [],
+      'Hospital': [],
     };
 
     // Expanded place types for better discovery
@@ -5339,6 +5342,10 @@ class _LivingMapPageState extends State<LivingMapPage>
         'clinic',
         'medical_lab',
         'optician',
+      },
+      'Hospital': {
+        'hospital',
+        'multi_speciality_hospital',
       },
       'Food': {
         'restaurant',
@@ -5440,14 +5447,17 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
 
       // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
-      // Priority: Medical > Food > Shopping > Attractions
+      // Priority: Hospital > Medical > Food > Shopping > Attractions
+      final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
       final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
       final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
       final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
       final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
 
       String? bestCategory;
-      if (isMedical) {
+      if (isHospital) {
+        bestCategory = 'Hospital';
+      } else if (isMedical) {
         bestCategory = 'Medical';
       } else if (isFood) {
         // Food but NOT medical — exclude places that are primarily shopping
@@ -5468,7 +5478,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
       // Apply distance limits per category
       final maxDist =
-          (bestCategory == 'Attractions' || bestCategory == 'Medical')
+          (bestCategory == 'Attractions' || bestCategory == 'Medical' || bestCategory == 'Hospital')
           ? 50.0
           : 15.0;
       if (distKm > maxDist) continue;
@@ -5566,6 +5576,50 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
     grouped['Medical'] = balancedMedical;
 
+    // Balance Hospital category to ensure at least one place is 25km or further away
+    final hospitalCategoryList = grouped['Hospital'] ?? [];
+    var farHospital = hospitalCategoryList
+        .where((p) => (p.distanceM ?? 0) >= 25000)
+        .toList();
+    var closeHospital = hospitalCategoryList
+        .where((p) => (p.distanceM ?? 0) < 25000)
+        .toList();
+
+    if (closeHospital.length < 10) {
+      for (final p in attractions) {
+        if ((p.distanceM ?? 0) < 25000 &&
+            !closeHospital.any((x) => x.id == p.id)) {
+          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
+          final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
+          if (isHospital) {
+            closeHospital.add(p);
+            if (closeHospital.length >= 10) break;
+          }
+        }
+      } 
+    }
+
+    closeHospital.sort(compareDistanceAndRating);
+    farHospital.sort(compareDistanceAndRating);
+
+    final List<AttractionEntity> balancedHospital = [];
+    balancedHospital.addAll(closeHospital.take(10));
+    for (final far in farHospital) {
+      if (balancedHospital.length >= 15) break;
+      if (!balancedHospital.any((x) => x.id == far.id)) {
+        balancedHospital.add(far);
+      }
+    }
+    if (balancedHospital.length < 15) {
+      for (final close in closeHospital) {
+        if (balancedHospital.length >= 15) break;
+        if (!balancedHospital.any((x) => x.id == close.id)) {
+          balancedHospital.add(close);
+        }
+      }
+    }
+    grouped['Hospital'] = balancedHospital;
+
     // Sort Food and Shopping lists strictly by distance and rating, limit to 15
     grouped['Food']?.sort(compareDistanceAndRating);
     if (grouped['Food'] != null && grouped['Food']!.length > 15) {
@@ -5589,6 +5643,8 @@ class _LivingMapPageState extends State<LivingMapPage>
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Medical', grouped['Medical']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Hospital', grouped['Hospital']!, status),
         ],
       ),
     );
@@ -5607,6 +5663,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         themeColor = Colors.blue;
         break;
       case 'Medical':
+      case 'Hospital':
         themeColor = Colors.red;
         break;
       default:
@@ -5654,7 +5711,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final String maxRange;
-    if (categoryName == 'Attractions' || categoryName == 'Medical') {
+    if (categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
       maxRange = '0-50 kms';
     } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
       maxRange = '0-5 kms';

@@ -25,6 +25,7 @@ class PlacesFetchException implements Exception {
 class GooglePlacesService {
   static String lastAttractionsError = '';
   static String lastMedicalError = '';
+  static String lastHospitalError = '';
   static String lastFoodError = '';
   static String lastShoppingError = '';
 
@@ -37,6 +38,7 @@ class GooglePlacesService {
     'Experiences': 'amusement_park',
     'Transport': 'transit_station',
     'Medical': 'hospital',
+    'Hospital': 'hospital',
   };
 
   /// Reverse-geocode lat/lng to a human-readable location name via Geoapify
@@ -765,6 +767,7 @@ class GooglePlacesService {
     try {
       if (categoryName == 'Attractions') lastAttractionsError = '';
       if (categoryName == 'Medical') lastMedicalError = '';
+      if (categoryName == 'Hospital') lastHospitalError = '';
       if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = '';
       if (categoryName == 'Shopping') lastShoppingError = '';
 
@@ -780,7 +783,7 @@ class GooglePlacesService {
       final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
       final List<AttractionModel> nearbyCached = [];
       final double searchRadiusM;
-      if (categoryName == 'Attractions' || categoryName == 'Medical') {
+      if (categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
         searchRadiusM = 50000.0;
       } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
         searchRadiusM = 5000.0;
@@ -840,6 +843,22 @@ class GooglePlacesService {
       final gemini = GeminiService();
       String prompt = '';
       if (categoryName == 'Medical') {
+        prompt = '''
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+
+hospitals, pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab
+
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Medical Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
+  }
+]
+''';
+      } else if (categoryName == 'Hospital') {
         prompt = '''
 Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
@@ -920,6 +939,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         final errMsg = 'Format error: Missing JSON array. Response starts with: ${rawResponse.substring(0, math.min(100, rawResponse.length))}';
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
+        if (categoryName == 'Hospital') lastHospitalError = errMsg;
         if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
         throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
@@ -970,6 +990,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         final errMsg = 'No places could be geocoded by Google Places API.';
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
+        if (categoryName == 'Hospital') lastHospitalError = errMsg;
         if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
       }
@@ -987,6 +1008,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       final errMsg = 'Error: $e';
       if (categoryName == 'Attractions') lastAttractionsError = errMsg;
       if (categoryName == 'Medical') lastMedicalError = errMsg;
+      if (categoryName == 'Hospital') lastHospitalError = errMsg;
       if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
       if (categoryName == 'Shopping') lastShoppingError = errMsg;
       return [];

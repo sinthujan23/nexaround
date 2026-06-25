@@ -168,13 +168,14 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         'Hotels',
         'Shopping',
         'Medical',
+        'Hospital',
       ];
 
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
         final mainFutures = categoriesToFetch.map((cat) async {
-          if (cat == 'Attractions' || cat == 'Medical' || cat == 'Food & Drink' || cat == 'Shopping') {
+          if (cat == 'Attractions' || cat == 'Medical' || cat == 'Food & Drink' || cat == 'Shopping' || cat == 'Hospital') {
             // Retrieve geocoded location name bias
             String locationName = 'Nearby';
             try {
@@ -191,7 +192,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName: locationName,
             );
             
-            final double radius = (cat == 'Attractions' || cat == 'Medical') ? 50000.0 : 15000.0;
+            final double radius = (cat == 'Attractions' || cat == 'Medical' || cat == 'Hospital') ? 50000.0 : 15000.0;
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
