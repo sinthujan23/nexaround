@@ -5652,22 +5652,31 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   Widget _buildCategoryPanel(String categoryName, List<AttractionEntity> places, MapStatus status) {
     Color themeColor;
+    Color lightTint;
     switch (categoryName) {
       case 'Food':
         themeColor = Colors.orange;
+        lightTint = const Color(0xFFFFF3E0); // pale orange
         break;
       case 'Attractions':
         themeColor = Colors.teal;
+        lightTint = const Color(0xFFE0F2F1); // pale teal
         break;
       case 'Shopping':
         themeColor = Colors.blue;
+        lightTint = const Color(0xFFE3F2FD); // pale blue
         break;
       case 'Medical':
+        themeColor = const Color(0xFFE53935); // red
+        lightTint = const Color(0xFFFFEBEE); // pale red
+        break;
       case 'Hospital':
-        themeColor = Colors.red;
+        themeColor = const Color(0xFF7B1FA2); // purple
+        lightTint = const Color(0xFFF3E5F5); // pale purple
         break;
       default:
         themeColor = Colors.grey;
+        lightTint = const Color(0xFFF5F5F5);
     }
 
     if (status == MapStatus.loading) {
@@ -5796,8 +5805,8 @@ class _LivingMapPageState extends State<LivingMapPage>
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withOpacity(0.82),
-                Colors.white.withOpacity(0.48),
+                lightTint.withOpacity(0.85),
+                Colors.white.withOpacity(0.60),
               ],
             ),
           ),
@@ -5805,13 +5814,16 @@ class _LivingMapPageState extends State<LivingMapPage>
             clipBehavior: Clip.none,
             children: [
               Positioned(
-                top: -20,
-                right: -10,
-                child: Image.asset(
-                  _getCategoryImagePath(categoryName),
-                  width: 90,
-                  height: 90,
-                  fit: BoxFit.contain,
+                top: -14,
+                right: -6,
+                child: Opacity(
+                  opacity: 0.85,
+                  child: Image.asset(
+                    _getCategoryImagePath(categoryName),
+                    width: 80,
+                    height: 80,
+                    fit: BoxFit.contain,
+                  ),
                 ),
               ),
               Padding(
@@ -5819,22 +5831,25 @@ class _LivingMapPageState extends State<LivingMapPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.04),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.black.withOpacity(0.12), width: 0.8),
-                      ),
-                      child: Text(
-                        categoryName,
-                        style: const TextStyle(color: Colors.black, fontSize: 11, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: themeColor.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: themeColor.withOpacity(0.20), width: 0.8),
+                            ),
+                            child: Text(
+                              categoryName,
+                              style: TextStyle(color: themeColor, fontSize: 16, fontWeight: FontWeight.w800),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
                         Stack(
                           alignment: Alignment.center,
                           children: [
@@ -5870,14 +5885,14 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ],
                         ),
-                        const SizedBox(width: 6),
+                        const SizedBox(width: 5),
                         Text(
-                          'Range: $maxRange',
-                          style: const TextStyle(color: Colors.black87, fontSize: 10, fontWeight: FontWeight.w700),
+                          maxRange,
+                          style: TextStyle(color: themeColor.withOpacity(0.8), fontSize: 11, fontWeight: FontWeight.w700),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Expanded(
                       child: ListView.separated(
                         padding: EdgeInsets.zero,
