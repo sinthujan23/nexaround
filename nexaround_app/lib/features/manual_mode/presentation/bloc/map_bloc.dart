@@ -225,7 +225,64 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               mergedMap[p.name.trim().toLowerCase()] = p;
             }
 
-            final mergedList = mergedMap.values.toSet().toList();
+            var mergedList = mergedMap.values.toSet().toList();
+
+            // Fallback: if primary method returned too few results for
+            // Attractions, Food & Drink, or Shopping, use the discovery-style
+            // fetchNearbyPlaces() API as a secondary data source.
+            // Hospital and Medical are excluded — they only use the primary method.
+            if (mergedList.length < 5 && (cat == 'Attractions' || cat == 'Food & Drink' || cat == 'Shopping')) {
+              try {
+                final discoveryRadius = cat == 'Attractions' ? 50000 : (cat == 'Food & Drink' ? 5000 : 15000);
+                print('🔄 Primary method returned only ${mergedList.length} results for $cat. Falling back to discovery-style fetchNearbyPlaces...');
+                final discoveryFallback = await GooglePlacesService.fetchNearbyPlaces(
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                  categoryName: cat,
+                  radius: discoveryRadius,
+                );
+                for (final p in discoveryFallback) {
+                  mergedMap[p.id] = p;
+                  mergedMap[p.name.trim().toLowerCase()] = p;
+                }
+                mergedList = mergedMap.values.toSet().toList();
+                // Recalculate distances and sort by proximity so the panel
+                // shows a natural progression (0→1→2→3→4→5 km etc.)
+                mergedList = mergedList.map((p) {
+                  final distM = geo.Geolocator.distanceBetween(
+                    event.latitude, event.longitude,
+                    p.latitude, p.longitude,
+                  );
+                  return AttractionModel(
+                    id: p.id,
+                    name: p.name,
+                    description: p.description,
+                    history: p.history,
+                    latitude: p.latitude,
+                    longitude: p.longitude,
+                    categoryId: p.categoryId,
+                    categoryName: p.categoryName,
+                    address: p.address,
+                    openingHours: p.openingHours,
+                    entryFee: p.entryFee,
+                    currency: p.currency,
+                    rating: p.rating,
+                    reviewCount: p.reviewCount,
+                    photoUrls: p.photoUrls,
+                    tags: p.tags,
+                    geofenceRadiusM: p.geofenceRadiusM,
+                    distanceM: distM,
+                    isActive: p.isActive,
+                    createdAt: p.createdAt,
+                  );
+                }).toList();
+                mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                print('✅ After discovery fallback: ${mergedList.length} total results for $cat (sorted by distance)');
+              } catch (e) {
+                print('⚠️ Discovery fallback also failed for $cat: $e');
+              }
+            }
+
             if (mergedList.isNotEmpty) {
               return mergedList;
             }
