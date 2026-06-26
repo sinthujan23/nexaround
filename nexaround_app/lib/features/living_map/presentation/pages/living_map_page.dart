@@ -5518,12 +5518,21 @@ class _LivingMapPageState extends State<LivingMapPage>
 
       if (bestCategory == null) continue;
 
+      // Calculate straight-line distance for filtering so items don't vanish
+      // when route distances arrive dynamically
+      double filterDistKm = distKm;
+      if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
+        filterDistKm = geo.Geolocator.distanceBetween(
+          _userLatitude!, _userLongitude!, place.latitude, place.longitude
+        ) / 1000.0;
+      }
+
       // Apply distance limits per category
       final maxDist =
           (bestCategory == 'Attractions' || bestCategory == 'Medical' || bestCategory == 'Hospital')
           ? 50.0
-          : 15.0;
-      if (distKm > maxDist) continue;
+          : (bestCategory == 'Food' ? 5.0 : 15.0);
+      if (filterDistKm > maxDist) continue;
 
       if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
         grouped[bestCategory]!.add(place);
@@ -5714,8 +5723,15 @@ class _LivingMapPageState extends State<LivingMapPage>
       grouped['Shopping'] = grouped['Shopping']!.take(15).toList();
     }
 
+    // Fetch actual road distances for the grouped places so the panel
+    // displays correct driving distances (like Google Maps) instead of straight-line.
+    final allGroupedPlaces = grouped.values.expand((x) => x).toList();
+    if (allGroupedPlaces.isNotEmpty) {
+      _batchFetchRouteDistances(allGroupedPlaces);
+    }
+
     return SizedBox(
-      height: 530,
+      height: 580,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -5764,7 +5780,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     if (status == MapStatus.loading) {
-      return ClipRRect(
+      return Align(
+        alignment: Alignment.topCenter,
+        child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
@@ -5800,11 +5818,14 @@ class _LivingMapPageState extends State<LivingMapPage>
             child: Center(child: CircularProgressIndicator(color: themeColor)),
           ),
         ),
+        ),
       );
     }
     
     if (places.isEmpty) {
-      return ClipRRect(
+      return Align(
+        alignment: Alignment.topCenter,
+        child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
@@ -5848,6 +5869,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
             ),
           ),
+          ),
         ),
       );
     }
@@ -5861,7 +5883,9 @@ class _LivingMapPageState extends State<LivingMapPage>
       maxRange = '0-15 kms';
     }
 
-    return ClipRRect(
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
@@ -5913,6 +5937,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
@@ -5977,8 +6002,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ],
                     ),
                     const SizedBox(height: 14),
-                    Expanded(
-                      child: ListView.separated(
+                    ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
                         itemCount: places.length,
                         separatorBuilder: (context, index) => const SizedBox(height: 8),
@@ -6046,13 +6072,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                           );
                         },
                       ),
-                    ),
                   ],
                 ),
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }
