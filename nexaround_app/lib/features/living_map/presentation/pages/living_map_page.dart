@@ -4100,41 +4100,66 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildShimmerTrendingCards() {
     return SizedBox(
       height: 240,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
-        scrollDirection: Axis.horizontal,
-        itemCount: 3,
-        itemBuilder: (context, index) {
-          return Shimmer.fromColors(
-            baseColor: Colors.grey[200]!,
-            highlightColor: Colors.grey[50]!,
-            period: const Duration(milliseconds: 1500),
-            child: Container(
-              width: 200,
-              margin: const EdgeInsets.only(right: 16),
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.grey[200]!),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Background Skeleton Carousel
+          ListView.builder(
+            padding: const EdgeInsets.fromLTRB(24, 16, 0, 0),
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: 3,
+            itemBuilder: (context, index) {
+              return Shimmer.fromColors(
+                baseColor: Colors.grey[200]!,
+                highlightColor: Colors.white,
+                period: const Duration(milliseconds: 1500),
+                child: Container(
+                  width: 200,
+                  margin: const EdgeInsets.only(right: 16),
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
+                      Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            width: 60,
+                            height: 18,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ],
                       ),
                       const Spacer(),
                       Container(
-                        width: 60,
-                        height: 18,
+                        width: 140,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        width: 100,
+                        height: 14,
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(8),
@@ -4142,113 +4167,207 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     ],
                   ),
-                  const Spacer(),
-                  Container(
-                    width: 140,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
+                ),
+              );
+            },
+          ),
+          
+          // Premium Glassmorphism Overlay
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5),
+                  child: Container(
+                    color: Colors.white.withOpacity(0.45),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
+          // The beautiful message badge
+          Padding(
+            padding: const EdgeInsets.only(top: 16.0),
+            child: Container(
+              width: 280,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(color: Colors.white, width: 2.0),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.06),
+                    blurRadius: 30,
+                    offset: const Offset(0, 10),
+                  ),
+                  BoxShadow(
+                    color: const Color(0xFFE91E63).withOpacity(0.08),
+                    blurRadius: 40,
+                    offset: const Offset(0, 15),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE91E63)), // Pink theme for Curated
                     ),
+                  ),
+                  const SizedBox(height: 18),
+                  const Text(
+                    'Discovering experiences for you...',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.2,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    width: 100,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
+                  Text(
+                    'This may take a few moments',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Container(
-                        width: 12,
-                        height: 12,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Container(
-                        width: 45,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Container(
-                        width: 40,
-                        height: 12,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: 80,
-                    height: 28,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildShimmerHiddenGemCards() {
-    return Shimmer.fromColors(
-      baseColor: Colors.grey[300]!,
-      highlightColor: Colors.grey[100]!,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                children: List.generate(2, (index) {
-                  return Container(
-                    height: index == 0 ? 160.0 : 120.0,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  );
-                }),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Background Skeleton Carousel
+          Shimmer.fromColors(
+            baseColor: Colors.grey[300]!,
+            highlightColor: Colors.grey[100]!,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    children: List.generate(2, (index) {
+                      return Container(
+                        height: index == 0 ? 160.0 : 120.0,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    children: List.generate(2, (index) {
+                      return Container(
+                        height: index == 0 ? 130.0 : 150.0,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Premium Glassmorphism Overlay
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5),
+                child: Container(
+                  color: Colors.white.withOpacity(0.45),
+                ),
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                children: List.generate(2, (index) {
-                  return Container(
-                    height: index == 0 ? 130.0 : 150.0,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                  );
-                }),
-              ),
+          ),
+          
+          // The beautiful message badge
+          Container(
+            width: 280,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.95),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white, width: 2.0),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+                BoxShadow(
+                  color: const Color(0xFF00BFA5).withOpacity(0.08),
+                  blurRadius: 40,
+                  offset: const Offset(0, 15),
+                ),
+              ],
             ),
-          ],
-        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.5,
+                    valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00BFA5)), // Teal theme for Around You
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'Discovering Locations for you...',
+                  style: TextStyle(
+                    color: Colors.black87,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'This may take a few moments',
+                  style: TextStyle(
+                    color: Colors.grey[600],
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

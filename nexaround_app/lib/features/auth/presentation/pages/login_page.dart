@@ -343,12 +343,9 @@ class _LoginPageState extends State<LoginPage> {
         ],
       ),
       child: ClipOval(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Image.asset(
-            'assets/images/app_icon.png',
-            fit: BoxFit.contain,
-          ),
+        child: Image.asset(
+          'assets/images/app_icon_padded.png',
+          fit: BoxFit.cover,
         ),
       ),
     ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack);

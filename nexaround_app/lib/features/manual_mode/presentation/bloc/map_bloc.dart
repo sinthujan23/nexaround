@@ -175,65 +175,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
       try {
         final mainFutures = categoriesToFetch.map((cat) async {
-          // --- BYPASS HYBRID/GEMINI FOR FOOD & ATTRACTIONS ---
-          if (cat == 'Food & Drink' || cat == 'Food' || cat == 'Attractions') {
-            final discoveryRadius = cat == 'Attractions' ? 50000 : 5000;
-            final discoveryCategory = cat == 'Attractions' ? 'Experiences' : 'Food & Drink';
-            
-            var discoveryList = <AttractionEntity>[];
-            try {
-              print('🔄 Bypassing AI for $cat. Fetching discovery places...');
-              discoveryList = await GooglePlacesService.fetchNearbyPlaces(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                categoryName: discoveryCategory,
-                radius: discoveryRadius,
-              );
-            } catch (e) {
-              print('⚠️ Discovery fetch failed for $cat: $e');
-            }
-            
-            if (discoveryList.length < 15) {
-              try {
-                print('🔄 Still only ${discoveryList.length} for $cat. Falling back to legacy API...');
-                final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                  categoryName: discoveryCategory,
-                  radius: discoveryRadius,
-                );
-                final Map<String, AttractionEntity> tempMap = {};
-                for (final p in discoveryList) tempMap[p.id] = p;
-                for (final p in legacyFallback) {
-                  if (!tempMap.containsKey(p.id)) tempMap[p.id] = p;
-                }
-                discoveryList = tempMap.values.toList();
-              } catch (e) {
-                print('⚠️ Legacy fetch failed: $e');
-              }
-            }
-
-            final mappedList = discoveryList.map((p) {
-              final distM = geo.Geolocator.distanceBetween(
-                event.latitude, event.longitude, p.latitude, p.longitude,
-              );
-              return AttractionModel(
-                id: p.id, name: p.name, description: p.description, history: p.history,
-                latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
-                categoryName: cat, // FORCE CATEGORY MATCH
-                address: p.address, openingHours: p.openingHours, entryFee: p.entryFee,
-                currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
-                photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
-              );
-            }).toList()..sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-            
-            print('✅ Final Discovery: ${mappedList.length} results for $cat');
-            return mappedList;
-          }
-          // --- END BYPASS ---
-
-          if (cat == 'Medical' || cat == 'Shopping' || cat == 'Hospital') {
+          final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital'];
+          
+          if (targetCategories.contains(cat)) {
             // Retrieve geocoded location name bias
             String locationName = 'Nearby';
             try {
@@ -243,6 +187,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName = 'current location';
             }
             
+            // --- LAYER 1: SMART AI (Primary) ---
             final hybridList = await GooglePlacesService.fetchHybridPlaces(
               latitude: event.latitude,
               longitude: event.longitude,
@@ -250,7 +195,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName: locationName,
             );
             
-            final double radius = (cat == 'Medical' || cat == 'Hospital') ? 50000.0 : 15000.0;
+            final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions') ? 50000.0 : 15000.0;
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
@@ -258,10 +203,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               categoryName: cat,
               useLegacy: event.useLegacy,
             );
-            var fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            var repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
 
-            if (fallbackList.isEmpty && !event.useLegacy) {
-              print('⚠️ Fallback list empty for $cat. Retrying with useLegacy=true');
+            if (repoList.isEmpty && !event.useLegacy) {
+              print('⚠️ Repo list empty for $cat. Retrying with useLegacy=true');
               repoRes = await _repository.getNearbyAttractions(
                 latitude: event.latitude,
                 longitude: event.longitude,
@@ -269,12 +214,12 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 categoryName: cat,
                 useLegacy: true,
               );
-              fallbackList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+              repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
             }
 
-            // Merge fallback and hybrid lists to ensure rich listings
+            // Merge repo results and hybrid lists
             final Map<String, AttractionEntity> mergedMap = {};
-            for (final p in fallbackList) {
+            for (final p in repoList) {
               mergedMap[p.id] = p;
               mergedMap[p.name.trim().toLowerCase()] = p;
             }
@@ -285,10 +230,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
             var mergedList = mergedMap.values.toSet().toList();
 
-            // Fallback: if primary method returned fewer than 15 results for
-            // Shopping, use the discovery-style fetchNearbyPlaces() and Google legacy as fallback.
-            if (mergedList.length < 15 && cat == 'Shopping') {
-              final discoveryRadius = 15000;
+            // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
+            if (mergedList.length < 15) {
+              final discoveryRadius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions') ? 50000 : 15000;
+              final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
 
               // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)
               try {
@@ -296,12 +241,21 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 final discoveryFallback = await GooglePlacesService.fetchNearbyPlaces(
                   latitude: event.latitude,
                   longitude: event.longitude,
-                  categoryName: cat,
+                  categoryName: discoveryCategory,
                   radius: discoveryRadius,
                 );
                 for (final p in discoveryFallback) {
-                  mergedMap[p.id] = p;
-                  mergedMap[p.name.trim().toLowerCase()] = p;
+                  // Force category name match for UI
+                  final correctedP = AttractionModel(
+                    id: p.id, name: p.name, description: p.description, history: p.history,
+                    latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                    categoryName: cat, address: p.address, openingHours: p.openingHours, 
+                    entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                    photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                  );
+                  mergedMap[p.id] = correctedP;
+                  mergedMap[p.name.trim().toLowerCase()] = correctedP;
                 }
                 mergedList = mergedMap.values.toSet().toList();
                 print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
@@ -316,12 +270,20 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                   final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
                     latitude: event.latitude,
                     longitude: event.longitude,
-                    categoryName: cat,
+                    categoryName: discoveryCategory,
                     radius: discoveryRadius,
                   );
                   for (final p in legacyFallback) {
-                    mergedMap[p.id] = p;
-                    mergedMap[p.name.trim().toLowerCase()] = p;
+                    final correctedP = AttractionModel(
+                      id: p.id, name: p.name, description: p.description, history: p.history,
+                      latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                      categoryName: cat, address: p.address, openingHours: p.openingHours, 
+                      entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                      photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                      distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                    );
+                    mergedMap[p.id] = correctedP;
+                    mergedMap[p.name.trim().toLowerCase()] = correctedP;
                   }
                   mergedList = mergedMap.values.toSet().toList();
                   print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
@@ -330,34 +292,19 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 }
               }
 
-              // Recalculate distances and sort by proximity so the panel
-              // shows a natural progression (0→1→2→3→4→5 km etc.)
+              // Recalculate distances and sort by proximity
               mergedList = mergedList.map((p) {
                 final distM = geo.Geolocator.distanceBetween(
                   event.latitude, event.longitude,
                   p.latitude, p.longitude,
                 );
                 return AttractionModel(
-                  id: p.id,
-                  name: p.name,
-                  description: p.description,
-                  history: p.history,
-                  latitude: p.latitude,
-                  longitude: p.longitude,
-                  categoryId: p.categoryId,
-                  categoryName: p.categoryName,
-                  address: p.address,
-                  openingHours: p.openingHours,
-                  entryFee: p.entryFee,
-                  currency: p.currency,
-                  rating: p.rating,
-                  reviewCount: p.reviewCount,
-                  photoUrls: p.photoUrls,
-                  tags: p.tags,
-                  geofenceRadiusM: p.geofenceRadiusM,
-                  distanceM: distM,
-                  isActive: p.isActive,
-                  createdAt: p.createdAt,
+                  id: p.id, name: p.name, description: p.description, history: p.history,
+                  latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                  categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
+                  entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                  photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                  distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
                 );
               }).toList();
               mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));

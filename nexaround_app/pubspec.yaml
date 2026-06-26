@@ -2,7 +2,7 @@ name: nexaround_app
 description: "NexAround - AI-powered smart tourism companion"
 publish_to: 'none'
 
-version: 1.0.0+57
+version: 1.0.0+58
 
 environment:
   sdk: '>=3.11.0 <4.0.0'
@@ -74,6 +74,7 @@ dependencies:
   googleapis: ^16.0.0
   googleapis_auth: ^2.3.2
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
+  image: ^4.8.0
 
 dependency_overrides:
   latlong2:
@@ -106,5 +107,7 @@ flutter:
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/app_icon.png"
+  image_path: "assets/images/app_icon_padded.png"
+  adaptive_icon_background: "#F6EDA2"
+  adaptive_icon_foreground: "assets/images/app_icon_padded.png"
   remove_alpha_ios: true
