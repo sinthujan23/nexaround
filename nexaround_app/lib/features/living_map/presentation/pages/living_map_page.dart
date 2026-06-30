@@ -44,6 +44,9 @@ import 'package:nexaround_app/features/travel_stories/presentation/widgets/post_
 import 'package:nexaround_app/features/travel_stories/presentation/widgets/stories_comments_dialog.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_stories_page.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 
 class _LocalEvent {
   final String title;
@@ -71,6 +74,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   double? _userLongitude;
   StreamSubscription<geo.Position>? _positionSubscription;
   bool _isLocationServiceEnabled = true;
+  bool _isLocationOverridden = false;
 
   // We'll use the state data instead of these dummy lists
 
@@ -210,6 +214,8 @@ class _LivingMapPageState extends State<LivingMapPage>
             distanceFilter: 300,
           ),
         ).listen((position) async {
+          if (_isLocationOverridden) return;
+          
           final details = await GooglePlacesService.reverseGeocodeDetailed(
             position.latitude,
             position.longitude,
@@ -765,11 +771,12 @@ class _LivingMapPageState extends State<LivingMapPage>
     final categories = [
       null,
       'Food & Drink',
+      'Hotels & Bars',
+      'Point of Interest',
+      'Nature',
       'Shopping',
-      'Attractions',
-      'Hotels',
+      'Experiences',
       'Medical',
-      'Beach',
     ];
 
     Future.microtask(() async {
@@ -999,7 +1006,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Around You',
+                              _currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                  ? 'Around You' 
+                                  : 'Around $_currentLocationName',
                               null,
                               imageIconPath: 'assets/images/near.png',
                               customAction: _buildAroundYouRefreshButton(),
@@ -1121,7 +1130,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              'Around You',
+                              _currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                  ? 'Around You' 
+                                  : 'Around $_currentLocationName',
                               null,
                               imageIconPath: 'assets/images/near.png',
                               customAction: _buildAroundYouRefreshButton(),
@@ -1268,6 +1279,17 @@ class _LivingMapPageState extends State<LivingMapPage>
                   const SliverToBoxAdapter(child: SizedBox(height: 120)),
                 ],
               ),
+              
+              // Floating Neva Banner (below App Bar on the right)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 70,
+                right: 0,
+                child: AnimatedNevaBanner(
+                  onTap: () {
+                    _showDiscoveryEngineSheet(context);
+                  },
+                ),
+              ),
 
               // Proximity alert bottom sheet
               if (_showProximityAlert && state.attractions.isNotEmpty)
@@ -1280,12 +1302,14 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildExploringCard() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(100),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    return GestureDetector(
+      onTap: () => _showLocationSearchModal(context),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(100),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: AppColors.brandGreen.withOpacity(0.08),
             borderRadius: BorderRadius.circular(100),
@@ -1363,6 +1387,165 @@ class _LivingMapPageState extends State<LivingMapPage>
             ],
           ),
         ),
+      ),
+    ));
+  }
+
+  void _showLocationSearchModal(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const LocationSearchModal(),
+    ).then((result) async {
+      if (result != null && result is Map<String, dynamic>) {
+        final double lat = result['latitude'];
+        final double lng = result['longitude'];
+        final String name = result['name'];
+        final String district = result['district'];
+        
+        setState(() {
+          _isLocationOverridden = true;
+          _userLatitude = lat;
+          _userLongitude = lng;
+          _currentLocationName = name;
+          _currentDistrict = district;
+          
+          // Clear previous data so UI shows loading state
+          _geminiTrendingPlaces = [];
+          _aiExperiences = [];
+          _miniTourPlaces = null;
+        });
+
+        // Clear cache so it forces a fresh fetch
+        await CacheService.clearHybridPlacesCache();
+        GooglePlacesService.clearErrors();
+
+        // Trigger updates for new location
+        if (mounted) {
+          _fetchGeminiTrending(district, lat, lng);
+          _fetchMiniTourPlaces(lat, lng);
+          
+          // Re-fetch "Around You" map places
+          context.read<MapBloc>().add(
+            FetchNearbyAttractions(
+              latitude: lat,
+              longitude: lng,
+              radius: 5000,
+            ),
+          );
+        }
+      } else if (result == 'clear_override') {
+        // Clear override and show loading briefly
+        setState(() {
+          _isLocationOverridden = false;
+          _currentLocationName = 'Locating...';
+        });
+
+        // Force an immediate GPS update instead of waiting for the stream
+        try {
+          final position = await geo.Geolocator.getCurrentPosition(
+            desiredAccuracy: geo.LocationAccuracy.high,
+          );
+          
+          final details = await GooglePlacesService.reverseGeocodeDetailed(
+            position.latitude,
+            position.longitude,
+          );
+          final locationName = details['location_name'] ?? 'Nearby';
+          final district = details['district'] ?? 'Nearby';
+
+          if (mounted) {
+            setState(() {
+              _userLatitude = position.latitude;
+              _userLongitude = position.longitude;
+              _currentLocationName = locationName;
+              _currentDistrict = district;
+              
+              // Clear previous data so UI shows loading state
+              _geminiTrendingPlaces = [];
+              _aiExperiences = [];
+              _miniTourPlaces = null;
+            });
+            
+            // Clear cache so it forces a fresh fetch
+            await CacheService.clearHybridPlacesCache();
+            GooglePlacesService.clearErrors();
+            
+            _fetchGeminiTrending(district, position.latitude, position.longitude);
+            _fetchMiniTourPlaces(position.latitude, position.longitude);
+            context.read<MapBloc>().add(
+              FetchNearbyAttractions(
+                latitude: position.latitude,
+                longitude: position.longitude,
+                radius: 5000,
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Error getting current location on override clear: $e');
+        }
+        
+        _checkLocationAndInit();
+      }
+    });
+  }
+
+  void _showDiscoveryEngineSheet(BuildContext parentContext) {
+    showModalBottomSheet(
+      context: parentContext,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DiscoveryEngineSheet(
+        locationName: _currentLocationName,
+        district: _currentDistrict,
+        latitude: _userLatitude,
+        longitude: _userLongitude,
+        onPlaceSelected: (placeName) async {
+          Navigator.pop(sheetContext);
+          
+          if (!mounted) return;
+          ScaffoldMessenger.of(parentContext).showSnackBar(
+            SnackBar(
+              content: Text('Locating $placeName...'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+          
+          try {
+            final results = await GooglePlacesService.searchPlaces(
+              query: placeName,
+              latitude: _userLatitude ?? 6.9271,
+              longitude: _userLongitude ?? 79.8612,
+            );
+            
+            if (!mounted) return;
+            
+            if (results.isNotEmpty) {
+              final matchedPlace = results.first;
+              Navigator.push(
+                parentContext,
+                MaterialPageRoute(
+                  builder: (_) => SmartTourismMapPage(
+                    initialLat: matchedPlace.latitude,
+                    initialLng: matchedPlace.longitude,
+                    destinationName: matchedPlace.name,
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(parentContext).showSnackBar(
+                SnackBar(content: Text('Could not locate $placeName on the map.')),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(parentContext).showSnackBar(
+                const SnackBar(content: Text('Error finding place.')),
+              );
+            }
+          }
+        },
       ),
     );
   }
@@ -2232,12 +2415,13 @@ class _LivingMapPageState extends State<LivingMapPage>
     final List<CategoryEntity> resolvedCategories = categories.isNotEmpty
         ? categories
         : const [
-            CategoryEntity(id: '1', name: 'Attractions', sortOrder: 1),
-            CategoryEntity(id: '2', name: 'Food & Drink', sortOrder: 2),
-            CategoryEntity(id: '3', name: 'Hotels', sortOrder: 3),
-            CategoryEntity(id: '4', name: 'Shopping', sortOrder: 4),
-            CategoryEntity(id: '5', name: 'Experiences', sortOrder: 5),
-            CategoryEntity(id: '6', name: 'Medical', sortOrder: 6),
+            CategoryEntity(id: '1', name: 'Food & Drink', sortOrder: 1),
+            CategoryEntity(id: '2', name: 'Hotels & Bars', sortOrder: 2),
+            CategoryEntity(id: '3', name: 'Point of Interest', sortOrder: 3),
+            CategoryEntity(id: '4', name: 'Nature', sortOrder: 4),
+            CategoryEntity(id: '5', name: 'Shopping', sortOrder: 5),
+            CategoryEntity(id: '6', name: 'Experiences', sortOrder: 6),
+            CategoryEntity(id: '7', name: 'Medical', sortOrder: 7),
           ];
 
     final displayCategories = [
@@ -5481,96 +5665,53 @@ class _LivingMapPageState extends State<LivingMapPage>
     if (attractions.isEmpty) return const SizedBox.shrink();
 
     final Map<String, List<AttractionEntity>> grouped = {
-      'Food': [],
-      'Attractions': [],
+      'Food & Drink': [],
+      'Hotels & Bars': [],
+      'Point of Interest': [],
+      'Nature': [],
       'Shopping': [],
       'Medical': [],
       'Hospital': [],
     };
 
-    // Expanded place types for better discovery
     final allowedTypes = {
       'Medical': {
-        'medical',
-        'hospital',
-        'multi_speciality_hospital',
-        'pharmacy',
-        'doctor',
-        'dentist',
-        'health',
-        'physiotherapist',
-        'veterinary_care',
-        'clinic',
-        'medical_lab',
-        'optician',
+        'medical', 'hospital', 'multi_speciality_hospital', 'pharmacy',
+        'doctor', 'dentist', 'health', 'physiotherapist', 'veterinary_care',
+        'clinic', 'medical_lab', 'optician',
       },
       'Hospital': {
-        'hospital',
-        'multi_speciality_hospital',
+        'hospital', 'multi_speciality_hospital',
       },
-      'Food': {
-        'restaurant',
-        'cafe',
-        'bakery',
-        'meal_takeaway',
-        'meal_delivery',
-        'food',
-        'bar',
-        'night_club',
-        'ice_cream_shop',
-        'coffee_shop',
-        'juice_bar',
+      'Food & Drink': {
+        'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery',
+        'food', 'ice_cream_shop', 'coffee_shop', 'juice_bar',
+      },
+      'Hotels & Bars': {
+        'lodging', 'hotel', 'bar', 'night_club', 'pub', 'discotheque',
+        'motel', 'resort', 'guest_house', 'bed_and_breakfast', 'hostel',
       },
       'Shopping': {
-        'shopping_mall',
-        'supermarket',
-        'store',
-        'department_store',
-        'convenience_store',
-        'clothing_store',
-        'electronics_store',
-        'book_store',
-        'jewelry_store',
-        'shoe_store',
-        'furniture_store',
-        'pet_store',
-        'hardware_store',
-        'gift_shop',
-        'market',
+        'shopping_mall', 'supermarket', 'store', 'department_store',
+        'convenience_store', 'clothing_store', 'electronics_store',
+        'book_store', 'jewelry_store', 'shoe_store', 'furniture_store',
+        'pet_store', 'hardware_store', 'gift_shop', 'market',
       },
-      'Attractions': {
-        'attractions',
-        'tourist_attraction',
-        'museum',
-        'park',
-        'zoo',
-        'aquarium',
-        'art_gallery',
-        'amusement_park',
-        'church',
-        'hindu_temple',
-        'mosque',
-        'synagogue',
-        'stadium',
-        'casino',
-        'movie_theater',
-        'bowling_alley',
-        'campground',
-        'national_park',
-        'historical_landmark',
-        'performing_arts_theater',
-        'cultural_center',
-        'monument',
-        'waterfall',
-        'beach',
-        'viewpoint',
-        'garden',
-        'fort',
-        'palace',
+      'Point of Interest': {
+        'tourist_attraction', 'museum', 'zoo', 'aquarium', 'art_gallery',
+        'amusement_park', 'historical_landmark', 'place_of_worship',
+        'church', 'hindu_temple', 'mosque', 'synagogue', 'cultural_center',
+        'marina', 'visitor_center', 'observation_deck', 'monument', 'castle',
+        'stadium', 'casino', 'movie_theater', 'bowling_alley', 'performing_arts_theater',
+        'fort', 'palace',
+      },
+      'Nature': {
+        'beach', 'national_park', 'hiking_area', 'nature_reserve', 'scenic_point',
+        'waterfall', 'lake', 'river', 'botanical_garden', 'park', 'campground',
+        'natural_feature', 'viewpoint', 'garden',
       },
     };
 
-    // Custom comparator: Sort by distance (nearest first) and then by rating (highest first when distances are within 100 meters)
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
       final distA = a.distanceM ?? 0;
       final distB = b.distanceM ?? 0;
@@ -5586,59 +5727,36 @@ class _LivingMapPageState extends State<LivingMapPage>
       final tags = place.tags.map((t) => t.toLowerCase()).toSet();
       final distKm = _getAccurateDistanceM(place) / 1000.0;
 
-      // Skip lodgings, hotels, guest houses, and private stays on the homepage cards
-      final catLower = (place.categoryName ?? '').toLowerCase();
-      if (catLower.contains('hotel') ||
-          catLower.contains('lodging') ||
-          catLower.contains('accommodation') ||
-          catLower.contains('stay') ||
-          catLower.contains('resort') ||
-          catLower.contains('guest_house') ||
-          catLower.contains('bed_and_breakfast') ||
-          catLower.contains('hostel') ||
-          tags.any(
-            (t) =>
-                t.contains('lodging') ||
-                t.contains('hotel') ||
-                t.contains('resort') ||
-                t.contains('guest_house') ||
-                t.contains('hostel'),
-          )) {
-        continue;
-      }
-
       // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
-      // Priority: Hospital > Medical > Food > Shopping > Attractions
+      // Priority: Hospital > Medical > Hotels & Bars > Food & Drink > Shopping > Point of Interest > Nature
       final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
       final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
-      final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
+      final isHotelsBars = tags.any((t) => allowedTypes['Hotels & Bars']!.contains(t));
+      final isFoodDrink = tags.any((t) => allowedTypes['Food & Drink']!.contains(t));
       final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
+      final isPOI = tags.any((t) => allowedTypes['Point of Interest']!.contains(t));
+      final isNature = tags.any((t) => allowedTypes['Nature']!.contains(t));
 
       String? bestCategory;
       if (isHospital) {
         bestCategory = 'Hospital';
       } else if (isMedical) {
         bestCategory = 'Medical';
-      } else if (isFood) {
-        // Food but NOT medical — exclude places that are primarily shopping
-        final primaryShop = tags.any(
-          (t) =>
-              {'shopping_mall', 'department_store', 'supermarket'}.contains(t),
-        );
-        if (!primaryShop) {
-          bestCategory = 'Food';
-        }
+      } else if (isHotelsBars) {
+        bestCategory = 'Hotels & Bars';
+      } else if (isFoodDrink) {
+        final primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
+        if (!primaryShop) bestCategory = 'Food & Drink';
       } else if (isShopping) {
         bestCategory = 'Shopping';
-      } else if (isAttraction) {
-        bestCategory = 'Attractions';
+      } else if (isPOI) {
+        bestCategory = 'Point of Interest';
+      } else if (isNature) {
+        bestCategory = 'Nature';
       }
 
       if (bestCategory == null) continue;
 
-      // Calculate straight-line distance for filtering so items don't vanish
-      // when route distances arrive dynamically
       double filterDistKm = distKm;
       if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
         filterDistKm = geo.Geolocator.distanceBetween(
@@ -5646,11 +5764,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         ) / 1000.0;
       }
 
-      // Apply distance limits per category
-      final maxDist =
-          (bestCategory == 'Attractions' || bestCategory == 'Medical' || bestCategory == 'Hospital')
+      final maxDist = (bestCategory == 'Point of Interest' || bestCategory == 'Nature' || bestCategory == 'Medical' || bestCategory == 'Hospital')
           ? 50.0
-          : (bestCategory == 'Food' ? 5.0 : 15.0);
+          : ((bestCategory == 'Food & Drink' || bestCategory == 'Hotels & Bars') ? 5.0 : 15.0);
       if (filterDistKm > maxDist) continue;
 
       if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
@@ -5658,192 +5774,60 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     }
 
-    // Balance Attractions category to ensure at least one place is 25km or further away
-    final attractionsCategoryList = grouped['Attractions'] ?? [];
-    var farAttractions = attractionsCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 25000)
-        .toList();
-    var closeAttractions = attractionsCategoryList
-        .where((p) => (p.distanceM ?? 0) < 25000)
-        .toList();
-
-    if (closeAttractions.length < 10) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 &&
-            !closeAttractions.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isAttraction = tags.any((t) => allowedTypes['Attractions']!.contains(t));
-          if (isAttraction) {
-            closeAttractions.add(p);
-            if (closeAttractions.length >= 10) break;
+    for (final cat in grouped.keys) {
+      if (cat == 'Shopping') continue;
+      
+      final isNearThreshold = (cat == 'Food & Drink' || cat == 'Hotels & Bars') ? 1000 : 25000;
+      
+      final categoryList = grouped[cat] ?? [];
+      var farPlaces = categoryList.where((p) => (p.distanceM ?? 0) >= isNearThreshold).toList();
+      var closePlaces = categoryList.where((p) => (p.distanceM ?? 0) < isNearThreshold).toList();
+      
+      if (closePlaces.length < 10) {
+        for (final p in attractions) {
+          if ((p.distanceM ?? 0) < isNearThreshold && !closePlaces.any((x) => x.id == p.id)) {
+            final tags = p.tags.map((t) => t.toLowerCase()).toSet();
+            final matchesCat = tags.any((t) => allowedTypes[cat]!.contains(t));
+            
+            bool primaryShop = false;
+            if (cat == 'Food & Drink' || cat == 'Hotels & Bars') {
+              primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
+            }
+            if (matchesCat && !primaryShop) {
+              closePlaces.add(p);
+              if (closePlaces.length >= 10) break;
+            }
           }
         }
       }
-    }
-
-    closeAttractions.sort(compareDistanceAndRating);
-    farAttractions.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedAttractions = [];
-    balancedAttractions.addAll(closeAttractions.take(10));
-    for (final far in farAttractions) {
-      if (balancedAttractions.length >= 15) break;
-      if (!balancedAttractions.any((x) => x.id == far.id)) {
-        balancedAttractions.add(far);
-      }
-    }
-    if (balancedAttractions.length < 15) {
-      for (final close in closeAttractions) {
-        if (balancedAttractions.length >= 15) break;
-        if (!balancedAttractions.any((x) => x.id == close.id)) {
-          balancedAttractions.add(close);
+      
+      closePlaces.sort(compareDistanceAndRating);
+      farPlaces.sort(compareDistanceAndRating);
+      
+      final List<AttractionEntity> balanced = [];
+      balanced.addAll(closePlaces.take(10));
+      for (final far in farPlaces) {
+        if (balanced.length >= 15) break;
+        if (!balanced.any((x) => x.id == far.id)) {
+          balanced.add(far);
         }
       }
-    }
-    grouped['Attractions'] = balancedAttractions;
-
-    // Balance Medical category to ensure at least one place is 25km or further away
-    final medicalCategoryList = grouped['Medical'] ?? [];
-    var farMedical = medicalCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 25000)
-        .toList();
-    var closeMedical = medicalCategoryList
-        .where((p) => (p.distanceM ?? 0) < 25000)
-        .toList();
-
-    if (closeMedical.length < 10) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 &&
-            !closeMedical.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
-          if (isMedical) {
-            closeMedical.add(p);
-            if (closeMedical.length >= 10) break;
+      if (balanced.length < 15) {
+        for (final close in closePlaces) {
+          if (balanced.length >= 15) break;
+          if (!balanced.any((x) => x.id == close.id)) {
+            balanced.add(close);
           }
         }
       }
+      grouped[cat] = balanced;
     }
 
-    closeMedical.sort(compareDistanceAndRating);
-    farMedical.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedMedical = [];
-    balancedMedical.addAll(closeMedical.take(10));
-    for (final far in farMedical) {
-      if (balancedMedical.length >= 15) break;
-      if (!balancedMedical.any((x) => x.id == far.id)) {
-        balancedMedical.add(far);
-      }
-    }
-    if (balancedMedical.length < 15) {
-      for (final close in closeMedical) {
-        if (balancedMedical.length >= 15) break;
-        if (!balancedMedical.any((x) => x.id == close.id)) {
-          balancedMedical.add(close);
-        }
-      }
-    }
-    grouped['Medical'] = balancedMedical;
-
-    // Balance Hospital category to ensure at least one place is 25km or further away
-    final hospitalCategoryList = grouped['Hospital'] ?? [];
-    var farHospital = hospitalCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 25000)
-        .toList();
-    var closeHospital = hospitalCategoryList
-        .where((p) => (p.distanceM ?? 0) < 25000)
-        .toList();
-
-    if (closeHospital.length < 10) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 25000 &&
-            !closeHospital.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
-          if (isHospital) {
-            closeHospital.add(p);
-            if (closeHospital.length >= 10) break;
-          }
-        }
-      } 
-    }
-
-    closeHospital.sort(compareDistanceAndRating);
-    farHospital.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedHospital = [];
-    balancedHospital.addAll(closeHospital.take(10));
-    for (final far in farHospital) {
-      if (balancedHospital.length >= 15) break;
-      if (!balancedHospital.any((x) => x.id == far.id)) {
-        balancedHospital.add(far);
-      }
-    }
-    if (balancedHospital.length < 15) {
-      for (final close in closeHospital) {
-        if (balancedHospital.length >= 15) break;
-        if (!balancedHospital.any((x) => x.id == close.id)) {
-          balancedHospital.add(close);
-        }
-      }
-    }
-    grouped['Hospital'] = balancedHospital;
-
-    // Balance Food category to ensure places beyond 1km are included
-    final foodCategoryList = grouped['Food'] ?? [];
-    var farFood = foodCategoryList
-        .where((p) => (p.distanceM ?? 0) >= 1000)
-        .toList();
-    var closeFood = foodCategoryList
-        .where((p) => (p.distanceM ?? 0) < 1000)
-        .toList();
-
-    if (closeFood.length < 10) {
-      for (final p in attractions) {
-        if ((p.distanceM ?? 0) < 1000 &&
-            !closeFood.any((x) => x.id == p.id)) {
-          final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-          final isFood = tags.any((t) => allowedTypes['Food']!.contains(t));
-          // Exclude places that are primarily shopping (same as grouping logic)
-          final primaryShop = tags.any(
-            (t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t),
-          );
-          if (isFood && !primaryShop) {
-            closeFood.add(p);
-            if (closeFood.length >= 10) break;
-          }
-        }
-      }
-    }
-
-    closeFood.sort(compareDistanceAndRating);
-    farFood.sort(compareDistanceAndRating);
-
-    final List<AttractionEntity> balancedFood = [];
-    balancedFood.addAll(closeFood.take(10));
-    for (final far in farFood) {
-      if (balancedFood.length >= 15) break;
-      if (!balancedFood.any((x) => x.id == far.id)) {
-        balancedFood.add(far);
-      }
-    }
-    if (balancedFood.length < 15) {
-      for (final close in closeFood) {
-        if (balancedFood.length >= 15) break;
-        if (!balancedFood.any((x) => x.id == close.id)) {
-          balancedFood.add(close);
-        }
-      }
-    }
-    grouped['Food'] = balancedFood;
     grouped['Shopping']?.sort(compareDistanceAndRating);
     if (grouped['Shopping'] != null && grouped['Shopping']!.length > 15) {
       grouped['Shopping'] = grouped['Shopping']!.take(15).toList();
     }
 
-    // Fetch actual road distances for the grouped places so the panel
-    // displays correct driving distances (like Google Maps) instead of straight-line.
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
     if (allGroupedPlaces.isNotEmpty) {
       _batchFetchRouteDistances(allGroupedPlaces);
@@ -5855,9 +5839,13 @@ class _LivingMapPageState extends State<LivingMapPage>
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         children: [
-          _buildCategoryPanel('Food', grouped['Food']!, status),
+          _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
-          _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
+          _buildCategoryPanel('Hotels & Bars', grouped['Hotels & Bars']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Point of Interest', grouped['Point of Interest']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Nature', grouped['Nature']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
@@ -5873,25 +5861,33 @@ class _LivingMapPageState extends State<LivingMapPage>
     Color themeColor;
     Color lightTint;
     switch (categoryName) {
-      case 'Food':
+      case 'Food & Drink':
         themeColor = Colors.orange;
-        lightTint = const Color(0xFFFFF3E0); // pale orange
+        lightTint = const Color(0xFFFFF3E0);
         break;
-      case 'Attractions':
+      case 'Hotels & Bars':
+        themeColor = Colors.deepPurple;
+        lightTint = const Color(0xFFEDE7F6);
+        break;
+      case 'Point of Interest':
         themeColor = Colors.teal;
-        lightTint = const Color(0xFFE0F2F1); // pale teal
+        lightTint = const Color(0xFFE0F2F1);
+        break;
+      case 'Nature':
+        themeColor = Colors.green;
+        lightTint = const Color(0xFFE8F5E9);
         break;
       case 'Shopping':
         themeColor = Colors.blue;
-        lightTint = const Color(0xFFE3F2FD); // pale blue
+        lightTint = const Color(0xFFE3F2FD);
         break;
       case 'Medical':
-        themeColor = const Color(0xFFE53935); // red
-        lightTint = const Color(0xFFFFEBEE); // pale red
+        themeColor = const Color(0xFFE53935);
+        lightTint = const Color(0xFFFFEBEE);
         break;
       case 'Hospital':
-        themeColor = const Color(0xFF7B1FA2); // purple
-        lightTint = const Color(0xFFF3E5F5); // pale purple
+        themeColor = const Color(0xFF7B1FA2);
+        lightTint = const Color(0xFFF3E5F5);
         break;
       default:
         themeColor = Colors.grey;
@@ -5994,9 +5990,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final String maxRange;
-    if (categoryName == 'Attractions' || categoryName == 'Hospital') {
+    if (categoryName == 'Attractions' || categoryName == 'Point of Interest' || categoryName == 'Nature' || categoryName == 'Hospital') {
       maxRange = '0-50 kms';
-    } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
+    } else if (categoryName == 'Food' || categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
       maxRange = '0-5 kms';
     } else {
       maxRange = '0-15 kms';

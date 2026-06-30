@@ -37,11 +37,11 @@ class GooglePlacesService {
     lastShoppingError = '';
   }
 
-  // Google Places type mapping for our categories
   static const Map<String, String> categoryTypeMap = {
-    'Attractions': 'tourist_attraction',
+    'Point of Interest': 'tourist_attraction',
+    'Nature': 'park',
     'Food & Drink': 'restaurant',
-    'Hotels': 'lodging',
+    'Hotels & Bars': 'lodging',
     'Shopping': 'shopping_mall',
     'Experiences': 'amusement_park',
     'Transport': 'transit_station',
@@ -335,43 +335,71 @@ class GooglePlacesService {
 
   static String _resolveCategoryFromTypes(List<String> types) {
     final t = types.toSet();
+    
     if (t.intersection({
       'lodging',
       'hotel',
-      'motel',
-      'resort_hotel',
-      'hostel',
-      'guest_house',
-      'bed_and_breakfast',
+      'bar',
+      'night_club',
+      'pub',
+      'discotheque',
     }).isNotEmpty) {
-      return 'Hotels';
+      return 'Hotels & Bars';
     }
+    
     if (t.intersection({
       'restaurant',
-      'food',
       'cafe',
-      'bar',
-      'coffee_shop',
       'bakery',
-      'fast_food_restaurant',
-      'food_court',
-      'pub',
-      'wine_bar',
+      'meal_takeaway',
+      'ice_cream_shop',
+      'coffee_shop',
+      'food',
     }).isNotEmpty) {
       return 'Food & Drink';
     }
+    
     if (t.intersection({
-      'park',
-      'campground',
-      'natural_feature',
       'beach',
       'national_park',
       'hiking_area',
-      'garden',
-      'zoo',
+      'nature_reserve',
+      'scenic_point',
+      'waterfall',
+      'lake',
+      'river',
+      'botanical_garden',
+      'park',
+      'campground',
+      'natural_feature',
     }).isNotEmpty) {
       return 'Nature';
     }
+    
+    if (t.intersection({
+      'tourist_attraction',
+      'museum',
+      'zoo',
+      'aquarium',
+      'art_gallery',
+      'amusement_park',
+      'historical_landmark',
+      'place_of_worship',
+      'church',
+      'hindu_temple',
+      'mosque',
+      'synagogue',
+      'buddhist_temple',
+      'cultural_center',
+      'marina',
+      'visitor_center',
+      'observation_deck',
+      'monument',
+      'castle',
+    }).isNotEmpty) {
+      return 'Point of Interest';
+    }
+    
     if (t.intersection({
       'hospital',
       'pharmacy',
@@ -380,23 +408,7 @@ class GooglePlacesService {
     }).isNotEmpty) {
       return 'Medical';
     }
-    if (t.intersection({
-      'tourist_attraction',
-      'museum',
-      'art_gallery',
-      'historical_landmark',
-      'place_of_worship',
-      'church',
-      'hindu_temple',
-      'mosque',
-      'synagogue',
-      'buddhist_temple',
-      'amusement_park',
-      'aquarium',
-      'cultural_center',
-    }).isNotEmpty) {
-      return 'Attractions';
-    }
+    
     if (t.intersection({
       'shopping_mall',
       'store',
@@ -413,7 +425,7 @@ class GooglePlacesService {
     }).isNotEmpty) {
       return 'Shopping';
     }
-    return 'Attractions';
+    return 'Point of Interest';
   }
 
   /// Get driving directions between two coordinates.
@@ -776,7 +788,7 @@ class GooglePlacesService {
       if (categoryName == 'Attractions') lastAttractionsError = '';
       if (categoryName == 'Medical') lastMedicalError = '';
       if (categoryName == 'Hospital') lastHospitalError = '';
-      if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = '';
+      if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = '';
       if (categoryName == 'Shopping') lastShoppingError = '';
 
       // 1. Check local Cache first
@@ -793,7 +805,7 @@ class GooglePlacesService {
       final double searchRadiusM;
       if (categoryName == 'Attractions' || categoryName == 'Hospital') {
         searchRadiusM = 50000.0;
-      } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
+      } else if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
         searchRadiusM = 5000.0;
       } else {
         searchRadiusM = 15000.0;
@@ -899,7 +911,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
   }
 ]
 ''';
-      } else if (categoryName == 'Food & Drink' || categoryName == 'Food') {
+      } else if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
         prompt = '''
 Analyse and provide a list for the following categories upto 15 most important places within a radius of 5 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
@@ -948,7 +960,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
-        if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+        if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
         throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
       }
@@ -999,7 +1011,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
-        if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+        if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
       }
 
@@ -1017,7 +1029,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       if (categoryName == 'Attractions') lastAttractionsError = errMsg;
       if (categoryName == 'Medical') lastMedicalError = errMsg;
       if (categoryName == 'Hospital') lastHospitalError = errMsg;
-      if (categoryName == 'Food & Drink' || categoryName == 'Food') lastFoodError = errMsg;
+      if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
       if (categoryName == 'Shopping') lastShoppingError = errMsg;
       return [];
     }
