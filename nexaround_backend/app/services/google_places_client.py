@@ -68,12 +68,6 @@ CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
     "Beach": "park",
 }
 
-# Genuine food categories Google returns. Used to filter the broader
-# restaurant-typed result set (which can include hotels with restaurants etc.)
-_FOOD_TYPE_WHITELIST = {
-    "restaurant", "cafe", "food", "bakery", "bar",
-    "meal_takeaway", "meal_delivery",
-}
 
 
 # Aliases → canonical CATEGORY_TYPES_MAP keys. Different UI surfaces send
@@ -295,6 +289,14 @@ async def text_search(
     return data.get("places", [])
 
 
+_FOOD_TYPE_WHITELIST = {
+    "restaurant", "cafe", "bakery", "bar",
+    "meal_takeaway", "meal_delivery",
+}
+
+_EXCLUDE_FOOD_TYPES = {
+    "car_repair", "auto_parts", "hardware_store", "gas_station"
+}
 
 def filter_food(places: list[dict]) -> list[dict]:
     """Drop hotels / generic POIs from a 'restaurant' result set."""
@@ -305,6 +307,8 @@ def filter_food(places: list[dict]) -> list[dict]:
         if not pid or pid in seen:
             continue
         types = set(p.get("types") or [])
+        if types & _EXCLUDE_FOOD_TYPES:
+            continue
         if types & _FOOD_TYPE_WHITELIST:
             seen.add(pid)
             out.append(p)

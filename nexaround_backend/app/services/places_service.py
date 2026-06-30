@@ -52,62 +52,23 @@ def get_min_radius(radius: int) -> int:
     return 0
 
 
-def _enforce_distance_distribution(places: list[dict], radius_m: int) -> list[dict]:
-    """Force a distributed mix of nearby and distant places to ensure variety.
-    
-    Requested distribution:
-    - 5 places in 0-2 km
-    - 5 places in 2-10 km
-    - 5 places in 10-20 km
-    - 5 places in 20-50 km
+def _enforce_distance_distribution(places: list[dict], radius_m: int, category: Optional[str] = None) -> list[dict]:
+    """Sort places by distance.
+    If category is Shopping, prioritize shopping malls.
+    Limit to 100 places to avoid overwhelming the client while showing plenty.
     """
-    if radius_m < 10000:
-        # For small radiuses, just return closest 20
-        return sorted(places, key=lambda p: p.get("distance_m", 0))[:20]
-
-    buckets = {"0_2": [], "2_10": [], "10_20": [], "20_50": []}
-    
-    for p in places:
-        dist = p.get("distance_m", 0)
-        if dist <= 2000:
-            buckets["0_2"].append(p)
-        elif dist <= 10000:
-            buckets["2_10"].append(p)
-        elif dist <= 20000:
-            buckets["10_20"].append(p)
-        else:
-            buckets["20_50"].append(p)
-            
-    for k in buckets:
-        buckets[k].sort(key=lambda p: p.get("distance_m", 0))
+    if category == "Shopping":
+        # Prioritize malls, then sort by distance
+        def sort_key(p):
+            tags = p.get("tags", [])
+            is_mall = "shopping_mall" in tags
+            return (0 if is_mall else 1, p.get("distance_m", 0))
         
-    result = []
-    
-    def take_up_to(bucket_key: str, n: int) -> list[dict]:
-        taken = buckets[bucket_key][:n]
-        buckets[bucket_key] = buckets[bucket_key][n:]
-        return taken
+        places.sort(key=sort_key)
+    else:
+        places.sort(key=lambda p: p.get("distance_m", 0))
         
-    result.extend(take_up_to("0_2", 5))
-    result.extend(take_up_to("2_10", 5))
-    result.extend(take_up_to("10_20", 5))
-    if radius_m >= 20000:
-        result.extend(take_up_to("20_50", 5))
-        
-    # If we have less than 20 total, backfill from remaining closest places
-    if len(result) < 20:
-        remaining = []
-        remaining.extend(buckets["0_2"])
-        remaining.extend(buckets["2_10"])
-        remaining.extend(buckets["10_20"])
-        remaining.extend(buckets["20_50"])
-        remaining.sort(key=lambda p: p.get("distance_m", 0))
-        
-        needed = 20 - len(result)
-        result.extend(remaining[:needed])
-        
-    result.sort(key=lambda p: p.get("distance_m", 0))
-    return result
+    return places[:100]
 
 
 async def seed_places_from_google_bg(
@@ -208,6 +169,8 @@ async def seed_places_from_google_bg(
             return
 
         if use_legacy:
+            if category == "Food & Drink":
+                raw_places = google_places_client.filter_food(raw_places)
             place_dicts = [
                 google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
                 for p in raw_places
@@ -300,7 +263,7 @@ async def seed_places_from_google_bg(
                 attraction_to_place_dict(attr, dist)
                 for attr, dist in nearby_db_attractions
             ]
-            place_dicts = _enforce_distance_distribution(place_dicts, radius)
+            place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
 
             await place_cache_service.set_cached(key, place_dicts)
             print(f"✅ Background seeding complete: cached {len(place_dicts)} places for radius {radius}m.")
@@ -396,7 +359,7 @@ async def get_nearby(
                 attraction_to_place_dict(attr, dist)
                 for attr, dist in nearby_db_attractions
             ]
-            place_dicts = _enforce_distance_distribution(place_dicts, radius)
+            place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
             
             # Revalidate in the background if the coverage is not adequate yet
             if not has_adequate_coverage:
@@ -527,6 +490,8 @@ async def get_nearby(
     
     # Convert raw places to PlaceResponses
     if use_legacy:
+        if category == "Food & Drink":
+            raw_places = google_places_client.filter_food(raw_places)
         place_dicts = [
             google_places_client.to_place_dict_legacy(p, latitude, longitude, category, _photo_url)
             for p in raw_places
@@ -622,7 +587,7 @@ async def get_nearby(
             attraction_to_place_dict(attr, dist)
             for attr, dist in nearby_db_attractions
         ]
-        place_dicts = _enforce_distance_distribution(place_dicts, radius)
+        place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
 
     await place_cache_service.set_cached(key, place_dicts)
 
