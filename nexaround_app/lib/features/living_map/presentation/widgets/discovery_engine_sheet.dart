@@ -6,6 +6,12 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/discovery_history_service.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/core/services/currency_service.dart';
 
 enum SheetState { input, loading, result }
 
@@ -35,9 +41,20 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   late SheetState _sheetState;
   late String _aiResult;
 
+  late String _currentLocationName;
+  double? _currentLatitude;
+  double? _currentLongitude;
+  String? _currentDistrict;
+  String _selectedWeather = '🌧️ Rainy';
+
   @override
   void initState() {
     super.initState();
+    _currentLocationName = widget.locationName;
+    _currentLatitude = widget.latitude;
+    _currentLongitude = widget.longitude;
+    _currentDistrict = widget.district;
+
     if (widget.initialResult != null) {
       _sheetState = SheetState.result;
       _aiResult = widget.initialResult!;
@@ -53,7 +70,13 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   // Details
   String _timeAvailable = '5 Hours';
   String _companions = 'Solo';
-  String _budget = 'Moderate (₹₹)';
+  int _budgetLevel = 1; // 0 = Budget, 1 = Moderate, 2 = Luxury
+
+  String _getBudgetString(String symbol) {
+    if (_budgetLevel == 0) return 'Budget ($symbol)';
+    if (_budgetLevel == 2) return 'Luxury ($symbol$symbol$symbol)';
+    return 'Moderate ($symbol$symbol)';
+  }
 
   final List<Map<String, dynamic>> _moods = [
     {'label': 'Happy', 'icon': Icons.sentiment_very_satisfied_rounded},
@@ -134,8 +157,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildWeatherWidget().animate().fadeIn(delay: 300.ms).slideY(begin: 0.1),
-                    const SizedBox(height: 24),
                     _buildSectionTitle(Icons.mood_rounded, 'How are you feeling today?', 'Your mood helps us suggest perfect experiences.'),
                     const SizedBox(height: 12),
                     _buildMoodGrid(),
@@ -394,6 +415,28 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
 
+    // Get currency symbol
+    final authState = context.read<AuthBloc>().state;
+    String currencySymbol = '₹';
+    if (authState is AuthAuthenticated) {
+      final userCurrencyCode = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
+      final currencyInfo = CurrencyService.supportedCurrencies.firstWhere(
+        (c) => c['code'] == userCurrencyCode,
+        orElse: () => {'symbol': '\$'},
+      );
+      currencySymbol = currencyInfo['symbol'] ?? '\$';
+    }
+
+    // Copy details to local variables for the background builder thread
+    final currentLoc = _currentLocationName;
+    final currentTimeAvailable = _timeAvailable;
+    final currentMood = _selectedMood;
+    final currentMode = _selectedMode ?? 'Explore';
+    final currentBudget = _getBudgetString(currencySymbol);
+    final currentCompanions = _companions;
+    final currentWeather = _selectedWeather;
+    final formattedTime = TimeOfDay.now().format(context);
+
     // Show immediate feedback and close the sheet
     scaffoldMessenger.showSnackBar(
       SnackBar(
@@ -409,262 +452,155 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
 
     try {
       final dateStr = DateTime.now().toLocal().toString().split(' ')[0];
-      final timeStr = TimeOfDay.now().format(context);
 
       final prompt = '''
-# NexAround AI Discovery Engine - Master Prompt
+# NexAround AI Discovery Engine
 
 You are **NexAround**, an AI Discovery Companion.
 
-Your purpose is to help people discover **what they should do next**, not simply recommend places.
+Your purpose is simple:
+Help people discover what they should do next.
+Don't just recommend famous places. Create experiences that feel personal, timely, and worth remembering.
+Think like a local friend, an experienced travel concierge, and an intelligent AI assistant.
 
-Your recommendations should feel like they were created by an experienced local guide, a travel concierge, and an AI personal assistant working together.
-
-Your objective is to create the **best possible itinerary** for the user's current situation.
-
----
-
-# USER CONTEXT
+# User Context
 
 Current Location:
-${widget.locationName}
+$currentLoc
 
 Current Date:
 $dateStr
 
 Current Time:
-$timeStr
+$formattedTime
 
 Weather:
-Auto-detect based on location and time
+$currentWeather
 
 Temperature:
 Auto-detect
 
-Rain Probability:
-Auto-detect
-
 Time Available:
-$_timeAvailable
+$currentTimeAvailable
 
 Mood:
-$_selectedMood
+$currentMood
 
 Discovery Mode:
-$_selectedMode
+$currentMode
 
 Budget:
-$_budget
+$currentBudget
 
 Travelling With:
-$_companions
+$currentCompanions
 
-Determine automatically whether the user is travelling by walking, driving or public transport from available context.
+Transportation:
+Determine automatically (walking, driving or public transport).
 
-Whenever available, also consider:
-
+Also consider whenever available:
 • Current traffic
 • Opening hours
-• Crowd levels
 • Weather forecast
-• Local festivals
-• Events
 • Public holidays
-• Sunset and sunrise
-• Safety advisories
+• Local events
+• Sunset time
+• Seasonal experiences
 • Temporary closures
-• Seasonal attractions
-• Nearby experiences
-• Local recommendations
 
----
+# Discovery Modes
 
-# DISCOVERY INTELLIGENCE ENGINE
+Adapt recommendations based on the selected mode.
+• Explore – A balanced day with a mix of popular and lesser-known experiences.
+• Hidden Gems – Focus on places locals love.
+• Food Quest – Build the itinerary around authentic local food.
+• Photo Hunt – Prioritize scenic viewpoints and beautiful lighting.
+• Rainy Day – Suggest experiences that are better in the rain.
+• Scenic Drive – Choose beautiful routes and viewpoints.
+• Culture – Heritage, architecture, museums and local stories.
+• Family – Comfortable for all ages.
+• Romantic – Relaxed and memorable experiences.
+• Surprise Me – Recommend places most visitors never discover.
 
-Before generating an itinerary, identify every suitable experience within the user's available time and practical travel distance.
+# Build the Best Day
 
-For each candidate experience, calculate a **Discovery Score (0–100)** using the following weighted criteria:
+Create the most enjoyable itinerary by:
+- Minimizing travel time
+- Grouping nearby places together
+- Avoiding unnecessary backtracking
+- Keeping a relaxed pace
+- Including natural breaks for food or coffee
+- Considering the weather
+- Making the day feel effortless
 
-### Personal Match (30%)
-How well does the experience align with the user's mood, companions, interests, and Discovery Mode?
+Recommend between 4 and 7 stops, depending on the available time.
+Choose places because they are the best fit today, not because they are famous.
 
-### Weather Suitability (20%)
-How suitable is the experience for the current weather and forecast?
+# Output Format
 
-### Time Efficiency (15%)
-Can it be comfortably completed within the available time while minimizing unnecessary travel?
+🌟 Today's Discovery
+Give the itinerary an engaging title.
+Then explain in 2–3 sentences why this plan is perfect for today.
 
-### Crowd Experience (10%)
-Prefer places that provide a better experience at the current crowd level.
-
-### Scenic Value (10%)
-Reward visually beautiful, unique, or memorable locations.
-
-### Authenticity (10%)
-Prefer experiences loved by locals over generic tourist attractions.
-
-### Seasonal Relevance (5%)
-Reward experiences that are especially good today because of the season, weather, festivals, or temporary events.
-
----
-
-## Selection Rules
-
-Evaluate every candidate experience.
-
-Only recommend experiences with a Discovery Score of **80 or higher**.
-
-If fewer than three experiences score above 80, gradually reduce the threshold until at least three high-quality recommendations are available.
-
-Always recommend the highest-scoring itinerary rather than simply the highest-rated attractions.
-
-Never recommend locations solely because they are famous.
-
----
-
-# DISCOVERY MODES
-
-Adapt recommendations according to the selected Discovery Mode.
-
-Explore: Create the best balanced experience.
-Hidden Gems: Avoid mainstream tourist attractions whenever possible.
-Food Quest: Focus on authentic local food experiences.
-Photo Hunt: Maximize scenic viewpoints, photography opportunities and ideal lighting conditions.
-Rainy Day: Design an itinerary that becomes more enjoyable because of the rain.
-Scenic Drive: Prioritize beautiful roads and panoramic viewpoints.
-Culture: Focus on heritage, museums, architecture and local stories.
-Family: Suitable for children and older adults.
-Romantic: Quiet, scenic and memorable experiences.
-Surprise Me: Recommend unusual experiences the user is unlikely to discover independently.
-
----
-
-# MOOD ADAPTATION
-
-Happy: Energetic, colourful and memorable experiences.
-Relaxed: Peaceful places with minimal rush.
-Curious: Unique, educational and lesser-known experiences.
-Celebrating: Lively places with memorable food or entertainment.
-Tired: Comfortable, shorter walks with relaxing stops.
-Quiet Day: Calm, uncrowded locations.
-Stress Relief: Nature, riversides, gardens and slow experiences.
-
----
-
-# WEATHER ADAPTATION
-
-Automatically optimize recommendations for the current weather.
-For rainy conditions, prioritize:
-• Riverside cafés
-• Scenic drives
-• Covered heritage walks
-• Museums
-• Indoor markets
-• Local food
-• Monsoon photography
-• Experiences enhanced by rain
-Avoid activities significantly affected by adverse weather.
-
----
-
-# ITINERARY OPTIMIZATION
-
-Design the itinerary to:
-• Minimize unnecessary travel
-• Avoid backtracking
-• Group nearby experiences
-• Include natural meal or coffee breaks
-• Maintain a relaxed pace
-• Keep buffer time
-• Consider sunset timing
-• Adapt to changing weather
-
----
-
-# OUTPUT FORMAT
-
-## Today's Discovery
-
-Generate an inspiring title.
-Example: "Hidden Monsoon Escapes Around Aluva"
-
----
-
-## Why This Is Perfect Today
-
-Write a short paragraph explaining why this itinerary best suits today's weather, mood, available time and Discovery Mode.
-
----
-
-## Discovery Timeline
-
-Generate between 3 and 8 carefully selected stops.
+Your Journey
 For each stop include:
-• Arrival Time
-• Place Name
-• Duration
-• Distance from previous stop
-• Estimated Travel Time
-• Estimated Cost
-• Discovery Score
-• Why it was selected
-• What makes it special today
-• Insider Tip
-• Best Photo Opportunity
-• Nearby Food Recommendation
+- Time: [Arrival Time]
+- Place Name: [Place Name]
+- Google Maps: [A clickable Google Maps link using the format: https://www.google.com/maps/search/?api=1&query=PLACE+NAME]
+- Time to Spend: [Duration]
+- Estimated Cost: [Cost]
+- Travel Time from Previous Stop: [Travel Time]
+- Why You'll Love It: [Short, friendly explanation.]
+- Don't Miss: [A unique experience or local tip.]
+- Nearby Food: [One recommended café, restaurant or local specialty.]
 
----
-
-## Discovery Insights
-
+Before You Go
 Include:
-Today's Hidden Gem
-Local Secret
-Must-Try Food
-Best Sunset Spot
-Best Coffee Stop
-Most Instagrammable Moment
-Best Time To Visit
-Estimated Total Cost
-Estimated Total Distance
-Estimated Walking Time
-Estimated Driving Time
+- 🍽 Must-Try Food
+- ☕ Best Coffee Stop
+- 📸 Best Photo Spot
+- 🌅 Best Sunset Location (if applicable)
+- 💰 Estimated Budget
+- 🚗 Total Travel Distance
+- ⏳ Total Travel Time
 
----
+If it starts raining:
+Suggest the best indoor alternative.
 
-## Adaptive Intelligence
+If traffic becomes heavy:
+Reorder the itinerary.
 
-If weather changes... Recommend the best alternative.
-If traffic increases... Reorder the itinerary automatically.
-If a place is closed... Recommend the next highest Discovery Score experience.
+If a place is closed:
+Recommend the next best nearby experience.
 
----
-
-# RESPONSE STYLE
+# Style
 
 Write naturally and conversationally.
-Sound like an intelligent local friend.
 Avoid generic tourism language.
-Do not recommend places because they are famous.
-Recommend them because they are perfect for this user today.
+Keep descriptions short and engaging.
+Do not mention scores, rankings, or algorithms.
+Use actual place names.
+Always include working Google Maps links.
+Make the itinerary feel like it was created by someone who truly knows the city.
 
----
+# Goal
 
-# SUCCESS CRITERIA
+When the user finishes reading, they should feel:
+"I wouldn't have found this on my own—and I can't wait to go."
 
-The user should finish reading the itinerary thinking:
-"I would never have discovered this on my own."
-The itinerary should feel intelligent, effortless, personal, dynamic, and memorable.
-
-Every recommendation must answer one simple question:
-**"Why is this the best next experience for this person, here, today, right now?"**
-
-CRITICAL INSTRUCTION FOR PARSING:
-If you recommend a specific local place, business, or attraction, you MUST wrap its name in double brackets, like [[Place Name]]. We use these brackets to make the places clickable in the app UI. Also, make sure to use standard Markdown for formatting headers, lists, and bold text. Do not wrap the whole response in a markdown code block.
+# CRITICAL INSTRUCTION FOR PARSING:
+If you recommend a specific local place, business, or attraction, you MUST wrap its name in double brackets, like [[Place Name]] (e.g. [[South Kitchen + Bar]] or [[Hotel Radhakrishna]]) when writing the "Place Name" section, so they are clickable in the app UI. Also, make sure to use standard Markdown for formatting headers, lists, and bold text. Do not wrap the whole response in a markdown code block.
 ''';
 
       final gemini = GeminiService();
       final response = await gemini.getResponse(prompt);
+
+      // Save to backend database history
+      await DiscoveryHistoryService.saveHistoryItem(
+        location: currentLoc,
+        mode: currentMode,
+        result: response,
+      );
 
       CacheService.discoveryResultNotifier.value = response;
       CacheService.isDiscoveringNotifier.value = false;
@@ -712,16 +648,33 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Where should\nI go today?',
-                      style: TextStyle(
-                        fontSize: 28,
-                        height: 1.1,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textPrimary,
-                        letterSpacing: -1,
-                      ),
-                    ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Where should\nI go today?',
+                          style: TextStyle(
+                            fontSize: 28,
+                            height: 1.1,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -1,
+                          ),
+                        ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2),
+                        TextButton(
+                          onPressed: _showHistorySheet,
+                          child: const Text(
+                            'History',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.brandGreen,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 8),
                     const Text(
                       'Tell us your mood.\nWe\'ll craft the perfect plan for you.',
@@ -752,84 +705,6 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
                 ),
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWeatherWidget() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: AppColors.brandGreen.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.brandGreen.withOpacity(0.15)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.location_on_rounded, size: 14, color: AppColors.brandGreen),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        widget.district ?? widget.locationName,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                const Text(
-                  'Perfect for cozy & scenic experiences',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Row(
-                children: const [
-                  Text('🌧️', style: TextStyle(fontSize: 20)),
-                  SizedBox(width: 8),
-                  Text(
-                    '26°C',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                ],
-              ),
-              const Text(
-                'Rainy',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -933,79 +808,80 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
   }
 
   Widget _buildModesList() {
-    return SizedBox(
-      height: 140,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        itemCount: _modes.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final mode = _modes[index];
-          final isSelected = _selectedMode == mode['label'];
-          
-          return GestureDetector(
-            onTap: () => setState(() => _selectedMode = mode['label']),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutCubic,
-              width: 110,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: isSelected ? AppColors.brandGreen : AppColors.surface,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: isSelected ? AppColors.brandGreen : AppColors.border.withOpacity(0.5),
-                  width: 1,
-                ),
-                boxShadow: isSelected 
-                    ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.4), blurRadius: 12, offset: const Offset(0, 4))]
-                    : [BoxShadow(color: AppColors.textPrimary.withOpacity(0.02), blurRadius: 8)],
+    return GridView.count(
+      crossAxisCount: 3,
+      childAspectRatio: 0.85,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: List.generate(_modes.length, (index) {
+        final mode = _modes[index];
+        final isSelected = _selectedMode == mode['label'];
+        
+        return GestureDetector(
+          onTap: () => setState(() => _selectedMode = mode['label']),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+            decoration: BoxDecoration(
+              color: isSelected ? AppColors.brandGreen : AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isSelected ? AppColors.brandGreen : AppColors.border.withOpacity(0.5),
+                width: 1,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 300),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white.withOpacity(0.2) : AppColors.brandGreen.withOpacity(0.05),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      mode['icon'],
-                      color: isSelected ? Colors.white : AppColors.brandGreen,
-                      size: 24,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    mode['label'],
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                      color: isSelected ? Colors.white : AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    mode['desc'],
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: isSelected ? Colors.white70 : AppColors.textSecondary,
-                      height: 1.2,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                  ),
-                ],
-              ),
+              boxShadow: isSelected 
+                  ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 3))]
+                  : [BoxShadow(color: AppColors.textPrimary.withOpacity(0.01), blurRadius: 6)],
             ),
-          );
-        },
-      ),
-    ).animate().fadeIn(delay: 300.ms).slideX(begin: 0.1);
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.white.withOpacity(0.2) : AppColors.brandGreen.withOpacity(0.05),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    mode['icon'],
+                    color: isSelected ? Colors.white : AppColors.brandGreen,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  mode['label'],
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    color: isSelected ? Colors.white : AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  mode['desc'].replaceAll('\n', ' '),
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: isSelected ? Colors.white70 : AppColors.textSecondary,
+                    height: 1.1,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        );
+      }),
+    ).animate().fadeIn(delay: 300.ms).slideY(begin: 0.1);
   }
 
   void _showSelectionSheet(String title, List<String> options, String currentValue, Function(String) onSelected) {
@@ -1051,6 +927,17 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
   }
 
   Widget _buildDetailsList() {
+    final authState = context.read<AuthBloc>().state;
+    String currencySymbol = '₹';
+    if (authState is AuthAuthenticated) {
+      final userCurrencyCode = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
+      final currencyInfo = CurrencyService.supportedCurrencies.firstWhere(
+        (c) => c['code'] == userCurrencyCode,
+        orElse: () => {'symbol': '\$'},
+      );
+      currencySymbol = currencyInfo['symbol'] ?? '\$';
+    }
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -1059,9 +946,42 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
       ),
       child: Column(
         children: [
-          _buildDetailRow(Icons.location_on_rounded, 'Location', widget.locationName, AppColors.primary),
+          _buildDetailRow(
+            Icons.location_on_rounded, 
+            'Location', 
+            _currentLocationName, 
+            AppColors.primary,
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (context) => const LocationSearchModal(),
+              ).then((result) {
+                if (result != null && result is Map<String, dynamic>) {
+                  setState(() {
+                    _currentLocationName = result['name'] ?? _currentLocationName;
+                    _currentLatitude = result['latitude'] as double?;
+                    _currentLongitude = result['longitude'] as double?;
+                    _currentDistrict = result['district'] as String?;
+                  });
+                }
+              });
+            },
+          ),
           const Divider(height: 1, color: AppColors.border),
-          _buildDetailRow(Icons.cloud_rounded, 'Weather', 'Rainy • 26°C', Colors.blue),
+          _buildDetailRow(
+            Icons.cloud_rounded, 
+            'Weather', 
+            _selectedWeather, 
+            Colors.blue,
+            onTap: () => _showSelectionSheet(
+              'Weather', 
+              ['☀️ Sunny', '☁️ Cloudy', '🌧️ Rainy', '🌫️ Foggy / Misty', '🌬️ Windy', '❄️ Snowy'], 
+              _selectedWeather, 
+              (val) => setState(() => _selectedWeather = val)
+            ),
+          ),
           const Divider(height: 1, color: AppColors.border),
           _buildDetailRow(
             Icons.access_time_rounded, 'Time Available', _timeAvailable, Colors.blue,
@@ -1084,17 +1004,137 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
           ),
           const Divider(height: 1, color: AppColors.border),
           _buildDetailRow(
-            Icons.account_balance_wallet_rounded, 'Budget', _budget, AppColors.brandGreen,
+            Icons.account_balance_wallet_rounded, 'Budget', _getBudgetString(currencySymbol), AppColors.brandGreen,
             onTap: () => _showSelectionSheet(
               'Budget', 
-              ['Budget (₹)', 'Moderate (₹₹)', 'Luxury (₹₹₹)'], 
-              _budget, 
-              (val) => setState(() => _budget = val)
+              ['Budget ($currencySymbol)', 'Moderate ($currencySymbol$currencySymbol)', 'Luxury ($currencySymbol$currencySymbol$currencySymbol)'], 
+              _getBudgetString(currencySymbol), 
+              (val) {
+                setState(() {
+                  if (val.startsWith('Budget')) {
+                    _budgetLevel = 0;
+                  } else if (val.startsWith('Luxury')) {
+                    _budgetLevel = 2;
+                  } else {
+                    _budgetLevel = 1;
+                  }
+                });
+              }
             ),
           ),
         ],
       ),
     ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.1);
+  }
+
+  void _showHistorySheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.7,
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+        child: Column(
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.textSecondary.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Search History',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: FutureBuilder<List<Map<String, dynamic>>>(
+                future: DiscoveryHistoryService.fetchHistory(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: AppColors.brandGreen),
+                    );
+                  }
+                  if (snapshot.hasError || !snapshot.hasData) {
+                    return const Center(
+                      child: Text('Error loading history', style: TextStyle(color: AppColors.textSecondary)),
+                    );
+                  }
+                  final history = snapshot.data!;
+                  if (history.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.history_rounded, size: 48, color: AppColors.textTertiary),
+                          const SizedBox(height: 12),
+                          Text('No past itineraries found', style: TextStyle(color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    itemCount: history.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                    itemBuilder: (context, index) {
+                      final item = history[index];
+                      final createdStr = item['created_at'] as String? ?? '';
+                      String dateDisplay = '';
+                      try {
+                        if (createdStr.isNotEmpty) {
+                          final parsed = DateTime.parse(createdStr).toLocal();
+                          dateDisplay = '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+                        }
+                      } catch (_) {
+                        dateDisplay = createdStr;
+                      }
+
+                      final location = item['location'] as String? ?? 'Unknown Location';
+                      final mode = item['mode'] as String? ?? 'Explore';
+                      final result = item['result'] as String? ?? '';
+
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                        title: Text(
+                          location,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            'Mode: $mode • $dateDisplay',
+                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                          ),
+                        ),
+                        trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                        onTap: () {
+                          // Close history modal
+                          Navigator.pop(context);
+                          // Show results
+                          setState(() {
+                            _aiResult = result;
+                            _sheetState = SheetState.result;
+                          });
+                        },
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildDetailRow(IconData icon, String title, String value, Color iconColor, {VoidCallback? onTap}) {

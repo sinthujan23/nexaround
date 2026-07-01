@@ -66,7 +66,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   String? _selectedMedicalCategory;
   String? _selectedHospitalCategory;
 
-  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', 'Budget', 'Emergency'];
+  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', /* 'Budget', */ 'Emergency'];
 
   @override
   void initState() {
@@ -76,6 +76,18 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     _loadEmergencyCache();
     context.read<BudgetBloc>().add(FetchBudget());
     _initLocationAndFetch();
+  }
+
+  @override
+  void didUpdateWidget(covariant DiscoverPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialTab != oldWidget.initialTab) {
+      setState(() {
+        _selectedTab = widget.initialTab;
+      });
+      _fetchForTab(_selectedTab);
+      if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
+    }
   }
 
   Future<void> _initLocationAndFetch() async {
@@ -376,9 +388,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         if (_selectedExperienceCategory == 'Museums') {
                           return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery');
                         } else if (_selectedExperienceCategory == 'Parks') {
-                          return cat.contains('park') || cat.contains('nature') || cat.contains('garden') || name.contains('park') || name.contains('garden');
+                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden');
                         } else if (_selectedExperienceCategory == 'Culture') {
-                          return cat.contains('culture') || cat.contains('landmark') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument');
+                          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument');
+                        } else if (_selectedExperienceCategory == 'Landmarks') {
+                          return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || cat.contains('tourist attraction') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
+                        } else if (_selectedExperienceCategory == 'Nature') {
+                          return cat.contains('nature') || cat.contains('mountain') || cat.contains('lake') || cat.contains('river') || cat.contains('forest') || cat.contains('waterfall') || name.contains('lake') || name.contains('river') || name.contains('waterfall') || name.contains('nature') || name.contains('mountain');
+                        } else if (_selectedExperienceCategory == 'Beaches') {
+                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay');
+                        } else if (_selectedExperienceCategory == 'Attractions') {
+                          return cat.contains('attraction') || cat.contains('amusement') || cat.contains('zoo') || cat.contains('theme park') || name.contains('zoo') || name.contains('aquarium') || name.contains('park') || name.contains('fun');
                         }
                         return true;
                       }).toList();
@@ -480,7 +500,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
       case 'Hospital': return _buildHospitalTab(isLoading);
-      case 'Budget': return _buildBudgetTab();
+      // case 'Budget': return _buildBudgetTab();
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildFoodTab(isLoading);
     }
@@ -895,6 +915,54 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Icons.shopping_cart_rounded;
   }
 
+  Widget _buildExperienceCategoryItem(String emoji, String label, bool isSelected, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 86,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.brandGreen : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: isSelected ? Colors.transparent : AppColors.border, width: 1.2),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.brandGreen.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.01),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 22)),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 9.5,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.white : AppColors.textPrimary,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildFoodCategory(String emoji, String label, bool isSelected, VoidCallback onTap) {
     return Expanded(
       child: GestureDetector(
@@ -944,31 +1012,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   Widget _buildShimmerItemCard() {
     return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: Colors.grey[200],
-            ),
-          ),
-          const SizedBox(width: 14),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(width: double.infinity, height: 16, color: Colors.grey[200]),
-                const SizedBox(height: 8),
-                Container(width: 100, height: 12, color: Colors.grey[200]),
-                const SizedBox(height: 12),
-                Container(width: 60, height: 12, color: Colors.grey[200]),
-              ],
-            ),
+            child: Container(height: 16, color: Colors.grey[200]),
           ),
+          const SizedBox(width: 16),
+          Container(width: 80, height: 14, color: Colors.grey[200]),
+          const SizedBox(width: 16),
+          Container(width: 20, height: 20, color: Colors.grey[200]),
         ],
       ),
     ).animate(onPlay: (controller) => controller.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
@@ -993,83 +1047,45 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         )),
       ),
       child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(10),
-      child: Row(
-        children: [
-          Container(
-            width: 50,
-            height: 50,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              color: AppColors.primary.withOpacity(0.1),
-              border: Border.all(color: AppColors.primary.withOpacity(0.2)),
-            ),
-            child: Center(
-              child: Icon(
-                _getFoodIcon(a.categoryName ?? 'Food', a.name, index),
-                color: AppColors.primary,
-                size: 22,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                a.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(width: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(a.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                const SizedBox(height: 4),
-                Text(a.categoryName ?? 'Restaurant', style: TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                    const SizedBox(width: 3),
-                    Text('${a.rating}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                    const SizedBox(width: 12),
-                    Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
-                    const SizedBox(width: 4),
-                    Text('$dist km', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                  ],
-                ),
+                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 3),
+                Text('${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(width: 12),
+                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                const SizedBox(width: 4),
+                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
               ],
             ),
-          ),
-          Column(
-            children: [
-              GestureDetector(
-                onTap: () async {
-                  await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
-                  setState(() {}); // Refresh UI
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: CacheService.isPlaceSaved(a.id) ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
-                  ),
-                  child: Icon(
-                    CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                    color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
-                    size: 20,
-                  ),
-                ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () async {
+                await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
+                setState(() {}); // Refresh UI
+              },
+              child: Icon(
+                CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
+                size: 20,
               ),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: AppColors.primaryGradient,
-                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
-                ),
-                child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
-              ),
-            ],
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1081,80 +1097,97 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       );
     }
 
-    final featuredExperiences = _experienceList.take(5).toList();
-    final remainingExperiences = _experienceList.skip(5).toList();
+    final experiences = _experienceList;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Featured Experiences (Horizontal Carousel like Homepage)
-        const Text('Featured Experiences', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 16),
-        if (featuredExperiences.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
-            child: Center(child: Text('Searching for experiences...', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: featuredExperiences.length,
-              itemBuilder: (context, index) {
-                final p = featuredExperiences[index];
-                return _buildFeaturedExperienceCard(p, index);
-              },
-            ),
-          ),
-        
-        const SizedBox(height: 32),
-
         // Interests/Categories
         const Text('Browse by Interest', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            _buildFoodCategory(
-              '🏛',
-              'Museums',
-              _selectedExperienceCategory == 'Museums',
-              () => setState(() {
-                _selectedExperienceCategory = _selectedExperienceCategory == 'Museums' ? null : 'Museums';
-              }),
-            ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
-              '🌳',
-              'Parks',
-              _selectedExperienceCategory == 'Parks',
-              () => setState(() {
-                _selectedExperienceCategory = _selectedExperienceCategory == 'Parks' ? null : 'Parks';
-              }),
-            ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
-              '🗿',
-              'Culture',
-              _selectedExperienceCategory == 'Culture',
-              () => setState(() {
-                _selectedExperienceCategory = _selectedExperienceCategory == 'Culture' ? null : 'Culture';
-              }),
-            ),
-          ],
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🗼',
+                'Landmarks',
+                _selectedExperienceCategory == 'Landmarks',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Landmarks' ? null : 'Landmarks';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🗿',
+                'Culture',
+                _selectedExperienceCategory == 'Culture',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Culture' ? null : 'Culture';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌲',
+                'Nature',
+                _selectedExperienceCategory == 'Nature',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Nature' ? null : 'Nature';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏖',
+                'Beaches',
+                _selectedExperienceCategory == 'Beaches',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Beaches' ? null : 'Beaches';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏛',
+                'Museums',
+                _selectedExperienceCategory == 'Museums',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Museums' ? null : 'Museums';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🎡',
+                'Attractions',
+                _selectedExperienceCategory == 'Attractions',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Attractions' ? null : 'Attractions';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌳',
+                'Parks',
+                _selectedExperienceCategory == 'Parks',
+                () => setState(() {
+                  _selectedExperienceCategory = _selectedExperienceCategory == 'Parks' ? null : 'Parks';
+                }),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 32),
 
         // Curated List
         const Text('Curated for You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (remainingExperiences.isEmpty && featuredExperiences.isEmpty)
+        if (experiences.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No real experiences found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+            child: Center(child: Text('No experiences found nearby.', style: TextStyle(color: AppColors.textTertiary))),
           )
         else
-          ...remainingExperiences.asMap().entries.map((e) {
+          ...experiences.asMap().entries.map((e) {
             final a = e.value;
             return _buildExperienceCard(a, e.key);
           }),
@@ -1514,40 +1547,46 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         )),
       ),
       child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: AppColors.brandGreen.withOpacity(0.1),
-                border: Border.all(color: AppColors.brandGreen.withOpacity(0.2)),
-              ),
-              child: Center(
-                child: Icon(
-                  _getShoppingIcon(shop.categoryName ?? 'Shopping', shop.name, index),
-                  color: AppColors.brandGreen,
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(shop.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                  Text(shop.categoryName ?? 'Shopping', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                ],
+              child: Text(
+                shop.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 3),
+                Text('${shop.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(width: 12),
+                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                const SizedBox(width: 4),
+                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              ],
+            ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () async {
+                await CacheService.toggleSavedPlace((shop as AttractionModel).toJson());
+                setState(() {});
+              },
+              child: Icon(
+                CacheService.isPlaceSaved(shop.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceSaved(shop.id) ? AppColors.primary : AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
           ],
         ),
-      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+      ),
     );
   }
 
@@ -1618,46 +1657,47 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           longitude: item.longitude,
         )),
       ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: AppColors.surfaceVariant.withOpacity(0.5),
-          border: Border.all(color: AppColors.border),
-        ),
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: AppColors.error.withOpacity(0.1),
-                border: Border.all(color: AppColors.error.withOpacity(0.2)),
-              ),
-              child: Center(
-                child: Icon(
-                  item.name.toLowerCase().contains('pharmacy') ? Icons.local_pharmacy_rounded : Icons.medical_services_rounded,
-                  color: AppColors.error,
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                  Text(item.categoryName ?? 'Medical', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                ],
+              child: Text(
+                item.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 3),
+                Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(width: 12),
+                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                const SizedBox(width: 4),
+                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              ],
+            ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () async {
+                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                setState(() {});
+              },
+              child: Icon(
+                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
           ],
         ),
-      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+      ),
     );
   }
 
@@ -1728,46 +1768,47 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           longitude: item.longitude,
         )),
       ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          color: AppColors.surfaceVariant.withOpacity(0.5),
-          border: Border.all(color: AppColors.border),
-        ),
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         child: Row(
           children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: AppColors.error.withOpacity(0.1),
-                border: Border.all(color: AppColors.error.withOpacity(0.2)),
-              ),
-              child: const Center(
-                child: Icon(
-                  Icons.local_hospital_rounded,
-                  color: AppColors.error,
-                  size: 24,
-                ),
-              ),
-            ),
-            const SizedBox(width: 14),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(item.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                  Text(item.categoryName ?? 'Hospital', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                ],
+              child: Text(
+                item.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 12),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                const SizedBox(width: 3),
+                Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                const SizedBox(width: 12),
+                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                const SizedBox(width: 4),
+                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              ],
+            ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () async {
+                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                setState(() {});
+              },
+              child: Icon(
+                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                size: 20,
+              ),
+            ),
           ],
         ),
-      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+      ),
     );
   }
 

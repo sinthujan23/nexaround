@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -14,25 +13,26 @@ class AnimatedNevaBanner extends StatefulWidget {
   State<AnimatedNevaBanner> createState() => _AnimatedNevaBannerState();
 }
 
-class _AnimatedNevaBannerState extends State<AnimatedNevaBanner>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+class _AnimatedNevaBannerState extends State<AnimatedNevaBanner> {
   bool _isExpanded = true;
-  bool _showMood = true;
+  int _textIndex = 0;
   Timer? _textTimer;
+
+  final List<String> _cycleTexts = [
+    'Where to?',
+    'Any plans?',
+    "Let's explore!",
+    "What's next?",
+  ];
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 4),
-    )..repeat(reverse: true);
 
     _textTimer = Timer.periodic(const Duration(milliseconds: 2500), (timer) {
       if (mounted && _isExpanded) {
         setState(() {
-          _showMood = !_showMood;
+          _textIndex = (_textIndex + 1) % _cycleTexts.length;
         });
       }
     });
@@ -50,7 +50,6 @@ class _AnimatedNevaBannerState extends State<AnimatedNevaBanner>
   @override
   void dispose() {
     _textTimer?.cancel();
-    _controller.dispose();
     super.dispose();
   }
 
@@ -92,7 +91,7 @@ class _AnimatedNevaBannerState extends State<AnimatedNevaBanner>
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Neva Avatar (Sparkle icon with gentle pulse) + Red Badge
+            // Neva Walking Avatar + Red Badge
             ValueListenableBuilder<String?>(
               valueListenable: CacheService.discoveryResultNotifier,
               builder: (context, discoveryResult, _) {
@@ -100,33 +99,13 @@ class _AnimatedNevaBannerState extends State<AnimatedNevaBanner>
                 return Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, child) {
-                        return Transform.translate(
-                          offset: Offset(0, sin(_controller.value * pi * 2) * 2),
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.brandGreen.withOpacity(0.3),
-                                  blurRadius: 8,
-                                  spreadRadius: 1,
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: Image.asset(
-                                'assets/images/neva_peeking.png',
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                    SizedBox(
+                      width: 56,
+                      height: 56,
+                      child: Image.asset(
+                        'assets/images/neva_walking.webp',
+                        fit: BoxFit.contain,
+                      ),
                     ),
                     if (hasResult)
                       Positioned(
@@ -177,8 +156,8 @@ class _AnimatedNevaBannerState extends State<AnimatedNevaBanner>
                           );
                         },
                         child: Text(
-                          _showMood ? 'Mood?' : 'Weather?',
-                          key: ValueKey<bool>(_showMood),
+                          _cycleTexts[_textIndex],
+                          key: ValueKey<int>(_textIndex),
                           style: const TextStyle(
                             color: AppColors.textPrimary,
                             fontSize: 15,

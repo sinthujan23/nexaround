@@ -441,6 +441,8 @@ class CacheService {
     }
   }
 
+
+
   static Future<void> clearAll() async {
     await _prefs.clear();
   }

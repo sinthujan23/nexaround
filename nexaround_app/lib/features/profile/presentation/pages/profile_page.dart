@@ -17,6 +17,7 @@ import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -45,6 +46,10 @@ class _ProfilePageState extends State<ProfilePage> {
 
                     // Stats row
                     _buildStatsRow(),
+                    const SizedBox(height: 28),
+
+                    // Travel Journal Card
+                    _buildJournalCard(context),
                     const SizedBox(height: 28),
 
                     // Saved Places
@@ -668,5 +673,83 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildJournalCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const TravelJournalPage()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: AppColors.brandGradient,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Text('📖', style: TextStyle(fontSize: 24)),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MY TRAVEL JOURNAL',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Document Your Odyssey',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Save memories & upload photos to your drive',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: Colors.white54,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.white,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    ).animate().fade().slideY(begin: 0.1, end: 0);
   }
 }

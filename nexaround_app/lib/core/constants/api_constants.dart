@@ -38,6 +38,9 @@ class ApiConstants {
   // Travel Stories endpoints
   static const String travelStories = '$apiVersion/travel-stories';
   
+  // Discovery endpoints
+  static const String discoveryHistory = '$apiVersion/discovery/history';
+  
   // Mapbox Configuration
   static String mapboxAccessToken = '';
   

@@ -37,6 +37,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   int _selectedIndex = 0;
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
+  int _discoverInitialTab = 0;
   @override
   void initState() {
     super.initState();
@@ -57,6 +58,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -98,8 +100,9 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     });
   }
 
-  void switchToDiscover() {
+  void switchToDiscover({int initialTab = 0}) {
     setState(() {
+      _discoverInitialTab = initialTab;
       _selectedIndex = 3; // Discover Tab
     });
   }
@@ -122,7 +125,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
       const LivingMapPage(),
       ArCameraPage(isActive: _selectedIndex == 1),
       AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
-      const DiscoverPage(),
+      DiscoverPage(initialTab: _discoverInitialTab),
       const MyOdysseysPage(),
       const ProfilePage(),
     ];
@@ -178,7 +181,6 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
                   _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
                   _buildNavItem(3, Icons.travel_explore_rounded, 'Discover'),
                   _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
-                  _buildNavItem(5, Icons.person_rounded, 'Me'),
                 ],
               ),
             ),

@@ -940,7 +940,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     automaticallyImplyLeading: false,
                     backgroundColor: Colors.transparent,
                     elevation: 0,
-                    toolbarHeight: 80,
+                    toolbarHeight: 64,
                     titleSpacing: 24,
                     centerTitle: false,
                     flexibleSpace: ClipRRect(
@@ -966,7 +966,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               onTap: () {
                                 final homeState = context.findAncestorStateOfType<HomePageState>();
                                 if (homeState != null) {
-                                  homeState.switchToDiscover();
+                                  homeState.switchToDiscover(initialTab: 5);
                                 }
                               },
                             ),
@@ -980,20 +980,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                                   homeState.switchToProfile();
                                 }
                               },
-                              customChild: BlocBuilder<AuthBloc, AuthState>(
-                                builder: (context, authState) {
-                                  if (authState is AuthAuthenticated && authState.user.avatarUrl != null && authState.user.avatarUrl!.isNotEmpty) {
-                                    return ClipOval(
-                                      child: CachedNetworkImage(
-                                        imageUrl: authState.user.avatarUrl!,
-                                        fit: BoxFit.cover,
-                                        errorWidget: (_, __, ___) => const Icon(Icons.person_outline_rounded, color: AppColors.textPrimary, size: 20),
-                                      ),
-                                    );
-                                  }
-                                  return const Icon(Icons.person_outline_rounded, color: AppColors.textPrimary, size: 20);
-                                },
-                              ),
                             ),
                             const SizedBox(width: 8),
                             // Bell Icon
@@ -1051,12 +1037,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
-                        SliverToBoxAdapter(child: _buildJournalBanner()),
 
-                        // Around You Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                             child: _buildSectionHeader(
                               !_isLocationOverridden
                                   ? 'Around You'
@@ -1178,13 +1162,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                       ),
                       SliverToBoxAdapter(child: _buildTravelStoriesFeed()),
-                      SliverToBoxAdapter(child: _buildJournalBanner()),
 
-                      // Around You
                       if (publicAttractions.isNotEmpty) ...[
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                             child: _buildSectionHeader(
                               !_isLocationOverridden
                                   ? 'Around You'
@@ -2906,86 +2888,6 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  Widget _buildJournalBanner() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
-      child: GestureDetector(
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (context) => const TravelJournalPage()),
-          );
-        },
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: AppColors.brandGradient,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Text('📖', style: TextStyle(fontSize: 24)),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'MY TRAVEL JOURNAL',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Document Your Odyssey',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Save memories & upload photos to your drive',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        color: Colors.white54,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                color: Colors.white,
-                size: 20,
-              ),
-            ],
-          ),
-        ),
-      ).animate().fade().slideY(begin: 0.1, end: 0),
-    );
-  }
 
   Widget _buildSectionHeader(
     String title,
@@ -6248,6 +6150,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {
+    // Commented out by client request (will restore in the future)
+    return const SizedBox.shrink();
     if (attractions.isEmpty) return const SizedBox.shrink();
 
     // Deduplicate attractions to make sure no two stops on the walk route are the same

@@ -9,10 +9,11 @@ from app.models.system_setting import SystemSetting, ApiRequestLog
 from app.models.notification import Broadcast, Notification
 from app.models.analytics import PlaceVisit, UserSession
 from app.models.travel_story import TravelStory, TravelStoryLike, TravelStoryComment
+from app.models.discovery_history import DiscoveryHistory
 
 __all__ = [
     "User", "Attraction", "Category", "Review", "Itinerary", "Media", 
     "Budget", "Expense", "SystemSetting", "ApiRequestLog", "Broadcast", 
     "Notification", "PlaceVisit", "UserSession", "TravelStory", 
-    "TravelStoryLike", "TravelStoryComment"
+    "TravelStoryLike", "TravelStoryComment", "DiscoveryHistory"
 ]

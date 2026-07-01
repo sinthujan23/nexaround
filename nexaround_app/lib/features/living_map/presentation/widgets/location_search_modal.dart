@@ -67,12 +67,17 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         if (response.statusCode == 200) {
           final List<dynamic> data = response.data;
           final List<Map<String, dynamic>> results = data.map((item) {
+            final addr = item['address'] as Map<String, dynamic>?;
+            final city = addr?['city'] ?? addr?['town'] ?? addr?['village'] ?? item['name'] ?? item['display_name']?.split(',')[0] ?? 'Unknown';
+            final country = addr?['country'];
+            final displayName = country != null ? '$city, $country' : city;
+
             return {
               'latitude': double.tryParse(item['lat'] ?? '0') ?? 0.0,
               'longitude': double.tryParse(item['lon'] ?? '0') ?? 0.0,
-              'name': item['name'] ?? item['display_name']?.split(',')[0] ?? 'Unknown',
+              'name': displayName,
               'address': item['display_name'] ?? '',
-              'district': item['address']?['county'] ?? item['address']?['state_district'] ?? item['address']?['city'] ?? item['name'],
+              'district': addr?['county'] ?? addr?['state_district'] ?? addr?['city'] ?? item['name'],
             };
           }).toList();
 

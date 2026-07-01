@@ -274,6 +274,35 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
+  Future<void> _launchGoogleMaps() async {
+    if (widget.latitude == null || widget.longitude == null ||
+        (widget.latitude == 0.0 && widget.longitude == 0.0)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('📍 Location coordinates not available for this place'),
+          backgroundColor: Colors.black87,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final url = 'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}';
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not open Google Maps'),
+          backgroundColor: Colors.black87,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSaved = CacheService.isPlaceSaved(_placeId);
@@ -489,7 +518,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
         ),
         child: Row(
           children: [
-            // Navigate button
+            // Smart Map button
             Expanded(
               child: GestureDetector(
                 onTap: () => _launchNavigation(context),
@@ -504,16 +533,41 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.map_rounded, color: Colors.white),
-                        SizedBox(width: 8),
-                        Text('View on Smart Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                        Icon(Icons.map_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 6),
+                        Text('Smart Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                       ],
                     ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
+            // Google Map button
+            Expanded(
+              child: GestureDetector(
+                onTap: _launchGoogleMaps,
+                child: Container(
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(18),
+                    color: Colors.black,
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 6))],
+                  ),
+                  child: const Center(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
+                        SizedBox(width: 6),
+                        Text('Google Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
             // AR button
             GestureDetector(
               onTap: () => Navigator.push(
