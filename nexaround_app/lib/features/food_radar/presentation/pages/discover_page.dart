@@ -48,10 +48,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   late AnimationController _radarController;
   Position? _currentPosition;
 
-  // Real data lists for each category to avoid mixing
   List<AttractionEntity> _foodList = [];
   List<AttractionEntity> _experienceList = [];
   List<AttractionEntity> _shoppingList = [];
+  List<AttractionEntity> _medicalList = [];
+  List<AttractionEntity> _hospitalList = [];
 
   // Emergency tab state
   List<Map<String, dynamic>> _nearbyHospitals = [];
@@ -62,8 +63,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   String? _selectedFoodCategory;
   String? _selectedExperienceCategory;
   String? _selectedShoppingCategory;
+  String? _selectedMedicalCategory;
+  String? _selectedHospitalCategory;
 
-  final List<String> _tabs = ['Food', 'Experiences', 'Shopping', 'Budget', 'Emergency'];
+  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', 'Budget', 'Emergency'];
 
   @override
   void initState() {
@@ -81,26 +84,32 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       if (!mounted) return;
       setState(() => _currentPosition = position);
       _fetchForTab(_selectedTab);
-      if (_selectedTab == 4) _fetchEmergencyData();
+      if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
     } catch (e) {
       debugPrint('Error getting location: $e');
     }
   }
 
   void _fetchForTab(int index) {
-    if (_currentPosition == null) return;
+    if (_currentPosition == null && CacheService.getLastFetchLat() == null) return;
+    
+    final lat = CacheService.getLastFetchLat() ?? _currentPosition?.latitude;
+    final lng = CacheService.getLastFetchLng() ?? _currentPosition?.longitude;
+    if (lat == null || lng == null) return;
 
     String? category;
-    if (index == 0) category = 'Food & Drink';
-    if (index == 1) category = 'Attractions';
-    if (index == 2) category = 'Shopping';
+    if (_tabs[index] == 'Food') category = 'Food & Drink';
+    if (_tabs[index] == 'Experiences') category = 'Attractions';
+    if (_tabs[index] == 'Shopping') category = 'Shopping';
+    if (_tabs[index] == 'Medical') category = 'Medical';
+    if (_tabs[index] == 'Hospital') category = 'Hospital';
 
     if (category != null) {
       context.read<MapBloc>().add(FetchNearbyAttractions(
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
+        latitude: lat,
+        longitude: lng,
         categoryName: category,
-        useLegacy: index == 1,
+        useLegacy: _tabs[index] == 'Experiences',
       ));
     }
   }
@@ -140,15 +149,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Future<void> _fetchEmergencyData() async {
-    if (_currentPosition == null || _isLoadingEmergency) return;
+    final lat = CacheService.getLastFetchLat() ?? _currentPosition?.latitude;
+    final lng = CacheService.getLastFetchLng() ?? _currentPosition?.longitude;
+    if (lat == null || lng == null || _isLoadingEmergency) return;
     // Load cache first for instant display
     await _loadEmergencyCache();
     setState(() => _isLoadingEmergency = true);
 
     try {
       // Fetch nearby hospitals via Google Places API proxy
-      final lat = _currentPosition!.latitude;
-      final lng = _currentPosition!.longitude;
       final response = await ApiClient.instance.get(
         '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
         queryParameters: {
@@ -241,21 +250,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                 child: Row(
                   children: [
-                    if (Navigator.of(context).canPop()) ...[
-                      GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          margin: const EdgeInsets.only(right: 12),
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: AppColors.surfaceVariant,
-                            border: Border.all(color: AppColors.border),
-                          ),
-                          child: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 16),
-                        ),
-                      ),
-                    ],
+
                     ShaderMask(
                       shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                       child: const Text(
@@ -298,10 +293,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                             _selectedShoppingCategory = null;
                           });
                           _fetchForTab(index);
-                          if (index == 3) {
+                          if (_tabs[index] == 'Budget') {
                             context.read<BudgetBloc>().add(FetchBudget());
                           }
-                          if (index == 4) _fetchEmergencyData();
+                          if (_tabs[index] == 'Emergency') _fetchEmergencyData();
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
@@ -336,7 +331,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               Expanded(
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
-                    final isLoading = _selectedTab < 3 && state.status == MapStatus.loading;
+                    final isLoading = _tabs[_selectedTab] != 'Budget' && _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
                     
                     // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
                     final masterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
@@ -416,18 +411,54 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
+                    // Filter Medical List
+                    _medicalList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      return cat.contains('medical') || cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor') ||
+                             name.contains('medical') || name.contains('clinic') || name.contains('pharmacy');
+                    }).toList();
+                    if (_selectedMedicalCategory != null) {
+                      _medicalList = _medicalList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedMedicalCategory == 'Pharmacy') {
+                          return cat.contains('pharmacy') || name.contains('pharmacy');
+                        } else if (_selectedMedicalCategory == 'Clinic') {
+                          return cat.contains('clinic') || name.contains('clinic');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
+                    // Filter Hospital List
+                    _hospitalList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      return cat.contains('hospital') || name.contains('hospital');
+                    }).toList();
+                    if (_selectedHospitalCategory != null) {
+                      _hospitalList = _hospitalList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedHospitalCategory == 'Public') {
+                          return name.contains('general') || name.contains('public') || name.contains('district');
+                        } else if (_selectedHospitalCategory == 'Private') {
+                          return name.contains('private') || name.contains('care') || name.contains('lanka');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
                     return Column(
                       children: [
-                        if (isLoading)
-                          LinearProgressIndicator(
-                            minHeight: 2,
-                            backgroundColor: Colors.transparent,
-                            valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-                          ),
+                        
                         Expanded(
                           child: SingleChildScrollView(
                             padding: const EdgeInsets.all(24),
-                            child: _buildTabContent(),
+                            child: _buildTabContent(isLoading),
                           ),
                         ),
                       ],
@@ -442,14 +473,16 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildTabContent() {
-    switch (_selectedTab) {
-      case 0: return _buildFoodTab();
-      case 1: return _buildExperiencesTab();
-      case 2: return _buildShoppingTab();
-      case 3: return _buildBudgetTab();
-      case 4: return _buildEmergencyTab();
-      default: return _buildFoodTab();
+  Widget _buildTabContent(bool isLoading) {
+    switch (_tabs[_selectedTab]) {
+      case 'Food': return _buildFoodTab(isLoading);
+      case 'Experiences': return _buildExperiencesTab(isLoading);
+      case 'Shopping': return _buildShoppingTab(isLoading);
+      case 'Medical': return _buildMedicalTab(isLoading);
+      case 'Hospital': return _buildHospitalTab(isLoading);
+      case 'Budget': return _buildBudgetTab();
+      case 'Emergency': return _buildEmergencyTab();
+      default: return _buildFoodTab(isLoading);
     }
   }
 
@@ -650,7 +683,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   // ═══════════════════════════════════════
   // FOOD TAB
   // ═══════════════════════════════════════
-  Widget _buildFoodTab() {
+  Widget _buildFoodTab(bool isLoading) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -696,7 +729,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         // Restaurant list
         const Text('Top Picks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (_foodList.isEmpty)
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_foodList.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
             child: Center(child: Text('No real food places found nearby.', style: TextStyle(color: AppColors.textTertiary))),
@@ -907,10 +942,40 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
+  Widget _buildShimmerItemCard() {
+    return GlassCard(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              color: Colors.grey[200],
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(width: double.infinity, height: 16, color: Colors.grey[200]),
+                const SizedBox(height: 8),
+                Container(width: 100, height: 12, color: Colors.grey[200]),
+                const SizedBox(height: 12),
+                Container(width: 60, height: 12, color: Colors.grey[200]),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate(onPlay: (controller) => controller.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
+  }
+
   Widget _buildRestaurantCard(AttractionEntity a, int index) {
-    final dist = _currentPosition != null
-        ? (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, a.latitude, a.longitude) / 1000).toStringAsFixed(1)
-        : ((a.distanceM ?? 0) / 1000).toStringAsFixed(1);
+    final dist = ((a.distanceM ?? 0) / 1000).toStringAsFixed(1);
     
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -928,15 +993,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         )),
       ),
       child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
       child: Row(
         children: [
           Container(
-            width: 70,
-            height: 70,
+            width: 50,
+            height: 50,
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               color: AppColors.primary.withOpacity(0.1),
               border: Border.all(color: AppColors.primary.withOpacity(0.2)),
             ),
@@ -944,7 +1009,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               child: Icon(
                 _getFoodIcon(a.categoryName ?? 'Food', a.name, index),
                 color: AppColors.primary,
-                size: 28,
+                size: 22,
               ),
             ),
           ),
@@ -993,13 +1058,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               ),
               const SizedBox(height: 8),
               Container(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                   gradient: AppColors.primaryGradient,
                   boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 10)],
                 ),
-                child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 18),
+                child: const Icon(Icons.navigation_rounded, color: Colors.white, size: 16),
               ),
             ],
           ),
@@ -1009,7 +1074,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildExperiencesTab() {
+  Widget _buildExperiencesTab(bool isLoading) {
+    if (isLoading) {
+      return Column(
+        children: List.generate(5, (index) => _buildShimmerItemCard()),
+      );
+    }
+
     final featuredExperiences = _experienceList.take(5).toList();
     final remainingExperiences = _experienceList.skip(5).toList();
 
@@ -1368,7 +1439,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   // ═══════════════════════════════════════
   // SHOPPING TAB
   // ═══════════════════════════════════════
-  Widget _buildShoppingTab() {
+  Widget _buildShoppingTab(bool isLoading) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1408,7 +1479,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 28),
         const Text('Markets & Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (_shoppingList.isEmpty)
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_shoppingList.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
             child: Center(child: Text('No real shops found nearby.', style: TextStyle(color: AppColors.textTertiary))),
@@ -1423,9 +1496,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Widget _buildShopItem(AttractionEntity shop, int index) {
-    final dist = _currentPosition != null
-        ? (Geolocator.distanceBetween(_currentPosition!.latitude, _currentPosition!.longitude, shop.latitude, shop.longitude) / 1000).toStringAsFixed(1)
-        : ((shop.distanceM ?? 0) / 1000).toStringAsFixed(1);
+    final dist = ((shop.distanceM ?? 0) / 1000).toStringAsFixed(1);
     
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -1470,6 +1541,226 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 children: [
                   Text(shop.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                   Text(shop.categoryName ?? 'Shopping', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                ],
+              ),
+            ),
+            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  // MEDICAL TAB
+  // ═══════════════════════════════════════
+  Widget _buildMedicalTab(bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Explore Medical Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _buildFoodCategory(
+              '💊',
+              'Pharmacy',
+              _selectedMedicalCategory == 'Pharmacy',
+              () => setState(() {
+                _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacy' ? null : 'Pharmacy';
+              }),
+            ),
+            const SizedBox(width: 10),
+            _buildFoodCategory(
+              '🩺',
+              'Clinic',
+              _selectedMedicalCategory == 'Clinic',
+              () => setState(() {
+                _selectedMedicalCategory = _selectedMedicalCategory == 'Clinic' ? null : 'Clinic';
+              }),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const Text('Pharmacies & Clinics', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_medicalList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No medical services found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._medicalList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildMedicalItem(a, e.key);
+          }),
+      ],
+    );
+  }
+
+  Widget _buildMedicalItem(AttractionEntity item, int index) {
+    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: item.id,
+          name: item.name,
+          category: item.categoryName ?? 'Medical',
+          rating: item.rating,
+          distance: '$dist km',
+          emoji: '🏥',
+          imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
+          latitude: item.latitude,
+          longitude: item.longitude,
+        )),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: AppColors.surfaceVariant.withOpacity(0.5),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.error.withOpacity(0.1),
+                border: Border.all(color: AppColors.error.withOpacity(0.2)),
+              ),
+              child: Center(
+                child: Icon(
+                  item.name.toLowerCase().contains('pharmacy') ? Icons.local_pharmacy_rounded : Icons.medical_services_rounded,
+                  color: AppColors.error,
+                  size: 24,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text(item.categoryName ?? 'Medical', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
+                ],
+              ),
+            ),
+            Text('$dist km', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ).animate().fade(delay: Duration(milliseconds: 80 * index)).slideX(begin: 0.05, end: 0),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  // HOSPITAL TAB
+  // ═══════════════════════════════════════
+  Widget _buildHospitalTab(bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Explore Hospitals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _buildFoodCategory(
+              '🏥',
+              'Public',
+              _selectedHospitalCategory == 'Public',
+              () => setState(() {
+                _selectedHospitalCategory = _selectedHospitalCategory == 'Public' ? null : 'Public';
+              }),
+            ),
+            const SizedBox(width: 10),
+            _buildFoodCategory(
+              '🚑',
+              'Private',
+              _selectedHospitalCategory == 'Private',
+              () => setState(() {
+                _selectedHospitalCategory = _selectedHospitalCategory == 'Private' ? null : 'Private';
+              }),
+            ),
+          ],
+        ),
+        const SizedBox(height: 28),
+        const Text('Hospitals & Care Centers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_hospitalList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No hospitals found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._hospitalList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildHospitalItem(a, e.key);
+          }),
+      ],
+    );
+  }
+
+  Widget _buildHospitalItem(AttractionEntity item, int index) {
+    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: item.id,
+          name: item.name,
+          category: item.categoryName ?? 'Hospital',
+          rating: item.rating,
+          distance: '$dist km',
+          emoji: '🏥',
+          imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
+          latitude: item.latitude,
+          longitude: item.longitude,
+        )),
+      ),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: AppColors.surfaceVariant.withOpacity(0.5),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: AppColors.error.withOpacity(0.1),
+                border: Border.all(color: AppColors.error.withOpacity(0.2)),
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.local_hospital_rounded,
+                  color: AppColors.error,
+                  size: 24,
+                ),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                  Text(item.categoryName ?? 'Hospital', style: TextStyle(fontSize: 12, color: AppColors.textTertiary)),
                 ],
               ),
             ),
@@ -1547,7 +1838,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       ],
                     ),
                   ),
-                Expanded(child: _buildBudgetUI(state.budget)),
+                _buildBudgetUI(state.budget),
               ],
             );
           } else if (state is BudgetClosed || state is NoBudgetFound) {

@@ -17,11 +17,17 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
   }
 
   Future<void> _onFetchBudget(FetchBudget event, Emitter<BudgetState> emit) async {
+    // If not forcing refresh and we already have it in state, keep using state
+    if (!event.forceRefresh && state is BudgetLoaded) {
+      return;
+    }
+
     // Show cached data immediately if available
     if (_repository is BudgetRepositoryImpl) {
       final cached = await (_repository as BudgetRepositoryImpl).getCachedBudget();
       if (cached != null) {
         emit(BudgetLoaded(cached, isFromCache: true));
+        if (!event.forceRefresh) return; // Maintain cache, avoid network call if not forced
       } else {
         emit(BudgetLoading());
       }

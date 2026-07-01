@@ -98,9 +98,21 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     });
   }
 
+  void switchToDiscover() {
+    setState(() {
+      _selectedIndex = 3; // Discover Tab
+    });
+  }
+
   void switchToPlans() {
     setState(() {
       _selectedIndex = 4; // Blueprints / Odysseys Tab
+    });
+  }
+
+  void switchToProfile() {
+    setState(() {
+      _selectedIndex = 5; // Profile Tab
     });
   }
 
@@ -164,7 +176,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
                   _buildNavItem(0, Icons.explore_rounded, 'Home'),
                   _buildNavItem(1, Icons.view_in_ar_rounded, 'AR'),
                   _buildNavItem(2, Icons.auto_awesome_rounded, 'NEVA'),
-                  _buildNavItem(3, Icons.restaurant_rounded, 'Food'),
+                  _buildNavItem(3, Icons.travel_explore_rounded, 'Discover'),
                   _buildNavItem(4, Icons.auto_mode_rounded, 'Plans'),
                   _buildNavItem(5, Icons.person_rounded, 'Me'),
                 ],

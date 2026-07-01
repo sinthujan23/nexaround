@@ -123,11 +123,24 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   ) async {
     // If we don't have all categories loaded yet, perform a complete batch fetch first.
     // Check status to prevent infinite loading loops if the API returns an empty list.
-    if (state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty) {
-      // Check proximity cache first (within 1km) to skip network requests entirely and reduce cost
-      final lastLat = CacheService.getLastFetchLat();
-      final lastLng = CacheService.getLastFetchLng();
-      if (lastLat != null && lastLng != null) {
+    final lastLat = CacheService.getLastFetchLat();
+    final lastLng = CacheService.getLastFetchLng();
+    bool needsFetch = state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty;
+
+    if (!needsFetch && lastLat != null && lastLng != null) {
+      final double distM = geo.Geolocator.distanceBetween(
+        event.latitude,
+        event.longitude,
+        lastLat,
+        lastLng,
+      );
+      if (distM > 1000) {
+        needsFetch = true;
+      }
+    }
+
+    if (needsFetch || event.forceRefresh) {
+      if (lastLat != null && lastLng != null && !event.forceRefresh) {
         final double distM = geo.Geolocator.distanceBetween(
           event.latitude,
           event.longitude,
@@ -148,18 +161,31 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         }
       }
 
-      // Load and emit local cache first for instant feedback (zero latency) if it is nearby
-      final cachedModels = _getFilteredCache(event.latitude, event.longitude);
-      if (cachedModels.isNotEmpty) {
-        emit(state.copyWith(
-          status: MapStatus.success,
-          attractions: cachedModels,
-          allAttractions: cachedModels,
-          selectedCategoryId: event.categoryId,
-        ));
+      if (!event.forceRefresh) {
+        // Load and emit local cache first for instant feedback (zero latency) if it is nearby
+        final cachedModels = _getFilteredCache(event.latitude, event.longitude);
+        if (cachedModels.isNotEmpty) {
+          emit(state.copyWith(
+            status: MapStatus.success,
+            attractions: cachedModels,
+            allAttractions: cachedModels,
+            selectedCategoryId: event.categoryId,
+          ));
+        } else {
+          // Show loading spinner only if there's no cache available
+          emit(state.copyWith(
+            status: MapStatus.loading,
+            attractions: const [],
+            allAttractions: const [],
+          ));
+        }
       } else {
-        // Show loading spinner only if there's no cache available
-        emit(state.copyWith(status: MapStatus.loading));
+        // Force refresh: show loading and clear previous data
+        emit(state.copyWith(
+          status: MapStatus.loading,
+          attractions: const [],
+          allAttractions: const [],
+        ));
       }
 
       final categoriesToFetch = [
@@ -356,28 +382,30 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             a.latitude,
             a.longitude,
           );
-          attractionsList.add(AttractionModel(
-            id: a.id,
-            name: a.name,
-            description: a.description,
-            history: a.history,
-            latitude: a.latitude,
-            longitude: a.longitude,
-            categoryId: a.categoryId,
-            categoryName: a.categoryName,
-            address: a.address,
-            openingHours: a.openingHours,
-            entryFee: a.entryFee,
-            currency: a.currency,
-            rating: a.rating,
-            reviewCount: a.reviewCount,
-            photoUrls: a.photoUrls,
-            tags: a.tags,
-            geofenceRadiusM: a.geofenceRadiusM,
-            distanceM: distM,
-            isActive: a.isActive,
-            createdAt: a.createdAt,
-          ));
+          if (distM <= 50000) {
+            attractionsList.add(AttractionModel(
+              id: a.id,
+              name: a.name,
+              description: a.description,
+              history: a.history,
+              latitude: a.latitude,
+              longitude: a.longitude,
+              categoryId: a.categoryId,
+              categoryName: a.categoryName,
+              address: a.address,
+              openingHours: a.openingHours,
+              entryFee: a.entryFee,
+              currency: a.currency,
+              rating: a.rating,
+              reviewCount: a.reviewCount,
+              photoUrls: a.photoUrls,
+              tags: a.tags,
+              geofenceRadiusM: a.geofenceRadiusM,
+              distanceM: distM,
+              isActive: a.isActive,
+              createdAt: a.createdAt,
+            ));
+          }
         }
 
         if (attractionsList.isEmpty) {
@@ -401,10 +429,17 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         await CacheService.mergeAndCacheAttractions(attractionJsons);
         await CacheService.saveLastFetchCoords(event.latitude, event.longitude);
 
+        // Load the fully merged cache so we don't lose categories that failed to fetch this time
+        final mergedModels = _getFilteredCache(event.latitude, event.longitude);
+
+        final filteredAttractions = (event.categoryName != null && event.categoryName != 'All')
+            ? mergedModels.where((a) => _matchesCategory(a, event.categoryName)).toList()
+            : mergedModels;
+
         emit(state.copyWith(
           status: MapStatus.success,
-          attractions: attractionsList,
-          allAttractions: attractionsList,
+          attractions: filteredAttractions,
+          allAttractions: mergedModels,
           selectedCategoryId: event.categoryId,
         ));
       } catch (e) {

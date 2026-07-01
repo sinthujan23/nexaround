@@ -38,10 +38,8 @@ class GooglePlacesService {
   }
 
   static const Map<String, String> categoryTypeMap = {
-    'Point of Interest': 'tourist_attraction',
-    'Nature': 'park',
+    'Attractions': 'tourist_attraction',
     'Food & Drink': 'restaurant',
-    'Hotels & Bars': 'lodging',
     'Shopping': 'shopping_mall',
     'Experiences': 'amusement_park',
     'Transport': 'transit_station',
@@ -334,98 +332,14 @@ class GooglePlacesService {
   }
 
   static String _resolveCategoryFromTypes(List<String> types) {
-    final t = types.toSet();
+    final t = types.map((s) => s.toLowerCase()).join(' ');
     
-    if (t.intersection({
-      'lodging',
-      'hotel',
-      'bar',
-      'night_club',
-      'pub',
-      'discotheque',
-    }).isNotEmpty) {
-      return 'Hotels & Bars';
-    }
+    if (t.contains('hospital')) return 'Hospital';
+    if (t.contains('clinic') || t.contains('pharmacy') || t.contains('doctor') || t.contains('medical')) return 'Medical';
+    if (t.contains('mall') || t.contains('market') || t.contains('shop')) return 'Shopping';
+    if (t.contains('restaurant') || t.contains('cafe') || t.contains('bakery') || t.contains('hotel') || t.contains('bar') || t.contains('lodging') || t.contains('food')) return 'Food & Drink';
     
-    if (t.intersection({
-      'restaurant',
-      'cafe',
-      'bakery',
-      'meal_takeaway',
-      'ice_cream_shop',
-      'coffee_shop',
-      'food',
-    }).isNotEmpty) {
-      return 'Food & Drink';
-    }
-    
-    if (t.intersection({
-      'beach',
-      'national_park',
-      'hiking_area',
-      'nature_reserve',
-      'scenic_point',
-      'waterfall',
-      'lake',
-      'river',
-      'botanical_garden',
-      'park',
-      'campground',
-      'natural_feature',
-    }).isNotEmpty) {
-      return 'Nature';
-    }
-    
-    if (t.intersection({
-      'tourist_attraction',
-      'museum',
-      'zoo',
-      'aquarium',
-      'art_gallery',
-      'amusement_park',
-      'historical_landmark',
-      'place_of_worship',
-      'church',
-      'hindu_temple',
-      'mosque',
-      'synagogue',
-      'buddhist_temple',
-      'cultural_center',
-      'marina',
-      'visitor_center',
-      'observation_deck',
-      'monument',
-      'castle',
-    }).isNotEmpty) {
-      return 'Point of Interest';
-    }
-    
-    if (t.intersection({
-      'hospital',
-      'pharmacy',
-      'medical_clinic',
-      'dentist',
-    }).isNotEmpty) {
-      return 'Medical';
-    }
-    
-    if (t.intersection({
-      'shopping_mall',
-      'store',
-      'department_store',
-      'clothing_store',
-      'supermarket',
-      'grocery_store',
-      'convenience_store',
-      'gift_shop',
-      'book_store',
-      'electronics_store',
-      'jewelry_store',
-      'shoe_store',
-    }).isNotEmpty) {
-      return 'Shopping';
-    }
-    return 'Point of Interest';
+    return 'Attractions';
   }
 
   /// Get driving directions between two coordinates.
@@ -788,16 +702,10 @@ class GooglePlacesService {
       if (categoryName == 'Attractions') lastAttractionsError = '';
       if (categoryName == 'Medical') lastMedicalError = '';
       if (categoryName == 'Hospital') lastHospitalError = '';
-      if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = '';
+      if (categoryName == 'Food & Drink') lastFoodError = '';
       if (categoryName == 'Shopping') lastShoppingError = '';
 
-      // 1. Check local Cache first
-      final cachedList = CacheService.getCachedHybridPlaces(locationName, categoryName);
       final threshold = 15;
-      if (cachedList != null && cachedList.length >= threshold) {
-        print('⚡ Loaded hybrid places from cache for $locationName - $categoryName');
-        return cachedList.map((e) => AttractionModel.fromJson(e)).toList();
-      }
 
       // Check all cached hybrid places for the given category across all locations within the appropriate radius
       final allCached = CacheService.getAllCachedHybridPlacesForCategory(categoryName);
@@ -805,7 +713,7 @@ class GooglePlacesService {
       final double searchRadiusM;
       if (categoryName == 'Attractions' || categoryName == 'Hospital') {
         searchRadiusM = 50000.0;
-      } else if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
+      } else if (categoryName == 'Food & Drink') {
         searchRadiusM = 5000.0;
       } else {
         searchRadiusM = 15000.0;
@@ -911,7 +819,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
   }
 ]
 ''';
-      } else if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
+      } else if (categoryName == 'Food & Drink') {
         prompt = '''
 Analyse and provide a list for the following categories upto 15 most important places within a radius of 5 kms from ($latitude, $longitude) near $locationName with distance and direction. 
 
@@ -960,7 +868,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
-        if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
+        if (categoryName == 'Food & Drink') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
         throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
       }
@@ -1004,14 +912,17 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 
       print('🔍 Resolving ${futures.length} places in parallel using findplacefromtext...');
       final results = await Future.wait(futures);
-      final List<AttractionEntity> resolvedPlaces = results.whereType<AttractionEntity>().toList();
+      final List<AttractionEntity> resolvedPlaces = results
+          .whereType<AttractionEntity>()
+          .where((p) => (p as AttractionModel).distanceM! <= searchRadiusM)
+          .toList();
 
       if (resolvedPlaces.isEmpty) {
         final errMsg = 'No places could be geocoded by Google Places API.';
         if (categoryName == 'Attractions') lastAttractionsError = errMsg;
         if (categoryName == 'Medical') lastMedicalError = errMsg;
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
-        if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
+        if (categoryName == 'Food & Drink') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
       }
 
@@ -1029,7 +940,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       if (categoryName == 'Attractions') lastAttractionsError = errMsg;
       if (categoryName == 'Medical') lastMedicalError = errMsg;
       if (categoryName == 'Hospital') lastHospitalError = errMsg;
-      if (categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') lastFoodError = errMsg;
+      if (categoryName == 'Food & Drink') lastFoodError = errMsg;
       if (categoryName == 'Shopping') lastShoppingError = errMsg;
       return [];
     }

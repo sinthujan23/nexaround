@@ -19,6 +19,10 @@ class CacheService {
     notificationsNotifier.value++;
   }
 
+  // Global State for Background Discovery Engine
+  static final ValueNotifier<String?> discoveryResultNotifier = ValueNotifier(null);
+  static final ValueNotifier<bool> isDiscoveringNotifier = ValueNotifier(false);
+
   // Onboarding
   static bool isFirstTime() {
     return _prefs.getBool('first_time') ?? true;

@@ -7,7 +7,13 @@ abstract class BudgetEvent extends Equatable {
   List<Object?> get props => [];
 }
 
-class FetchBudget extends BudgetEvent {}
+class FetchBudget extends BudgetEvent {
+  final bool forceRefresh;
+  const FetchBudget({this.forceRefresh = false});
+
+  @override
+  List<Object?> get props => [forceRefresh];
+}
 
 class FetchBudgetHistory extends BudgetEvent {}
 

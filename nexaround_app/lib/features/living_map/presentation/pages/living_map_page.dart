@@ -88,6 +88,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   List<AttractionEntity> _geminiTrendingPlaces = [];
   bool _loadingGeminiTrending = false;
   List<TravelStory> _travelStories = [];
+  bool _isFetchingRouteDistances = false;
+  Set<String> _routeDistanceFetchedIds = {};
 
   String? _geminiTrendingMarkdown;
   final Map<String, Map<String, String>> _parsedAiDetails = {};
@@ -682,7 +684,14 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   Widget _buildAroundYouRefreshButton() {
     return GestureDetector(
-      onTap: _forceRefreshAroundYou,
+      onTap: () {
+        final homeState = context.findAncestorStateOfType<HomePageState>();
+        if (homeState != null) {
+          homeState.switchToDiscover();
+        } else {
+          _showDiscoveryEngineSheet(context);
+        }
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
@@ -693,16 +702,16 @@ class _LivingMapPageState extends State<LivingMapPage>
         child: const Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.refresh_rounded, color: AppColors.brandGreen, size: 16),
-            SizedBox(width: 4),
             Text(
-              'Refresh',
+              'More',
               style: TextStyle(
                 color: AppColors.brandGreen,
-                fontSize: 12,
                 fontWeight: FontWeight.w600,
+                fontSize: 13,
               ),
             ),
+            SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, color: AppColors.brandGreen, size: 16),
           ],
         ),
       ),
@@ -771,9 +780,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     final categories = [
       null,
       'Food & Drink',
-      'Hotels & Bars',
-      'Point of Interest',
-      'Nature',
+      'Attractions',
       'Shopping',
       'Experiences',
       'Medical',
@@ -862,6 +869,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget build(BuildContext context) {
     return BlocBuilder<MapBloc, MapState>(
       builder: (context, state) {
+        final masterAttractions = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
         return Scaffold(
           backgroundColor: AppColors.background,
           body: Stack(
@@ -927,7 +935,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                 physics: const BouncingScrollPhysics(),
                 slivers: [
                   SliverAppBar(
-                    floating: true,
+                    floating: false,
+                    pinned: true,
                     automaticallyImplyLeading: false,
                     backgroundColor: Colors.transparent,
                     elevation: 0,
@@ -938,7 +947,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       child: BackdropFilter(
                         filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
                         child: Container(
-                          color: AppColors.background.withOpacity(0.5),
+                          color: AppColors.background.withOpacity(0.85),
                         ),
                       ),
                     ),
@@ -946,18 +955,62 @@ class _LivingMapPageState extends State<LivingMapPage>
                     actions: [
                       Padding(
                         padding: const EdgeInsets.only(right: 24),
-                        child: ValueListenableBuilder<int>(
-                          valueListenable: CacheService.notificationsNotifier,
-                          builder: (_, __, ___) => _buildGlassCircle(
-                            Icons.notifications_none_rounded,
-                            badge: CacheService.unreadNotifications(),
-                            onTap: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const NotificationsPage(),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Emergency Icon
+                            _buildGlassCircle(
+                              Icons.emergency_rounded,
+                              bgColor: AppColors.error.withOpacity(0.15),
+                              iconColor: AppColors.error,
+                              onTap: () {
+                                final homeState = context.findAncestorStateOfType<HomePageState>();
+                                if (homeState != null) {
+                                  homeState.switchToDiscover();
+                                }
+                              },
+                            ),
+                            const SizedBox(width: 8),
+                            // Profile Icon
+                            _buildGlassCircle(
+                              Icons.person_outline_rounded,
+                              onTap: () {
+                                final homeState = context.findAncestorStateOfType<HomePageState>();
+                                if (homeState != null) {
+                                  homeState.switchToProfile();
+                                }
+                              },
+                              customChild: BlocBuilder<AuthBloc, AuthState>(
+                                builder: (context, authState) {
+                                  if (authState is AuthAuthenticated && authState.user.avatarUrl != null && authState.user.avatarUrl!.isNotEmpty) {
+                                    return ClipOval(
+                                      child: CachedNetworkImage(
+                                        imageUrl: authState.user.avatarUrl!,
+                                        fit: BoxFit.cover,
+                                        errorWidget: (_, __, ___) => const Icon(Icons.person_outline_rounded, color: AppColors.textPrimary, size: 20),
+                                      ),
+                                    );
+                                  }
+                                  return const Icon(Icons.person_outline_rounded, color: AppColors.textPrimary, size: 20);
+                                },
                               ),
                             ),
-                          ),
+                            const SizedBox(width: 8),
+                            // Bell Icon
+                            ValueListenableBuilder<int>(
+                              valueListenable: CacheService.notificationsNotifier,
+                              builder: (_, __, ___) => _buildGlassCircle(
+                                Icons.notifications_none_rounded,
+                                badge: CacheService.unreadNotifications(),
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const NotificationsPage(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -980,11 +1033,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                   ),
 
-                  // Computed lists
                   ...() {
                     if (state.status == MapStatus.loading ||
                         state.status == MapStatus.initial ||
-                        state.attractions.isEmpty) {
+                        masterAttractions.isEmpty) {
                       return [
                         // Travel Stories (Where Was I?)
                         SliverToBoxAdapter(
@@ -1006,9 +1058,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              _currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
-                                  ? 'Around You' 
-                                  : 'Around $_currentLocationName',
+                              !_isLocationOverridden
+                                  ? 'Around You'
+                                  : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                      ? 'Around You' 
+                                      : 'Around $_currentLocationName'),
                               null,
                               imageIconPath: 'assets/images/near.png',
                               customAction: _buildAroundYouRefreshButton(),
@@ -1019,6 +1073,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: _buildShimmerHiddenGemCards(),
                         ),
 
+                        /*
                         // Curated For You Shimmer
                         SliverToBoxAdapter(
                           child: Padding(
@@ -1032,6 +1087,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(child: _buildShimmerTrendingCards()),
+                        */
                       ];
                     }
 
@@ -1095,7 +1151,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                       return true;
                     }
 
-                    final publicAttractions = state.attractions
+                    final publicAttractions = masterAttractions
                         .where(isPublicSpot)
                         .toList();
                     final trendingPlaces = _geminiTrendingPlaces.isNotEmpty
@@ -1130,9 +1186,11 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: Padding(
                             padding: const EdgeInsets.fromLTRB(24, 28, 24, 0),
                             child: _buildSectionHeader(
-                              _currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
-                                  ? 'Around You' 
-                                  : 'Around $_currentLocationName',
+                              !_isLocationOverridden
+                                  ? 'Around You'
+                                  : (_currentLocationName == 'Locating...' || _currentLocationName.isEmpty || _currentLocationName == 'Unknown' 
+                                      ? 'Around You' 
+                                      : 'Around $_currentLocationName'),
                               null,
                               imageIconPath: 'assets/images/near.png',
                               customAction: _buildAroundYouRefreshButton(),
@@ -1144,6 +1202,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                       ],
 
+                      /*
                       // Curated For You
                       SliverToBoxAdapter(
                         child: Padding(
@@ -1179,6 +1238,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           ),
                         ),
+                      */
                     ];
                   }(),
 
@@ -1292,8 +1352,8 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
 
               // Proximity alert bottom sheet
-              if (_showProximityAlert && state.attractions.isNotEmpty)
-                _buildProximityAlert(state.attractions.first),
+              if (_showProximityAlert && masterAttractions.isNotEmpty)
+                _buildProximityAlert(masterAttractions.first),
             ],
           ),
         );
@@ -1398,7 +1458,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       backgroundColor: Colors.transparent,
       builder: (context) => const LocationSearchModal(),
     ).then((result) async {
-      if (result != null && result is Map<String, dynamic>) {
+      if (result != null && result is Map) {
         final double lat = result['latitude'];
         final double lng = result['longitude'];
         final String name = result['name'];
@@ -1432,6 +1492,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               latitude: lat,
               longitude: lng,
               radius: 5000,
+              forceRefresh: true,
             ),
           );
         }
@@ -1492,6 +1553,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   void _showDiscoveryEngineSheet(BuildContext parentContext) {
+    final readyResult = CacheService.discoveryResultNotifier.value;
+    if (readyResult != null) {
+      CacheService.discoveryResultNotifier.value = null; // Clear the badge
+    }
+
     showModalBottomSheet(
       context: parentContext,
       isScrollControlled: true,
@@ -1501,6 +1567,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         district: _currentDistrict,
         latitude: _userLatitude,
         longitude: _userLongitude,
+        initialResult: readyResult,
         onPlaceSelected: (placeName) async {
           Navigator.pop(sheetContext);
           
@@ -1554,6 +1621,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     IconData icon, {
     VoidCallback? onTap,
     int badge = 0,
+    Widget? customChild,
+    Color? bgColor,
+    Color? iconColor,
   }) {
     final circle = ClipRRect(
       borderRadius: BorderRadius.circular(24),
@@ -1564,10 +1634,10 @@ class _LivingMapPageState extends State<LivingMapPage>
           height: 46,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: AppColors.glassWhite,
-            border: Border.all(color: AppColors.glassBorder),
+            color: bgColor ?? AppColors.glassWhite,
+            border: Border.all(color: bgColor != null ? bgColor.withOpacity(0.4) : AppColors.glassBorder),
           ),
-          child: Icon(icon, color: AppColors.textPrimary, size: 20),
+          child: customChild ?? Icon(icon, color: iconColor ?? (bgColor != null ? Colors.white : AppColors.textPrimary), size: 20),
         ),
       ),
     );
@@ -2416,12 +2486,10 @@ class _LivingMapPageState extends State<LivingMapPage>
         ? categories
         : const [
             CategoryEntity(id: '1', name: 'Food & Drink', sortOrder: 1),
-            CategoryEntity(id: '2', name: 'Hotels & Bars', sortOrder: 2),
-            CategoryEntity(id: '3', name: 'Point of Interest', sortOrder: 3),
-            CategoryEntity(id: '4', name: 'Nature', sortOrder: 4),
-            CategoryEntity(id: '5', name: 'Shopping', sortOrder: 5),
-            CategoryEntity(id: '6', name: 'Experiences', sortOrder: 6),
-            CategoryEntity(id: '7', name: 'Medical', sortOrder: 7),
+            CategoryEntity(id: '2', name: 'Attractions', sortOrder: 2),
+            CategoryEntity(id: '3', name: 'Shopping', sortOrder: 3),
+            CategoryEntity(id: '4', name: 'Experiences', sortOrder: 4),
+            CategoryEntity(id: '5', name: 'Medical', sortOrder: 5),
           ];
 
     final displayCategories = [
@@ -3365,7 +3433,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
 
       if (resolvedPlace == null) {
-        for (final p in state.attractions) {
+        for (final p in state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions) {
           final lowerPName = p.name.toLowerCase().trim();
           if (lowerPName == lowerExpName ||
               lowerPName.contains(lowerExpName) ||
@@ -4593,9 +4661,23 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// Batch-fetch actual road distances for a list of places using Google Directions API.
   Future<void> _batchFetchRouteDistances(List<AttractionEntity> places) async {
     if (_userLatitude == null || _userLongitude == null) return;
-    for (final place in places) {
-      if (place.latitude == 0 && place.longitude == 0) continue;
-      if (_routeDistanceCache.containsKey(place.id)) continue;
+    if (_isFetchingRouteDistances) return;
+    
+    // Filter out places we've already fetched or are cached
+    final toFetch = places.where((p) {
+      if (p.latitude == 0 && p.longitude == 0) return false;
+      if (_routeDistanceCache.containsKey(p.id)) return false;
+      if (_routeDistanceFetchedIds.contains(p.id)) return false;
+      return true;
+    }).toList();
+    
+    if (toFetch.isEmpty) return;
+    
+    _isFetchingRouteDistances = true;
+    final Map<String, double> newDistances = {};
+    
+    for (final place in toFetch) {
+      _routeDistanceFetchedIds.add(place.id);
       try {
         final result = await GooglePlacesService.getDirections(
           originLat: _userLatitude!,
@@ -4604,18 +4686,24 @@ class _LivingMapPageState extends State<LivingMapPage>
           destLng: place.longitude,
           profile: 'driving',
         );
-        if (result != null && mounted) {
+        if (result != null) {
           final distM = result['distance_meters'] as double? ?? 0.0;
           if (distM > 0) {
-            setState(() {
-              _routeDistanceCache[place.id] = distM;
-            });
+            newDistances[place.id] = distM;
           }
         }
       } catch (e) {
         debugPrint('Route distance fetch failed for ${place.name}: $e');
-        // Silently fall back to Haversine — UI already shows ~X.X km
       }
+    }
+    
+    _isFetchingRouteDistances = false;
+    
+    // Single batched setState for all fetched distances
+    if (newDistances.isNotEmpty && mounted) {
+      setState(() {
+        _routeDistanceCache.addAll(newDistances);
+      });
     }
   }
 
@@ -5666,9 +5754,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     final Map<String, List<AttractionEntity>> grouped = {
       'Food & Drink': [],
-      'Hotels & Bars': [],
-      'Point of Interest': [],
-      'Nature': [],
+      'Attractions': [],
       'Shopping': [],
       'Medical': [],
       'Hospital': [],
@@ -5686,8 +5772,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Food & Drink': {
         'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery',
         'food', 'ice_cream_shop', 'coffee_shop', 'juice_bar',
-      },
-      'Hotels & Bars': {
         'lodging', 'hotel', 'bar', 'night_club', 'pub', 'discotheque',
         'motel', 'resort', 'guest_house', 'bed_and_breakfast', 'hostel',
       },
@@ -5697,15 +5781,13 @@ class _LivingMapPageState extends State<LivingMapPage>
         'book_store', 'jewelry_store', 'shoe_store', 'furniture_store',
         'pet_store', 'hardware_store', 'gift_shop', 'market',
       },
-      'Point of Interest': {
+      'Attractions': {
         'tourist_attraction', 'museum', 'zoo', 'aquarium', 'art_gallery',
         'amusement_park', 'historical_landmark', 'place_of_worship',
         'church', 'hindu_temple', 'mosque', 'synagogue', 'cultural_center',
         'marina', 'visitor_center', 'observation_deck', 'monument', 'castle',
         'stadium', 'casino', 'movie_theater', 'bowling_alley', 'performing_arts_theater',
         'fort', 'palace',
-      },
-      'Nature': {
         'beach', 'national_park', 'hiking_area', 'nature_reserve', 'scenic_point',
         'waterfall', 'lake', 'river', 'botanical_garden', 'park', 'campground',
         'natural_feature', 'viewpoint', 'garden',
@@ -5728,31 +5810,25 @@ class _LivingMapPageState extends State<LivingMapPage>
       final distKm = _getAccurateDistanceM(place) / 1000.0;
 
       // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
-      // Priority: Hospital > Medical > Hotels & Bars > Food & Drink > Shopping > Point of Interest > Nature
+      // Priority: Hospital > Medical > Food & Drink > Shopping > Attractions
       final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
       final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
-      final isHotelsBars = tags.any((t) => allowedTypes['Hotels & Bars']!.contains(t));
       final isFoodDrink = tags.any((t) => allowedTypes['Food & Drink']!.contains(t));
       final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isPOI = tags.any((t) => allowedTypes['Point of Interest']!.contains(t));
-      final isNature = tags.any((t) => allowedTypes['Nature']!.contains(t));
+      final isAttractions = tags.any((t) => allowedTypes['Attractions']!.contains(t));
 
       String? bestCategory;
       if (isHospital) {
         bestCategory = 'Hospital';
       } else if (isMedical) {
         bestCategory = 'Medical';
-      } else if (isHotelsBars) {
-        bestCategory = 'Hotels & Bars';
       } else if (isFoodDrink) {
         final primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
         if (!primaryShop) bestCategory = 'Food & Drink';
       } else if (isShopping) {
         bestCategory = 'Shopping';
-      } else if (isPOI) {
-        bestCategory = 'Point of Interest';
-      } else if (isNature) {
-        bestCategory = 'Nature';
+      } else if (isAttractions) {
+        bestCategory = 'Attractions';
       }
 
       if (bestCategory == null) continue;
@@ -5764,9 +5840,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         ) / 1000.0;
       }
 
-      final maxDist = (bestCategory == 'Point of Interest' || bestCategory == 'Nature' || bestCategory == 'Medical' || bestCategory == 'Hospital')
+      final maxDist = (bestCategory == 'Attractions' || bestCategory == 'Medical' || bestCategory == 'Hospital')
           ? 50.0
-          : ((bestCategory == 'Food & Drink' || bestCategory == 'Hotels & Bars') ? 5.0 : 15.0);
+          : (bestCategory == 'Food & Drink' ? 5.0 : 15.0);
       if (filterDistKm > maxDist) continue;
 
       if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
@@ -5777,7 +5853,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     for (final cat in grouped.keys) {
       if (cat == 'Shopping') continue;
       
-      final isNearThreshold = (cat == 'Food & Drink' || cat == 'Hotels & Bars') ? 1000 : 25000;
+      final isNearThreshold = cat == 'Food & Drink' ? 1000 : 25000;
       
       final categoryList = grouped[cat] ?? [];
       var farPlaces = categoryList.where((p) => (p.distanceM ?? 0) >= isNearThreshold).toList();
@@ -5790,7 +5866,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             final matchesCat = tags.any((t) => allowedTypes[cat]!.contains(t));
             
             bool primaryShop = false;
-            if (cat == 'Food & Drink' || cat == 'Hotels & Bars') {
+            if (cat == 'Food & Drink') {
               primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
             }
             if (matchesCat && !primaryShop) {
@@ -5829,8 +5905,11 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
-    if (allGroupedPlaces.isNotEmpty) {
-      _batchFetchRouteDistances(allGroupedPlaces);
+    if (allGroupedPlaces.isNotEmpty && !_isFetchingRouteDistances) {
+      // Schedule after build to avoid triggering rebuilds during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _batchFetchRouteDistances(allGroupedPlaces);
+      });
     }
 
     return SizedBox(
@@ -5841,11 +5920,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         children: [
           _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
-          _buildCategoryPanel('Hotels & Bars', grouped['Hotels & Bars']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Point of Interest', grouped['Point of Interest']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Nature', grouped['Nature']!, status),
+          _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
@@ -5865,17 +5940,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         themeColor = Colors.orange;
         lightTint = const Color(0xFFFFF3E0);
         break;
-      case 'Hotels & Bars':
-        themeColor = Colors.deepPurple;
-        lightTint = const Color(0xFFEDE7F6);
-        break;
-      case 'Point of Interest':
+      case 'Attractions':
         themeColor = Colors.teal;
         lightTint = const Color(0xFFE0F2F1);
-        break;
-      case 'Nature':
-        themeColor = Colors.green;
-        lightTint = const Color(0xFFE8F5E9);
         break;
       case 'Shopping':
         themeColor = Colors.blue;
@@ -5897,116 +5964,17 @@ class _LivingMapPageState extends State<LivingMapPage>
     if (status == MapStatus.loading) {
       return Align(
         alignment: Alignment.topCenter,
-        child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
-          child: Container(
-            width: 320,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withOpacity(0.82),
-                  Colors.white.withOpacity(0.48),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: themeColor.withOpacity(0.24),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(child: CircularProgressIndicator(color: themeColor)),
-          ),
-        ),
-        ),
-      );
-    }
-    
-    if (places.isEmpty) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
-          child: Container(
-            width: 320,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withOpacity(0.82),
-                  Colors.white.withOpacity(0.48),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: themeColor.withOpacity(0.24),
-                width: 1.2,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                'No $categoryName nearby',
-                style: const TextStyle(
-                  color: Colors.black87,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-          ),
-        ),
-      );
-    }
-
-    final String maxRange;
-    if (categoryName == 'Attractions' || categoryName == 'Point of Interest' || categoryName == 'Nature' || categoryName == 'Hospital') {
-      maxRange = '0-50 kms';
-    } else if (categoryName == 'Food' || categoryName == 'Food & Drink' || categoryName == 'Hotels & Bars') {
-      maxRange = '0-5 kms';
-    } else {
-      maxRange = '0-15 kms';
-    }
-
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12.0, sigmaY: 12.0),
         child: Container(
           width: 320,
           decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.92),
+                Colors.white.withOpacity(0.70),
+              ],
+            ),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
               color: themeColor.withOpacity(0.24),
@@ -6024,14 +5992,97 @@ class _LivingMapPageState extends State<LivingMapPage>
                 offset: const Offset(0, 2),
               ),
             ],
+          ),
+          child: Center(child: CircularProgressIndicator(color: themeColor)),
+          ),
+      );
+    }
+    
+    if (places.isEmpty) {
+      return Align(
+        alignment: Alignment.topCenter,
+        child: Container(
+          width: 320,
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                lightTint.withOpacity(0.85),
-                Colors.white.withOpacity(0.60),
+                Colors.white.withOpacity(0.92),
+                Colors.white.withOpacity(0.70),
               ],
             ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: themeColor.withOpacity(0.24),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 20,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.02),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Center(
+            child: Text(
+              'No $categoryName nearby',
+              style: const TextStyle(
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final String maxRange;
+    if (categoryName == 'Attractions' || categoryName == 'Hospital') {
+      maxRange = '0-50 kms';
+    } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
+      maxRange = '0-5 kms';
+    } else {
+      maxRange = '0-15 kms';
+    }
+
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Container(
+        width: 320,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: themeColor.withOpacity(0.24),
+            width: 1.2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              lightTint.withOpacity(0.92),
+              Colors.white.withOpacity(0.80),
+            ],
+          ),
           ),
           child: Stack(
             clipBehavior: Clip.none,
@@ -6193,9 +6244,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             ],
           ),
         ),
-      ),
-      ),
-    );
+      );
   }
 
   Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {

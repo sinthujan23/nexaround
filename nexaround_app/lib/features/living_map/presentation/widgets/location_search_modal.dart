@@ -95,28 +95,13 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     });
   }
 
-  Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {
-    setState(() => _isLoading = true);
-    
-    final lat = suggestion['latitude'] as double;
-    final lng = suggestion['longitude'] as double;
-    
-    try {
-      // Reverse geocode to get the strict district for Gemini trending to maintain consistency
-      final reverse = await GooglePlacesService.reverseGeocodeDetailed(lat, lng);
-      
-      if (mounted) {
-        Navigator.pop(context, {
-          'latitude': lat,
-          'longitude': lng,
-          'name': suggestion['name'], // Display name from suggestion
-          'district': reverse['district'] == 'Nearby' ? suggestion['district'] : reverse['district'],
-        });
-      }
-    } catch (e) {
-      debugPrint('Error fetching location details: $e');
-      if (mounted) setState(() => _isLoading = false);
-    }
+  void _onSuggestionTapped(Map<String, dynamic> suggestion) {
+    Navigator.pop(context, {
+      'latitude': suggestion['latitude'] as double,
+      'longitude': suggestion['longitude'] as double,
+      'name': suggestion['name'], // Display name from suggestion
+      'district': suggestion['district'] ?? 'Nearby',
+    });
   }
 
   @override

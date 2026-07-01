@@ -40,12 +40,11 @@ async def proxy_gemini_generate(
     # is overloaded changes minute to minute. Try a chain so a 503 on one model
     # falls through to another that's currently healthy, keeping Neva responsive.
     models = [
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-flash-latest",
-        "gemini-2.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-pro",
     ]
-    await settings.log_api_request("gemini", "/v1beta/models/gemini-flash:generateContent", current_user.id)
+    await settings.log_api_request("gemini", "/v1beta/models/gemini-1.5-flash:generateContent", current_user.id)
 
     async with httpx.AsyncClient() as client:
         try:
@@ -56,7 +55,7 @@ async def proxy_gemini_generate(
                     url,
                     json=payload,
                     headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-                    timeout=60.0
+                    timeout=120.0
                 )
                 if resp.status_code != 200 and i < len(models) - 1:
                     print(f"⚠️ Model {model} returned status {resp.status_code}. Retrying next model...")
