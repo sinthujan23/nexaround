@@ -462,24 +462,35 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                       final name = a.name.toLowerCase();
                       return cat.contains('hospital') || name.contains('hospital');
                     }).toList();
-                    if (_selectedHospitalCategory != null) {
-                      _hospitalList = _hospitalList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        if (_selectedHospitalCategory == 'Public') {
-                          return name.contains('general') || name.contains('public') || name.contains('district');
-                        } else if (_selectedHospitalCategory == 'Private') {
-                          return name.contains('private') || name.contains('care') || name.contains('lanka');
-                        }
-                        return true;
-                      }).toList();
-                    }
                     _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Nature List
                     _natureList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
                       final name = a.name.toLowerCase();
+
+                      // Exclude items with no reviews
+                      if (a.reviewCount <= 0) {
+                        return false;
+                      }
+
+                      // Exclude non-nature keywords (homestays, apartments, bedrooms, villas, stays, etc.)
+                      if (name.contains('homestay') ||
+                          name.contains('bedroom') ||
+                          name.contains('apartment') ||
+                          name.contains('villa') ||
+                          name.contains('room') ||
+                          name.contains('lodge') ||
+                          name.contains('stay') ||
+                          name.contains('guest house') ||
+                          name.contains('bed & breakfast') ||
+                          name.contains('bed and breakfast') ||
+                          name.contains('resort') ||
+                          name.contains('hotel') ||
+                          name.contains('inn')) {
+                        return false;
+                      }
+
                       return cat.contains('nature') || cat.contains('park') || cat.contains('beach') || 
                              cat.contains('hiking') || cat.contains('waterfall') || cat.contains('lake') || 
                              cat.contains('river') || cat.contains('garden') || name.contains('beach') ||
@@ -742,16 +753,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Radar
-        _buildFoodRadar(),
-        const SizedBox(height: 28),
-
         // Categories
-        const Text('Categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Explore Food & Dining', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildFoodCategory(
+            _buildExperienceCategoryItem(
               '🍜',
               'Street Food',
               _selectedFoodCategory == 'Street Food',
@@ -759,8 +767,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 _selectedFoodCategory = _selectedFoodCategory == 'Street Food' ? null : 'Street Food';
               }),
             ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
+            const SizedBox(width: 16),
+            _buildExperienceCategoryItem(
               '🍽',
               'Fine Dining',
               _selectedFoodCategory == 'Fine Dining',
@@ -768,8 +776,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 _selectedFoodCategory = _selectedFoodCategory == 'Fine Dining' ? null : 'Fine Dining';
               }),
             ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
+            const SizedBox(width: 16),
+            _buildExperienceCategoryItem(
               '☕',
               'Cafés',
               _selectedFoodCategory == 'Cafés',
@@ -1635,8 +1643,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const Text('Explore Medical Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildFoodCategory(
+            _buildExperienceCategoryItem(
               '💊',
               'Pharmacy',
               _selectedMedicalCategory == 'Pharmacy',
@@ -1644,8 +1653,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacy' ? null : 'Pharmacy';
               }),
             ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
+            const SizedBox(width: 24),
+            _buildExperienceCategoryItem(
               '🩺',
               'Clinic',
               _selectedMedicalCategory == 'Clinic',
@@ -1743,30 +1752,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Explore Hospitals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            _buildFoodCategory(
-              '🏥',
-              'Public',
-              _selectedHospitalCategory == 'Public',
-              () => setState(() {
-                _selectedHospitalCategory = _selectedHospitalCategory == 'Public' ? null : 'Public';
-              }),
-            ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
-              '🚑',
-              'Private',
-              _selectedHospitalCategory == 'Private',
-              () => setState(() {
-                _selectedHospitalCategory = _selectedHospitalCategory == 'Private' ? null : 'Private';
-              }),
-            ),
-          ],
-        ),
-        const SizedBox(height: 28),
         const Text('Hospitals & Care Centers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
