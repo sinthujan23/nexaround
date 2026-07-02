@@ -53,6 +53,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   List<AttractionEntity> _shoppingList = [];
   List<AttractionEntity> _medicalList = [];
   List<AttractionEntity> _hospitalList = [];
+  List<AttractionEntity> _natureList = [];
 
   // Emergency tab state
   List<Map<String, dynamic>> _nearbyHospitals = [];
@@ -65,8 +66,9 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   String? _selectedShoppingCategory;
   String? _selectedMedicalCategory;
   String? _selectedHospitalCategory;
+  String? _selectedNatureCategory;
 
-  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', /* 'Budget', */ 'Emergency'];
+  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', 'Nature', 'Emergency'];
 
   @override
   void initState() {
@@ -115,6 +117,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     if (_tabs[index] == 'Shopping') category = 'Shopping';
     if (_tabs[index] == 'Medical') category = 'Medical';
     if (_tabs[index] == 'Hospital') category = 'Hospital';
+    if (_tabs[index] == 'Nature') category = 'Nature';
 
     if (category != null) {
       context.read<MapBloc>().add(FetchNearbyAttractions(
@@ -303,6 +306,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                             _selectedFoodCategory = null;
                             _selectedExperienceCategory = null;
                             _selectedShoppingCategory = null;
+                            _selectedNatureCategory = null;
                           });
                           _fetchForTab(index);
                           if (_tabs[index] == 'Budget') {
@@ -472,6 +476,36 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
+                    // Filter Nature List
+                    _natureList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      return cat.contains('nature') || cat.contains('park') || cat.contains('beach') || 
+                             cat.contains('hiking') || cat.contains('waterfall') || cat.contains('lake') || 
+                             cat.contains('river') || cat.contains('garden') || name.contains('beach') ||
+                             name.contains('park') || name.contains('lake') || name.contains('river') ||
+                             name.contains('waterfall') || name.contains('garden') || name.contains('forest');
+                    }).toList();
+                    if (_selectedNatureCategory != null) {
+                      _natureList = _natureList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        if (_selectedNatureCategory == 'Beaches') {
+                          return cat.contains('beach') || name.contains('beach');
+                        } else if (_selectedNatureCategory == 'Parks') {
+                          return cat.contains('park') || name.contains('park');
+                        } else if (_selectedNatureCategory == 'Waterfalls') {
+                          return cat.contains('waterfall') || name.contains('waterfall');
+                        } else if (_selectedNatureCategory == 'Hiking') {
+                          return cat.contains('hiking') || cat.contains('trail') || name.contains('hiking') || name.contains('trail');
+                        } else if (_selectedNatureCategory == 'Gardens') {
+                          return cat.contains('garden') || name.contains('garden');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _natureList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
                     return Column(
                       children: [
                         
@@ -500,6 +534,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
       case 'Hospital': return _buildHospitalTab(isLoading);
+      case 'Nature': return _buildNatureTab(isLoading);
       // case 'Budget': return _buildBudgetTab();
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildFoodTab(isLoading);
@@ -3028,4 +3063,147 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       fit: fit,
     );
   }
+
+  // ═══════════════════════════════════════
+  // NATURE TAB
+  // ═══════════════════════════════════════
+  Widget _buildNatureTab(bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Explore Nature Spots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🏖',
+                'Beaches',
+                _selectedNatureCategory == 'Beaches',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Beaches' ? null : 'Beaches';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏞',
+                'Parks',
+                _selectedNatureCategory == 'Parks',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Parks' ? null : 'Parks';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌊',
+                'Waterfalls',
+                _selectedNatureCategory == 'Waterfalls',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Waterfalls' ? null : 'Waterfalls';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🥾',
+                'Hiking',
+                _selectedNatureCategory == 'Hiking',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Hiking' ? null : 'Hiking';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏡',
+                'Gardens',
+                _selectedNatureCategory == 'Gardens',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Gardens' ? null : 'Gardens';
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Text('Nature & Scenic Spots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_natureList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No nature spots found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._natureList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildNatureItem(a, e.key);
+          }),
+      ],
+    );
+  }
+
+  Widget _buildNatureItem(AttractionEntity item, int index) {
+    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => AttractionDetailPage(
+          id: item.id,
+          name: item.name,
+          category: item.categoryName ?? 'Nature',
+          rating: item.rating,
+          distance: '$dist km',
+          emoji: '🍃',
+          imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
+          latitude: item.latitude,
+          longitude: item.longitude,
+        )),
+      ),
+      child: GlassCard(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                item.name,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Row(
+               mainAxisSize: MainAxisSize.min,
+               children: [
+                 Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                 const SizedBox(width: 3),
+                 Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+                 const SizedBox(width: 12),
+                 Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
+                 const SizedBox(width: 4),
+                 Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+               ],
+            ),
+            const SizedBox(width: 16),
+            GestureDetector(
+              onTap: () async {
+                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                setState(() {});
+              },
+              child: Icon(
+                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                size: 20,
+               ),
+             ),
+           ],
+         ),
+       ),
+     );
+   }
 }

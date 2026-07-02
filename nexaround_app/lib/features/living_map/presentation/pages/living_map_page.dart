@@ -784,6 +784,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Shopping',
       'Experiences',
       'Medical',
+      'Nature',
     ];
 
     Future.microtask(() async {

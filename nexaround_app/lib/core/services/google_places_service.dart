@@ -28,6 +28,7 @@ class GooglePlacesService {
   static String lastHospitalError = '';
   static String lastFoodError = '';
   static String lastShoppingError = '';
+  static String lastNatureError = '';
 
   static void clearErrors() {
     lastAttractionsError = '';
@@ -35,6 +36,7 @@ class GooglePlacesService {
     lastHospitalError = '';
     lastFoodError = '';
     lastShoppingError = '';
+    lastNatureError = '';
   }
 
   static const Map<String, String> categoryTypeMap = {
@@ -45,6 +47,7 @@ class GooglePlacesService {
     'Transport': 'transit_station',
     'Medical': 'hospital',
     'Hospital': 'hospital',
+    'Nature': 'park',
   };
 
   /// Reverse-geocode lat/lng to a human-readable location name via Geoapify
@@ -704,6 +707,7 @@ class GooglePlacesService {
       if (categoryName == 'Hospital') lastHospitalError = '';
       if (categoryName == 'Food & Drink') lastFoodError = '';
       if (categoryName == 'Shopping') lastShoppingError = '';
+      if (categoryName == 'Nature') lastNatureError = '';
 
       final threshold = 15;
 
@@ -851,6 +855,22 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
   }
 ]
 ''';
+      } else if (categoryName == 'Nature') {
+        prompt = '''
+Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+
+beach, national_park, hiking_area, nature_reserve, scenic_viewpoint, waterfall, lake, river, botanical_garden
+
+
+Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
+[
+  {
+    "name": "Nature Spot Name",
+    "distance_km": 15.0,
+    "direction": "North-East"
+  }
+]
+''';
       } else {
         return [];
       }
@@ -870,6 +890,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
         if (categoryName == 'Food & Drink') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
+        if (categoryName == 'Nature') lastNatureError = errMsg;
         throw FormatException('Could not find JSON array in Gemini response. Response was: $rawResponse');
       }
       final cleanJson = rawResponse.substring(firstBracket, lastBracket + 1).trim();
@@ -924,6 +945,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
         if (categoryName == 'Hospital') lastHospitalError = errMsg;
         if (categoryName == 'Food & Drink') lastFoodError = errMsg;
         if (categoryName == 'Shopping') lastShoppingError = errMsg;
+        if (categoryName == 'Nature') lastNatureError = errMsg;
       }
 
       // 2. Cache the resolved places
@@ -942,6 +964,7 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       if (categoryName == 'Hospital') lastHospitalError = errMsg;
       if (categoryName == 'Food & Drink') lastFoodError = errMsg;
       if (categoryName == 'Shopping') lastShoppingError = errMsg;
+      if (categoryName == 'Nature') lastNatureError = errMsg;
       return [];
     }
   }

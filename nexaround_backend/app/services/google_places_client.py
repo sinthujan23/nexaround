@@ -49,8 +49,8 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "veterinary_care", "medical_clinic"
     ],
     "Nature": [
-        "park", "campground", "national_park", "zoo", "tourist_attraction",
-        "nature_reserve", "hiking_area", "beach", "waterfall"
+        "beach", "national_park", "hiking_area", "nature_reserve",
+        "scenic_viewpoint", "waterfall", "lake", "river", "botanical_garden"
     ],
     "Beach": [
         "park", "tourist_attraction", "beach"
@@ -66,6 +66,7 @@ CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
     "Transport": "transit_station",
     "Medical": "hospital",
     "Beach": "park",
+    "Nature": "park",
 }
 
 
