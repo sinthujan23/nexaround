@@ -435,9 +435,16 @@ class _ProfilePageState extends State<ProfilePage> {
                       const Text('Status:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       Text(NotificationService.instance.debugStatus, style: const TextStyle(color: AppColors.textSecondary)),
                       const SizedBox(height: 12),
+                      const SizedBox(height: 12),
                       const Text('FCM Token:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
                       SelectableText(
                         NotificationService.instance.token ?? 'None',
+                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text('APNs Token (iOS Only):', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+                      SelectableText(
+                        NotificationService.instance.apnsToken ?? 'None / Not iOS',
                         style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                       ),
                     ],

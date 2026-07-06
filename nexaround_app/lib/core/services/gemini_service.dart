@@ -12,6 +12,9 @@ import 'package:nexaround_app/core/network/api_client.dart';
 final _kGeminiOptions = Options(
   receiveTimeout: const Duration(seconds: 120),
   sendTimeout: const Duration(seconds: 60),
+  headers: {
+    'Connection': 'close',
+  },
 );
 
 class GeminiService {
@@ -71,14 +74,16 @@ class GeminiService {
         print('❌ Gemini Proxy API Error: ${response.statusCode} - ${response.data}');
         return "I'm having a bit of trouble connecting to my central processing. Status: ${response.statusCode}";
       }
-    } catch (e) {
-      print('❌ Gemini Proxy Exception: $e');
+    } catch (e, stack) {
+      print('❌ Gemini Proxy Exception: $e\n$stack');
+      String details = e.toString();
       if (e is DioException) {
         if (e.response?.statusCode == 429) {
           return "I'm taking a quick breath! 🌸 We've reached the limit of questions we can ask right now. Let's wait a minute and try again, or check if the Gemini API key has active billing! ✨";
         }
+        details = 'DioException [${e.type}]: ${e.message}\nResponse: ${e.response?.data}';
       }
-      return "An unexpected error occurred while talking to Neva. Please check if the Gemini API key is active!";
+      return "An unexpected error occurred while talking to Neva. Please check if the Gemini API key is active!\n\nDiagnostic Details:\n$details";
     }
   }
 

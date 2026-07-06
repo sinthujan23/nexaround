@@ -14,10 +14,12 @@ class NotificationService {
 
   final FirebaseMessaging _fm = FirebaseMessaging.instance;
   String? _token;
+  String? _apnsToken;
   bool _initialized = false;
   String debugStatus = 'Initializing...';
 
   String? get token => _token;
+  String? get apnsToken => _apnsToken;
 
   /// Set by the app shell to route a notification tap (e.g. open Blueprints).
   void Function(Map<String, dynamic> data)? onOpen;
@@ -54,6 +56,7 @@ class NotificationService {
           await Future.delayed(const Duration(seconds: 1));
           apns = await _fm.getAPNSToken();
         }
+        _apnsToken = apns;
         debugPrint('📲 APNs token: $apns');
         if (apns == null) {
           debugStatus = 'APNs token is NULL (check Certs/Provisioning Profile)';
