@@ -271,7 +271,7 @@ Return ONLY a JSON object with EXACTLY this shape:
 Rules for "booking_partners":
 - List 3 real, popular travel websites, booking platforms, or local apps commonly used by travelers for this specific destination country/region.
 - For Russia: Use Yandex Travel (transit/hotels), Ostrovok (hotels), or Aviasales (flights). Do not use Booking.com or Skyscanner for Russia.
-- For Sri Lanka: Use Agoda (hotels), PickMe (transit/cabs), Klook (tours), or similar.
+- For Sri Lanka: Use Booking.com (hotels), PickMe (transit/cabs), Klook (tours), or similar.
 - For general South-East Asia: Use Agoda (hotels), Grab (transit), or Klook (tours).
 - For Western Europe / Americas: Use Booking.com (hotels), Viator (tours), Skyscanner (flights/transit).
 - The "url" field should be a real search landing page or homepage URL for that provider, prefilled/related to the destination if possible.
@@ -364,3 +364,39 @@ def _as_int(value, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+async def generate_replacement_partner(
+    *,
+    destination: str,
+    partner_name: str,
+    partner_type: str,
+    reason: str,
+    avoid_names: list[str],
+    api_key: str,
+) -> dict:
+    avoid = ", ".join(avoid_names) or "(none)"
+    why = reason.strip() or "the traveler wants a different option"
+    
+    prompt = f"""A traveler is on a trip to "{destination}".
+They want to replace the booking platform/app "{partner_name}" of type "{partner_type}" because: {why}.
+
+These platforms/apps are already used or rejected for this trip - do NOT suggest any of them:
+{avoid}
+
+Suggest exactly ONE other real, popular travel website, booking platform, or local app commonly used for "{destination}" of type "{partner_type}" (hotels, tours, or transit) that is different from the avoided list.
+- For Russia: Use Yandex Travel, Ostrovok, or Aviasales. Do not use Booking.com or Skyscanner for Russia.
+- For Sri Lanka: Use Booking.com, PickMe, Klook, or similar.
+- For general South-East Asia: Use Agoda, Grab, or Klook.
+- For Western Europe / Americas: Use Booking.com, Viator, Skyscanner.
+
+Return ONLY a JSON object with this exact shape:
+{{ "name": "Platform Name", "type": "{partner_type}", "url": "Search or landing URL for this platform in {destination}" }}
+"""
+    text = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
+    data = _parse_json(text)
+    return {
+        "name": str(data.get("name") or "").strip(),
+        "type": partner_type,
+        "url": str(data.get("url") or "").strip(),
+    }

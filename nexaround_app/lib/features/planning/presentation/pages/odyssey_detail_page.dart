@@ -23,6 +23,9 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   /// "dayIndex:activityIndex" of the activity being swapped, or null.
   String? _swappingKey;
 
+  /// Name of the partner currently being swapped, or null.
+  String? _swappingPartnerName;
+
   Future<void> _swapActivity(int dayIndex, int activityIndex) async {
     final id = _odyssey.id;
     if (id == null) return;
@@ -54,6 +57,37 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
       setState(() => _swappingKey = null);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not swap this place. Try again.')),
+      );
+    }
+  }
+
+  Future<void> _swapPartner(String partnerName) async {
+    final id = _odyssey.id;
+    if (id == null) return;
+
+    final reason = await _askReason(partnerName);
+    if (reason == null || !mounted) return; // cancelled
+
+    setState(() => _swappingPartnerName = partnerName);
+    try {
+      final updated = await _repo.swapPartner(
+        itineraryId: id,
+        partnerName: partnerName,
+        reason: reason,
+      );
+      if (!mounted) return;
+      setState(() {
+        _odyssey = updated;
+        _swappingPartnerName = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Swapped in new partner for $partnerName')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _swappingPartnerName = null);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not swap partner: $e')),
       );
     }
   }
@@ -296,6 +330,8 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
         onSwapActivity: _swapActivity,
         swappingKey: _swappingKey,
         onToggleVisited: _toggleVisited,
+        onSwapPartner: _swapPartner,
+        swappingPartnerName: _swappingPartnerName,
       ),
     );
   }

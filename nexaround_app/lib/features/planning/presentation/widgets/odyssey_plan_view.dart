@@ -16,15 +16,15 @@ class OdysseyPlanView extends StatelessWidget {
   /// that place. Called with the zero-based (dayIndex, activityIndex). When
   /// null the plan is read-only (e.g. the planner preview).
   final void Function(int dayIndex, int activityIndex)? onSwapActivity;
-
-  /// Key of the activity currently being swapped ("dayIndex:activityIndex"),
-  /// so that row can show a spinner instead of its edit button.
   final String? swappingKey;
-
-  /// When provided, each activity gets a tappable check circle to mark it
-  /// visited as the traveler completes the trip. Called with (dayIndex,
-  /// activityIndex). When null the plan shows no check-off controls.
   final void Function(int dayIndex, int activityIndex)? onToggleVisited;
+
+  /// When provided, each dynamic booking partner shows an edit/swap button
+  /// to ask the AI for a replacement.
+  final void Function(String partnerName)? onSwapPartner;
+
+  /// Name of the partner currently being swapped, so it can show a spinner.
+  final String? swappingPartnerName;
 
   const OdysseyPlanView({
     super.key,
@@ -33,6 +33,8 @@ class OdysseyPlanView extends StatelessWidget {
     this.onSwapActivity,
     this.swappingKey,
     this.onToggleVisited,
+    this.onSwapPartner,
+    this.swappingPartnerName,
   });
 
   @override
@@ -481,6 +483,7 @@ class OdysseyPlanView extends StatelessWidget {
               icon: icon,
               color: color,
               url: bp.url,
+              isAiGenerated: true,
             ),
           );
         }).toList(),
@@ -528,7 +531,9 @@ class OdysseyPlanView extends StatelessWidget {
     required IconData icon,
     required Color color,
     required String url,
+    bool isAiGenerated = false,
   }) {
+    final isSwapping = isAiGenerated && swappingPartnerName == title;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -605,11 +610,33 @@ class OdysseyPlanView extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: Colors.black26,
-                ),
+                if (isSwapping)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.brandGreen,
+                    ),
+                  )
+                else if (isAiGenerated && onSwapPartner != null)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {}, // absorb click
+                    child: IconButton(
+                      icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
+                      onPressed: () => onSwapPartner!(title),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  )
+                else
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: Colors.black26,
+                  ),
               ],
             ),
           ),

@@ -107,6 +107,24 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
+  /// Request the AI to replace a single booking partner. Returns the updated Odyssey.
+  Future<Odyssey> swapPartner({
+    required String itineraryId,
+    required String partnerName,
+    String reason = '',
+  }) async {
+    final response = await _dio.post(
+      '${ApiConstants.itineraries}/$itineraryId/odyssey/swap-partner',
+      data: {
+        'partner_name': partnerName,
+        'reason': reason,
+      },
+    );
+    revision.value++;
+    final json = (response.data as Map).cast<String, dynamic>();
+    return Odyssey.fromItinerary(json);
+  }
+
   /// All saved Odysseys for the current user, newest first. Caches the raw
   /// result locally so [getCachedOdysseys] can render it instantly next time.
   Future<List<Odyssey>> getMyOdysseys() async {

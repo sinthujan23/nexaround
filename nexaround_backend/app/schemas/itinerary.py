@@ -48,6 +48,11 @@ class OdysseySwapRequest(BaseModel):
     activity_index: int
     reason: str = ""
 
+class OdysseyPartnerSwapRequest(BaseModel):
+    """Request body for swapping a single booking partner in a saved Odyssey."""
+    partner_name: str
+    reason: str = ""
+
 class ItineraryResponse(ItineraryBase):
     id: UUID
     user_id: UUID

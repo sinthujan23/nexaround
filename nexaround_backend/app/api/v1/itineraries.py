@@ -19,6 +19,7 @@ from app.schemas.itinerary import (
     ItineraryResponse,
     OdysseyGenerateRequest,
     OdysseySwapRequest,
+    OdysseyPartnerSwapRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -217,6 +218,64 @@ async def swap_odyssey_activity(
     activities[data.activity_index] = replacement
     day["activities"] = activities
     items[pos] = day
+    itin.items = items  # reassign whole list so SQLAlchemy persists the JSON change
+    return await repo.update(itin)
+
+
+@router.post("/{itinerary_id}/odyssey/swap-partner", response_model=ItineraryResponse)
+async def swap_odyssey_partner(
+    itinerary_id: uuid.UUID,
+    data: OdysseyPartnerSwapRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Replace a single booking partner in a saved Odyssey with an AI-suggested
+    alternative. Runs synchronously and returns the updated itinerary.
+    """
+    repo = ItineraryRepository(db)
+    itin = await repo.get_by_id(itinerary_id, current_user.id)
+    if not itin:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+
+    items = [dict(it) for it in (itin.items or [])]
+    meta_idx = next((i for i, it in enumerate(items) if it.get("kind") == "odyssey_meta"), -1)
+    if meta_idx == -1:
+        raise HTTPException(status_code=400, detail="Not an Odyssey")
+    
+    meta = dict(items[meta_idx])
+    partners = [dict(p) for p in (meta.get("booking_partners") or [])]
+    
+    # Find the partner to swap
+    target_idx = next((i for i, p in enumerate(partners) if p.get("name") == data.partner_name), -1)
+    if target_idx == -1:
+        raise HTTPException(status_code=400, detail="Booking partner not found in this Odyssey")
+    
+    target_partner = partners[target_idx]
+    partner_type = target_partner.get("type", "hotels")
+
+    api_key = await SettingsService(db).get_setting("gemini_api_key")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="AI is not configured")
+
+    # Collect existing names to avoid duplicates
+    avoid_names = [str(p.get("name") or "") for p in partners]
+
+    try:
+        replacement = await odyssey_ai_service.generate_replacement_partner(
+            destination=str(meta.get("destination") or ""),
+            partner_name=data.partner_name,
+            partner_type=partner_type,
+            reason=data.reason,
+            avoid_names=avoid_names,
+            api_key=api_key,
+        )
+    except Exception as e:
+        logger.error(f"Odyssey partner swap failed for {itinerary_id}: {e}")
+        raise HTTPException(status_code=502, detail="Could not generate a replacement partner")
+
+    partners[target_idx] = replacement
+    meta["booking_partners"] = partners
+    items[meta_idx] = meta
     itin.items = items  # reassign whole list so SQLAlchemy persists the JSON change
     return await repo.update(itin)
 
