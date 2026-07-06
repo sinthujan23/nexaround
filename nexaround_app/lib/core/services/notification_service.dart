@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 /// Wraps Firebase Cloud Messaging: asks permission, grabs the device token,
 /// registers it with the backend, and funnels incoming messages into the local
@@ -100,6 +101,18 @@ class NotificationService {
       type: (m.data['type'] ?? '').toString(),
       data: m.data.map((k, v) => MapEntry(k, v)),
     );
+
+    if (m.data['type'] == 'discovery_ready') {
+      DiscoveryHistoryService.fetchHistory().then((history) {
+        if (history.isNotEmpty) {
+          final latest = history.first;
+          CacheService.discoveryResultNotifier.value = latest['result'] as String?;
+          CacheService.isDiscoveringNotifier.value = false;
+        }
+      }).catchError((e) {
+        debugPrint('Error fetching discovery history in foreground: $e');
+      });
+    }
   }
 
   /// Notification tapped (from background/terminated) → record + route.

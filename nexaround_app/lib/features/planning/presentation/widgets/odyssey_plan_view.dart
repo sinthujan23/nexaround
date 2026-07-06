@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -85,6 +86,18 @@ class OdysseyPlanView extends StatelessWidget {
             _infoCard('Visa / Entry', odyssey.visa, Icons.description_rounded),
           if (odyssey.budgetSplit.isNotEmpty)
             _infoCard('Budget Split', odyssey.budgetSplit, Icons.pie_chart_rounded),
+          const SizedBox(height: 24),
+          const Text(
+            'ODYSSEY BOOKING PARTNERS',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _buildBookingSection(context),
           if (odyssey.dayPlans.isNotEmpty) ...[
             const SizedBox(height: 24),
             const Text(
@@ -395,6 +408,212 @@ class OdysseyPlanView extends StatelessWidget {
               ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildBookingSection(BuildContext context) {
+    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
+
+    if (odyssey.bookingPartners.isNotEmpty) {
+      return Column(
+        children: odyssey.bookingPartners.map((bp) {
+          final title = bp.name;
+          final type = bp.type.toLowerCase();
+          
+          // Deduce Icon
+          IconData icon = Icons.bookmark_rounded;
+          if (type == 'hotels') {
+            icon = Icons.hotel_rounded;
+          } else if (type == 'tours') {
+            icon = Icons.local_activity_rounded;
+          } else if (type == 'transit') {
+            if (bp.name.toLowerCase().contains('flight') || 
+                bp.name.toLowerCase().contains('aviasales') ||
+                bp.name.toLowerCase().contains('skyscanner')) {
+              icon = Icons.flight_takeoff_rounded;
+            } else {
+              icon = Icons.directions_car_rounded;
+            }
+          }
+
+          // Deduce Brand Color
+          Color color = const Color(0xFF007A7C); // Default Theme Teal
+          final nameLower = bp.name.toLowerCase();
+          if (nameLower.contains('agoda')) {
+            color = const Color(0xFF8E24AA); // Purple
+          } else if (nameLower.contains('ostrovok')) {
+            color = const Color(0xFFFF5722); // Orange-Red
+          } else if (nameLower.contains('booking')) {
+            color = const Color(0xFF003580); // Blue
+          } else if (nameLower.contains('getyourguide')) {
+            color = const Color(0xFFFF595D); // GYG Red-Orange
+          } else if (nameLower.contains('klook')) {
+            color = const Color(0xFFFF5B00); // Klook Orange
+          } else if (nameLower.contains('viator')) {
+            color = const Color(0xFF00A680); // Viator Green
+          } else if (nameLower.contains('pickme')) {
+            color = const Color(0xFFFBC02D); // Yellow
+          } else if (nameLower.contains('grab')) {
+            color = const Color(0xFF00B14F); // Grab Green
+          } else if (nameLower.contains('yandex')) {
+            color = const Color(0xFFFFCC00); // Yandex Yellow
+          } else if (nameLower.contains('skyscanner')) {
+            color = const Color(0xFF077078); // Skyscanner Teal
+          }
+
+          // Deduce Subtitle
+          String subtitle = 'Find $type services for $dest';
+          if (type == 'hotels') {
+            subtitle = 'Book top-rated stays in $dest via ${bp.name}';
+          } else if (type == 'tours') {
+            subtitle = 'Explore local experiences in $dest via ${bp.name}';
+          } else if (type == 'transit') {
+            subtitle = 'Get rides or check transit in $dest via ${bp.name}';
+          }
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _bookingCard(
+              context,
+              title: title,
+              subtitle: subtitle,
+              icon: icon,
+              color: color,
+              url: bp.url,
+            ),
+          );
+        }).toList(),
+      );
+    }
+
+    final correctedSkyscannerUrl = 'https://www.skyscanner.com/flights?q=${Uri.encodeComponent(dest)}';
+
+    return Column(
+      children: [
+        _bookingCard(
+          context,
+          title: 'Book Hotels & Stays',
+          subtitle: 'Find top-rated properties in $dest',
+          icon: Icons.hotel_rounded,
+          color: const Color(0xFF003580), // Booking.com Brand Blue
+          url: 'https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(dest)}',
+        ),
+        const SizedBox(height: 12),
+        _bookingCard(
+          context,
+          title: 'Find Tours & Activities',
+          subtitle: 'Uncover curated local experiences',
+          icon: Icons.local_activity_rounded,
+          color: const Color(0xFFFF595D), // GetYourGuide Orange/Red
+          url: 'https://www.getyourguide.com/s?q=${Uri.encodeComponent(dest)}',
+        ),
+        const SizedBox(height: 12),
+        _bookingCard(
+          context,
+          title: 'Flights & Car Rental',
+          subtitle: 'Compare transit options to $dest',
+          icon: Icons.flight_takeoff_rounded,
+          color: const Color(0xFF077078), // Skyscanner Teal
+          url: correctedSkyscannerUrl,
+        ),
+      ],
+    );
+  }
+
+  Widget _bookingCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+    required String url,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () async {
+            final uri = Uri.parse(url);
+            try {
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not open booking link: $url')),
+                  );
+                }
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Error launching link: $e')),
+                );
+              }
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(icon, color: color, size: 24),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: Colors.black26,
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

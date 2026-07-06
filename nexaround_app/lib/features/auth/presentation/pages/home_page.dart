@@ -76,6 +76,19 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
       _checkLocationService();
       // Surface any notifications saved while the app was backgrounded.
       CacheService.reload();
+
+      // If we were waiting for Neva, check if it finished while we were away
+      if (CacheService.isDiscoveringNotifier.value == true) {
+        DiscoveryHistoryService.fetchHistory().then((history) {
+          if (history.isNotEmpty) {
+            final latest = history.first;
+            CacheService.discoveryResultNotifier.value = latest['result'] as String?;
+            CacheService.isDiscoveringNotifier.value = false;
+          }
+        }).catchError((e) {
+          debugPrint('Error checking discovery status on resume: $e');
+        });
+      }
     }
   }
 

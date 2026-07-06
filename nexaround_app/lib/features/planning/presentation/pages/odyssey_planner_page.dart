@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -97,6 +98,21 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     } catch (_) {
       // Location unavailable — the user can type a destination instead.
     }
+  }
+
+  void _showLocationSearch() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const LocationSearchModal(),
+    ).then((result) {
+      if (result != null && result is Map<String, dynamic>) {
+        setState(() {
+          _destinationController.text = result['name'] ?? '';
+        });
+      }
+    });
   }
 
   // ── Actions ────────────────────────────────────────────────────────────
@@ -282,22 +298,27 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
-          TextField(
-            controller: _destinationController,
-            textInputAction: TextInputAction.done,
-            decoration: InputDecoration(
-              hintText: 'e.g. Kandy, Ella, Galle',
-              prefixIcon: const Icon(Icons.place_rounded, color: Colors.black54),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Colors.black12),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+          GestureDetector(
+            onTap: _showLocationSearch,
+            child: AbsorbPointer(
+              child: TextField(
+                controller: _destinationController,
+                readOnly: true,
+                decoration: InputDecoration(
+                  hintText: 'e.g. Kandy, Ella, Galle',
+                  prefixIcon: const Icon(Icons.place_rounded, color: Colors.black54),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: Colors.black12),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(18),
+                    borderSide: const BorderSide(color: Colors.black, width: 1.5),
+                  ),
+                ),
               ),
             ),
           ).animate().fade(delay: 150.ms),

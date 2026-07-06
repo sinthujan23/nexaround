@@ -361,7 +361,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       Icon(Icons.auto_awesome_rounded, size: 14, color: AppColors.brandGreen),
                       SizedBox(width: 6),
                       Text(
-                        'AI is crafting your plan…',
+                        'Your odyssey is being generated..',
                         style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.black54),
                       ),
                       Spacer(),

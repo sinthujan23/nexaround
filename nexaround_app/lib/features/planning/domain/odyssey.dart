@@ -86,6 +86,31 @@ class OdysseyDay {
       };
 }
 
+class OdysseyBookingPartner {
+  final String name;
+  final String type; // hotels | tours | transit
+  final String url;
+
+  const OdysseyBookingPartner({
+    required this.name,
+    required this.type,
+    required this.url,
+  });
+
+  factory OdysseyBookingPartner.fromJson(Map<String, dynamic> json) =>
+      OdysseyBookingPartner(
+        name: (json['name'] ?? '').toString(),
+        type: (json['type'] ?? '').toString(),
+        url: (json['url'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'type': type,
+        'url': url,
+      };
+}
+
 class Odyssey {
   /// Backend itinerary id. Null until the Odyssey has been saved.
   final String? id;
@@ -101,6 +126,7 @@ class Odyssey {
   final String visa; // e.g. "ETA required (online)"
   final String logistics; // multi-line blueprint
   final List<OdysseyDay> dayPlans;
+  final List<OdysseyBookingPartner> bookingPartners;
   final String status; // active | draft | completed
   final DateTime? createdAt;
 
@@ -118,11 +144,17 @@ class Odyssey {
     required this.visa,
     required this.logistics,
     required this.dayPlans,
+    this.bookingPartners = const [],
     this.status = 'active',
     this.createdAt,
   });
 
-  Odyssey copyWith({String? id, String? status, List<OdysseyDay>? dayPlans}) =>
+  Odyssey copyWith({
+    String? id,
+    String? status,
+    List<OdysseyDay>? dayPlans,
+    List<OdysseyBookingPartner>? bookingPartners,
+  }) =>
       Odyssey(
         id: id ?? this.id,
         title: title,
@@ -137,6 +169,7 @@ class Odyssey {
         visa: visa,
         logistics: logistics,
         dayPlans: dayPlans ?? this.dayPlans,
+        bookingPartners: bookingPartners ?? this.bookingPartners,
         status: status ?? this.status,
         createdAt: createdAt,
       );
@@ -182,6 +215,10 @@ class Odyssey {
           .whereType<Map>()
           .map((d) => OdysseyDay.fromJson(d.cast<String, dynamic>()))
           .toList(),
+      bookingPartners: ((json['booking_partners'] ?? const []) as List)
+          .whereType<Map>()
+          .map((bp) => OdysseyBookingPartner.fromJson(bp.cast<String, dynamic>()))
+          .toList(),
     );
   }
 
@@ -200,6 +237,7 @@ class Odyssey {
           'budget_split': budgetSplit,
           'visa': visa,
           'logistics': logistics,
+          'booking_partners': bookingPartners.map((bp) => bp.toJson()).toList(),
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -241,6 +279,10 @@ class Odyssey {
       visa: (meta['visa'] ?? '').toString(),
       logistics: (meta['logistics'] ?? '').toString(),
       dayPlans: dayItems.map((d) => OdysseyDay.fromJson(d)).toList(),
+      bookingPartners: ((meta['booking_partners'] ?? const []) as List)
+          .whereType<Map>()
+          .map((bp) => OdysseyBookingPartner.fromJson(bp.cast<String, dynamic>()))
+          .toList(),
       status: (json['status'] ?? 'active').toString(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())

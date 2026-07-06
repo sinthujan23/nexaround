@@ -51,6 +51,7 @@ def build_meta_item(
     budget_split: str = "",
     visa: str = "",
     logistics: str = "",
+    booking_partners: list[dict] = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -67,6 +68,7 @@ def build_meta_item(
         "budget_split": budget_split,
         "visa": visa,
         "logistics": logistics,
+        "booking_partners": booking_partners or [],
     }
 
 
@@ -111,6 +113,7 @@ async def generate_odyssey(
         budget_split=str(plan.get("budget_split") or ""),
         visa=str(plan.get("visa") or plan.get("visa_status") or ""),
         logistics=_logistics_text(plan.get("logistics")),
+        booking_partners=plan.get("booking_partners") or [],
     )
 
     day_items: list[dict] = []
@@ -250,6 +253,10 @@ Return ONLY a JSON object with EXACTLY this shape:
   "budget_split": "Short split, e.g. '40% Stay - 30% Food - 30% Experiences'",
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
+  "booking_partners": [
+    {{ "name": "Agoda", "type": "hotels", "url": "https://www.agoda.com/search?query=Colombo" }},
+    {{ "name": "PickMe", "type": "transit", "url": "https://pickme.lk/" }}
+  ],
   "day_plans": [
     {{
       "day": 1,
@@ -260,6 +267,15 @@ Return ONLY a JSON object with EXACTLY this shape:
     }}
   ]
 }}
+
+Rules for "booking_partners":
+- List 3 real, popular travel websites, booking platforms, or local apps commonly used by travelers for this specific destination country/region.
+- For Russia: Use Yandex Travel (transit/hotels), Ostrovok (hotels), or Aviasales (flights). Do not use Booking.com or Skyscanner for Russia.
+- For Sri Lanka: Use Agoda (hotels), PickMe (transit/cabs), Klook (tours), or similar.
+- For general South-East Asia: Use Agoda (hotels), Grab (transit), or Klook (tours).
+- For Western Europe / Americas: Use Booking.com (hotels), Viator (tours), Skyscanner (flights/transit).
+- The "url" field should be a real search landing page or homepage URL for that provider, prefilled/related to the destination if possible.
+- The "type" field must be one of: "hotels", "tours", "transit".
 
 Rules:
 - Plan for {travelers} traveler(s): size accommodation, meals and tickets for the group, and make every activity "cost" the TOTAL for all {travelers}.

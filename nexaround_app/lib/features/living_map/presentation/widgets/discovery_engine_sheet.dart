@@ -14,6 +14,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/core/services/place_verifier_service.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
 
 enum SheetState { input, loading, result }
 
