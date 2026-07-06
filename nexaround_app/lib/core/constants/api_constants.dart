@@ -40,6 +40,7 @@ class ApiConstants {
   
   // Discovery endpoints
   static const String discoveryHistory = '$apiVersion/discovery/history';
+  static const String discoveryGenerate = '$apiVersion/discovery/generate';
   
   // Mapbox Configuration
   static String mapboxAccessToken = '';

@@ -20,3 +20,17 @@ class DiscoveryHistoryResponse(DiscoveryHistoryBase):
 
     class Config:
         from_attributes = True
+
+
+class DiscoveryGenerateRequest(BaseModel):
+    location: str
+    mode: str
+    latitude: float
+    longitude: float
+    budget: str
+    companions: str
+    weather: str
+    time_available: str
+    mood: str
+    time_of_day: str
+

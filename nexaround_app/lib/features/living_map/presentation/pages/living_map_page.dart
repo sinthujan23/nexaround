@@ -131,6 +131,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       _SpotlightPoint3D(30.0, 31.2), // Cairo
     ];
 
+    CacheService.discoveryResultNotifier.addListener(_onDiscoveryResultChanged);
     _checkLocationAndInit();
   }
 
@@ -172,6 +173,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   @override
   void dispose() {
+    CacheService.discoveryResultNotifier.removeListener(_onDiscoveryResultChanged);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _globeController.dispose();
@@ -1533,6 +1535,12 @@ class _LivingMapPageState extends State<LivingMapPage>
         _checkLocationAndInit();
       }
     });
+  }
+
+  void _onDiscoveryResultChanged() {
+    if (mounted && CacheService.discoveryResultNotifier.value != null) {
+      _showDiscoveryEngineSheet(context);
+    }
   }
 
   void _showDiscoveryEngineSheet(BuildContext parentContext) {

@@ -16,6 +16,7 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -47,8 +48,17 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
 
     // Now that we're in the authenticated shell, register the device for push
     // and route notification taps to the right tab.
-    NotificationService.instance.onOpen = (data) {
+    NotificationService.instance.onOpen = (data) async {
       if (data['type'] == 'odyssey_ready') switchToPlans();
+      if (data['type'] == 'discovery_ready') {
+        switchToExplore();
+        final history = await DiscoveryHistoryService.fetchHistory();
+        if (history.isNotEmpty) {
+          final latest = history.first;
+          CacheService.discoveryResultNotifier.value = latest['result'] as String?;
+          CacheService.isDiscoveringNotifier.value = false;
+        }
+      }
     };
     NotificationService.instance.syncToken();
   }
