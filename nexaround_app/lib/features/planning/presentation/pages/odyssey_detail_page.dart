@@ -65,7 +65,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     final id = _odyssey.id;
     if (id == null) return;
 
-    final reason = await _askReason(partnerName);
+    final reason = await _askReason(partnerName, isPartner: true);
     if (reason == null || !mounted) return; // cancelled
 
     setState(() => _swappingPartnerName = partnerName);
@@ -94,14 +94,22 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
 
   /// Bottom sheet asking why the place is being replaced. Returns the chosen
   /// reason text, or null if the user cancelled.
-  Future<String?> _askReason(String placeName) {
-    const presets = [
-      'Already visited',
-      'Not interested',
-      'Too expensive',
-      'Too far',
-      'Suggest something else',
-    ];
+  Future<String?> _askReason(String placeName, {bool isPartner = false}) {
+    final presets = isPartner 
+      ? [
+          'Not supported here',
+          'Prefer another site',
+          'Too expensive',
+          'Bad experience',
+          'Suggest something else',
+        ]
+      : [
+          'Already visited',
+          'Not interested',
+          'Too expensive',
+          'Too far',
+          'Suggest something else',
+        ];
     final controller = TextEditingController();
     return showModalBottomSheet<String>(
       context: context,
@@ -135,9 +143,11 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Tell the AI why, and it’ll suggest a different place for this slot.',
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            Text(
+              isPartner
+                  ? 'Tell the AI why, and it’ll suggest a different partner.'
+                  : 'Tell the AI why, and it’ll suggest a different place for this slot.',
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
             Wrap(
@@ -182,7 +192,11 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
                     Navigator.pop(ctx, controller.text.trim().isEmpty
                         ? 'Suggest something else'
                         : controller.text.trim()),
-                child: const Text('Ask AI for a different place'),
+                child: Text(
+                  isPartner 
+                      ? 'Ask AI for a different partner' 
+                      : 'Ask AI for a different place',
+                ),
               ),
             ),
           ],

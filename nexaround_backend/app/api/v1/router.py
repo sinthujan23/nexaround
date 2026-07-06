@@ -13,6 +13,7 @@ from app.api.v1.proxy import router as proxy_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.travel_stories import router as travel_stories_router
 from app.api.v1.discovery import router as discovery_router
+from app.api.v1.museums import router as museums_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -29,4 +30,6 @@ api_router.include_router(proxy_router)
 api_router.include_router(notifications_router)
 api_router.include_router(travel_stories_router)
 api_router.include_router(discovery_router)
+api_router.include_router(museums_router)
 api_router.include_router(ar_router, prefix="/ar", tags=["AR"])
+

@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detai
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_planner_page.dart';
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 class MyOdysseysPage extends StatefulWidget {
@@ -148,6 +149,84 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 
+  Widget _buildMuseumBanner() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+        ),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1A1A2E).withOpacity(0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.museum_rounded,
+                    color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 14),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'TOP WORLD MUSEUMS',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                        color: Colors.white54,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Curated Masterpiece Guides',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Expert routes for 5h, 1 day or 2 days',
+                      style: TextStyle(fontSize: 11, color: Colors.white54),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios_rounded,
+                  color: Colors.white38, size: 16),
+            ],
+          ),
+        ),
+      ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0),
+    );
+  }
+
   Future<void> _openDetail(Odyssey odyssey) async {
     if (odyssey.status == 'generating') {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -220,6 +299,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             ),
             const SizedBox(height: 16),
             _buildMiniTourCard(),
+            const SizedBox(height: 12),
+            _buildMuseumBanner(),
             const SizedBox(height: 16),
             Expanded(child: _buildContent()),
           ],
