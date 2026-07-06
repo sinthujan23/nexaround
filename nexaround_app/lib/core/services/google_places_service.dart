@@ -297,16 +297,7 @@ class GooglePlacesService {
             .map((p) => AttractionModel.fromJson(p))
             .toList();
 
-        // Filter results strictly within 15km
-        final filteredModels = models.where((m) {
-          final distM = geo.Geolocator.distanceBetween(
-            latitude,
-            longitude,
-            m.latitude,
-            m.longitude,
-          );
-          return distM <= 15000;
-        }).toList();
+        final filteredModels = models;
 
         // Sort by distance ascending
         filteredModels.sort((a, b) {
@@ -316,7 +307,7 @@ class GooglePlacesService {
         });
 
         print(
-          '✅ Places searched and filtered within 15km: ${filteredModels.length} items',
+          '✅ Places searched: ${filteredModels.length} items',
         );
         return filteredModels;
       }

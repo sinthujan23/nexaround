@@ -1552,8 +1552,6 @@ class _LivingMapPageState extends State<LivingMapPage>
         longitude: _userLongitude,
         initialResult: readyResult,
         onPlaceSelected: (placeName) async {
-          Navigator.pop(sheetContext);
-          
           if (!mounted) return;
           ScaffoldMessenger.of(parentContext).showSnackBar(
             SnackBar(

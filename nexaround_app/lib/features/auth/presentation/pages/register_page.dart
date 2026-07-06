@@ -110,58 +110,37 @@ class _RegisterPageState extends State<RegisterPage> {
                 SafeArea(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // Icon-only logo — phone/compass graphic, no text
-                          Container(
-                            width: 110,
-                            height: 110,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: AppColors.glassBorder, width: 1.5),
-                              color: const Color(0xFFFFF8DC),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.primary.withOpacity(0.2),
-                                  blurRadius: 40,
-                                  spreadRadius: 5,
-                                ),
-                              ],
-                            ),
-                            child: ClipOval(
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Image.asset(
-                                  'assets/images/app_icon.png',
-                                  fit: BoxFit.contain,
-                                ),
-                              ),
-                            ),
+                          Image.asset(
+                            'assets/images/logo_2.png',
+                            width: 90,
+                            fit: BoxFit.contain,
                           ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 14),
 
                           const Text(
                             'Create Account',
                             style: TextStyle(
-                              fontSize: 32,
+                              fontSize: 26,
                               fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
                               letterSpacing: -1,
                             ),
                           ).animate().fade().slideY(begin: 0.2, end: 0),
 
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           Text(
                             'Join the intelligence collective',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 13,
                               color: AppColors.textSecondary,
                             ),
                           ).animate().fade(delay: 200.ms),
 
-                          const SizedBox(height: 40),
+                          const SizedBox(height: 20),
 
                           // Gmail Verification Button
                           _buildSocialVerifyButton(
@@ -171,7 +150,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             delay: 250,
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
 
                           Row(
                             children: [
@@ -192,7 +171,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             ],
                           ).animate().fade(delay: 300.ms),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
 
                           Row(
                             children: [
@@ -217,7 +196,7 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 10),
                           _buildTextField(
                             controller: _emailController,
                             label: 'EMAIL ADDRESS',
@@ -226,7 +205,7 @@ class _RegisterPageState extends State<RegisterPage> {
                             keyboardType: TextInputType.emailAddress,
                             delay: 500,
                           ),
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 10),
                           _buildTextField(
                             controller: _passwordController,
                             label: 'PASSWORD',
@@ -239,11 +218,11 @@ class _RegisterPageState extends State<RegisterPage> {
                             delay: 600,
                           ),
 
-                          const SizedBox(height: 40),
+                          const SizedBox(height: 22),
 
                           _buildRegisterButton(isLoading),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 18),
 
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -293,7 +272,7 @@ class _RegisterPageState extends State<RegisterPage> {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: Colors.black.withOpacity(0.08)),
@@ -302,12 +281,12 @@ class _RegisterPageState extends State<RegisterPage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 28),
-            SizedBox(width: 12),
+            Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 24),
+            SizedBox(width: 10),
             Text(
               label,
               style: TextStyle(
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary,
               ),

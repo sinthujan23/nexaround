@@ -25,7 +25,29 @@ async def create_discovery_history(
         mode=data.mode,
         result=data.result,
     )
-    return await repo.create(item)
+    saved_item = await repo.create(item)
+
+    # Send FCM push notification when Neva finishes generating
+    try:
+        from app.services import fcm_service
+        prefs = current_user.preferences or {}
+        tokens = list(prefs.get("fcm_tokens") or [])
+        legacy = prefs.get("fcm_token")
+        if legacy and legacy not in tokens:
+            tokens.append(legacy)
+        if tokens:
+            await fcm_service.send_to_tokens(
+                db,
+                tokens,
+                title="✨ Neva Discovery Ready",
+                body=f"Your itinerary for {data.location} is ready!",
+                data={"type": "discovery_ready"},
+            )
+    except Exception as e:
+        # Ignore push notification failure so it doesn't block the history saving flow
+        pass
+
+    return saved_item
 
 
 @router.get("/history", response_model=List[DiscoveryHistoryResponse])

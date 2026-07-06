@@ -126,34 +126,34 @@ class _LoginPageState extends State<LoginPage> {
                 SafeArea(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 32),
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           _buildLogo(),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
 
                           // Title
                           const Text(
                             'Welcome Back',
                             style: TextStyle(
-                              fontSize: 32,
+                              fontSize: 26,
                               fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
                               letterSpacing: -0.5,
                             ),
                           ).animate().fade().slideY(begin: 0.2, end: 0),
 
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 4),
                           Text(
                             'Sign in to explore the extraordinary',
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 13,
                               color: AppColors.textSecondary,
                             ),
                           ).animate().fade(delay: 200.ms),
 
-                          const SizedBox(height: 48),
+                          const SizedBox(height: 22),
 
                           // Social login buttons
                           _buildSocialButton(
@@ -162,7 +162,7 @@ class _LoginPageState extends State<LoginPage> {
                             onTap: () => _handleSocialLogin('google'),
                             delay: 300,
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(height: 10),
                           _buildSocialButton(
                             icon: Icons.apple_rounded,
                             label: 'Continue with Apple',
@@ -170,7 +170,7 @@ class _LoginPageState extends State<LoginPage> {
                             delay: 400,
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
 
                           // Divider
                           Row(
@@ -192,7 +192,7 @@ class _LoginPageState extends State<LoginPage> {
                             ],
                           ),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 16),
 
                           // Email field
                           _buildTextField(
@@ -201,7 +201,7 @@ class _LoginPageState extends State<LoginPage> {
                             icon: Icons.email_outlined,
                           ).animate().fade(delay: 500.ms).slideX(begin: -0.05, end: 0),
 
-                          const SizedBox(height: 16),
+                          const SizedBox(height: 10),
 
                           // Password field
                           _buildTextField(
@@ -222,7 +222,7 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ).animate().fade(delay: 600.ms).slideX(begin: -0.05, end: 0),
 
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 4),
 
                           Align(
                             alignment: Alignment.centerRight,
@@ -239,12 +239,12 @@ class _LoginPageState extends State<LoginPage> {
                             ),
                           ),
 
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 14),
 
                           // Sign In button
                           _buildSignInButton(isLoading),
 
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 20),
 
                           // Create account
                           Row(
@@ -327,27 +327,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildLogo() {
-    return Container(
-      width: 110,
-      height: 110,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(color: AppColors.glassBorder, width: 1.5),
-        color: const Color(0xFFFFF8DC),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.2),
-            blurRadius: 40,
-            spreadRadius: 5,
-          ),
-        ],
-      ),
-      child: ClipOval(
-        child: Image.asset(
-          'assets/images/app_icon.png',
-          fit: BoxFit.cover,
-        ),
-      ),
+    return Image.asset(
+      'assets/images/logo_2.png',
+      width: 90,
+      fit: BoxFit.contain,
     ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack);
   }
 
@@ -358,19 +341,19 @@ class _LoginPageState extends State<LoginPage> {
     required int delay,
   }) {
     return GlassCard(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       onTap: onTap,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: AppColors.textPrimary, size: 26),
-          const SizedBox(width: 12),
+          Icon(icon, color: AppColors.textPrimary, size: 22),
+          const SizedBox(width: 10),
           Text(
             label,
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontWeight: FontWeight.w600,
-              fontSize: 15,
+              fontSize: 14,
             ),
           ),
         ],
@@ -416,7 +399,7 @@ class _LoginPageState extends State<LoginPage> {
   Widget _buildSignInButton(bool isLoading) {
     return SizedBox(
       width: double.infinity,
-      height: 58,
+      height: 50,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),

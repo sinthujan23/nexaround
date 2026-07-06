@@ -12,6 +12,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
+import 'package:nexaround_app/core/services/place_verifier_service.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 enum SheetState { input, loading, result }
 
@@ -427,8 +429,9 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
       currencySymbol = currencyInfo['symbol'] ?? '\$';
     }
 
-    // Copy details to local variables for the background builder thread
     final currentLoc = _currentLocationName;
+    final currentLat = _currentLatitude;
+    final currentLng = _currentLongitude;
     final currentTimeAvailable = _timeAvailable;
     final currentMood = _selectedMood;
     final currentMode = _selectedMode ?? 'Explore';
@@ -467,6 +470,10 @@ Think like a local friend, an experienced travel concierge, and an intelligent A
 
 Current Location:
 $currentLoc
+
+CRITICAL BOUNDARY REQUIREMENT:
+You MUST ONLY recommend places, attractions, restaurants, and activities that are located in or extremely close to (strictly within a 15km radius of) $currentLoc.
+Do NOT recommend places in other cities, even if they are in the same country. For example, if the current location is Kinniya, you must NOT recommend places in Colombo or Trincomalee. Focus purely on local, nearby options. If there are few commercial attractions, suggest scenic views, local bridges, local beaches, local street food spots, nature walks, or community spaces in $currentLoc.
 
 Current Date:
 $dateStr
@@ -545,8 +552,7 @@ Then explain in 2–3 sentences why this plan is perfect for today.
 Your Journey
 For each stop include:
 - Time: [Arrival Time]
-- Place Name: [Place Name]
-- Google Maps: [A clickable Google Maps link using the format: https://www.google.com/maps/search/?api=1&query=PLACE+NAME]
+- Place Name: [Place Name] (Make sure to wrap the place name in double brackets, like [[Place Name]])
 - Time to Spend: [Duration]
 - Estimated Cost: [Cost]
 - Travel Time from Previous Stop: [Travel Time]
@@ -578,9 +584,8 @@ Recommend the next best nearby experience.
 Write naturally and conversationally.
 Avoid generic tourism language.
 Keep descriptions short and engaging.
-Do not mention scores, rankings, or algorithms.
-Use actual place names.
-Always include working Google Maps links.
+Use actual place names. Only recommend real, existing places that can be found on Google Maps. Do NOT invent or hallucinate places.
+Do NOT include any raw Google Maps URLs or external HTTP/HTTPS links in your response. Instead, wrap the place names in double brackets like [[Place Name]] so the app can handle opening the map natively.
 Make the itinerary feel like it was created by someone who truly knows the city.
 
 # Goal
@@ -593,7 +598,28 @@ If you recommend a specific local place, business, or attraction, you MUST wrap 
 ''';
 
       final gemini = GeminiService();
-      final response = await gemini.getResponse(prompt);
+      print('🔍 DiscoveryEngine: Submitting prompt to Gemini...');
+      final rawResponse = await gemini.getResponse(prompt);
+      print('🔍 DiscoveryEngine: Received raw response from Gemini (${rawResponse.length} chars)');
+      print('🔍 DiscoveryEngine: Current Location: "$currentLoc", Lat: $currentLat, Lng: $currentLng');
+      print('🔍 DiscoveryEngine: API Key length: ${ApiConstants.googleMapsApiKey.length}');
+      
+      // Filter out hallucinated places
+      final hallucinatedPlaces = await PlaceVerifierService.findHallucinatedPlaces(
+        rawResponse, 
+        currentLoc,
+        centerLat: currentLat,
+        centerLng: currentLng,
+      );
+      print('🔍 DiscoveryEngine: Hallucinated/Far-away places identified to filter: $hallucinatedPlaces');
+      
+      final response = PlaceVerifierService.cleanRawUrls(
+        PlaceVerifierService.filterHallucinatedStops(
+          rawResponse, 
+          hallucinatedPlaces,
+        ),
+      );
+      print('🔍 DiscoveryEngine: Final filtered response size: ${response.length} chars');
 
       // Save to backend database history
       await DiscoveryHistoryService.saveHistoryItem(

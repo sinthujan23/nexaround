@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
-        android:label="nexaround_app"
+        android:label="nexARound"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity
