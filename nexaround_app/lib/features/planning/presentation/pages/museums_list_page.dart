@@ -3,6 +3,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/data/museum_repository.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museum_guide_page.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 
 /// Lists all 63 top world museums as premium cards. Tapping one opens the
 /// curated guide page where the user picks their available time.
@@ -288,7 +289,7 @@ class _MuseumCard extends StatelessWidget {
                   child: museum.imageUrl != null
                       ? Image.network(
                           museum.imageUrl!.startsWith('/')
-                              ? 'https://api.nexaround.com${museum.imageUrl}'
+                              ? '${ApiConstants.baseUrl}${museum.imageUrl}'
                               : museum.imageUrl!,
                           width: 56,
                           height: 56,

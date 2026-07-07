@@ -22,7 +22,7 @@ class Museum(Base):
     country: Mapped[str] = mapped_column(String(120), nullable=False)
     annual_visitors: Mapped[int] = mapped_column(Integer, nullable=True)
     rank: Mapped[int] = mapped_column(Integer, nullable=True)
-    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ticket_url: Mapped[str | None] = mapped_column(
         String(512), nullable=True,
         comment="Affiliate / deep-link to buy fast-track tickets",
