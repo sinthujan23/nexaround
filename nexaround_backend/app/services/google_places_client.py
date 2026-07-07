@@ -494,7 +494,7 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
             url = f"{_BASE}/place/photo"
             params = {
                 "maxwidth": maxwidth,
-                "photoreference": photo_reference,
+                "photo_reference": photo_reference,
                 "key": google_maps_key,
             }
             resp = await client.get(url, params=params)

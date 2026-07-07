@@ -20,10 +20,10 @@ async def fetch_museum_photos():
         
     api_key = row['value']
     
-    # Get museums without image_url
-    museums = await conn.fetch("SELECT id, name, city FROM museums WHERE image_url IS NULL")
+    # Get museums without new photo format
+    museums = await conn.fetch("SELECT id, name, city FROM museums WHERE image_url IS NULL OR image_url NOT LIKE '%ref=places/%'")
     if not museums:
-        print("No museums need updating. All have image_url.")
+        print("No museums need updating. All have new image_url format.")
         await conn.close()
         return
         
@@ -38,20 +38,28 @@ async def fetch_museum_photos():
             search_query = f"{name} {city}"
             print(f"Searching for: {search_query}")
             
-            url = f"https://maps.googleapis.com/maps/api/place/findplacefromtext/json?input={quote(search_query)}&inputtype=textquery&fields=photos&key={api_key}"
+            url = "https://places.googleapis.com/v1/places:searchText"
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": api_key,
+                "X-Goog-FieldMask": "places.photos"
+            }
+            body = {
+                "textQuery": search_query
+            }
             
             try:
-                resp = await client.get(url, timeout=10.0)
+                resp = await client.post(url, json=body, headers=headers, timeout=10.0)
                 resp.raise_for_status()
                 data = resp.json()
                 
-                candidates = data.get("candidates", [])
-                if candidates and candidates[0].get("photos"):
-                    photos = candidates[0]["photos"]
+                places = data.get("places", [])
+                if places and places[0].get("photos"):
+                    photos = places[0]["photos"]
                     if photos:
-                        photo_reference = photos[0]["photo_reference"]
-                        # Store the proxy URL
-                        proxy_url = f"/api/v1/proxy/google-maps/place/photo?maxwidth=800&photo_reference={photo_reference}"
+                        photo_reference = photos[0]["name"]
+                        # Store the public proxy URL using places/ photo reference
+                        proxy_url = f"/api/v1/places/photo?ref={photo_reference}"
                         
                         await conn.execute("UPDATE museums SET image_url = $1 WHERE id = $2", proxy_url, museum_id)
                         print(f"  -> Updated with proxy URL")
