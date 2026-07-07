@@ -154,8 +154,9 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
+              centerTitle: true,
               title: Text(
-                'World\'s Top Museums',
+                'Top Museums of the World',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,

@@ -121,3 +121,50 @@ class MuseumItinerary {
             .toList(),
       );
 }
+
+class MuseumDetail {
+  final String id;
+  final String slug;
+  final String name;
+  final String city;
+  final String country;
+  final int? annualVisitors;
+  final int? rank;
+  final String? imageUrl;
+  final String? ticketUrl;
+  final double? latitude;
+  final double? longitude;
+  final List<Masterpiece> masterpieces;
+
+  const MuseumDetail({
+    required this.id,
+    required this.slug,
+    required this.name,
+    required this.city,
+    required this.country,
+    this.annualVisitors,
+    this.rank,
+    this.imageUrl,
+    this.ticketUrl,
+    this.latitude,
+    this.longitude,
+    required this.masterpieces,
+  });
+
+  factory MuseumDetail.fromJson(Map<String, dynamic> json) => MuseumDetail(
+        id: json['id'] as String,
+        slug: json['slug'] as String,
+        name: json['name'] as String,
+        city: json['city'] as String,
+        country: json['country'] as String,
+        annualVisitors: json['annual_visitors'] as int?,
+        rank: json['rank'] as int?,
+        imageUrl: json['image_url'] as String?,
+        ticketUrl: json['ticket_url'] as String?,
+        latitude: (json['latitude'] as num?)?.toDouble(),
+        longitude: (json['longitude'] as num?)?.toDouble(),
+        masterpieces: (json['masterpieces'] as List)
+            .map((e) => Masterpiece.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+}

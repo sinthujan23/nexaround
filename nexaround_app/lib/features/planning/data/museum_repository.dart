@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
@@ -51,5 +52,25 @@ class MuseumRepository {
         CacheService.getCachedItineraryRaw(slug, duration);
     if (raw == null) return null;
     return MuseumItinerary.fromJson(raw);
+  }
+
+  /// Full museum details including all masterpieces.
+  Future<MuseumDetail> getMuseumDetail(String slug) async {
+    final response = await _dio.get('$_base/$slug');
+    final raw = (response.data as Map).cast<String, dynamic>();
+    await CacheService.saveUserData('museum_detail_$slug', json.encode(raw));
+    return MuseumDetail.fromJson(raw);
+  }
+
+  /// Synchronous call to read last fetched museum detail from local cache.
+  MuseumDetail? getCachedMuseumDetail(String slug) {
+    final rawStr = CacheService.getUserData('museum_detail_$slug');
+    if (rawStr == null) return null;
+    try {
+      final raw = json.decode(rawStr) as Map<String, dynamic>;
+      return MuseumDetail.fromJson(raw);
+    } catch (_) {
+      return null;
+    }
   }
 }

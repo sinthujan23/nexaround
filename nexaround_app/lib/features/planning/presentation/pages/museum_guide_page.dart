@@ -22,8 +22,31 @@ class MuseumGuidePage extends StatefulWidget {
 class _MuseumGuidePageState extends State<MuseumGuidePage> {
   final _repo = MuseumRepository();
 
-  static const _durations = ['5h', '1d', '2d'];
+  List<String> _durations = ['5h', '1d', '2d'];
   static const _durationLabels = {'5h': '5 Hours', '1d': '1 Day', '2d': '2 Days'};
+
+  static const Map<String, _MuseumExtraInfo> _extraInfo = {
+    'louvre': _MuseumExtraInfo(
+      website: 'https://www.louvre.fr/en',
+      hours: '9am–6pm (Closed Tue)',
+    ),
+    'vatican-museums': _MuseumExtraInfo(
+      website: 'https://www.museivaticani.va',
+      hours: '8am–7pm (Closed Sun)',
+    ),
+    'british-museum': _MuseumExtraInfo(
+      website: 'https://www.britishmuseum.org',
+      hours: '10am–5pm (Fri until 8:30pm)',
+    ),
+  };
+
+  _MuseumExtraInfo get _museumExtra {
+    return _extraInfo[widget.museum.slug] ??
+        _MuseumExtraInfo(
+          website: 'https://www.google.com/search?q=${Uri.encodeComponent(widget.museum.name)}',
+          hours: '9:00 AM – 6:00 PM',
+        );
+  }
 
   String _selected = '1d';
   MuseumItinerary? _itinerary;
@@ -37,7 +60,34 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
     _fetch();
   }
 
+  void _calculateAvailableDurations(List<Masterpiece> masterpieces) {
+    final has5h = masterpieces.any((m) => m.included5h);
+    final has1d = masterpieces.any((m) => m.included1d);
+    final has2d = masterpieces.any((m) => m.included2d);
+    
+    final list = <String>[];
+    if (has5h) list.add('5h');
+    if (has1d) list.add('1d');
+    if (has2d) list.add('2d');
+    
+    if (list.isNotEmpty) {
+      setState(() {
+        _durations = list;
+        if (!list.contains(_selected)) {
+          _selected = list.contains('1d') ? '1d' : list.first;
+        }
+      });
+    }
+  }
+
   void _loadCache() {
+    // Try to load cached museum detail for durations check
+    final detail = _repo.getCachedMuseumDetail(widget.museum.slug);
+    if (detail != null) {
+      _calculateAvailableDurations(detail.masterpieces);
+    }
+
+    // Load cached itinerary
     final cached = _repo.getCachedItinerary(
       slug: widget.museum.slug,
       duration: _selected,
@@ -55,6 +105,11 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       _error = null;
     });
     try {
+      // 1. Fetch fresh museum details first to ensure correct durations check
+      final detail = await _repo.getMuseumDetail(widget.museum.slug);
+      _calculateAvailableDurations(detail.masterpieces);
+
+      // 2. Fetch fresh itinerary
       final it = await _repo.getItinerary(
         slug: widget.museum.slug,
         duration: _selected,
@@ -288,26 +343,54 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: Row(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _statChip(
-                    Icons.visibility_rounded,
-                    _itinerary != null
-                        ? '${_itinerary!.totalItems} Must-See'
-                        : '…',
+                  Row(
+                    children: [
+                      _statChip(
+                        Icons.visibility_rounded,
+                        _itinerary != null
+                            ? '${_itinerary!.totalItems} Must-See'
+                            : '…',
+                      ),
+                      const SizedBox(width: 10),
+                      _statChip(
+                        Icons.access_time_filled_rounded,
+                        _museumExtra.hours,
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  _statChip(
-                    Icons.schedule_rounded,
-                    _durationLabels[_selected] ?? _selected,
-                  ),
-                  if (widget.museum.annualVisitors != null) ...[
-                    const SizedBox(width: 10),
-                    _statChip(
-                      Icons.people_rounded,
-                      '${(widget.museum.annualVisitors! / 1e6).toStringAsFixed(1)}M/yr',
+                  const SizedBox(height: 10),
+                  InkWell(
+                    onTap: () {
+                      launchUrl(
+                        Uri.parse(_museumExtra.website),
+                        mode: LaunchMode.externalApplication,
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(8),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.language_rounded,
+                              size: 16, color: AppColors.brandGreen),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Visit official website',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.brandGreen,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -669,4 +752,10 @@ class _DurationHeaderDelegate extends SliverPersistentHeaderDelegate {
       ),
     );
   }
+}
+
+class _MuseumExtraInfo {
+  final String website;
+  final String hours;
+  const _MuseumExtraInfo({required this.website, required this.hours});
 }

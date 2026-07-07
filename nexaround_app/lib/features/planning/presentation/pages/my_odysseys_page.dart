@@ -241,7 +241,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'TOP WORLD MUSEUMS',
+                              'TOP MUSEUMS OF THE WORLD',
                               style: TextStyle(
                                 fontSize: 9,
                                 fontWeight: FontWeight.w800,
@@ -251,7 +251,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                             ),
                             SizedBox(height: 4),
                             Text(
-                              'Curated Masterpiece Guides',
+                              'Curated Master Guides',
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
