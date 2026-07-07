@@ -30,13 +30,253 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       website: 'https://www.louvre.fr/en',
       hours: '9am–6pm (Closed Tue)',
     ),
+    'national-museum-of-china': _MuseumExtraInfo(
+      website: 'http://en.chnmuseum.cn/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
     'vatican-museums': _MuseumExtraInfo(
       website: 'https://www.museivaticani.va',
       hours: '8am–7pm (Closed Sun)',
     ),
+    'shenzhen-museum': _MuseumExtraInfo(
+      website: 'https://www.shenzhenmuseum.com',
+      hours: '10am–6pm (Closed Mon)',
+    ),
+    'national-museum-of-korea': _MuseumExtraInfo(
+      website: 'https://www.museum.go.kr/site/eng/home',
+      hours: '10am–6pm (Wed/Sat until 9pm)',
+    ),
     'british-museum': _MuseumExtraInfo(
       website: 'https://www.britishmuseum.org',
       hours: '10am–5pm (Fri until 8:30pm)',
+    ),
+    'china-science-and-technology-museum': _MuseumExtraInfo(
+      website: 'http://www.cstm.org.cn/',
+      hours: '9:30am–5pm (Closed Mon)',
+    ),
+    'natural-history-museum-south-kensington': _MuseumExtraInfo(
+      website: 'https://www.nhm.ac.uk',
+      hours: '10am–5:50pm',
+    ),
+    'metropolitan-museum-of-art': _MuseumExtraInfo(
+      website: 'https://www.metmuseum.org',
+      hours: '10am–5pm (Fri/Sat until 9pm, Closed Wed)',
+    ),
+    'nanjing-museum': _MuseumExtraInfo(
+      website: 'http://www.njmuseum.com/en',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'american-museum-of-natural-history': _MuseumExtraInfo(
+      website: 'https://www.amnh.org',
+      hours: '10am–5:30pm',
+    ),
+    'tate-modern': _MuseumExtraInfo(
+      website: 'https://www.tate.org.uk/visit/tate-modern',
+      hours: '10am–6pm',
+    ),
+    'hubei-provincial-museum': _MuseumExtraInfo(
+      website: 'http://www.hbmus.org/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'shanghai-museum-east': _MuseumExtraInfo(
+      website: 'https://www.shanghaimuseum.net/',
+      hours: '9am–5pm (Closed Tue)',
+    ),
+    'national-gallery-of-art': _MuseumExtraInfo(
+      website: 'https://www.nga.gov',
+      hours: '10am–5pm',
+    ),
+    'musee-dorsay': _MuseumExtraInfo(
+      website: 'https://www.musee-orsay.fr/en',
+      hours: '9:30am–6pm (Thu until 9:45pm, Closed Mon)',
+    ),
+    'national-museum-of-anthropology': _MuseumExtraInfo(
+      website: 'https://mna.inah.gob.mx/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'state-russian-museum': _MuseumExtraInfo(
+      website: 'http://www.rusmuseum.ru/en/',
+      hours: '10am–6pm (Mon until 8pm, Thu until 9pm, Closed Tue)',
+    ),
+    'state-hermitage-museum': _MuseumExtraInfo(
+      website: 'https://www.hermitagemuseum.org',
+      hours: '11am–6pm (Thu/Sat until 8pm, Closed Mon)',
+    ),
+    'victoria-and-albert-museum': _MuseumExtraInfo(
+      website: 'https://www.vam.ac.uk',
+      hours: '10am–5:45pm (Fri until 10pm)',
+    ),
+    'prado-museum': _MuseumExtraInfo(
+      website: 'https://www.museodelprado.es/en',
+      hours: '10am–8pm (Sun/Holidays 10am–7pm)',
+    ),
+    'centre-pompidou': _MuseumExtraInfo(
+      website: 'https://www.centrepompidou.fr/en',
+      hours: '11am–9pm (Closed Tue)',
+    ),
+    'national-gallery': _MuseumExtraInfo(
+      website: 'https://www.nationalgallery.org.uk',
+      hours: '10am–6pm (Fri until 9pm)',
+    ),
+    'musee-national-dhistoire-naturelle': _MuseumExtraInfo(
+      website: 'https://www.mnhn.fr/en',
+      hours: '10am–6pm (Closed Tue)',
+    ),
+    'national-air-and-space-museum': _MuseumExtraInfo(
+      website: 'https://airandspace.si.edu',
+      hours: '10am–5:30pm',
+    ),
+    'mevlana-museum': _MuseumExtraInfo(
+      website: 'https://www.muze.gov.tr',
+      hours: '9am–5:30pm',
+    ),
+    'national-museum-of-natural-history': _MuseumExtraInfo(
+      website: 'https://naturalhistory.si.edu',
+      hours: '10am–5:30pm',
+    ),
+    'galleria-degli-uffizi': _MuseumExtraInfo(
+      website: 'https://www.uffizi.it/en',
+      hours: '8:15am–6:30pm (Closed Mon)',
+    ),
+    'national-museum-of-natural-science': _MuseumExtraInfo(
+      website: 'https://www.nmns.edu.tw',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'science-museum': _MuseumExtraInfo(
+      website: 'https://www.sciencemuseum.org.uk',
+      hours: '10am–6pm',
+    ),
+    'museum-of-modern-art': _MuseumExtraInfo(
+      website: 'https://www.moma.org',
+      hours: '10:30am–5:30pm (Sat until 7pm)',
+    ),
+    'national-museum-of-nature-and-science': _MuseumExtraInfo(
+      website: 'https://www.kahaku.go.jp/english/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'm-plus': _MuseumExtraInfo(
+      website: 'https://www.mplus.org.hk',
+      hours: '10am–6pm (Fri until 10pm, Closed Mon)',
+    ),
+    'state-tretyakov-gallery': _MuseumExtraInfo(
+      website: 'https://www.tretyakovgallery.ru/en/',
+      hours: '10am–6pm (Thu/Fri/Sat/Sun until 9pm, Closed Mon)',
+    ),
+    'rijksmuseum': _MuseumExtraInfo(
+      website: 'https://www.rijksmuseum.nl/en',
+      hours: '9am–5pm',
+    ),
+    'tokyo-national-museum': _MuseumExtraInfo(
+      website: 'https://www.tnm.jp',
+      hours: '9:30am–5pm (Closed Mon)',
+    ),
+    'art-gallery-of-new-south-wales': _MuseumExtraInfo(
+      website: 'https://www.artgallery.nsw.gov.au',
+      hours: '10am–5pm (Wed until 10pm)',
+    ),
+    'national-museum-of-scotland': _MuseumExtraInfo(
+      website: 'https://www.nms.ac.uk',
+      hours: '10am–5pm',
+    ),
+    'royal-museums-greenwich': _MuseumExtraInfo(
+      website: 'https://www.rmg.co.uk',
+      hours: '10am–5pm',
+    ),
+    'galleria-dellaccademia': _MuseumExtraInfo(
+      website: 'https://www.galleriaaccademiafirenze.it/en/',
+      hours: '8:15am–6:50pm (Closed Mon)',
+    ),
+    'smithsonian-museum-of-american-history': _MuseumExtraInfo(
+      website: 'https://americanhistory.si.edu',
+      hours: '10am–5:30pm',
+    ),
+    'national-gallery-singapore': _MuseumExtraInfo(
+      website: 'https://www.nationalgallery.sg',
+      hours: '10am–7pm',
+    ),
+    '21st-century-museum-of-contemporary-art': _MuseumExtraInfo(
+      website: 'https://www.kanazawa21.jp',
+      hours: '10am–6pm (Fri/Sat until 8pm, Closed Mon)',
+    ),
+    'national-science-and-technology-museum': _MuseumExtraInfo(
+      website: 'https://www.nstm.gov.tw',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'national-palace-museum': _MuseumExtraInfo(
+      website: 'https://www.npm.gov.tw',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'national-museum-in-krakow': _MuseumExtraInfo(
+      website: 'https://mnk.pl',
+      hours: '10am–6pm (Sun 10am–4pm, Closed Mon)',
+    ),
+    'van-gogh-museum': _MuseumExtraInfo(
+      website: 'https://www.vangoghmuseum.nl/en',
+      hours: '9am–6pm',
+    ),
+    'the-national-art-center-tokyo': _MuseumExtraInfo(
+      website: 'https://www.nact.jp/english/',
+      hours: '10am–6pm (Fri/Sat until 8pm, Closed Tue)',
+    ),
+    'california-science-center': _MuseumExtraInfo(
+      website: 'https://californiasciencecenter.org',
+      hours: '10am–5pm',
+    ),
+    'china-national-silk-museum': _MuseumExtraInfo(
+      website: 'http://en.chinasilkmuseum.com/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'kunsthistorisches-museum': _MuseumExtraInfo(
+      website: 'https://www.khm.at/en/',
+      hours: '10am–6pm (Thu until 9pm, Closed Mon)',
+    ),
+    'fujian-museum': _MuseumExtraInfo(
+      website: 'http://www.fjmuseum.com/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'hangzhou-arts-and-crafts-museum': _MuseumExtraInfo(
+      website: 'http://www.hzacm.com/',
+      hours: '9am–4:30pm (Closed Mon)',
+    ),
+    'national-gallery-of-victoria': _MuseumExtraInfo(
+      website: 'https://www.ngv.vic.gov.au',
+      hours: '10am–5pm',
+    ),
+    'national-museum-in-warsaw': _MuseumExtraInfo(
+      website: 'https://www.mnw.art.pl/en/',
+      hours: '10am–6pm (Fri until 8pm, Closed Mon)',
+    ),
+    'louis-vuitton-foundation': _MuseumExtraInfo(
+      website: 'https://www.fondationlouisvuitton.fr/en',
+      hours: '11am–8pm (Closed Tue)',
+    ),
+    'kaohsiung-museum-of-fine-arts': _MuseumExtraInfo(
+      website: 'https://www.kmfa.gov.tw',
+      hours: '9:30am–5:30pm (Closed Mon)',
+    ),
+    'acropolis-museum': _MuseumExtraInfo(
+      website: 'https://www.theacropolismuseum.gr/en',
+      hours: '9am–5pm (Mon until 4pm, Fri until 10pm)',
+    ),
+    'centro-cultural-banco-do-brasil': _MuseumExtraInfo(
+      website: 'https://ccbb.com.br',
+      hours: '9am–9pm (Closed Tue)',
+    ),
+    'palacio-de-cristal-del-retiro': _MuseumExtraInfo(
+      website: 'https://www.museoreinasofia.es',
+      hours: '10am–10pm',
+    ),
+    'guggenheim-museum-bilbao': _MuseumExtraInfo(
+      website: 'https://www.guggenheim-bilbao.eus/en',
+      hours: '10am–7pm (Closed Mon)',
+    ),
+    'chinese-aviation-museum': _MuseumExtraInfo(
+      website: 'http://www.chn-am.com/',
+      hours: '9am–5pm (Closed Mon)',
+    ),
+    'moscow-kremlin-museum': _MuseumExtraInfo(
+      website: 'https://www.kreml.ru/en-US/',
+      hours: '10am–5pm (Closed Thu)',
     ),
   };
 
@@ -431,8 +671,12 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                 ),
               ),
             )
-          else if (_itinerary != null)
+          else if (_itinerary != null) ...[
             ..._buildTimeline(_itinerary!),
+            SliverToBoxAdapter(
+              child: _buildDisclaimerCard(),
+            ),
+          ],
 
           // Bottom padding
           const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -677,6 +921,53 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppColors.textSecondary)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisclaimerCard() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.brandGreen,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Disclaimer',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  "This itinerary is intended as a guide only. Gallery layouts, room numbers, exhibits, and visitor routes may change without notice. Please check the museum's official website for the latest updates before your visit.",
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.5,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

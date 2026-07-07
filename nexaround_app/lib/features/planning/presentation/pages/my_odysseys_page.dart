@@ -256,6 +256,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
+                                wordSpacing: 4.0,
                               ),
                             ),
                             SizedBox(height: 2),
