@@ -158,69 +158,121 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           MaterialPageRoute(builder: (_) => const MuseumsListPage()),
         ),
         child: Container(
-          padding: const EdgeInsets.all(18),
+          height: 102,
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+              colors: [
+                Color(0xFF0F172A),
+                Color(0xFF020617),
+              ],
             ),
-            borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF1A1A2E).withOpacity(0.3),
+                color: Colors.black.withOpacity(0.3),
                 blurRadius: 16,
                 offset: const Offset(0, 8),
               ),
             ],
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+              children: [
+                // Right side: decorative background illustration representing museums
+                Positioned(
+                  right: -10,
+                  bottom: -15,
+                  top: -10,
+                  width: 140,
+                  child: Opacity(
+                    opacity: 0.18,
+                    child: Image.asset(
+                      'assets/images/cat_historical.png',
+                      fit: BoxFit.contain,
+                      color: AppColors.brandGreen,
+                      colorBlendMode: BlendMode.srcIn,
+                    ),
+                  ),
                 ),
-                child: const Icon(Icons.museum_rounded,
-                    color: Colors.white, size: 24),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TOP WORLD MUSEUMS',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                        color: Colors.white54,
+                // Glowing radial light overlay in the top-right
+                Positioned(
+                  right: 20,
+                  top: -30,
+                  child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.brandGreen.withOpacity(0.15),
+                          Colors.transparent,
+                        ],
                       ),
                     ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Curated Masterpiece Guides',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Expert routes for 5h, 1 day or 2 days',
-                      style: TextStyle(fontSize: 11, color: Colors.white54),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-              const Icon(Icons.arrow_forward_ios_rounded,
-                  color: Colors.white38, size: 16),
-            ],
+                // Content Row
+                Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: AppColors.brandGreen.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.brandGreen.withOpacity(0.3),
+                          ),
+                        ),
+                        child: const Icon(Icons.museum_rounded,
+                            color: AppColors.brandGreen, size: 24),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'TOP WORLD MUSEUMS',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2,
+                                color: AppColors.brandGreen,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Curated Masterpiece Guides',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Expert routes for 5h, 1 day or 2 days',
+                              style: TextStyle(fontSize: 11, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded,
+                          color: Colors.white38, size: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0),

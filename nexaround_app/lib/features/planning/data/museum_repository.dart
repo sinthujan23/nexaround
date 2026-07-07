@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 
 /// Fetches museum data from the `/museums` backend endpoints.
@@ -12,9 +13,17 @@ class MuseumRepository {
   /// All museums ordered by visitor rank.
   Future<List<MuseumListItem>> getMuseums() async {
     final response = await _dio.get('$_base/');
-    return (response.data as List)
-        .map((e) => MuseumListItem.fromJson(
-            (e as Map).cast<String, dynamic>()))
+    final List<Map<String, dynamic>> raw = (response.data as List)
+        .map((e) => (e as Map).cast<String, dynamic>())
+        .toList();
+    await CacheService.cacheMuseums(raw);
+    return raw.map((e) => MuseumListItem.fromJson(e)).toList();
+  }
+
+  /// Synchronous call to read last fetched museums from local cache.
+  List<MuseumListItem> getCachedMuseums() {
+    return CacheService.getCachedMuseumsRaw()
+        .map((e) => MuseumListItem.fromJson(e))
         .toList();
   }
 
@@ -27,7 +36,20 @@ class MuseumRepository {
       '$_base/$slug/itinerary',
       queryParameters: {'duration': duration},
     );
-    return MuseumItinerary.fromJson(
-        (response.data as Map).cast<String, dynamic>());
+    final Map<String, dynamic> raw =
+        (response.data as Map).cast<String, dynamic>();
+    await CacheService.cacheItinerary(slug, duration, raw);
+    return MuseumItinerary.fromJson(raw);
+  }
+
+  /// Synchronous call to read last fetched itinerary from local cache.
+  MuseumItinerary? getCachedItinerary({
+    required String slug,
+    String duration = '1d',
+  }) {
+    final Map<String, dynamic>? raw =
+        CacheService.getCachedItineraryRaw(slug, duration);
+    if (raw == null) return null;
+    return MuseumItinerary.fromJson(raw);
   }
 }

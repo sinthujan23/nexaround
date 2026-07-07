@@ -4,6 +4,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/planning/data/museum_repository.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// Displays a curated, time-filtered itinerary for a single museum.
 ///
@@ -32,12 +33,25 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
   @override
   void initState() {
     super.initState();
+    _loadCache();
     _fetch();
   }
 
+  void _loadCache() {
+    final cached = _repo.getCachedItinerary(
+      slug: widget.museum.slug,
+      duration: _selected,
+    );
+    if (cached != null) {
+      _itinerary = cached;
+      _loading = false;
+    }
+  }
+
   Future<void> _fetch() async {
+    if (!mounted) return;
     setState(() {
-      _loading = true;
+      _loading = _itinerary == null;
       _error = null;
     });
     try {
@@ -52,10 +66,16 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (_itinerary == null) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -127,12 +147,25 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                 fit: StackFit.expand,
                 children: [
                   if (widget.museum.imageUrl != null)
-                    Image.network(
-                      widget.museum.imageUrl!.startsWith('/')
+                    CachedNetworkImage(
+                      imageUrl: widget.museum.imageUrl!.startsWith('/')
                           ? '${ApiConstants.baseUrl}${widget.museum.imageUrl}'
                           : widget.museum.imageUrl!,
                       fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
+                      placeholder: (_, __) => Container(
+                        color: AppColors.charcoal,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.brandGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
                         color: AppColors.charcoal,
                         child: const Icon(Icons.museum_rounded,
                             color: Colors.white38, size: 80),

@@ -5,6 +5,7 @@ import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museum_guide_page.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:video_player/video_player.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 /// Lists all 63 top world museums as premium cards. Tapping one opens the
 /// curated guide page where the user picks their available time.
@@ -18,6 +19,9 @@ class MuseumsListPage extends StatefulWidget {
 class _MuseumsListPageState extends State<MuseumsListPage> {
   final _repo = MuseumRepository();
   VideoPlayerController? _videoController;
+  final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _isScrolled = false;
 
   List<MuseumListItem>? _museums;
   bool _loading = true;
@@ -28,6 +32,30 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
   @override
   void initState() {
     super.initState();
+    _searchController.addListener(() {
+      if (mounted) {
+        setState(() {
+          _search = _searchController.text;
+        });
+      }
+    });
+    _scrollController.addListener(() {
+      if (!mounted) return;
+      final collapsedOffset = 200 - kToolbarHeight - 24;
+      final isScrolled = _scrollController.hasClients &&
+          _scrollController.offset > collapsedOffset;
+      if (isScrolled != _isScrolled) {
+        setState(() {
+          _isScrolled = isScrolled;
+        });
+      }
+    });
+    // Load from cache instantly
+    final cached = _repo.getCachedMuseums();
+    if (cached.isNotEmpty) {
+      _museums = cached;
+      _loading = false;
+    }
     _fetch();
     _initVideo();
   }
@@ -47,13 +75,16 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
     _videoController?.dispose();
     super.dispose();
   }
 
   Future<void> _fetch() async {
+    if (!mounted) return;
     setState(() {
-      _loading = true;
+      _loading = _museums == null || _museums!.isEmpty;
       _error = null;
     });
     try {
@@ -65,10 +96,16 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() {
-        _error = e.toString();
-        _loading = false;
-      });
+      if (_museums == null || _museums!.isEmpty) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -102,24 +139,27 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: CustomScrollView(
+        controller: _scrollController,
         slivers: [
           // ── App Bar ──────────────────────────────────────────────────────
           SliverAppBar(
             pinned: true,
-            expandedHeight: 160,
-            backgroundColor: Colors.black,
+            expandedHeight: 200,
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            scrolledUnderElevation: 0,
             leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white),
+              icon: Icon(Icons.arrow_back_ios_new_rounded,
+                  color: _isScrolled ? Colors.black : Colors.white),
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
+              title: Text(
                 'World\'s Top Museums',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
-                  color: Colors.white,
+                  color: _isScrolled ? Colors.black : Colors.white,
                 ),
               ),
               background: _videoController != null &&
@@ -169,7 +209,7 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                   child: TextField(
-                    onChanged: (v) => setState(() => _search = v),
+                    controller: _searchController,
                     decoration: InputDecoration(
                       hintText: 'Search museums, cities, countries…',
                       hintStyle: const TextStyle(color: AppColors.textTertiary),
@@ -269,21 +309,30 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
               ),
             )
           else
-            SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final museum = _filtered[index];
-                  return _MuseumCard(
-                    museum: museum,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => MuseumGuidePage(museum: museum),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 0.82,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final museum = _filtered[index];
+                    return _MuseumCard(
+                      museum: museum,
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => MuseumGuidePage(museum: museum),
+                        ),
                       ),
-                    ),
-                  );
-                },
-                childCount: _filtered.length,
+                    );
+                  },
+                  childCount: _filtered.length,
+                ),
               ),
             ),
 
@@ -304,95 +353,139 @@ class _MuseumCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Material(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Row(
-              children: [
-                // Museum Image or Rank badge fallback
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    gradient: museum.imageUrl == null
-                        ? (museum.rank != null && museum.rank! <= 3
-                            ? AppColors.achievementGradient
-                            : AppColors.secondaryGradient)
-                        : null,
-                    color: AppColors.surface,
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  alignment: Alignment.center,
-                  child: museum.imageUrl != null
-                      ? Image.network(
-                          museum.imageUrl!.startsWith('/')
-                              ? '${ApiConstants.baseUrl}${museum.imageUrl}'
-                              : museum.imageUrl!,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Text(
-                            '#${museum.rank ?? '–'}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: museum.rank != null && museum.rank! <= 3
-                                  ? Colors.white
-                                  : AppColors.textPrimary,
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Top part: Image / Rank / Item Count
+              Expanded(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Museum Image or fallback
+                    ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
+                      child: museum.imageUrl != null
+                          ? CachedNetworkImage(
+                              imageUrl: museum.imageUrl!.startsWith('/')
+                                  ? '${ApiConstants.baseUrl}${museum.imageUrl}'
+                                  : museum.imageUrl!,
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: AppColors.surface,
+                                child: const Center(
+                                  child: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 1.5,
+                                      color: AppColors.brandGreen,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                color: AppColors.surface,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.museum_rounded,
+                                    size: 32,
+                                    color: AppColors.textTertiary,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : Container(
+                              decoration: BoxDecoration(
+                                gradient: museum.rank != null && museum.rank! <= 3
+                                    ? AppColors.achievementGradient
+                                    : AppColors.secondaryGradient,
+                              ),
+                            ),
+                    ),
+                    // Masterpiece count badge (top-right)
+                    if (museum.masterpieceCount > 0)
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppColors.brandGreen,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            '${museum.masterpieceCount} items',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
                             ),
                           ),
-                        )
-                      : Text(
-                          '#${museum.rank ?? '–'}',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: museum.rank != null && museum.rank! <= 3
-                                ? Colors.white
-                                : AppColors.textPrimary,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Bottom part: Info details
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      museum.name,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.place_rounded,
+                            size: 11, color: AppColors.textTertiary),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            '${museum.city}, ${museum.country}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                ),
-                const SizedBox(width: 14),
-                // Text
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        museum.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          height: 1.2,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      ],
+                    ),
+                    if (museum.annualVisitors != null) ...[
                       const SizedBox(height: 3),
                       Row(
                         children: [
-                          const Icon(Icons.place_rounded,
-                              size: 12, color: AppColors.textTertiary),
+                          const Icon(Icons.people_rounded,
+                              size: 11, color: AppColors.textTertiary),
                           const SizedBox(width: 3),
                           Expanded(
                             child: Text(
-                              '${museum.city}, ${museum.country}',
+                              '${(museum.annualVisitors! / 1e6).toStringAsFixed(1)}M/yr',
                               style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary,
+                                fontSize: 10,
+                                color: AppColors.textTertiary,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -400,60 +493,11 @@ class _MuseumCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (museum.annualVisitors != null) ...[
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            const Icon(Icons.people_rounded,
-                                size: 12, color: AppColors.textTertiary),
-                            const SizedBox(width: 3),
-                            Text(
-                              '${(museum.annualVisitors! / 1e6).toStringAsFixed(1)}M visitors/year',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textTertiary,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-                // Masterpiece count
-                if (museum.masterpieceCount > 0)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppColors.brandGreenLight,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Column(
-                      children: [
-                        Text(
-                          '${museum.masterpieceCount}',
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.brandGreen,
-                          ),
-                        ),
-                        const Text(
-                          'items',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.brandGreen,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(width: 4),
-                const Icon(Icons.chevron_right_rounded,
-                    color: AppColors.textTertiary),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

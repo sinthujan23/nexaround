@@ -257,6 +257,44 @@ class CacheService {
         .toList();
   }
 
+  // ── Museum list cache ──────────────────────────────────────────────────
+  static Future<void> cacheMuseums(List<Map<String, dynamic>> raw) async {
+    await _prefs.setStringList(
+      'museums_cache',
+      raw.map((e) => json.encode(e)).toList(),
+    );
+  }
+
+  static List<Map<String, dynamic>> getCachedMuseumsRaw() {
+    final list = _prefs.getStringList('museums_cache') ?? [];
+    return list
+        .map((s) {
+          try {
+            return json.decode(s) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
+
+  // ── Museum itinerary cache ─────────────────────────────────────────────
+  static Future<void> cacheItinerary(
+      String slug, String duration, Map<String, dynamic> raw) async {
+    await _prefs.setString('itinerary_cache_${slug}_$duration', json.encode(raw));
+  }
+
+  static Map<String, dynamic>? getCachedItineraryRaw(String slug, String duration) {
+    final str = _prefs.getString('itinerary_cache_${slug}_$duration');
+    if (str == null) return null;
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // ── Notifications (bell inbox) ─────────────────────────────────────────
   // Locally-stored inbox shown by the homepage bell. Fed by FCM messages
   // (foreground + on-tap). Each record: {title, body, type, data, date, read}.
