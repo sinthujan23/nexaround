@@ -20,6 +20,7 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
   bool _loading = true;
   String? _error;
   String _search = '';
+  String? _selectedCountry;
 
   @override
   void initState() {
@@ -48,16 +49,29 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
     }
   }
 
+  List<String> get _countries {
+    if (_museums == null) return [];
+    final set = _museums!.map((m) => m.country).toSet();
+    final list = set.toList()..sort();
+    return list;
+  }
+
   List<MuseumListItem> get _filtered {
     if (_museums == null) return [];
-    if (_search.isEmpty) return _museums!;
-    final q = _search.toLowerCase();
-    return _museums!
-        .where((m) =>
-            m.name.toLowerCase().contains(q) ||
-            m.city.toLowerCase().contains(q) ||
-            m.country.toLowerCase().contains(q))
-        .toList();
+    var list = _museums!;
+    if (_selectedCountry != null) {
+      list = list.where((m) => m.country == _selectedCountry).toList();
+    }
+    if (_search.isNotEmpty) {
+      final q = _search.toLowerCase();
+      list = list
+          .where((m) =>
+              m.name.toLowerCase().contains(q) ||
+              m.city.toLowerCase().contains(q) ||
+              m.country.toLowerCase().contains(q))
+          .toList();
+    }
+    return list;
   }
 
   @override
@@ -97,26 +111,79 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
             ),
           ),
 
-          // ── Search Bar ───────────────────────────────────────────────────
+          // ── Search Bar & Filter ──────────────────────────────────────────
           SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: TextField(
-                onChanged: (v) => setState(() => _search = v),
-                decoration: InputDecoration(
-                  hintText: 'Search museums, cities, countries…',
-                  hintStyle: const TextStyle(color: AppColors.textTertiary),
-                  prefixIcon: const Icon(Icons.search_rounded,
-                      color: AppColors.textTertiary),
-                  filled: true,
-                  fillColor: AppColors.surface,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
-                    borderSide: BorderSide.none,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: TextField(
+                    onChanged: (v) => setState(() => _search = v),
+                    decoration: InputDecoration(
+                      hintText: 'Search museums, cities, countries…',
+                      hintStyle: const TextStyle(color: AppColors.textTertiary),
+                      prefixIcon: const Icon(Icons.search_rounded,
+                          color: AppColors.textTertiary),
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-              ),
+                if (_countries.isNotEmpty)
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _countries.length + 1,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        if (index == 0) {
+                          final isSelected = _selectedCountry == null;
+                          return ChoiceChip(
+                            label: const Text('All'),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              if (selected) setState(() => _selectedCountry = null);
+                            },
+                            selectedColor: AppColors.brandGreen,
+                            labelStyle: TextStyle(
+                              color: isSelected ? Colors.white : AppColors.textSecondary,
+                              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                            backgroundColor: AppColors.surface,
+                            side: BorderSide.none,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          );
+                        }
+                        final country = _countries[index - 1];
+                        final isSelected = _selectedCountry == country;
+                        return ChoiceChip(
+                          label: Text(country),
+                          selected: isSelected,
+                          onSelected: (selected) {
+                            setState(() => _selectedCountry = selected ? country : null);
+                          },
+                          selectedColor: AppColors.brandGreen,
+                          labelStyle: TextStyle(
+                            color: isSelected ? Colors.white : AppColors.textSecondary,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                          ),
+                          backgroundColor: AppColors.surface,
+                          side: BorderSide.none,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 8),
+              ],
             ),
           ),
 
@@ -203,27 +270,50 @@ class _MuseumCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Rank badge
+                // Museum Image or Rank badge fallback
                 Container(
-                  width: 42,
-                  height: 42,
+                  width: 56,
+                  height: 56,
                   decoration: BoxDecoration(
-                    gradient: museum.rank != null && museum.rank! <= 3
-                        ? AppColors.achievementGradient
-                        : AppColors.secondaryGradient,
                     borderRadius: BorderRadius.circular(12),
+                    gradient: museum.imageUrl == null
+                        ? (museum.rank != null && museum.rank! <= 3
+                            ? AppColors.achievementGradient
+                            : AppColors.secondaryGradient)
+                        : null,
+                    color: AppColors.surface,
                   ),
+                  clipBehavior: Clip.antiAlias,
                   alignment: Alignment.center,
-                  child: Text(
-                    '#${museum.rank ?? '–'}',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: museum.rank != null && museum.rank! <= 3
-                          ? Colors.white
-                          : AppColors.textPrimary,
-                    ),
-                  ),
+                  child: museum.imageUrl != null
+                      ? Image.network(
+                          museum.imageUrl!.startsWith('/')
+                              ? 'https://api.nexaround.com${museum.imageUrl}'
+                              : museum.imageUrl!,
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Text(
+                            '#${museum.rank ?? '–'}',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: museum.rank != null && museum.rank! <= 3
+                                  ? Colors.white
+                                  : AppColors.textPrimary,
+                            ),
+                          ),
+                        )
+                      : Text(
+                          '#${museum.rank ?? '–'}',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: museum.rank != null && museum.rank! <= 3
+                                ? Colors.white
+                                : AppColors.textPrimary,
+                          ),
+                        ),
                 ),
                 const SizedBox(width: 14),
                 // Text
