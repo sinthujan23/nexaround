@@ -4,6 +4,7 @@ import 'package:nexaround_app/features/planning/data/museum_repository.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museum_guide_page.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:video_player/video_player.dart';
 
 /// Lists all 63 top world museums as premium cards. Tapping one opens the
 /// curated guide page where the user picks their available time.
@@ -16,6 +17,7 @@ class MuseumsListPage extends StatefulWidget {
 
 class _MuseumsListPageState extends State<MuseumsListPage> {
   final _repo = MuseumRepository();
+  VideoPlayerController? _videoController;
 
   List<MuseumListItem>? _museums;
   bool _loading = true;
@@ -27,6 +29,26 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
   void initState() {
     super.initState();
     _fetch();
+    _initVideo();
+  }
+
+  void _initVideo() {
+    _videoController = VideoPlayerController.asset(
+      'assets/animations/museum_banner.mp4',
+    )..initialize().then((_) {
+        if (mounted) {
+          setState(() {});
+          _videoController?.setLooping(true);
+          _videoController?.setVolume(0.0);
+          _videoController?.play();
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
   }
 
   Future<void> _fetch() async {
@@ -84,15 +106,15 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
           // ── App Bar ──────────────────────────────────────────────────────
           SliverAppBar(
             pinned: true,
-            expandedHeight: 140,
+            expandedHeight: 160,
             backgroundColor: Colors.black,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_ios_new_rounded,
                   color: Colors.white),
               onPressed: () => Navigator.pop(context),
             ),
-            flexibleSpace: const FlexibleSpaceBar(
-              title: Text(
+            flexibleSpace: FlexibleSpaceBar(
+              title: const Text(
                 'World\'s Top Museums',
                 style: TextStyle(
                   fontSize: 18,
@@ -100,15 +122,42 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
                   color: Colors.white,
                 ),
               ),
-              background: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-                  ),
-                ),
-              ),
+              background: _videoController != null &&
+                      _videoController!.value.isInitialized
+                  ? Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: _videoController!.value.size.width,
+                            height: _videoController!.value.size.height,
+                            child: VideoPlayer(_videoController!),
+                          ),
+                        ),
+                        Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.black38,
+                                Colors.black87,
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
+                        ),
+                      ),
+                    ),
             ),
           ),
 

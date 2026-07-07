@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/planning/data/museum_repository.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -127,7 +128,9 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                 children: [
                   if (widget.museum.imageUrl != null)
                     Image.network(
-                      widget.museum.imageUrl!,
+                      widget.museum.imageUrl!.startsWith('/')
+                          ? '${ApiConstants.baseUrl}${widget.museum.imageUrl}'
+                          : widget.museum.imageUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => Container(
                         color: AppColors.charcoal,
