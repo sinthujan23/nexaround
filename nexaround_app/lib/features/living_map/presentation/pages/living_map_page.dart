@@ -47,6 +47,7 @@ import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 
 class _LocalEvent {
   final String title;
@@ -1059,6 +1060,12 @@ class _LivingMapPageState extends State<LivingMapPage>
                         SliverToBoxAdapter(
                           child: _buildShimmerHiddenGemCards(),
                         ),
+                        SliverToBoxAdapter(
+                          child: Padding(
+                            padding: const EdgeInsets.only(top: 24, bottom: 8),
+                            child: _buildMuseumBanner(),
+                          ),
+                        ),
 
                         /*
                         // Curated For You Shimmer
@@ -1186,6 +1193,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                           child: _buildHiddenGemCards(publicAttractions, state.status),
                         ),
                       ],
+
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 24, bottom: 8),
+                          child: _buildMuseumBanner(),
+                        ),
+                      ),
 
                       /*
                       // Curated For You
@@ -1344,6 +1358,122 @@ class _LivingMapPageState extends State<LivingMapPage>
         );
       },
     );
+  }
+
+  Widget _buildMuseumBanner() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const MuseumsListPage()),
+        ),
+        child: Container(
+          height: 102,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFF0F172A),
+                Color(0xFF020617),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 16,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+              children: [
+                // Right side: modern museum image fading into the dark card background
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 150,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topRight: Radius.circular(20),
+                      bottomRight: Radius.circular(20),
+                    ),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Image.asset(
+                          'assets/images/museum_banner_bg.png',
+                          fit: BoxFit.cover,
+                        ),
+                        // Linear gradient overlay to fade the image out to the left
+                        const DecoratedBox(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.centerRight,
+                              end: Alignment.centerLeft,
+                              colors: [
+                                Colors.transparent,
+                                Color(0xFF0F172A), // Matches start color of card gradient
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Content Row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              'TOP MUSEUMS OF THE WORLD',
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 2,
+                                  color: AppColors.brandGreen),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Curated Master Guides',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                wordSpacing: 4.0,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Expert routes for 5h, 1 day or 2 days',
+                              style: TextStyle(fontSize: 11, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_ios_rounded,
+                          color: Colors.white38, size: 16),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ).animate().fade(delay: 100.ms).slideY(begin: 0.1, end: 0);
   }
 
   Widget _buildExploringCard() {
