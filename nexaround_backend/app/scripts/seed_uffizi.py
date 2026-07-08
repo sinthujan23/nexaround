@@ -148,6 +148,7 @@ async def main():
     uffizi_items = process_uffizi(UFFIZI_XLSX)
     if uffizi_items:
         await seed_museum("galleria-degli-uffizi", uffizi_items)
+    await engine.dispose()
 
 if __name__ == "__main__":
     asyncio.run(main())

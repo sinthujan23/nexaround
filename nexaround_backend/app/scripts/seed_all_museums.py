@@ -29,7 +29,6 @@ MUSEUMS_DATA = [
     {"rank": 11, "name": "American Museum of Natural History", "visitors": 5400000, "city": "New York City", "country": "United States", "slug": "american-museum-of-natural-history"},
     {"rank": 12, "name": "Tate Modern", "visitors": 4514266, "city": "London", "country": "United Kingdom", "slug": "tate-modern"},
     {"rank": 13, "name": "Hubei Provincial Museum", "visitors": 4356943, "city": "Wuhan", "country": "China", "slug": "hubei-provincial-museum"},
-    {"rank": 14, "name": "Shanghai Museum East", "visitors": 4230000, "city": "Shanghai", "country": "China", "slug": "shanghai-museum-east"},
     {"rank": 15, "name": "National Gallery of Art", "visitors": 3936543, "city": "Washington, D.C.", "country": "United States", "slug": "national-gallery-of-art"},
     {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay"},
     {"rank": 17, "name": "National Museum of Anthropology", "visitors": 3700000, "city": "Mexico City", "country": "Mexico", "slug": "national-museum-of-anthropology"},
@@ -65,10 +64,7 @@ MUSEUMS_DATA = [
     {"rank": 47, "name": "Van Gogh Museum", "visitors": 1840000, "city": "Amsterdam", "country": "Netherlands", "slug": "van-gogh-museum"},
     {"rank": 48, "name": "The National Art Center, Tokyo", "visitors": 1755036, "city": "Tokyo", "country": "Japan", "slug": "the-national-art-center-tokyo"},
     {"rank": 49, "name": "California Science Center", "visitors": 1694000, "city": "Los Angeles", "country": "United States", "slug": "california-science-center"},
-    {"rank": 50, "name": "China National Silk Museum", "visitors": 1692697, "city": "Hangzhou", "country": "China", "slug": "china-national-silk-museum"},
     {"rank": 51, "name": "Kunsthistorisches Museum", "visitors": 1688509, "city": "Vienna", "country": "Austria", "slug": "kunsthistorisches-museum"},
-    {"rank": 52, "name": "Fujian Museum", "visitors": 1676973, "city": "Fuzhou", "country": "China", "slug": "fujian-museum"},
-    {"rank": 53, "name": "Hangzhou Arts and Crafts Museum", "visitors": 1641226, "city": "Hangzhou", "country": "China", "slug": "hangzhou-arts-and-crafts-museum"},
     {"rank": 54, "name": "National Gallery of Victoria", "visitors": 1580303, "city": "Melbourne", "country": "Australia", "slug": "national-gallery-of-victoria"},
     {"rank": 55, "name": "National Museum in Warsaw", "visitors": 1500655, "city": "Warsaw", "country": "Poland", "slug": "national-museum-in-warsaw"},
     {"rank": 56, "name": "Louis Vuitton Foundation", "visitors": 1500000, "city": "Paris", "country": "France", "slug": "louis-vuitton-foundation"},
@@ -77,7 +73,6 @@ MUSEUMS_DATA = [
     {"rank": 59, "name": "Centro Cultural Banco do Brasil", "visitors": 1364208, "city": "São Paulo", "country": "Brazil", "slug": "centro-cultural-banco-do-brasil"},
     {"rank": 60, "name": "Palacio de Cristal del Retiro", "visitors": 1318823, "city": "Madrid", "country": "Spain", "slug": "palacio-de-cristal-del-retiro"},
     {"rank": 61, "name": "Guggenheim Museum Bilbao", "visitors": 1301343, "city": "Bilbao", "country": "Spain", "slug": "guggenheim-museum-bilbao"},
-    {"rank": 62, "name": "Chinese Aviation Museum", "visitors": 1292278, "city": "Beijing", "country": "China", "slug": "chinese-aviation-museum"},
     {"rank": 63, "name": "Moscow Kremlin Museum", "visitors": 1240113, "city": "Moscow", "country": "Russia", "slug": "moscow-kremlin-museum"}
 ]
 

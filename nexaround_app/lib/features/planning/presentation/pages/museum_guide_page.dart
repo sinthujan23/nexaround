@@ -672,10 +672,10 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
               ),
             )
           else if (_itinerary != null) ...[
-            ..._buildTimeline(_itinerary!),
             SliverToBoxAdapter(
               child: _buildDisclaimerCard(),
             ),
+            ..._buildTimeline(_itinerary!),
           ],
 
           // Bottom padding

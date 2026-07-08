@@ -4569,6 +4569,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   /// Batch-fetch actual road distances for a list of places using Google Directions API.
   Future<void> _batchFetchRouteDistances(List<AttractionEntity> places) async {
+    return; // OPTIMIZATION: Disable background Directions API calls to save Maps API billing.
     if (_userLatitude == null || _userLongitude == null) return;
     if (_isFetchingRouteDistances) return;
     

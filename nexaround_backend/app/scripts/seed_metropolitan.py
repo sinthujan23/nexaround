@@ -199,6 +199,7 @@ async def main():
     met_items = process_met(MET_XLSX)
     if met_items:
         await seed_museum("metropolitan-museum-of-art", met_items)
+    await engine.dispose()
 
 if __name__ == "__main__":
     asyncio.run(main())
