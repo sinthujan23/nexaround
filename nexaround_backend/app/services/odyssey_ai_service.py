@@ -52,6 +52,7 @@ def build_meta_item(
     visa: str = "",
     logistics: str = "",
     booking_partners: list[dict] = None,
+    cover_url: str = "",
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -69,7 +70,35 @@ def build_meta_item(
         "visa": visa,
         "logistics": logistics,
         "booking_partners": booking_partners or [],
+        "cover_url": cover_url,
     }
+
+
+async def fetch_unsplash_cover_photo(destination: str, api_key: str) -> str:
+    """Query Unsplash for a random landscape orientation photo matching `destination`.
+    Returns the regular URL string, or empty string on failure.
+    """
+    if not api_key:
+        return ""
+    try:
+        url = "https://api.unsplash.com/photos/random"
+        params = {
+            "query": destination,
+            "orientation": "landscape",
+            "client_id": api_key,
+        }
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(url, params=params)
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict):
+                    urls = data.get("urls") or {}
+                    return str(urls.get("regular") or "")
+            else:
+                logger.error(f"Unsplash API returned status code {response.status_code}: {response.text}")
+    except Exception as e:
+        logger.error(f"Failed to fetch cover photo from Unsplash: {e}")
+    return ""
 
 
 async def generate_odyssey(
@@ -81,6 +110,7 @@ async def generate_odyssey(
     currency: str,
     travelers: int = 1,
     api_key: str,
+    unsplash_api_key: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary.
 
@@ -101,8 +131,14 @@ async def generate_odyssey(
     nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
     title = str(plan.get("title") or "Your Odyssey")
 
+    # Fetch Unsplash cover photo asynchronously if key is configured
+    final_destination = str(plan.get("destination") or destination)
+    cover_url = ""
+    if unsplash_api_key:
+        cover_url = await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
+
     meta = build_meta_item(
-        destination=str(plan.get("destination") or destination),
+        destination=final_destination,
         mood=mood,
         budget=budget,
         currency=str(plan.get("currency") or currency),
@@ -114,6 +150,7 @@ async def generate_odyssey(
         visa=str(plan.get("visa") or plan.get("visa_status") or ""),
         logistics=_logistics_text(plan.get("logistics")),
         booking_partners=plan.get("booking_partners") or [],
+        cover_url=cover_url,
     )
 
     day_items: list[dict] = []

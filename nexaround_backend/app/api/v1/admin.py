@@ -69,6 +69,7 @@ class SettingsResponse(BaseModel):
     gemini_api_key: str
     geoapify_api_key: str
     default_geofence_radius: str
+    unsplash_api_key: str
 
 class SettingsUpdateRequest(BaseModel):
     platform_name: Optional[str] = None
@@ -78,6 +79,7 @@ class SettingsUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = None
     geoapify_api_key: Optional[str] = None
     default_geofence_radius: Optional[str] = None
+    unsplash_api_key: Optional[str] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -580,7 +582,8 @@ async def get_admin_settings(
         mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
         geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
-        default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
+        default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
+        unsplash_api_key=await service.get_setting("unsplash_api_key", "")
     )
 
 
@@ -606,6 +609,8 @@ async def update_admin_settings(
         await service.set_setting("geoapify_api_key", data.geoapify_api_key, "Geoapify Geocoding API Key")
     if data.default_geofence_radius is not None:
         await service.set_setting("default_geofence_radius", data.default_geofence_radius, "Default Geofence Radius in meters")
+    if data.unsplash_api_key is not None:
+        await service.set_setting("unsplash_api_key", data.unsplash_api_key, "Unsplash API Access Key")
 
     return SettingsResponse(
         platform_name=await service.get_setting("platform_name", "NexARound"),
@@ -614,5 +619,6 @@ async def update_admin_settings(
         mapbox_access_token=await service.get_setting("mapbox_access_token", ""),
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
         geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
-        default_geofence_radius=await service.get_setting("default_geofence_radius", "100")
+        default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
+        unsplash_api_key=await service.get_setting("unsplash_api_key", "")
     )

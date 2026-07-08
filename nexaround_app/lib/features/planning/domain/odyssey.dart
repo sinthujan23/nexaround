@@ -129,6 +129,7 @@ class Odyssey {
   final List<OdysseyBookingPartner> bookingPartners;
   final String status; // active | draft | completed
   final DateTime? createdAt;
+  final String? coverUrl;
 
   const Odyssey({
     this.id,
@@ -147,6 +148,7 @@ class Odyssey {
     this.bookingPartners = const [],
     this.status = 'active',
     this.createdAt,
+    this.coverUrl,
   });
 
   Odyssey copyWith({
@@ -154,6 +156,7 @@ class Odyssey {
     String? status,
     List<OdysseyDay>? dayPlans,
     List<OdysseyBookingPartner>? bookingPartners,
+    String? coverUrl,
   }) =>
       Odyssey(
         id: id ?? this.id,
@@ -172,6 +175,7 @@ class Odyssey {
         bookingPartners: bookingPartners ?? this.bookingPartners,
         status: status ?? this.status,
         createdAt: createdAt,
+        coverUrl: coverUrl ?? this.coverUrl,
       );
 
   // ── Trip progress (per-place check-off) ──────────────────────────────────
@@ -219,6 +223,7 @@ class Odyssey {
           .whereType<Map>()
           .map((bp) => OdysseyBookingPartner.fromJson(bp.cast<String, dynamic>()))
           .toList(),
+      coverUrl: (json['cover_url'] ?? '').toString(),
     );
   }
 
@@ -238,6 +243,7 @@ class Odyssey {
           'visa': visa,
           'logistics': logistics,
           'booking_partners': bookingPartners.map((bp) => bp.toJson()).toList(),
+          'cover_url': coverUrl ?? '',
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -287,6 +293,7 @@ class Odyssey {
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
+      coverUrl: (meta['cover_url'] ?? '').toString(),
     );
   }
 

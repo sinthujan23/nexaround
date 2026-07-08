@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
@@ -580,129 +581,257 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 
+  MapEntry<String, String> _getCountryFlagAndName(String destination) {
+    final parts = destination.split(',');
+    if (parts.length < 2) {
+      return const MapEntry('', '');
+    }
+    final country = parts.last.trim();
+    final flag = _countryNameToFlag(country);
+    return MapEntry(flag, country);
+  }
+
+  String _countryNameToFlag(String country) {
+    final name = country.toLowerCase();
+    if (name.contains('sri lanka')) return '🇱🇰';
+    if (name.contains('uzbekistan')) return '🇺🇿';
+    if (name.contains('france')) return '🇫🇷';
+    if (name.contains('india')) return '🇮🇳';
+    if (name.contains('united kingdom') || name.contains('uk') || name.contains('england')) return '🇬🇧';
+    if (name.contains('united states') || name.contains('usa') || name.contains('us')) return '🇺🇸';
+    if (name.contains('italy')) return '🇮🇹';
+    if (name.contains('germany')) return '🇩🇪';
+    if (name.contains('japan')) return '🇯🇵';
+    if (name.contains('thailand')) return '🇹🇭';
+    if (name.contains('singapore')) return '🇸🇬';
+    if (name.contains('malaysia')) return '🇲🇾';
+    if (name.contains('maldives')) return '🇲🇻';
+    if (name.contains('indonesia')) return '🇮🇩';
+    if (name.contains('australia')) return '🇦🇺';
+    if (name.contains('canada')) return '🇨🇦';
+    if (name.contains('spain')) return '🇪🇸';
+    if (name.contains('switzerland')) return '🇨🇭';
+    if (name.contains('china')) return '🇨🇳';
+    if (name.contains('vietnam')) return '🇻🇳';
+    if (name.contains('nepal')) return '🇳🇵';
+    if (name.contains('uae') || name.contains('emirates')) return '🇦🇪';
+    return '';
+  }
+
+  LinearGradient _getThemedGradient(String destination) {
+    final hash = destination.hashCode;
+    final gradients = [
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF0F766E), Color(0xFF312E81)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF581C87), Color(0xFF0F172A)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFB45309), Color(0xFF451A03)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF065F46), Color(0xFF1E3A8A)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF881337), Color(0xFF1C1917)],
+      ),
+    ];
+    return gradients[hash.abs() % gradients.length];
+  }
+
   Widget _buildCompactOdysseyCard(Odyssey odyssey, {required bool isLeft}) {
     final accentColor = _statusColor(odyssey.status);
     final isGenerating = odyssey.status == 'generating';
     final isFailed = odyssey.status == 'failed';
+    final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
+
+    final countryData = _getCountryFlagAndName(odyssey.destination);
+    final flag = countryData.key;
+    final countryName = countryData.value;
+
+    final cardContent = Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isFailed ? Colors.redAccent.withOpacity(0.2) : Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  odyssey.status.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 8,
+                    fontWeight: FontWeight.w800,
+                    color: isFailed ? Colors.redAccent : Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              if (isGenerating)
+                const SizedBox(
+                  width: 10,
+                  height: 10,
+                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white70),
+                )
+              else
+                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 10),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            odyssey.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ConvertedCurrencyText(
+            amount: odyssey.budget,
+            originalCurrency: odyssey.currency,
+            prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
+            style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          if (isGenerating)
+            const ClipRRect(
+              borderRadius: BorderRadius.all(Radius.circular(100)),
+              child: LinearProgressIndicator(
+                minHeight: 3,
+                backgroundColor: Color(0x22FFFFFF),
+                color: AppColors.brandGreen,
+              ),
+            )
+          else if (isFailed)
+            Row(
+              children: const [
+                Icon(Icons.error_outline_rounded, size: 10, color: Colors.redAccent),
+                SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Failed',
+                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white70),
+                  ),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                if (flag.isNotEmpty) ...[
+                  Text(flag, style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 4),
+                ],
+                if (countryName.isNotEmpty)
+                  Text(
+                    countryName.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white70,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                const Spacer(),
+                const Text(
+                  'EXPLORE',
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
 
     return GestureDetector(
       onTap: isGenerating ? null : () => _openDetail(odyssey),
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: isGenerating ? AppColors.surface : Colors.white,
           borderRadius: BorderRadius.circular(24),
+          gradient: hasImage ? null : _getThemedGradient(odyssey.destination),
           border: Border.all(
-            color: isGenerating
-                ? AppColors.brandGreen.withOpacity(0.35)
-                : Colors.black.withOpacity(0.05),
+            color: Colors.white.withOpacity(0.08),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+              color: Colors.black.withOpacity(0.12),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accentColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    odyssey.status.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      color: accentColor == Colors.black12 ? Colors.black54 : accentColor,
-                      letterSpacing: 0.5,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Stack(
+            children: [
+              if (hasImage) ...[
+                Positioned.fill(
+                  child: CachedNetworkImage(
+                    imageUrl: odyssey.coverUrl!,
+                    fit: BoxFit.cover,
+                    placeholder: (context, url) => Container(
+                      color: const Color(0xFF0F172A),
+                      child: const Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
+                        ),
+                      ),
+                    ),
+                    errorWidget: (context, url, error) => Container(
+                      decoration: BoxDecoration(
+                        gradient: _getThemedGradient(odyssey.destination),
+                      ),
                     ),
                   ),
                 ),
-                if (isGenerating)
-                  const SizedBox(
-                    width: 10,
-                    height: 10,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.actionTeal),
-                  )
-                else
-                  const Icon(Icons.arrow_forward_ios_rounded, color: Colors.black26, size: 10),
+                const Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Color(0xDD000000),
+                          Color(0x44000000),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              odyssey.title,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
-                height: 1.25,
-              ),
-            ),
-            const SizedBox(height: 4),
-            ConvertedCurrencyText(
-              amount: odyssey.budget,
-              originalCurrency: odyssey.currency,
-              prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
-              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            if (isGenerating)
-              const ClipRRect(
-                borderRadius: BorderRadius.all(Radius.circular(100)),
-                child: LinearProgressIndicator(
-                  minHeight: 3,
-                  backgroundColor: Color(0x14000000),
-                  color: AppColors.brandGreen,
-                ),
-              )
-            else if (isFailed)
-              Row(
-                children: const [
-                  Icon(Icons.error_outline_rounded, size: 10, color: Colors.redAccent),
-                  SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'Failed',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.black54),
-                    ),
-                  ),
-                ],
-              )
-            else
-              Row(
-                children: [
-                  const Icon(Icons.auto_mode_rounded, size: 10, color: AppColors.ratingGold),
-                  const SizedBox(width: 4),
-                  const Text(
-                    'AI Plan',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.black54),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'EXPLORE',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black.withOpacity(0.8),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
-          ],
+              cardContent,
+            ],
+          ),
         ),
       ),
     ).animate().fade(duration: 350.ms).slideX(

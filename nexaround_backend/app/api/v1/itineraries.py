@@ -96,6 +96,8 @@ async def _run_odyssey_generation(
             await repo.update(itin)
             return
 
+        unsplash_api_key = await SettingsService(db).get_setting("unsplash_api_key")
+
         try:
             title, items = await odyssey_ai_service.generate_odyssey(
                 destination=destination,
@@ -105,6 +107,7 @@ async def _run_odyssey_generation(
                 currency=currency,
                 travelers=travelers,
                 api_key=api_key,
+                unsplash_api_key=unsplash_api_key,
             )
             itin.title = title
             itin.items = items
