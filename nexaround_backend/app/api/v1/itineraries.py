@@ -314,13 +314,47 @@ async def generate_ai_itinerary(
     except:
         return {"error": "AI response was not valid JSON", "raw": itinerary_json}
 
+async def _heal_itinerary_cover_photo(itin: Itinerary, repo: ItineraryRepository, db: AsyncSession) -> None:
+    items = itin.items or []
+    if not (isinstance(items, list) and len(items) > 0):
+        return
+    meta = items[0]
+    if not (isinstance(meta, dict) and meta.get("kind") == "odyssey_meta"):
+        return
+    
+    if meta.get("cover_url"):
+        return
+        
+    unsplash_key = await SettingsService(db).get_setting("unsplash_api_key")
+    if not unsplash_key:
+        return
+        
+    destination = meta.get("destination")
+    if not destination:
+        return
+        
+    cover_url = await odyssey_ai_service.fetch_unsplash_cover_photo(destination, unsplash_key)
+    if cover_url:
+        new_items = [dict(i) for i in items]
+        new_items[0]["cover_url"] = cover_url
+        itin.items = new_items
+        await repo.update(itin)
+
+
 @router.get("/", response_model=List[ItineraryResponse])
 async def get_my_itineraries(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     repo = ItineraryRepository(db)
-    return await repo.get_by_user(current_user.id)
+    itineraries = await repo.get_by_user(current_user.id)
+    for itin in itineraries:
+        try:
+            await _heal_itinerary_cover_photo(itin, repo, db)
+        except Exception as e:
+            logger.error(f"Failed to heal itinerary {itin.id} cover: {e}")
+    return itineraries
+
 
 @router.post("/", response_model=ItineraryResponse, status_code=status.HTTP_201_CREATED)
 async def create_itinerary(
@@ -338,6 +372,7 @@ async def create_itinerary(
     )
     return await repo.create(itinerary)
 
+
 @router.get("/{itinerary_id}", response_model=ItineraryResponse)
 async def get_itinerary(
     itinerary_id: uuid.UUID,
@@ -348,6 +383,10 @@ async def get_itinerary(
     itinerary = await repo.get_by_id(itinerary_id, current_user.id)
     if not itinerary:
         raise HTTPException(status_code=404, detail="Itinerary not found")
+    try:
+        await _heal_itinerary_cover_photo(itinerary, repo, db)
+    except Exception as e:
+        logger.error(f"Failed to heal itinerary {itinerary_id} cover: {e}")
     return itinerary
 
 @router.put("/{itinerary_id}", response_model=ItineraryResponse)
