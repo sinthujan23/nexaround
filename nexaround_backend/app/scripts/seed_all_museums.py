@@ -19,7 +19,7 @@ MUSEUMS_DATA = [
     {"rank": 1, "name": "Louvre", "visitors": 9046000, "city": "Paris", "country": "France", "slug": "louvre"},
     {"rank": 2, "name": "National Museum of China", "visitors": 6956800, "city": "Beijing", "country": "China", "slug": "national-museum-of-china"},
     {"rank": 3, "name": "Vatican Museums", "visitors": 6933822, "city": "Vatican City", "country": "Vatican", "slug": "vatican-museums"},
-    {"rank": 4, "name": "Shenzhen Museum", "visitors": 6805000, "city": "Shenzhen", "country": "China", "slug": "shenzhen-museum"},
+    {"rank": 4, "name": "Grand Egyptian Museum", "visitors": 6805000, "city": "Giza", "country": "Egypt", "slug": "grand-egyptian-museum"},
     {"rank": 5, "name": "National Museum of Korea", "visitors": 6505483, "city": "Seoul", "country": "South Korea", "slug": "national-museum-of-korea"},
     {"rank": 6, "name": "British Museum", "visitors": 6440120, "city": "London", "country": "United Kingdom", "slug": "british-museum"},
     {"rank": 7, "name": "China Science and Technology Museum", "visitors": 6421000, "city": "Beijing", "country": "China", "slug": "china-science-and-technology-museum"},

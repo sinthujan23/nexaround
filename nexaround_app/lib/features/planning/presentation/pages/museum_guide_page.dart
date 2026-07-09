@@ -38,9 +38,9 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       website: 'https://www.museivaticani.va',
       hours: '8am–7pm (Closed Sun)',
     ),
-    'shenzhen-museum': _MuseumExtraInfo(
-      website: 'https://www.shenzhenmuseum.com',
-      hours: '10am–6pm (Closed Mon)',
+    'grand-egyptian-museum': _MuseumExtraInfo(
+      website: 'https://gem.eg',
+      hours: '9am–6pm',
     ),
     'national-museum-of-korea': _MuseumExtraInfo(
       website: 'https://www.museum.go.kr/site/eng/home',
