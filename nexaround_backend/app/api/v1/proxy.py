@@ -59,6 +59,9 @@ async def proxy_gemini_generate(
                     timeout=120.0
                 )
                 if resp.status_code != 200 and i < len(models) - 1:
+                    # Do not retry on key invalidity (400/401/403) or quota exhaustion (429)
+                    if resp.status_code in [400, 401, 403, 429]:
+                        break
                     print(f"⚠️ Model {model} returned status {resp.status_code}. Retrying next model...")
                     continue
                 break

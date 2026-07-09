@@ -480,8 +480,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildRoadItem(index, active[index], active.length),
-          childCount: active.length,
+          (context, index) => _buildRoadItem(index, active, (active.length / 2).ceil()),
+          childCount: (active.length / 2).ceil(),
         ),
       ),
     );
@@ -502,20 +502,25 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     }
   }
 
-  Widget _buildRoadItem(int index, Odyssey odyssey, int totalCount) {
-    final isLeft = index % 2 == 0;
+  Widget _buildRoadItem(int index, List<Odyssey> activeList, int totalRows) {
+    final hasRight = (2 * index + 1) < activeList.length;
+    final leftOdyssey = activeList[2 * index];
+    final rightOdyssey = hasRight ? activeList[2 * index + 1] : null;
+
+    final isGenerating = leftOdyssey.status == 'generating' || (rightOdyssey?.status == 'generating');
+    final isFailed = leftOdyssey.status == 'failed' || (rightOdyssey?.status == 'failed');
 
     final dot = Container(
-      width: 32,
-      height: 32,
+      width: 38,
+      height: 38,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
         border: Border.all(
-          color: odyssey.status == 'failed'
+          color: isFailed
               ? Colors.redAccent
-              : AppColors.brandGreen,
-          width: 3,
+              : const Color(0xFFB58A63),
+          width: 3.5,
         ),
         boxShadow: [
           BoxShadow(
@@ -526,13 +531,13 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         ],
       ),
       child: Icon(
-        odyssey.status == 'generating'
+        isGenerating
             ? Icons.sync_rounded
-            : odyssey.status == 'failed'
+            : isFailed
                 ? Icons.error_outline_rounded
-                : Icons.location_on_rounded,
-        color: odyssey.status == 'failed' ? Colors.redAccent : AppColors.brandGreen,
-        size: 15,
+                : Icons.explore_outlined,
+        color: isFailed ? Colors.redAccent : const Color(0xFFB58A63),
+        size: 18,
       ),
     );
 
@@ -542,26 +547,51 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         children: [
           // Left side card
           Expanded(
-            child: isLeft
-                ? Align(
-                    alignment: Alignment.centerRight,
-                    child: _buildCompactOdysseyCard(odyssey, isLeft: true),
-                  )
-                : const SizedBox.shrink(),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: _buildCompactOdysseyCard(leftOdyssey, isLeft: true),
+            ),
           ),
-          // Road Line & Location Dot
+          // Road Line & Location Dot & Horizontal connector ropes
           SizedBox(
-            width: 48,
+            width: 54,
             child: Stack(
               alignment: Alignment.center,
               children: [
+                // Vertical timeline path (Real Rope)
                 Positioned(
-                  top: index == 0 ? 28 : 0,
-                  bottom: index == totalCount - 1 ? 28 : 0,
-                  child: Container(
-                    width: 3,
-                    color: Colors.black.withOpacity(0.06),
+                  top: index == 0 ? 60 : 0,
+                  bottom: index == totalRows - 1 ? 60 : 0,
+                  child: SizedBox(
+                    width: 8,
+                    child: CustomPaint(
+                      painter: RopePainter(isHorizontal: false),
+                    ),
                   ),
+                ),
+                // Horizontal connector lines (Real Rope)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 8,
+                        child: CustomPaint(
+                          painter: RopePainter(isHorizontal: true),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 38), // space for central dot (width 38)
+                    Expanded(
+                      child: hasRight
+                          ? SizedBox(
+                              height: 8,
+                              child: CustomPaint(
+                                painter: RopePainter(isHorizontal: true),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
+                    ),
+                  ],
                 ),
                 dot,
               ],
@@ -569,10 +599,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           ),
           // Right side card
           Expanded(
-            child: !isLeft
+            child: rightOdyssey != null
                 ? Align(
                     alignment: Alignment.centerLeft,
-                    child: _buildCompactOdysseyCard(odyssey, isLeft: false),
+                    child: _buildCompactOdysseyCard(rightOdyssey, isLeft: false),
                   )
                 : const SizedBox.shrink(),
           ),
@@ -650,8 +680,48 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     return gradients[hash.abs() % gradients.length];
   }
 
+  Future<void> _confirmDelete(BuildContext context, Odyssey odyssey) async {
+    final id = odyssey.id;
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Delete Blueprint?'),
+        content: Text('Are you sure you want to permanently delete "${odyssey.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _repository.delete(id);
+        if (mounted) {
+          _load();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Blueprint deleted successfully.')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting blueprint: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Widget _buildCompactOdysseyCard(Odyssey odyssey, {required bool isLeft}) {
-    final accentColor = _statusColor(odyssey.status);
     final isGenerating = odyssey.status == 'generating';
     final isFailed = odyssey.status == 'failed';
     final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
@@ -660,176 +730,191 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     final flag = countryData.key;
     final countryName = countryData.value;
 
-    final cardContent = Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: isFailed ? Colors.redAccent.withOpacity(0.2) : Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  odyssey.status.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    color: isFailed ? Colors.redAccent : Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-              if (isGenerating)
-                const SizedBox(
-                  width: 10,
-                  height: 10,
-                  child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white70),
-                )
-              else
-                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 10),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            odyssey.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-              height: 1.25,
-            ),
-          ),
-          const SizedBox(height: 4),
-          ConvertedCurrencyText(
-            amount: odyssey.budget,
-            originalCurrency: odyssey.currency,
-            prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
-            style: const TextStyle(fontSize: 10, color: Colors.white70, fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 12),
-          if (isGenerating)
-            const ClipRRect(
-              borderRadius: BorderRadius.all(Radius.circular(100)),
-              child: LinearProgressIndicator(
-                minHeight: 3,
-                backgroundColor: Color(0x22FFFFFF),
-                color: AppColors.brandGreen,
-              ),
-            )
-          else if (isFailed)
-            Row(
-              children: const [
-                Icon(Icons.error_outline_rounded, size: 10, color: Colors.redAccent),
-                SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Failed',
-                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white70),
-                  ),
-                ),
-              ],
-            )
-          else
-            Row(
-              children: [
-                if (flag.isNotEmpty) ...[
-                  Text(flag, style: const TextStyle(fontSize: 12)),
-                  const SizedBox(width: 4),
-                ],
-                if (countryName.isNotEmpty)
-                  Text(
-                    countryName.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white70,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                const Spacer(),
-                const Text(
-                  'EXPLORE',
-                  style: TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ],
-            ),
-        ],
-      ),
-    );
-
     return GestureDetector(
       onTap: isGenerating ? null : () => _openDetail(odyssey),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          gradient: hasImage ? null : _getThemedGradient(odyssey.destination),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.white.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.08),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: Stack(
+          borderRadius: BorderRadius.circular(15),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (hasImage) ...[
-                Positioned.fill(
-                  child: CachedNetworkImage(
-                    imageUrl: odyssey.coverUrl!,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(
-                      color: const Color(0xFF0F172A),
-                      child: const Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white30),
+              // Top Image / Gradient Section
+              SizedBox(
+                height: 130,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (hasImage)
+                      CachedNetworkImage(
+                        imageUrl: odyssey.coverUrl!,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          color: const Color(0xFF0F172A),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white30),
+                            ),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) => Container(
+                          decoration: BoxDecoration(
+                            gradient: _getThemedGradient(odyssey.destination),
+                          ),
+                        ),
+                      )
+                    else
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: _getThemedGradient(odyssey.destination),
+                        ),
+                      ),
+                    // Atmospheric Gradient Scrim
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Color(0x33000000),
+                            Colors.transparent,
+                          ],
                         ),
                       ),
                     ),
-                    errorWidget: (context, url, error) => Container(
-                      decoration: BoxDecoration(
-                        gradient: _getThemedGradient(odyssey.destination),
+                    // Status badge overlays (only for generating or failed)
+                    if (isGenerating)
+                      Container(
+                        color: Colors.black38,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.brandGreen,
+                            ),
+                          ),
+                        ),
+                      )
+                    else if (isFailed)
+                      Container(
+                        color: Colors.redAccent.withOpacity(0.15),
+                        child: const Center(
+                          child: Icon(
+                            Icons.error_outline_rounded,
+                            color: Colors.redAccent,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    if (isGenerating || isFailed)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isFailed ? Colors.redAccent : Colors.black54,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            odyssey.status.toUpperCase(),
+                            style: const TextStyle(
+                              fontSize: 7,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // Bottom Details Section
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      odyssey.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                        height: 1.2,
                       ),
                     ),
-                  ),
-                ),
-                const Positioned.fill(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Color(0xDD000000),
-                          Color(0x44000000),
+                    const SizedBox(height: 4),
+                    ConvertedCurrencyText(
+                      amount: odyssey.budget,
+                      originalCurrency: odyssey.currency,
+                      prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        if (flag.isNotEmpty) ...[
+                          Text(flag, style: const TextStyle(fontSize: 12)),
+                          const SizedBox(width: 4),
                         ],
-                      ),
+                        if (countryName.isNotEmpty)
+                          Expanded(
+                            child: Text(
+                              countryName.toUpperCase(),
+                              style: const TextStyle(
+                                fontSize: 8,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.black45,
+                                letterSpacing: 0.5,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        // Delete Button
+                        GestureDetector(
+                          onTap: () => _confirmDelete(context, odyssey),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            child: Icon(
+                              Icons.delete_outline_rounded,
+                              color: Colors.redAccent,
+                              size: 18,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
+                  ],
                 ),
-              ],
-              cardContent,
+              ),
             ],
           ),
         ),
@@ -889,3 +974,68 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 }
+
+class RopePainter extends CustomPainter {
+  final bool isHorizontal;
+
+  RopePainter({this.isHorizontal = true});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final shadowPaint = Paint()
+      ..color = const Color(0xFF5C3A21) // Dark brown core shadow
+      ..strokeWidth = 8.0
+      ..strokeCap = StrokeCap.round;
+
+    final ropePaint = Paint()
+      ..color = const Color(0xFFD2B48C) // Hemp tan/wheat strand color
+      ..strokeWidth = 5.5
+      ..strokeCap = StrokeCap.round;
+
+    if (isHorizontal) {
+      final centerY = size.height / 2;
+      // Draw dark shadow core first
+      canvas.drawLine(
+        Offset(0, centerY),
+        Offset(size.width, centerY),
+        shadowPaint,
+      );
+
+      // Draw overlapping slanted segments to form twisted strands
+      double x = 3.0;
+      while (x < size.width - 3) {
+        canvas.drawLine(
+          Offset(x - 3.5, centerY - 3.5),
+          Offset(x + 3.5, centerY + 3.5),
+          ropePaint,
+        );
+        x += 7.0; // Strands spacing
+      }
+    } else {
+      final centerX = size.width / 2;
+      // Draw dark shadow core first
+      canvas.drawLine(
+        Offset(centerX, 0),
+        Offset(centerX, size.height),
+        shadowPaint,
+      );
+
+      // Draw overlapping slanted segments
+      double y = 3.0;
+      while (y < size.height - 3) {
+        canvas.drawLine(
+          Offset(centerX - 3.5, y - 3.5),
+          Offset(centerX + 3.5, y + 3.5),
+          ropePaint,
+        );
+        y += 7.0; // Strands spacing
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant RopePainter oldDelegate) {
+    return oldDelegate.isHorizontal != isHorizontal;
+  }
+}
+
