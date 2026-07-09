@@ -480,8 +480,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildRoadItem(index, active, (active.length / 2).ceil()),
-          childCount: (active.length / 2).ceil(),
+          (context, index) => _buildRoadItem(index, active[index], active.length),
+          childCount: active.length,
         ),
       ),
     );
@@ -502,17 +502,13 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     }
   }
 
-  Widget _buildRoadItem(int index, List<Odyssey> activeList, int totalRows) {
-    final hasRight = (2 * index + 1) < activeList.length;
-    final leftOdyssey = activeList[2 * index];
-    final rightOdyssey = hasRight ? activeList[2 * index + 1] : null;
-
-    final isGenerating = leftOdyssey.status == 'generating' || (rightOdyssey?.status == 'generating');
-    final isFailed = leftOdyssey.status == 'failed' || (rightOdyssey?.status == 'failed');
+  Widget _buildRoadItem(int index, Odyssey odyssey, int totalRows) {
+    final isGenerating = odyssey.status == 'generating';
+    final isFailed = odyssey.status == 'failed';
 
     final dot = Container(
-      width: 38,
-      height: 38,
+      width: 32,
+      height: 32,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -520,24 +516,41 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           color: isFailed
               ? Colors.redAccent
               : const Color(0xFFB58A63),
-          width: 3.5,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 3),
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Icon(
-        isGenerating
-            ? Icons.sync_rounded
+      child: Center(
+        child: isGenerating
+            ? const SizedBox(
+                width: 12,
+                height: 12,
+                child: CircularProgressIndicator(
+                  strokeWidth: 1.5,
+                  color: Color(0xFFB58A63),
+                ),
+              )
             : isFailed
-                ? Icons.error_outline_rounded
-                : Icons.explore_outlined,
-        color: isFailed ? Colors.redAccent : const Color(0xFFB58A63),
-        size: 18,
+                ? const Icon(
+                    Icons.error_outline_rounded,
+                    color: Colors.redAccent,
+                    size: 14,
+                  )
+                : Text(
+                    (index + 1).toString().padLeft(2, '0'),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFB58A63),
+                      letterSpacing: 0.5,
+                    ),
+                  ),
       ),
     );
 
@@ -545,66 +558,31 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Left side card
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _buildCompactOdysseyCard(leftOdyssey, isLeft: true),
-            ),
-          ),
-          // Road Line & Location Dot & Horizontal connector ropes
+          // Left: Timeline Column (Dashed track)
           SizedBox(
-            width: 54,
+            width: 56,
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Vertical timeline path (Real Rope)
                 Positioned(
-                  top: index == 0 ? 60 : 0,
-                  bottom: index == totalRows - 1 ? 60 : 0,
-                  child: SizedBox(
-                    width: 8,
-                    child: CustomPaint(
-                      painter: RopePainter(isHorizontal: false),
+                  top: index == 0 ? 16 : 0,
+                  bottom: index == totalRows - 1 ? 16 : 0,
+                  child: CustomPaint(
+                    size: const Size(2, double.infinity),
+                    painter: DashedLinePainter(
+                      color: const Color(0xFFCBD5E1),
+                      dashHeight: 5,
+                      dashGap: 4,
                     ),
                   ),
-                ),
-                // Horizontal connector lines (Real Rope)
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 8,
-                        child: CustomPaint(
-                          painter: RopePainter(isHorizontal: true),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 38), // space for central dot (width 38)
-                    Expanded(
-                      child: hasRight
-                          ? SizedBox(
-                              height: 8,
-                              child: CustomPaint(
-                                painter: RopePainter(isHorizontal: true),
-                              ),
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                  ],
                 ),
                 dot,
               ],
             ),
           ),
-          // Right side card
+          // Right: Card Content
           Expanded(
-            child: rightOdyssey != null
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    child: _buildCompactOdysseyCard(rightOdyssey, isLeft: false),
-                  )
-                : const SizedBox.shrink(),
+            child: _buildCompactOdysseyCard(odyssey, index: index),
           ),
         ],
       ),
@@ -721,7 +699,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     }
   }
 
-  Widget _buildCompactOdysseyCard(Odyssey odyssey, {required bool isLeft}) {
+  Widget _buildCompactOdysseyCard(Odyssey odyssey, {required int index}) {
     final isGenerating = odyssey.status == 'generating';
     final isFailed = odyssey.status == 'failed';
     final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
@@ -733,18 +711,18 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     return GestureDetector(
       onTap: isGenerating ? null : () => _openDetail(odyssey),
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+        margin: const EdgeInsets.only(bottom: 16, right: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.06),
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
@@ -755,7 +733,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             children: [
               // Top Image / Gradient Section
               SizedBox(
-                height: 130,
+                height: 140,
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -792,7 +770,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           begin: Alignment.bottomCenter,
                           end: Alignment.topCenter,
                           colors: [
-                            Color(0x33000000),
+                            Color(0x22000000),
                             Colors.transparent,
                           ],
                         ),
@@ -801,11 +779,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     // Status badge overlays (only for generating or failed)
                     if (isGenerating)
                       Container(
-                        color: Colors.black38,
+                        color: Colors.black26,
                         child: const Center(
                           child: SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 24,
+                            height: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: AppColors.brandGreen,
@@ -815,7 +793,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       )
                     else if (isFailed)
                       Container(
-                        color: Colors.redAccent.withOpacity(0.15),
+                        color: Colors.redAccent.withOpacity(0.1),
                         child: const Center(
                           child: Icon(
                             Icons.error_outline_rounded,
@@ -826,10 +804,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       ),
                     if (isGenerating || isFailed)
                       Positioned(
-                        top: 8,
-                        left: 8,
+                        top: 10,
+                        left: 10,
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: isFailed ? Colors.redAccent : Colors.black54,
                             borderRadius: BorderRadius.circular(4),
@@ -837,7 +815,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           child: Text(
                             odyssey.status.toUpperCase(),
                             style: const TextStyle(
-                              fontSize: 7,
+                              fontSize: 8,
                               fontWeight: FontWeight.w800,
                               color: Colors.white,
                               letterSpacing: 0.5,
@@ -851,7 +829,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               // Bottom Details Section
               Container(
                 color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -860,19 +838,19 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                         color: Colors.black87,
-                        height: 1.2,
+                        height: 1.25,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     ConvertedCurrencyText(
                       amount: odyssey.budget,
                       originalCurrency: odyssey.currency,
                       prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
                       style: const TextStyle(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: Colors.black54,
                         fontWeight: FontWeight.w600,
                       ),
@@ -889,7 +867,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                             child: Text(
                               countryName.toUpperCase(),
                               style: const TextStyle(
-                                fontSize: 8,
+                                fontSize: 9,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.black45,
                                 letterSpacing: 0.5,
@@ -920,7 +898,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         ),
       ),
     ).animate().fade(duration: 350.ms).slideX(
-          begin: isLeft ? -0.12 : 0.12,
+          begin: 0.1,
           end: 0,
           curve: Curves.easeOutQuad,
         );
@@ -975,67 +953,47 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   }
 }
 
-class RopePainter extends CustomPainter {
-  final bool isHorizontal;
+class DashedLinePainter extends CustomPainter {
+  final Color color;
+  final double dashHeight;
+  final double dashGap;
+  final double strokeWidth;
 
-  RopePainter({this.isHorizontal = true});
+  DashedLinePainter({
+    required this.color,
+    this.dashHeight = 5,
+    this.dashGap = 4,
+    this.strokeWidth = 2.0,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final shadowPaint = Paint()
-      ..color = const Color(0xFF5C3A21) // Dark brown core shadow
-      ..strokeWidth = 8.0
-      ..strokeCap = StrokeCap.round;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
 
-    final ropePaint = Paint()
-      ..color = const Color(0xFFD2B48C) // Hemp tan/wheat strand color
-      ..strokeWidth = 5.5
-      ..strokeCap = StrokeCap.round;
-
-    if (isHorizontal) {
-      final centerY = size.height / 2;
-      // Draw dark shadow core first
+    double y = 0;
+    while (y < size.height) {
       canvas.drawLine(
-        Offset(0, centerY),
-        Offset(size.width, centerY),
-        shadowPaint,
+        Offset(size.width / 2, y),
+        Offset(size.width / 2, y + dashHeight),
+        paint,
       );
-
-      // Draw overlapping slanted segments to form twisted strands
-      double x = 3.0;
-      while (x < size.width - 3) {
-        canvas.drawLine(
-          Offset(x - 3.5, centerY - 3.5),
-          Offset(x + 3.5, centerY + 3.5),
-          ropePaint,
-        );
-        x += 7.0; // Strands spacing
-      }
-    } else {
-      final centerX = size.width / 2;
-      // Draw dark shadow core first
-      canvas.drawLine(
-        Offset(centerX, 0),
-        Offset(centerX, size.height),
-        shadowPaint,
-      );
-
-      // Draw overlapping slanted segments
-      double y = 3.0;
-      while (y < size.height - 3) {
-        canvas.drawLine(
-          Offset(centerX - 3.5, y - 3.5),
-          Offset(centerX + 3.5, y + 3.5),
-          ropePaint,
-        );
-        y += 7.0; // Strands spacing
-      }
+      y += dashHeight + dashGap;
     }
   }
 
   @override
-  bool shouldRepaint(covariant RopePainter oldDelegate) {
-    return oldDelegate.isHorizontal != isHorizontal;
+  bool shouldRepaint(covariant DashedLinePainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.dashHeight != dashHeight ||
+        oldDelegate.dashGap != dashGap ||
+        oldDelegate.strokeWidth != strokeWidth;
   }
 }
+
+
+
+
 

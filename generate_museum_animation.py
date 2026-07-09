@@ -30,7 +30,7 @@ def create_museum_animation():
     museums = [
         {"name": "LOUVRE MUSEUM", "color": brand_teal},
         {"name": "VATICAN MUSEUMS", "color": brand_violet},
-        {"name": "GRAND EGYPTIAN MUSEUM", "color": brand_cyan},
+        {"name": "SHENZHEN MUSEUM", "color": brand_cyan},
         {"name": "BRITISH MUSEUM", "color": brand_teal},
         {"name": "HERMITAGE MUSEUM", "color": brand_violet},
         {"name": "THE MET", "color": brand_cyan}

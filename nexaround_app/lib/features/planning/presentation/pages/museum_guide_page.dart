@@ -39,8 +39,8 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       hours: '8am–7pm (Closed Sun)',
     ),
     'grand-egyptian-museum': _MuseumExtraInfo(
-      website: 'https://gem.eg',
-      hours: '9am–6pm',
+      website: 'https://gem.eg/',
+      hours: '09:00 AM–06:00 PM (Open Daily)',
     ),
     'national-museum-of-korea': _MuseumExtraInfo(
       website: 'https://www.museum.go.kr/site/eng/home',
