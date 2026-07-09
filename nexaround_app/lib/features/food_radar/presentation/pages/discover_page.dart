@@ -436,20 +436,58 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Medical List
+                    // Uses a strict allowlist: a place must have a positive medical signal
+                    // in its Google Places tags OR name/category, AND must not have a
+                    // tag that clearly marks it as a non-medical business (school, bank, etc.).
                     _medicalList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
                       final name = a.name.toLowerCase();
-                      return cat.contains('medical') || cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor') ||
-                             name.contains('medical') || name.contains('clinic') || name.contains('pharmacy');
+                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
+
+                      // Must have at least one positive medical signal
+                      final bool hasMedicalSignal =
+                          cat == 'medical' ||
+                          name.contains('medical') ||
+                          name.contains('clinic') ||
+                          name.contains('pharmacy') ||
+                          name.contains('dispensary') ||
+                          name.contains('health centre') ||
+                          name.contains('health center') ||
+                          tags.contains('pharmacy') ||
+                          tags.contains('doctor') ||
+                          tags.contains('dentist') ||
+                          tags.contains('physiotherapist') ||
+                          tags.contains('veterinary_care') ||
+                          tags.contains('health') ||
+                          tags.contains('medical_center') ||
+                          (cat.contains('medical') || cat.contains('clinic') ||
+                           cat.contains('pharmacy') || cat.contains('doctor'));
+
+                      if (!hasMedicalSignal) return false;
+
+                      // Exclude places whose Google tags clearly mark them as non-medical
+                      const nonMedicalTags = [
+                        'school', 'university', 'secondary_school', 'primary_school',
+                        'bank', 'finance', 'accounting', 'atm',
+                        'food', 'restaurant', 'bakery', 'cafe', 'bar',
+                        'store', 'shopping_mall', 'grocery_or_supermarket',
+                        'lodging', 'real_estate_agency',
+                        'transit_station', 'bus_station', 'train_station',
+                      ];
+                      final bool isNonMedical =
+                          tags.any((t) => nonMedicalTags.contains(t));
+
+                      return !isNonMedical;
                     }).toList();
                     if (_selectedMedicalCategory != null) {
                       _medicalList = _medicalList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
+                        final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
                         if (_selectedMedicalCategory == 'Pharmacy') {
-                          return cat.contains('pharmacy') || name.contains('pharmacy');
+                          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy');
                         } else if (_selectedMedicalCategory == 'Clinic') {
-                          return cat.contains('clinic') || name.contains('clinic');
+                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('dentist');
                         }
                         return true;
                       }).toList();
@@ -457,10 +495,36 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Hospital List
+                    // Uses a strict allowlist: a place must have a positive hospital signal
+                    // in its Google Places tags OR name/category, AND must not have a
+                    // tag that clearly marks it as a non-hospital establishment.
                     _hospitalList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
                       final name = a.name.toLowerCase();
-                      return cat.contains('hospital') || name.contains('hospital');
+                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
+
+                      // Must have at least one positive hospital signal
+                      final bool hasHospitalSignal =
+                          cat == 'hospital' ||
+                          name.contains('hospital') ||
+                          tags.contains('hospital') ||
+                          tags.contains('multi_speciality_hospital');
+
+                      if (!hasHospitalSignal) return false;
+
+                      // Exclude places whose Google tags clearly mark them as non-hospital
+                      const nonHospitalTags = [
+                        'school', 'university', 'secondary_school', 'primary_school',
+                        'bank', 'finance', 'accounting', 'atm',
+                        'food', 'restaurant', 'bakery', 'cafe', 'bar',
+                        'store', 'shopping_mall', 'grocery_or_supermarket',
+                        'lodging', 'real_estate_agency',
+                        'transit_station', 'bus_station', 'train_station',
+                      ];
+                      final bool isNonHospital =
+                          tags.any((t) => nonHospitalTags.contains(t));
+
+                      return !isNonHospital;
                     }).toList();
                     _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 

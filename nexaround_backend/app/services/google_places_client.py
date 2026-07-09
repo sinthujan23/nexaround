@@ -55,6 +55,9 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "Beach": [
         "park", "tourist_attraction", "beach"
     ],
+    "Hospital": [
+        "hospital"
+    ],
 }
 
 CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
@@ -67,6 +70,7 @@ CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
     "Medical": "hospital",
     "Beach": "park",
     "Nature": "park",
+    "Hospital": "hospital",
 }
 
 
@@ -373,7 +377,9 @@ def _resolve_category_from_types(types: list[str]) -> str:
         return "Food & Drink"
     if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo"}:
         return "Nature"
-    if t & {"hospital", "pharmacy", "doctor", "dentist", "health"}:
+    if t & {"hospital"}:
+        return "Hospital"
+    if t & {"pharmacy", "doctor", "dentist", "health"}:
         return "Medical"
     if t & {"tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery", "amusement_park"}:
         return "Attractions"

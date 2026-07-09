@@ -476,118 +476,27 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       );
     }
 
+    final double screenWidth = MediaQuery.of(context).size.width;
+    final double cardWidth = (screenWidth - 32 - 12) / 2;
+    final double childAspectRatio = cardWidth / 140.0;
+
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
-      sliver: SliverList(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
+      sliver: SliverGrid(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: childAspectRatio,
+        ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildRoadItem(index, active[index], active.length),
+          (context, index) => _buildCinematicCard(active[index], index: index),
           childCount: active.length,
         ),
       ),
     );
   }
 
-  Color _statusColor(String status) {
-    switch (status.toLowerCase()) {
-      case 'active':
-        return AppColors.ratingGold;
-      case 'generating':
-        return AppColors.actionTeal;
-      case 'failed':
-        return Colors.redAccent;
-      case 'completed':
-        return Colors.black12;
-      default:
-        return AppColors.actionTeal;
-    }
-  }
-
-  Widget _buildRoadItem(int index, Odyssey odyssey, int totalRows) {
-    final isGenerating = odyssey.status == 'generating';
-    final isFailed = odyssey.status == 'failed';
-
-    final dot = Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: isFailed
-              ? Colors.redAccent
-              : const Color(0xFFB58A63),
-          width: 1.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.03),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Center(
-        child: isGenerating
-            ? const SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  color: Color(0xFFB58A63),
-                ),
-              )
-            : isFailed
-                ? const Icon(
-                    Icons.error_outline_rounded,
-                    color: Colors.redAccent,
-                    size: 14,
-                  )
-                : Text(
-                    (index + 1).toString().padLeft(2, '0'),
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFFB58A63),
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-      ),
-    );
-
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Left: Timeline Column (Dashed track)
-          SizedBox(
-            width: 56,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned(
-                  top: index == 0 ? 16 : 0,
-                  bottom: index == totalRows - 1 ? 16 : 0,
-                  child: CustomPaint(
-                    size: const Size(2, double.infinity),
-                    painter: DashedLinePainter(
-                      color: const Color(0xFFCBD5E1),
-                      dashHeight: 5,
-                      dashGap: 4,
-                    ),
-                  ),
-                ),
-                dot,
-              ],
-            ),
-          ),
-          // Right: Card Content
-          Expanded(
-            child: _buildCompactOdysseyCard(odyssey, index: index),
-          ),
-        ],
-      ),
-    );
-  }
 
   MapEntry<String, String> _getCountryFlagAndName(String destination) {
     final parts = destination.split(',');
@@ -699,7 +608,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     }
   }
 
-  Widget _buildCompactOdysseyCard(Odyssey odyssey, {required int index}) {
+  Widget _buildCinematicCard(Odyssey odyssey, {required int index}) {
     final isGenerating = odyssey.status == 'generating';
     final isFailed = odyssey.status == 'failed';
     final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
@@ -710,183 +619,200 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
     return GestureDetector(
       onTap: isGenerating ? null : () => _openDetail(odyssey),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 16, right: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.black.withOpacity(0.06),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.03),
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(15),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Top Image / Gradient Section
-              SizedBox(
-                height: 140,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (hasImage)
-                      CachedNetworkImage(
-                        imageUrl: odyssey.coverUrl!,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) => Container(
-                          color: const Color(0xFF0F172A),
-                          child: const Center(
-                            child: SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white30),
-                            ),
-                          ),
-                        ),
-                        errorWidget: (context, url, error) => Container(
-                          decoration: BoxDecoration(
-                            gradient: _getThemedGradient(odyssey.destination),
-                          ),
-                        ),
-                      )
-                    else
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: _getThemedGradient(odyssey.destination),
-                        ),
-                      ),
-                    // Atmospheric Gradient Scrim
-                    const DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.bottomCenter,
-                          end: Alignment.topCenter,
-                          colors: [
-                            Color(0x22000000),
-                            Colors.transparent,
-                          ],
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+              // ── Full-bleed photo / fallback gradient ──────────────────────
+              if (hasImage)
+                CachedNetworkImage(
+                  imageUrl: odyssey.coverUrl!,
+                  fit: BoxFit.cover,
+                  placeholder: (context, url) => Container(
+                    color: const Color(0xFF0F172A),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.5,
+                          color: Colors.white30,
                         ),
                       ),
                     ),
-                    // Status badge overlays (only for generating or failed)
-                    if (isGenerating)
-                      Container(
-                        color: Colors.black26,
-                        child: const Center(
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: AppColors.brandGreen,
-                            ),
-                          ),
-                        ),
-                      )
-                    else if (isFailed)
-                      Container(
-                        color: Colors.redAccent.withOpacity(0.1),
-                        child: const Center(
-                          child: Icon(
-                            Icons.error_outline_rounded,
-                            color: Colors.redAccent,
-                            size: 24,
-                          ),
-                        ),
-                      ),
-                    if (isGenerating || isFailed)
-                      Positioned(
-                        top: 10,
-                        left: 10,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: isFailed ? Colors.redAccent : Colors.black54,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            odyssey.status.toUpperCase(),
-                            style: const TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
+                  ),
+                  errorWidget: (context, url, error) => Container(
+                    decoration: BoxDecoration(
+                      gradient: _getThemedGradient(odyssey.destination),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: _getThemedGradient(odyssey.destination),
+                  ),
+                ),
+
+              // ── Deep dark gradient scrim from bottom ──────────────────────
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Color(0x55000000),
+                      Color(0xCC000000),
+                    ],
+                    stops: [0.0, 0.4, 1.0],
+                  ),
                 ),
               ),
-              // Bottom Details Section
-              Container(
-                color: Colors.white,
-                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+
+              // ── Generating overlay ────────────────────────────────────────
+              if (isGenerating)
+                Container(
+                  color: Colors.black38,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.brandGreen,
+                      ),
+                    ),
+                  ),
+                )
+              else if (isFailed)
+                Container(
+                  color: Colors.redAccent.withOpacity(0.15),
+                  child: const Center(
+                    child: Icon(
+                      Icons.error_outline_rounded,
+                      color: Colors.redAccent,
+                      size: 28,
+                    ),
+                  ),
+                ),
+
+              // ── Status badge (top-right) ──────────────────────────────────
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: isGenerating
+                        ? Colors.black54
+                        : isFailed
+                            ? Colors.redAccent
+                            : odyssey.status == 'completed'
+                                ? Colors.black54
+                                : AppColors.brandGreen,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    odyssey.status.toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 8,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Delete button (top-left) ──────────────────────────────────
+              Positioned(
+                top: 8,
+                left: 8,
+                child: GestureDetector(
+                  onTap: () => _confirmDelete(context, odyssey),
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black38,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline_rounded,
+                      color: Colors.white70,
+                      size: 14,
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Text content (bottom overlay) ─────────────────────────────
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Destination / country row
+                    if (flag.isNotEmpty || countryName.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 2),
+                        child: Row(
+                          children: [
+                            if (flag.isNotEmpty) ...[
+                              Text(flag, style: const TextStyle(fontSize: 11)),
+                              const SizedBox(width: 4),
+                            ],
+                            if (countryName.isNotEmpty)
+                              Expanded(
+                                child: Text(
+                                  countryName.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white70,
+                                    letterSpacing: 1.0,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    // Title
                     Text(
                       odyssey.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                        height: 1.25,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        height: 1.2,
+                        shadows: [
+                          Shadow(
+                            color: Colors.black45,
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 6),
-                    ConvertedCurrencyText(
-                      amount: odyssey.budget,
-                      originalCurrency: odyssey.currency,
-                      prefix: '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'} · ',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    // Days + Budget row
                     Row(
                       children: [
-                        if (flag.isNotEmpty) ...[
-                          Text(flag, style: const TextStyle(fontSize: 12)),
-                          const SizedBox(width: 4),
-                        ],
-                        if (countryName.isNotEmpty)
-                          Expanded(
-                            child: Text(
-                              countryName.toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 9,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.black45,
-                                letterSpacing: 0.5,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        // Delete Button
-                        GestureDetector(
-                          onTap: () => _confirmDelete(context, odyssey),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                            child: Icon(
-                              Icons.delete_outline_rounded,
-                              color: Colors.redAccent,
-                              size: 18,
-                            ),
-                          ),
+                        _pillChip(
+                          Icons.calendar_today_rounded,
+                          '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
+                        ),
+                        const SizedBox(width: 6),
+                        _BudgetPill(
+                          amount: odyssey.budget,
+                          currency: odyssey.currency,
                         ),
                       ],
                     ),
@@ -896,12 +822,37 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             ],
           ),
         ),
-      ),
-    ).animate().fade(duration: 350.ms).slideX(
-          begin: 0.1,
+    ).animate().fade(duration: 400.ms).slideY(
+          begin: 0.06,
           end: 0,
           curve: Curves.easeOutQuad,
         );
+  }
+
+  Widget _pillChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.black38,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white24),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 8, color: Colors.white70),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildMessage({
@@ -953,47 +904,23 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   }
 }
 
-class DashedLinePainter extends CustomPainter {
-  final Color color;
-  final double dashHeight;
-  final double dashGap;
-  final double strokeWidth;
 
-  DashedLinePainter({
-    required this.color,
-    this.dashHeight = 5,
-    this.dashGap = 4,
-    this.strokeWidth = 2.0,
-  });
+class _BudgetPill extends StatelessWidget {
+  final double amount;
+  final String currency;
+  const _BudgetPill({required this.amount, required this.currency});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..strokeWidth = strokeWidth
-      ..style = PaintingStyle.stroke;
-
-    double y = 0;
-    while (y < size.height) {
-      canvas.drawLine(
-        Offset(size.width / 2, y),
-        Offset(size.width / 2, y + dashHeight),
-        paint,
-      );
-      y += dashHeight + dashGap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant DashedLinePainter oldDelegate) {
-    return oldDelegate.color != color ||
-        oldDelegate.dashHeight != dashHeight ||
-        oldDelegate.dashGap != dashGap ||
-        oldDelegate.strokeWidth != strokeWidth;
+  Widget build(BuildContext context) {
+    return ConvertedCurrencyText(
+      amount: amount,
+      originalCurrency: currency,
+      style: const TextStyle(
+        fontSize: 9,
+        fontWeight: FontWeight.w600,
+        color: Colors.white,
+      ),
+    );
   }
 }
-
-
-
-
 

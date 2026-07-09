@@ -370,7 +370,13 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
         final fetched = results.expand((x) => x).toList();
         for (final a in fetched) {
-          uniqueAttractions[a.name] = a;
+          // Use a composite key of name + categoryName so that the same physical
+          // place fetched under different categories is stored separately, each
+          // retaining its correct categoryName. Previously using only a.name
+          // caused the last-written category to overwrite earlier ones, which
+          // was the root cause of non-hospital places appearing in the Hospital tab.
+          final dedupeKey = '${a.name.trim().toLowerCase()}__${(a.categoryName ?? '').toLowerCase()}';
+          uniqueAttractions[dedupeKey] = a;
         }
 
         // Recompute user-centric distances relative to original lat/lng coordinates

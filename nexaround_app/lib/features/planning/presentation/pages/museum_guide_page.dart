@@ -43,8 +43,8 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       hours: '09:00 AM–06:00 PM (Open Daily)',
     ),
     'national-museum-of-korea': _MuseumExtraInfo(
-      website: 'https://www.museum.go.kr/site/eng/home',
-      hours: '10am–6pm (Wed/Sat until 9pm)',
+      website: 'https://www.museum.go.kr/ENG/contents/E0101010000.do',
+      hours: 'Mon/Tue/Thu/Fri/Sun: 9:30 am – 5:30 pm, Wed/Sat: 9:30 am – 9:00 pm',
     ),
     'british-museum': _MuseumExtraInfo(
       website: 'https://www.britishmuseum.org',
@@ -587,6 +587,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _statChip(
                         Icons.visibility_rounded,
@@ -595,9 +596,11 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                             : '…',
                       ),
                       const SizedBox(width: 10),
-                      _statChip(
-                        Icons.access_time_filled_rounded,
-                        _museumExtra.hours,
+                      Expanded(
+                        child: _statChip(
+                          Icons.access_time_filled_rounded,
+                          _museumExtra.hours,
+                        ),
                       ),
                     ],
                   ),
@@ -916,11 +919,16 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
         children: [
           Icon(icon, size: 14, color: AppColors.textSecondary),
           const SizedBox(width: 6),
-          Text(label,
+          Flexible(
+            child: Text(
+              label,
               style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textSecondary)),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
         ],
       ),
     );
