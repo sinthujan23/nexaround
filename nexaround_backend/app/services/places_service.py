@@ -53,22 +53,67 @@ def get_min_radius(radius: int) -> int:
 
 
 def _enforce_distance_distribution(places: list[dict], radius_m: int, category: Optional[str] = None) -> list[dict]:
-    """Sort places by distance.
-    If category is Shopping, prioritize shopping malls.
-    Limit to 100 places to avoid overwhelming the client while showing plenty.
+    """Filter and select a balanced distribution of nearby places across Near, Mid, and Far zones
+    to ensure the client receives variety instead of only the closest clusters.
     """
+    # Sort places by rating (descending) and distance (ascending) to get high quality ones
+    places.sort(key=lambda p: (-(p.get("rating") or 4.0), p.get("distance_m", 0)))
+    
+    t1 = radius_m * 0.1
+    t2 = radius_m * 0.4
+    
+    near_list = []
+    mid_list = []
+    far_list = []
+    
+    for p in places:
+        dist = p.get("distance_m", 0)
+        if dist < t1:
+            near_list.append(p)
+        elif dist < t2:
+            mid_list.append(p)
+        else:
+            far_list.append(p)
+            
+    # Target counts out of 100 total
+    near_target = 40
+    mid_target = 30
+    far_target = 30
+    
+    near_taken = min(len(near_list), near_target)
+    mid_taken = min(len(mid_list), mid_target)
+    far_taken = min(len(far_list), far_target)
+    
+    remaining = 100 - (near_taken + mid_taken + far_taken)
+    
+    if remaining > 0:
+        extra_near = min(len(near_list) - near_taken, remaining)
+        near_taken += extra_near
+        remaining -= extra_near
+        
+    if remaining > 0:
+        extra_mid = min(len(mid_list) - mid_taken, remaining)
+        mid_taken += extra_mid
+        remaining -= extra_mid
+        
+    if remaining > 0:
+        extra_far = min(len(far_list) - far_taken, remaining)
+        far_taken += extra_far
+        remaining -= extra_far
+        
+    selected = near_list[:near_taken] + mid_list[:mid_taken] + far_list[:far_taken]
+    
     if category == "Shopping":
         # Prioritize malls, then sort by distance
         def sort_key(p):
-            tags = p.get("tags", [])
+            tags = p.get("tags", []) or []
             is_mall = "shopping_mall" in tags
             return (0 if is_mall else 1, p.get("distance_m", 0))
-        
-        places.sort(key=sort_key)
+        selected.sort(key=sort_key)
     else:
-        places.sort(key=lambda p: p.get("distance_m", 0))
+        selected.sort(key=lambda p: p.get("distance_m", 0))
         
-    return places[:100]
+    return selected
 
 
 async def seed_places_from_google_bg(
