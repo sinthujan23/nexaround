@@ -392,11 +392,14 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     return MarkdownBody(
       data: markdownText,
       styleSheet: MarkdownStyleSheet(
-        p: const TextStyle(fontSize: 16, height: 1.6, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
-        strong: const TextStyle(fontSize: 16, height: 1.6, color: AppColors.textPrimary, fontWeight: FontWeight.w800),
+        p: const TextStyle(fontSize: 14.5, height: 1.5, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+        strong: const TextStyle(fontSize: 14.5, height: 1.5, color: AppColors.textPrimary, fontWeight: FontWeight.w800),
+        h3: const TextStyle(fontSize: 17, height: 1.4, color: AppColors.brandGreen, fontWeight: FontWeight.w800),
+        h3Padding: const EdgeInsets.only(top: 20, bottom: 10),
+        listBullet: const TextStyle(fontSize: 14.5, color: AppColors.brandGreen),
         a: const TextStyle(
-          fontSize: 16, 
-          height: 1.6, 
+          fontSize: 14.5, 
+          height: 1.5, 
           color: AppColors.brandGreen, 
           fontWeight: FontWeight.w800,
           decoration: TextDecoration.underline,

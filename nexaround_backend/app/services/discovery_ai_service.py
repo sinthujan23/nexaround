@@ -223,15 +223,16 @@ Give the itinerary an engaging title.
 Then explain in 2–3 sentences why this plan is perfect for today.
 
 Your Journey
-For each stop include:
-- Time: [Arrival Time]
-- Place Name: [Place Name] (Make sure to wrap the place name in double brackets, like [[Place Name]])
-- Time to Spend: [Duration]
-- Estimated Cost: [Cost]
-- Travel Time from Previous Stop: [Travel Time]
-- Why You'll Love It: [Short, friendly explanation.]
-- Don't Miss: [A unique experience or local tip.]
-- Nearby Food: [One recommended café, restaurant or local specialty.]
+For each stop, format it exactly like this example (using `###` for the stop title, and nested bullet points starting with `* **Field name:**`):
+
+### **Stop 1: [[Place Name]]**
+* **Time:** [Arrival Time]
+* **Time to Spend:** [Duration]
+* **Estimated Cost:** [Cost]
+* **Travel Time from Previous Stop:** [Travel Time]
+* **Why You'll Love It:** [Short, friendly explanation.]
+* **Don't Miss:** [A unique experience or local tip.]
+* **Nearby Food:** [One recommended café, restaurant or local specialty.]
 
 Before You Go
 Include:
