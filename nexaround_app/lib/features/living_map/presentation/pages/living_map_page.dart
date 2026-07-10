@@ -5800,40 +5800,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       'Hospital': [],
     };
 
-    final allowedTypes = {
-      'Medical': {
-        'medical', 'hospital', 'multi_speciality_hospital', 'pharmacy',
-        'doctor', 'dentist', 'health', 'physiotherapist', 'veterinary_care',
-        'clinic', 'medical_lab', 'optician',
-      },
-      'Hospital': {
-        'hospital', 'multi_speciality_hospital',
-      },
-      'Food & Drink': {
-        'restaurant', 'cafe', 'bakery', 'meal_takeaway', 'meal_delivery',
-        'food', 'ice_cream_shop', 'coffee_shop', 'juice_bar',
-        'lodging', 'hotel', 'bar', 'night_club', 'pub', 'discotheque',
-        'motel', 'resort', 'guest_house', 'bed_and_breakfast', 'hostel',
-      },
-      'Shopping': {
-        'shopping_mall', 'supermarket', 'store', 'department_store',
-        'convenience_store', 'clothing_store', 'electronics_store',
-        'book_store', 'jewelry_store', 'shoe_store', 'furniture_store',
-        'pet_store', 'hardware_store', 'gift_shop', 'market',
-      },
-      'Attractions': {
-        'tourist_attraction', 'museum', 'zoo', 'aquarium', 'art_gallery',
-        'amusement_park', 'historical_landmark', 'place_of_worship',
-        'church', 'hindu_temple', 'mosque', 'synagogue', 'cultural_center',
-        'marina', 'visitor_center', 'observation_deck', 'monument', 'castle',
-        'stadium', 'casino', 'movie_theater', 'bowling_alley', 'performing_arts_theater',
-        'fort', 'palace',
-        'beach', 'national_park', 'hiking_area', 'nature_reserve', 'scenic_point',
-        'waterfall', 'lake', 'river', 'botanical_garden', 'park', 'campground',
-        'natural_feature', 'viewpoint', 'garden',
-      },
-    };
-
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
       final distA = a.distanceM ?? 0;
       final distB = b.distanceM ?? 0;
@@ -5846,32 +5812,94 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     for (final place in attractions) {
-      final tags = place.tags.map((t) => t.toLowerCase()).toSet();
-      final distKm = _getAccurateDistanceM(place) / 1000.0;
+      final distM = _getAccurateDistanceM(place);
+      final distKm = distM / 1000.0;
 
-      // Determine the BEST category for this place (exclusive — each place goes to only ONE category)
-      // Priority: Hospital > Medical > Food & Drink > Shopping > Attractions
-      final isHospital = tags.any((t) => allowedTypes['Hospital']!.contains(t));
-      final isMedical = tags.any((t) => allowedTypes['Medical']!.contains(t));
-      final isFoodDrink = tags.any((t) => allowedTypes['Food & Drink']!.contains(t));
-      final isShopping = tags.any((t) => allowedTypes['Shopping']!.contains(t));
-      final isAttractions = tags.any((t) => allowedTypes['Attractions']!.contains(t));
+      final catName = (place.categoryName ?? '').toLowerCase();
+      final name = place.name.toLowerCase();
+      final tags = place.tags.map((t) => t.toString().toLowerCase()).toList();
 
-      String? bestCategory;
-      if (isHospital) {
-        bestCategory = 'Hospital';
-      } else if (isMedical) {
-        bestCategory = 'Medical';
-      } else if (isFoodDrink) {
-        final primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
-        if (!primaryShop) bestCategory = 'Food & Drink';
-      } else if (isShopping) {
-        bestCategory = 'Shopping';
-      } else if (isAttractions) {
-        bestCategory = 'Attractions';
+      bool matchesFood = false;
+      bool matchesAttraction = false;
+      bool matchesShopping = false;
+      bool matchesMedical = false;
+      bool matchesHospital = false;
+
+      // 1. Food & Drink matching logic
+      if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') || 
+          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') || name.contains('cafe')) {
+        matchesFood = true;
       }
 
-      if (bestCategory == null) continue;
+      // 2. Attractions matching logic
+      if (catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
+          catName.contains('experience') || catName.contains('landmark') || catName.contains('culture') ||
+          catName.contains('temple') || catName.contains('art') || catName.contains('zoo') ||
+          name.contains('temple') || name.contains('park') || name.contains('museum')) {
+        matchesAttraction = true;
+      }
+
+      // 3. Shopping matching logic
+      if (catName.contains('shop') || catName.contains('mall') || catName.contains('market') || 
+          catName.contains('store') || catName.contains('fashion')) {
+        matchesShopping = true;
+      }
+
+      // 4. Medical matching logic
+      final bool hasMedicalSignal =
+          catName == 'medical' ||
+          name.contains('medical') ||
+          name.contains('clinic') ||
+          name.contains('pharmacy') ||
+          name.contains('dispensary') ||
+          name.contains('health centre') ||
+          name.contains('health center') ||
+          tags.contains('pharmacy') ||
+          tags.contains('doctor') ||
+          tags.contains('dentist') ||
+          tags.contains('physiotherapist') ||
+          tags.contains('veterinary_care') ||
+          tags.contains('health') ||
+          tags.contains('medical_center') ||
+          (catName.contains('medical') || catName.contains('clinic') ||
+           catName.contains('pharmacy') || catName.contains('doctor'));
+
+      if (hasMedicalSignal) {
+        const nonMedicalTags = [
+          'school', 'university', 'secondary_school', 'primary_school',
+          'bank', 'finance', 'accounting', 'atm',
+          'food', 'restaurant', 'bakery', 'cafe', 'bar',
+          'store', 'shopping_mall', 'grocery_or_supermarket',
+          'lodging', 'real_estate_agency',
+          'transit_station', 'bus_station', 'train_station',
+        ];
+        final bool isNonMedical = tags.any((t) => nonMedicalTags.contains(t));
+        if (!isNonMedical) {
+          matchesMedical = true;
+        }
+      }
+
+      // 5. Hospital matching logic
+      final bool hasHospitalSignal =
+          catName == 'hospital' ||
+          name.contains('hospital') ||
+          tags.contains('hospital') ||
+          tags.contains('multi_speciality_hospital');
+
+      if (hasHospitalSignal) {
+        const nonHospitalTags = [
+          'school', 'university', 'secondary_school', 'primary_school',
+          'bank', 'finance', 'accounting', 'atm',
+          'food', 'restaurant', 'bakery', 'cafe', 'bar',
+          'store', 'shopping_mall', 'grocery_or_supermarket',
+          'lodging', 'real_estate_agency',
+          'transit_station', 'bus_station', 'train_station',
+        ];
+        final bool isNonHospital = tags.any((t) => nonHospitalTags.contains(t));
+        if (!isNonHospital) {
+          matchesHospital = true;
+        }
+      }
 
       double filterDistKm = distKm;
       if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
@@ -5880,13 +5908,30 @@ class _LivingMapPageState extends State<LivingMapPage>
         ) / 1000.0;
       }
 
-      final maxDist = (bestCategory == 'Attractions' || bestCategory == 'Medical' || bestCategory == 'Hospital')
-          ? 50.0
-          : (bestCategory == 'Food & Drink' ? 5.0 : 15.0);
-      if (filterDistKm > maxDist) continue;
-
-      if (!grouped[bestCategory]!.any((x) => x.id == place.id)) {
-        grouped[bestCategory]!.add(place);
+      if (matchesFood && filterDistKm <= 5.0) {
+        if (!grouped['Food & Drink']!.any((x) => x.id == place.id)) {
+          grouped['Food & Drink']!.add(place);
+        }
+      }
+      if (matchesAttraction && filterDistKm <= 50.0) {
+        if (!grouped['Attractions']!.any((x) => x.id == place.id)) {
+          grouped['Attractions']!.add(place);
+        }
+      }
+      if (matchesShopping && filterDistKm <= 15.0) {
+        if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
+          grouped['Shopping']!.add(place);
+        }
+      }
+      if (matchesMedical && filterDistKm <= 50.0) {
+        if (!grouped['Medical']!.any((x) => x.id == place.id)) {
+          grouped['Medical']!.add(place);
+        }
+      }
+      if (matchesHospital && filterDistKm <= 50.0) {
+        if (!grouped['Hospital']!.any((x) => x.id == place.id)) {
+          grouped['Hospital']!.add(place);
+        }
       }
     }
 
@@ -5898,24 +5943,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       final categoryList = grouped[cat] ?? [];
       var farPlaces = categoryList.where((p) => (p.distanceM ?? 0) >= isNearThreshold).toList();
       var closePlaces = categoryList.where((p) => (p.distanceM ?? 0) < isNearThreshold).toList();
-      
-      if (closePlaces.length < 10) {
-        for (final p in attractions) {
-          if ((p.distanceM ?? 0) < isNearThreshold && !closePlaces.any((x) => x.id == p.id)) {
-            final tags = p.tags.map((t) => t.toLowerCase()).toSet();
-            final matchesCat = tags.any((t) => allowedTypes[cat]!.contains(t));
-            
-            bool primaryShop = false;
-            if (cat == 'Food & Drink') {
-              primaryShop = tags.any((t) => {'shopping_mall', 'department_store', 'supermarket'}.contains(t));
-            }
-            if (matchesCat && !primaryShop) {
-              closePlaces.add(p);
-              if (closePlaces.length >= 10) break;
-            }
-          }
-        }
-      }
       
       closePlaces.sort(compareDistanceAndRating);
       farPlaces.sort(compareDistanceAndRating);

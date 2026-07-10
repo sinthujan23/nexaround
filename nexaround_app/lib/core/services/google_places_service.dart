@@ -611,7 +611,7 @@ class GooglePlacesService {
         queryParameters: {
           'input': name,
           'inputtype': 'textquery',
-          'fields': 'place_id,name,geometry,rating,user_ratings_total,photos,formatted_address',
+          'fields': 'place_id,name,geometry,rating,user_ratings_total,photos,formatted_address,types',
           'locationbias': 'circle:50000@$userLat,$userLng',
         },
       );
@@ -647,6 +647,12 @@ class GooglePlacesService {
             }
           }
 
+          final typesList = (candidate['types'] as List? ?? [])
+              .map((t) => t.toString())
+              .toList();
+          final resolvedCategory =
+              categoryName ?? _resolveCategoryFromTypes(typesList);
+
           return AttractionModel(
             id: placeId,
             name: placeName,
@@ -654,7 +660,7 @@ class GooglePlacesService {
             latitude: plat,
             longitude: plng,
             categoryId: null,
-            categoryName: categoryName,
+            categoryName: resolvedCategory,
             address: candidate['formatted_address'] as String? ?? '',
             openingHours: const {},
             entryFee: 0.0,
@@ -662,13 +668,15 @@ class GooglePlacesService {
             rating: rating,
             reviewCount: userRatingsTotal,
             photoUrls: photoUrls,
-            tags: categoryName != null
-                ? [
-                    categoryName.toLowerCase(),
-                    if (categoryName.toLowerCase().contains('food')) 'food',
-                    if (categoryName.toLowerCase().contains('shop')) 'shopping_mall',
-                  ]
-                : const [],
+            tags: typesList.isNotEmpty
+                ? typesList
+                : (categoryName != null
+                    ? [
+                        categoryName.toLowerCase(),
+                        if (categoryName.toLowerCase().contains('food')) 'food',
+                        if (categoryName.toLowerCase().contains('shop')) 'shopping_mall',
+                      ]
+                    : const []),
             geofenceRadiusM: 100,
             distanceM: distanceM,
             isActive: true,
@@ -767,10 +775,8 @@ class GooglePlacesService {
       String prompt = '';
       if (categoryName == 'Medical') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
-
-pharmacy, dental_clinics, health_centers, optical_clinics, veterinary_care, medical_clinics, medical_lab, 
-
+Analyse and provide a list of up to 15 real medical locations (pharmacies, dental clinics, health centers, optical clinics, veterinary clinics, or general medical clinics) within a radius of 15 kms from ($latitude, $longitude) near $locationName.
+Do NOT include any places that are not related to medical services (do not list landmarks, schools, banks, police stations, or general stores). If there are fewer than 15 medical locations in this area, return only the ones that actually exist.
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
@@ -783,10 +789,8 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 ''';
       } else if (categoryName == 'Hospital') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 50 kms from ($latitude, $longitude) near $locationName with distance and direction. 
-
-hospital, multi_speciality_hospital, 
-
+Analyse and provide a list of up to 15 real hospital and multi-speciality hospital locations within a radius of 50 kms from ($latitude, $longitude) near $locationName. 
+Do NOT include any places that are not hospitals, clinics, or medical centers (do not list landmarks, police stations, shops, schools, parks, or banks). If there are fewer than 15 hospitals in this area, return only the ones that actually exist.
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [

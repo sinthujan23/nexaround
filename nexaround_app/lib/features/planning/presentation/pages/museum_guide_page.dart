@@ -155,8 +155,8 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       hours: '9am–5pm (Closed Mon)',
     ),
     'm-plus': _MuseumExtraInfo(
-      website: 'https://www.mplus.org.hk',
-      hours: '10am–6pm (Fri until 10pm, Closed Mon)',
+      website: 'https://www.mplus.org.hk/en/',
+      hours: 'Tue–Thu & Sun: 10:00–18:00, Fri: 10:00–22:00, Sat: 10:00–20:00, Closed Mon',
     ),
     'state-tretyakov-gallery': _MuseumExtraInfo(
       website: 'https://www.tretyakovgallery.ru/en/',
