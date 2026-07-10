@@ -5935,40 +5935,97 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     }
 
-    for (final cat in grouped.keys) {
-      if (cat == 'Shopping') continue;
-      
-      final isNearThreshold = cat == 'Food & Drink' ? 1000 : 25000;
-      
-      final categoryList = grouped[cat] ?? [];
-      var farPlaces = categoryList.where((p) => (p.distanceM ?? 0) >= isNearThreshold).toList();
-      var closePlaces = categoryList.where((p) => (p.distanceM ?? 0) < isNearThreshold).toList();
-      
-      closePlaces.sort(compareDistanceAndRating);
-      farPlaces.sort(compareDistanceAndRating);
-      
-      final List<AttractionEntity> balanced = [];
-      balanced.addAll(closePlaces.take(10));
-      for (final far in farPlaces) {
-        if (balanced.length >= 15) break;
-        if (!balanced.any((x) => x.id == far.id)) {
-          balanced.add(far);
+    List<AttractionEntity> selectBalancedPlaces({
+      required List<AttractionEntity> allPlaces,
+      required double r1,
+      required double r2,
+      required double r3,
+    }) {
+      allPlaces.sort(compareDistanceAndRating);
+
+      final List<AttractionEntity> nearList = [];
+      final List<AttractionEntity> midList = [];
+      final List<AttractionEntity> farList = [];
+
+      for (final p in allPlaces) {
+        final distKm = (p.distanceM ?? 0) / 1000.0;
+        if (distKm < r1) {
+          nearList.add(p);
+        } else if (distKm < r2) {
+          midList.add(p);
+        } else if (distKm <= r3) {
+          farList.add(p);
         }
       }
-      if (balanced.length < 15) {
-        for (final close in closePlaces) {
-          if (balanced.length >= 15) break;
-          if (!balanced.any((x) => x.id == close.id)) {
-            balanced.add(close);
-          }
+
+      int nearTaken = nearList.length < 5 ? nearList.length : 5;
+      int midTaken = midList.length < 5 ? midList.length : 5;
+      int farTaken = farList.length < 5 ? farList.length : 5;
+
+      int totalTaken = nearTaken + midTaken + farTaken;
+      int remainingSlots = 15 - totalTaken;
+
+      if (remainingSlots > 0) {
+        final extraNear = nearList.length - nearTaken;
+        if (extraNear > 0) {
+          final toTake = extraNear < remainingSlots ? extraNear : remainingSlots;
+          nearTaken += toTake;
+          remainingSlots -= toTake;
         }
       }
-      grouped[cat] = balanced;
+
+      if (remainingSlots > 0) {
+        final extraMid = midList.length - midTaken;
+        if (extraMid > 0) {
+          final toTake = extraMid < remainingSlots ? extraMid : remainingSlots;
+          midTaken += toTake;
+          remainingSlots -= toTake;
+        }
+      }
+
+      if (remainingSlots > 0) {
+        final extraFar = farList.length - farTaken;
+        if (extraFar > 0) {
+          final toTake = extraFar < remainingSlots ? extraFar : remainingSlots;
+          farTaken += toTake;
+          remainingSlots -= toTake;
+        }
+      }
+
+      final List<AttractionEntity> selected = [];
+      selected.addAll(nearList.take(nearTaken));
+      selected.addAll(midList.take(midTaken));
+      selected.addAll(farList.take(farTaken));
+
+      selected.sort(compareDistanceAndRating);
+      return selected;
     }
 
-    grouped['Shopping']?.sort(compareDistanceAndRating);
-    if (grouped['Shopping'] != null && grouped['Shopping']!.length > 15) {
-      grouped['Shopping'] = grouped['Shopping']!.take(15).toList();
+    for (final cat in grouped.keys) {
+      double r1 = 2.0;
+      double r2 = 10.0;
+      double r3 = 50.0;
+
+      if (cat == 'Food & Drink') {
+        r1 = 1.0;
+        r2 = 3.0;
+        r3 = 5.0;
+      } else if (cat == 'Shopping') {
+        r1 = 1.0;
+        r2 = 5.0;
+        r3 = 15.0;
+      } else if (cat == 'Attractions' || cat == 'Medical' || cat == 'Hospital') {
+        r1 = 2.0;
+        r2 = 10.0;
+        r3 = 50.0;
+      }
+
+      grouped[cat] = selectBalancedPlaces(
+        allPlaces: grouped[cat] ?? [],
+        r1: r1,
+        r2: r2,
+        r3: r3,
+      );
     }
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
