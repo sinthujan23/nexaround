@@ -22,4 +22,4 @@ offset = ((TARGET - logo_size) // 2, (TARGET - logo_size) // 2)
 canvas.paste(logo, offset, logo)
 
 canvas.save(OUT)
-print(f"Saved padded foreground → {OUT}  ({TARGET}x{TARGET}, logo at {SCALE*100:.0f}%)")
+print(f"Saved padded foreground -> {OUT}  ({TARGET}x{TARGET}, logo at {SCALE*100:.0f}%)")

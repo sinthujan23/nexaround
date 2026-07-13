@@ -5801,8 +5801,8 @@ class _LivingMapPageState extends State<LivingMapPage>
     };
 
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
-      final distA = a.distanceM ?? 0;
-      final distB = b.distanceM ?? 0;
+      final distA = _getAccurateDistanceM(a);
+      final distB = _getAccurateDistanceM(b);
       if ((distA - distB).abs() < 100) {
         final rateA = a.rating ?? 0.0;
         final rateB = b.rating ?? 0.0;
@@ -5948,7 +5948,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       final List<AttractionEntity> farList = [];
 
       for (final p in allPlaces) {
-        final distKm = (p.distanceM ?? 0) / 1000.0;
+        final distKm = _getAccurateDistanceM(p) / 1000.0;
         if (distKm < r1) {
           nearList.add(p);
         } else if (distKm < r2) {

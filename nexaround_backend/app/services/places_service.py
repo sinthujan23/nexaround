@@ -116,6 +116,53 @@ def _enforce_distance_distribution(places: list[dict], radius_m: int, category: 
     return selected
 
 
+async def _query_nearby_three_zones(
+    repo: AttractionRepository,
+    latitude: float,
+    longitude: float,
+    radius: int,
+    category_id: Optional[int],
+    is_active: Optional[bool] = None
+) -> list:
+    """Helper to query nearby places from PostgreSQL in three distinct zones."""
+    t1 = radius * 0.1
+    t2 = radius * 0.4
+    
+    # Zone 1 (Near): 0 to t1, limit 50
+    near_db = await repo.get_nearby(
+        latitude=latitude,
+        longitude=longitude,
+        radius_m=float(t1),
+        category_id=category_id,
+        limit=50,
+        is_active=is_active
+    )
+    
+    # Zone 2 (Mid): t1 to t2, limit 40
+    mid_db = await repo.get_nearby(
+        latitude=latitude,
+        longitude=longitude,
+        radius_m=float(t2),
+        category_id=category_id,
+        limit=40,
+        is_active=is_active,
+        min_radius_m=float(t1)
+    )
+    
+    # Zone 3 (Far): t2 to radius, limit 40
+    far_db = await repo.get_nearby(
+        latitude=latitude,
+        longitude=longitude,
+        radius_m=float(radius),
+        category_id=category_id,
+        limit=40,
+        is_active=is_active,
+        min_radius_m=float(t2)
+    )
+    
+    return near_db + mid_db + far_db
+
+
 async def seed_places_from_google_bg(
     latitude: float,
     longitude: float,
@@ -130,17 +177,14 @@ async def seed_places_from_google_bg(
         # 1. Check database first to see if revalidation is actually needed (close session immediately after)
         async with async_session() as session:
             repo = AttractionRepository(session)
-            db_limit = 100 if radius <= 10000 else 200
-            min_rad = get_min_radius(radius)
             
             # Fetch the latest set from DB to check if another worker has already seeded
-            nearby_db_attractions = await repo.get_nearby(
+            nearby_db_attractions = await _query_nearby_three_zones(
+                repo=repo,
                 latitude=latitude,
                 longitude=longitude,
-                radius_m=float(radius),
-                category_id=category_id,
-                limit=db_limit,
-                min_radius_m=float(min_rad) if min_rad > 0 else None
+                radius=radius,
+                category_id=category_id
             )
             
             has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
@@ -296,12 +340,12 @@ async def seed_places_from_google_bg(
             await session.commit()
 
             # Re-query the database to get the complete unified set
-            nearby_db_attractions = await repo.get_nearby(
+            nearby_db_attractions = await _query_nearby_three_zones(
+                repo=repo,
                 latitude=latitude,
                 longitude=longitude,
-                radius_m=float(radius),
-                category_id=category_id,
-                limit=db_limit
+                radius=radius,
+                category_id=category_id
             )
 
             place_dicts = [
@@ -378,19 +422,14 @@ async def get_nearby(
                 category_id = cat_obj.id
 
         # Query database attractions
-        # Use a higher limit for wide-area searches so 25–50km results aren't
-        # truncated to only the closest 100.
-        db_limit = 100 if radius <= 10000 else 200
-        min_rad = get_min_radius(radius)
         repo = AttractionRepository(session)
-        nearby_db_attractions = await repo.get_nearby(
+        nearby_db_attractions = await _query_nearby_three_zones(
+            repo=repo,
             latitude=latitude,
             longitude=longitude,
-            radius_m=float(radius),
+            radius=radius,
             category_id=category_id,
-            limit=db_limit,
-            is_active=True,
-            min_radius_m=float(min_rad) if min_rad > 0 else None
+            is_active=True
         )
 
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
