@@ -161,32 +161,13 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         }
       }
 
-      if (!event.forceRefresh) {
-        // Load and emit local cache first for instant feedback (zero latency) if it is nearby
-        final cachedModels = _getFilteredCache(event.latitude, event.longitude);
-        if (cachedModels.isNotEmpty) {
-          emit(state.copyWith(
-            status: MapStatus.success,
-            attractions: cachedModels,
-            allAttractions: cachedModels,
-            selectedCategoryId: event.categoryId,
-          ));
-        } else {
-          // Show loading spinner only if there's no cache available
-          emit(state.copyWith(
-            status: MapStatus.loading,
-            attractions: const [],
-            allAttractions: const [],
-          ));
-        }
-      } else {
-        // Force refresh: show loading and clear previous data
-        emit(state.copyWith(
-          status: MapStatus.loading,
-          attractions: const [],
-          allAttractions: const [],
-        ));
-      }
+      // Emit loading state so that the UI shows the shimmer/spinner while we fetch the fresh 3-zone data.
+      // If the network request fails (e.g. offline), we will fall back to cache in the catch block.
+      emit(state.copyWith(
+        status: MapStatus.loading,
+        attractions: const [],
+        allAttractions: const [],
+      ));
 
       final categoriesToFetch = [
         'Attractions',
