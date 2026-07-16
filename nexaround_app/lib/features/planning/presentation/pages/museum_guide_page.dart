@@ -256,7 +256,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
     ),
     'acropolis-museum': _MuseumExtraInfo(
       website: 'https://www.theacropolismuseum.gr/en',
-      hours: '9am–5pm (Mon until 4pm, Fri until 10pm)',
+      hours: 'Winter (1 Nov - 31 Mar): Mon-Thu 9am-5pm, Fri 9am-10pm, Sat-Sun 9am-8pm. Summer (1 Apr - 31 Oct): Mon 9am-5pm, Tue-Sun 9am-8pm (Fri until 10pm).',
     ),
     'centro-cultural-banco-do-brasil': _MuseumExtraInfo(
       website: 'https://ccbb.com.br',

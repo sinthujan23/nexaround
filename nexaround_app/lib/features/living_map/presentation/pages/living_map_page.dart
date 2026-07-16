@@ -2627,13 +2627,19 @@ class _LivingMapPageState extends State<LivingMapPage>
         itemBuilder: (context, index) {
           final catName = displayCategories[index];
           final isActive = _selectedCategory == catName;
-
           return GestureDetector(
             onTap: () async {
               setState(() => _selectedCategory = catName);
 
-              // Fetch nearby places for this category
-              final position = await geo.Geolocator.getCurrentPosition();
+              double lat = _userLatitude ?? 0.0;
+              double lng = _userLongitude ?? 0.0;
+
+              if (lat == 0.0 || lng == 0.0) {
+                final position = await geo.Geolocator.getCurrentPosition();
+                lat = position.latitude;
+                lng = position.longitude;
+              }
+
               String? catId;
               if (catName != 'All') {
                 catId = resolvedCategories
@@ -2644,8 +2650,8 @@ class _LivingMapPageState extends State<LivingMapPage>
               if (mounted) {
                 context.read<MapBloc>().add(
                   FetchNearbyAttractions(
-                    latitude: position.latitude,
-                    longitude: position.longitude,
+                    latitude: lat,
+                    longitude: lng,
                     categoryId: catId,
                     categoryName: catName == 'All' ? null : catName,
                     useLegacy: false,
@@ -5795,6 +5801,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     final Map<String, List<AttractionEntity>> grouped = {
       'Food & Drink': [],
       'Attractions': [],
+      'Nature': [],
       'Shopping': [],
       'Medical': [],
       'Hospital': [],
@@ -5824,6 +5831,19 @@ class _LivingMapPageState extends State<LivingMapPage>
       bool matchesShopping = false;
       bool matchesMedical = false;
       bool matchesHospital = false;
+      bool matchesNature = false;
+
+      // 6. Nature matching logic (parks, beaches, lakes, gardens, etc.)
+      if (catName.contains('nature') || catName.contains('beach') || catName.contains('park') || 
+          catName.contains('garden') || catName.contains('lake') || catName.contains('river') ||
+          catName.contains('waterfall') || catName.contains('forest') ||
+          name.contains('beach') || name.contains('park') || name.contains('lake') || 
+          name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
+          tags.contains('park') || tags.contains('beach') || tags.contains('natural_feature') ||
+          tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('nature_reserve') ||
+          tags.contains('botanical_garden')) {
+        matchesNature = true;
+      }
 
       // 1. Food & Drink matching logic
       if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') || 
@@ -5831,11 +5851,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         matchesFood = true;
       }
 
-      // 2. Attractions matching logic
-      if (catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
+      // 2. Attractions matching logic (exclude nature if matched there, to keep it clean)
+      if (!matchesNature && (catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
           catName.contains('experience') || catName.contains('landmark') || catName.contains('culture') ||
           catName.contains('temple') || catName.contains('art') || catName.contains('zoo') ||
-          name.contains('temple') || name.contains('park') || name.contains('museum')) {
+          name.contains('temple') || name.contains('park') || name.contains('museum'))) {
         matchesAttraction = true;
       }
 
@@ -5953,6 +5973,11 @@ class _LivingMapPageState extends State<LivingMapPage>
           grouped['Attractions']!.add(place);
         }
       }
+      if (matchesNature && filterDistKm <= 50.0) {
+        if (!grouped['Nature']!.any((x) => x.id == place.id)) {
+          grouped['Nature']!.add(place);
+        }
+      }
       if (matchesShopping && filterDistKm <= 15.0) {
         if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
           grouped['Shopping']!.add(place);
@@ -5975,14 +6000,36 @@ class _LivingMapPageState extends State<LivingMapPage>
       required double r1,
       required double r2,
       required double r3,
+      required String category,
     }) {
-      allPlaces.sort(compareDistanceAndRating);
+      // 1. Filter places to only show rating >= 4.0 stars (client request)
+      List<AttractionEntity> filteredPlaces = allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
+      // Fallback if empty to avoid completely blank panels
+      if (filteredPlaces.isEmpty) {
+        filteredPlaces = allPlaces;
+      }
+
+      bool isMall(AttractionEntity p) {
+        final lowerName = p.name.toLowerCase();
+        final lowerTags = p.tags.map((t) => t.toString().toLowerCase()).toList();
+        return lowerName.contains('mall') || lowerTags.contains('shopping_mall');
+      }
+
+      filteredPlaces.sort((a, b) {
+        if (category == 'Shopping') {
+          final aMall = isMall(a);
+          final bMall = isMall(b);
+          if (aMall && !bMall) return -1;
+          if (!aMall && bMall) return 1;
+        }
+        return compareDistanceAndRating(a, b);
+      });
 
       final List<AttractionEntity> nearList = [];
       final List<AttractionEntity> midList = [];
       final List<AttractionEntity> farList = [];
 
-      for (final p in allPlaces) {
+      for (final p in filteredPlaces) {
         final distKm = _getAccurateDistanceM(p) / 1000.0;
         if (distKm < r1) {
           nearList.add(p);
@@ -6032,7 +6079,15 @@ class _LivingMapPageState extends State<LivingMapPage>
       selected.addAll(midList.take(midTaken));
       selected.addAll(farList.take(farTaken));
 
-      selected.sort(compareDistanceAndRating);
+      selected.sort((a, b) {
+        if (category == 'Shopping') {
+          final aMall = isMall(a);
+          final bMall = isMall(b);
+          if (aMall && !bMall) return -1;
+          if (!aMall && bMall) return 1;
+        }
+        return compareDistanceAndRating(a, b);
+      });
       return selected;
     }
 
@@ -6049,7 +6104,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         r1 = 1.0;
         r2 = 5.0;
         r3 = 15.0;
-      } else if (cat == 'Attractions' || cat == 'Medical' || cat == 'Hospital') {
+      } else if (cat == 'Attractions' || cat == 'Nature' || cat == 'Medical' || cat == 'Hospital') {
         r1 = 2.0;
         r2 = 10.0;
         r3 = 50.0;
@@ -6060,6 +6115,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         r1: r1,
         r2: r2,
         r3: r3,
+        category: cat,
       );
     }
 
@@ -6080,6 +6136,8 @@ class _LivingMapPageState extends State<LivingMapPage>
           _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
+          const SizedBox(width: 16),
+          _buildCategoryPanel('Nature', grouped['Nature']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
@@ -6102,6 +6160,10 @@ class _LivingMapPageState extends State<LivingMapPage>
       case 'Attractions':
         themeColor = Colors.teal;
         lightTint = const Color(0xFFE0F2F1);
+        break;
+      case 'Nature':
+        themeColor = Colors.green;
+        lightTint = const Color(0xFFE8F5E9);
         break;
       case 'Shopping':
         themeColor = Colors.blue;

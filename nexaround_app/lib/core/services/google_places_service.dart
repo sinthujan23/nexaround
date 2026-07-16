@@ -734,12 +734,15 @@ class GooglePlacesService {
         }
       }
 
+      // Apply filtering to cached results as well
+      final filteredCached = _filterAndDeduplicate(nearbyCached, categoryName);
+
       // Check if we have enough places to satisfy the request without calling APIs
-      if (nearbyCached.length >= threshold) {
-        print('⚡ Found enough (${nearbyCached.length} >= $threshold) cached places within ${searchRadiusM / 1000}km for $categoryName. Skipping API call.');
+      if (filteredCached.length >= threshold) {
+        print('⚡ Found enough (${filteredCached.length} >= $threshold) cached places within ${searchRadiusM / 1000}km for $categoryName. Skipping API call.');
         
         // Update distances relative to current user coordinates
-        return nearbyCached.map((m) {
+        return filteredCached.map((m) {
           final distM = geo.Geolocator.distanceBetween(
             latitude,
             longitude,
@@ -781,7 +784,7 @@ Do NOT include any places that are not related to medical services (do not list 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Medical Name",
+    "name": "Name of Medical Place",
     "distance_km": 15.0,
     "direction": "North-East"
   }
@@ -795,7 +798,7 @@ Do NOT include any places that are not hospitals, clinics, or medical centers (d
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Hospital Name",
+    "name": "Name of Hospital",
     "distance_km": 15.0,
     "direction": "North-East"
   }
@@ -812,7 +815,7 @@ tourist_attraction, historical_landmark, beach, museum, park, zoo, aquarium, art
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Attraction Name",
+    "name": "Name of Attraction",
     "distance_km": 15.0,
     "direction": "North-East"
   }
@@ -820,48 +823,57 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 ''';
       } else if (categoryName == 'Food & Drink') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 5 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+Analyse and randomly pick a total of 15 places across 3 different distance zones from ($latitude, $longitude) near $locationName:
+- Zone 1: 5 places within 0 to 1.5 kms
+- Zone 2: 5 places within 1.5 to 3 kms
+- Zone 3: 5 places within 3 to 5 kms
 
+Only include genuine places for the following categories:
 restaurant, cafe, bakery, meal_delivery, hotel, bar, night_club, ice_cream_shop, coffee_shop, diner
-
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Food_Name",
-    "distance_km": 15.0,
+    "name": "Name of Food Place",
+    "distance_km": 1.5,
     "direction": "North-East"
   }
 ]
 ''';
       } else if (categoryName == 'Shopping') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+Analyse and randomly pick a total of 15 places across 3 different distance zones from ($latitude, $longitude) near $locationName:
+- Zone 1: 5 places within 0 to 5 kms
+- Zone 2: 5 places within 5 to 10 kms
+- Zone 3: 5 places within 10 to 15 kms
 
-shopping_mall, supermarket, market, general_store, department_store, convenience_store, clothing_store, electronics_store, book_store, jewelry_store, shoe_store, furniture_store, pet_store, hardware_store, gift_shop, 
-
+Only include genuine places for the following categories:
+shopping_mall, supermarket, market, general_store, department_store, convenience_store, clothing_store, electronics_store, book_store, jewelry_store, shoe_store, furniture_store, pet_store, hardware_store, gift_shop
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Shopping_Name",
-    "distance_km": 15.0,
+    "name": "Name of Shopping Place",
+    "distance_km": 5.0,
     "direction": "North-East"
   }
 ]
 ''';
       } else if (categoryName == 'Nature') {
         prompt = '''
-Analyse and provide a list for the following categories upto 15 most important places within a radius of 15 kms from ($latitude, $longitude) near $locationName with distance and direction. 
+Analyse and randomly pick a total of 15 places across 3 different distance zones from ($latitude, $longitude) near $locationName:
+- Zone 1: 5 places within 0 to 5 kms
+- Zone 2: 5 places within 5 to 10 kms
+- Zone 3: 5 places within 10 to 15 kms
 
+Only include genuine places for the following categories:
 beach, national_park, hiking_area, nature_reserve, scenic_viewpoint, waterfall, lake, river, botanical_garden
-
 
 Respond ONLY with a JSON array containing objects with these fields (do NOT wrap in markdown format, do NOT include conversational text):
 [
   {
-    "name": "Nature Spot Name",
-    "distance_km": 15.0,
+    "name": "Name of Nature Spot",
+    "distance_km": 5.0,
     "direction": "North-East"
   }
 ]
@@ -928,10 +940,12 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
 
       print('🔍 Resolving ${futures.length} places in parallel using findplacefromtext...');
       final results = await Future.wait(futures);
-      final List<AttractionEntity> resolvedPlaces = results
+      List<AttractionEntity> resolvedPlaces = results
           .whereType<AttractionEntity>()
           .where((p) => (p as AttractionModel).distanceM! <= searchRadiusM)
           .toList();
+
+      resolvedPlaces = _filterAndDeduplicate(resolvedPlaces, categoryName);
 
       if (resolvedPlaces.isEmpty) {
         final errMsg = 'No places could be geocoded by Google Places API.';
@@ -962,5 +976,28 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
       if (categoryName == 'Nature') lastNatureError = errMsg;
       return [];
     }
+  }
+
+  static List<AttractionEntity> _filterAndDeduplicate(
+      List<AttractionEntity> places, String categoryName) {
+    final List<AttractionEntity> finalPlaces = [];
+    final Set<String> seenShoppingNames = {};
+
+    for (final p in places) {
+      final nameLower = p.name.toLowerCase();
+      if (categoryName == 'Shopping') {
+        bool isDuplicate = false;
+        for (final seen in seenShoppingNames) {
+          if (nameLower.contains(seen) || seen.contains(nameLower)) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        if (isDuplicate) continue;
+        seenShoppingNames.add(nameLower);
+      }
+      finalPlaces.add(p);
+    }
+    return finalPlaces;
   }
 }

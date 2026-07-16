@@ -72,6 +72,20 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     };
   }
 
+  bool _isValidPlace(String name, String categoryName) {
+    if (categoryName.toLowerCase().contains('nature')) {
+      final blacklist = ['hotel', 'hostel', 'residency', 'mall', 'shop', 'store', 'hospital', 'clinic', 'stay', 'inn', 'apartments', 'villa', 'toilet', 'bathroom'];
+      final pinCodeRegex = RegExp(r'^\d+$');
+      if (pinCodeRegex.hasMatch(name.trim())) return false;
+      
+      final nameLower = name.toLowerCase();
+      for (final word in blacklist) {
+        if (nameLower.contains(word)) return false;
+      }
+    }
+    return true;
+  }
+
   List<AttractionModel> _getFilteredCache(double lat, double lng) {
     try {
       final cached = CacheService.getCachedAttractions();
@@ -80,6 +94,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       final List<AttractionModel> result = [];
       for (final json in cached) {
         final model = AttractionModel.fromJson(json);
+        
+        if (!_isValidPlace(model.name, model.categoryName ?? '')) continue;
+        
         final double distM = geo.Geolocator.distanceBetween(
           lat,
           lng,
@@ -176,13 +193,14 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         'Shopping',
         'Medical',
         'Hospital',
+        'Nature',
       ];
 
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
         final mainFutures = categoriesToFetch.map((cat) async {
-          final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital'];
+          final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
           
           if (targetCategories.contains(cat)) {
             // Retrieve geocoded location name bias
@@ -202,7 +220,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               locationName: locationName,
             );
             
-            final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions') ? 50000.0 : 15000.0;
+            final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
@@ -239,7 +257,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
             // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
             if (mergedList.length < 15) {
-              final discoveryRadius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions') ? 50000 : 15000;
+              final discoveryRadius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000 : 15000;
               final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
 
               // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)
@@ -316,6 +334,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               }).toList();
               mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
               print('✅ Final: ${mergedList.length} results for $cat (sorted by distance)');
+            }
+
+            if (cat == 'Nature' && mergedList.isNotEmpty) {
+              mergedList = mergedList.where((p) => _isValidPlace(p.name, cat)).toList();
+              print('🛡️ Exclusion Filter applied for Nature: retained ${mergedList.length} places');
             }
 
             if (mergedList.isNotEmpty) {
