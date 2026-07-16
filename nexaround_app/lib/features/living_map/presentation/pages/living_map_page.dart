@@ -5839,10 +5839,45 @@ class _LivingMapPageState extends State<LivingMapPage>
         matchesAttraction = true;
       }
 
+      // Exclusion checks for Attractions category to filter out play schools, surgeries, salons, etc.
+      if (matchesAttraction) {
+        final attractionExclusions = [
+          'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
+          'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
+          'spa', 'salon', 'wellness', 'massage', 'beauty', 'hair', 'nail',
+          'bank', 'atm', 'store', 'shop', 'office', 'pharmacy', 'supermarket',
+          'grocery', 'gas station'
+        ];
+        final attractionExcludeTags = [
+          'spa', 'beauty_salon', 'hair_care', 'doctor', 'dentist', 'hospital', 
+          'medical_clinic', 'pharmacy', 'school', 'university', 'bank', 'atm', 
+          'gas_station', 'store', 'shopping_mall'
+        ];
+        if (attractionExclusions.any((kw) => name.contains(kw)) ||
+            tags.any((t) => attractionExcludeTags.contains(t))) {
+          matchesAttraction = false;
+        }
+      }
+
       // 3. Shopping matching logic
       if (catName.contains('shop') || catName.contains('mall') || catName.contains('market') || 
           catName.contains('store') || catName.contains('fashion')) {
         matchesShopping = true;
+      }
+
+      // Exclusion checks for Shopping category to filter out clinical or school businesses
+      if (matchesShopping) {
+        final shoppingExclusions = [
+          'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
+          'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist'
+        ];
+        final shoppingExcludeTags = [
+          'school', 'university', 'hospital', 'doctor', 'dentist'
+        ];
+        if (shoppingExclusions.any((kw) => name.contains(kw)) ||
+            tags.any((t) => shoppingExcludeTags.contains(t))) {
+          matchesShopping = false;
+        }
       }
 
       // 4. Medical matching logic

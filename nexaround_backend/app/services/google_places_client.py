@@ -375,17 +375,34 @@ def _resolve_category_from_types(types: list[str]) -> str:
         return "Hotels"
     if t & {"restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"}:
         return "Food & Drink"
-    if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo"}:
+    if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo", "botanical_garden", "lake", "river"}:
         return "Nature"
     if t & {"hospital"}:
         return "Hospital"
-    if t & {"pharmacy", "doctor", "dentist", "health"}:
+    if t & {"pharmacy", "doctor", "dentist", "health", "medical_clinic", "physiotherapist"}:
         return "Medical"
-    if t & {"tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery", "amusement_park"}:
+    
+    # Exclude these from Attractions resolution
+    exclude_attractions = {
+        "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
+        "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
+        "bank", "atm", "accounting", "lawyer", "insurance_agency", "real_estate_agency",
+        "car_repair", "gas_station", "car_dealer", "car_rental", "car_wash",
+        "store", "clothing_store", "electronics_store", "supermarket", "convenience_store", "grocery_store",
+        "gym", "fitness_center", "laundry", "dry_cleaning", "post_office", "police", "fire_station",
+        "cemetery", "funeral_home"
+    }
+    if t & exclude_attractions:
+        if t & {"shopping_mall", "supermarket", "store", "department_store", "convenience_store", "clothing_store"}:
+            return "Shopping"
+        return "Others"
+
+    if t & {"tourist_attraction", "museum", "zoo", "aquarium", "art_gallery", "amusement_park", "historical_landmark", "castle", "monument"}:
         return "Attractions"
     if t & {"shopping_mall", "supermarket", "store", "department_store", "convenience_store"}:
         return "Shopping"
     return "Others"
+
 
 
 async def nearby_search_legacy(

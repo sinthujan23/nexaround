@@ -110,6 +110,13 @@ def _enforce_distance_distribution(places: list[dict], radius_m: int, category: 
             is_mall = "shopping_mall" in tags
             return (0 if is_mall else 1, p.get("distance_m", 0))
         selected.sort(key=sort_key)
+    elif category == "Attractions":
+        # Prioritize beaches, parks, museums, and historical landmarks, then sort by distance
+        def sort_key(p):
+            tags = set(p.get("tags") or [])
+            is_priority = bool(tags & {"beach", "park", "museum", "national_park", "historical_landmark", "tourist_attraction"})
+            return (0 if is_priority else 1, p.get("distance_m", 0))
+        selected.sort(key=sort_key)
     else:
         selected.sort(key=lambda p: p.get("distance_m", 0))
         
@@ -287,6 +294,19 @@ async def seed_places_from_google_bg(
                 if not p_name or plat is None or plng is None:
                     continue
 
+                if category == "Attractions":
+                    exclude_tags = {
+                        "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
+                        "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
+                        "doctor", "dentist", "hospital", "medical_clinic", "pharmacy", "physiotherapist", "health",
+                        "bank", "atm", "accounting", "lawyer", "insurance_agency", "real_estate_agency",
+                        "car_repair", "gas_station", "car_dealer", "car_rental", "car_wash",
+                        "store", "clothing_store", "electronics_store", "supermarket", "convenience_store", "grocery_store",
+                        "gym", "fitness_center", "cemetery", "funeral_home"
+                    }
+                    if (set(p.get("tags") or []) & exclude_tags) or any(kw in p_name.lower() for kw in ["spa", "salon", "clinic", "surgery", "school", "preschool", "academy", "dental"]):
+                        continue
+
                 existing_attraction = None
                 for (alat, alng), name in existing_records:
                     dist = _haversine_m(plat, plng, alat, alng)
@@ -432,17 +452,34 @@ async def get_nearby(
             is_active=True
         )
 
+        place_dicts = [
+            attraction_to_place_dict(attr, dist)
+            for attr, dist in nearby_db_attractions
+        ]
+
+        if category == "Attractions":
+            exclude_tags = {
+                "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
+                "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
+                "doctor", "dentist", "hospital", "medical_clinic", "pharmacy", "physiotherapist", "health",
+                "bank", "atm", "accounting", "lawyer", "insurance_agency", "real_estate_agency",
+                "car_repair", "gas_station", "car_dealer", "car_rental", "car_wash",
+                "store", "clothing_store", "electronics_store", "supermarket", "convenience_store", "grocery_store",
+                "gym", "fitness_center", "cemetery", "funeral_home"
+            }
+            place_dicts = [
+                p for p in place_dicts 
+                if not (set(p.get("tags") or []) & exclude_tags)
+                and not any(kw in p["name"].lower() for kw in ["spa", "salon", "clinic", "surgery", "school", "preschool", "academy", "dental"])
+            ]
+
         # If we have a healthy list of attractions (e.g. >= 10) AND they cover the requested radius
         # adequately (e.g. at least one is in the outer 30% of the radius, or the radius is small <= 2000m)
-        has_adequate_coverage = radius <= 2000 or any(dist >= radius * 0.7 for _, dist in nearby_db_attractions)
+        has_adequate_coverage = radius <= 2000 or any(p["distance_m"] >= radius * 0.7 for p in place_dicts)
         
         # Optimize: if database already has a reasonable number of places (e.g. >= 10), return them
         # immediately to prevent user delay, and run the revalidation/seeding from Google in the background.
-        if len(nearby_db_attractions) >= 10:
-            place_dicts = [
-                attraction_to_place_dict(attr, dist)
-                for attr, dist in nearby_db_attractions
-            ]
+        if len(place_dicts) >= 10:
             place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
             
             # Revalidate in the background if the coverage is not adequate yet
@@ -591,6 +628,22 @@ async def get_nearby(
             for p in raw_places
         ]
 
+    if category == "Attractions":
+        exclude_tags = {
+            "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
+            "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
+            "doctor", "dentist", "hospital", "medical_clinic", "pharmacy", "physiotherapist", "health",
+            "bank", "atm", "accounting", "lawyer", "insurance_agency", "real_estate_agency",
+            "car_repair", "gas_station", "car_dealer", "car_rental", "car_wash",
+            "store", "clothing_store", "electronics_store", "supermarket", "convenience_store", "grocery_store",
+            "gym", "fitness_center", "cemetery", "funeral_home"
+        }
+        place_dicts = [
+            p for p in place_dicts 
+            if not (set(p.get("tags") or []) & exclude_tags)
+            and not any(kw in p["name"].lower() for kw in ["spa", "salon", "clinic", "surgery", "school", "preschool", "academy", "dental"])
+        ]
+
     # Save newly fetched places to PostgreSQL database (in a new session!)
     async with async_session() as session:
         repo = AttractionRepository(session)
@@ -663,7 +716,7 @@ async def get_nearby(
             longitude=longitude,
             radius_m=float(radius),
             category_id=category_id,
-            limit=db_limit,
+            limit=100,
             min_radius_m=float(min_rad) if min_rad > 0 else None
         )
 
@@ -671,6 +724,23 @@ async def get_nearby(
             attraction_to_place_dict(attr, dist)
             for attr, dist in nearby_db_attractions
         ]
+
+        if category == "Attractions":
+            exclude_tags = {
+                "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
+                "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
+                "doctor", "dentist", "hospital", "medical_clinic", "pharmacy", "physiotherapist", "health",
+                "bank", "atm", "accounting", "lawyer", "insurance_agency", "real_estate_agency",
+                "car_repair", "gas_station", "car_dealer", "car_rental", "car_wash",
+                "store", "clothing_store", "electronics_store", "supermarket", "convenience_store", "grocery_store",
+                "gym", "fitness_center", "cemetery", "funeral_home"
+            }
+            place_dicts = [
+                p for p in place_dicts 
+                if not (set(p.get("tags") or []) & exclude_tags)
+                and not any(kw in p["name"].lower() for kw in ["spa", "salon", "clinic", "surgery", "school", "preschool", "academy", "dental"])
+            ]
+
         place_dicts = _enforce_distance_distribution(place_dicts, radius, category)
 
     await place_cache_service.set_cached(key, place_dicts)
