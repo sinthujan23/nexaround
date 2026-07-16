@@ -53,6 +53,9 @@ class MuseumDetail(BaseModel):
     rank: Optional[int] = None
     image_url: Optional[str] = None
     ticket_url: Optional[str] = None
+    website: Optional[str] = None
+    opening_hours: Optional[str] = None
+    closing_hours: Optional[str] = None
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     masterpieces: List[MasterpieceOut] = []

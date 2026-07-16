@@ -27,6 +27,9 @@ class Museum(Base):
         String(512), nullable=True,
         comment="Affiliate / deep-link to buy fast-track tickets",
     )
+    website: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    opening_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
+    closing_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
