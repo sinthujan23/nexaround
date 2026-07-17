@@ -1586,6 +1586,9 @@ class _LivingMapPageState extends State<LivingMapPage>
           _currentLocationName = name;
           _currentDistrict = district;
           
+          CacheService.overriddenLatitude = lat;
+          CacheService.overriddenLongitude = lng;
+          
           // Clear previous data so UI shows loading state
           _geminiTrendingPlaces = [];
           _aiExperiences = [];
@@ -1616,6 +1619,8 @@ class _LivingMapPageState extends State<LivingMapPage>
         setState(() {
           _isLocationOverridden = false;
           _currentLocationName = 'Locating...';
+          CacheService.overriddenLatitude = null;
+          CacheService.overriddenLongitude = null;
         });
 
         // Force an immediate GPS update instead of waiting for the stream

@@ -148,7 +148,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
       const LivingMapPage(),
       ArCameraPage(isActive: _selectedIndex == 1),
       AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
-      DiscoverPage(initialTab: _discoverInitialTab),
+      DiscoverPage(initialTab: _discoverInitialTab, isActive: _selectedIndex == 3),
       const MyOdysseysPage(),
       const ProfilePage(),
     ];

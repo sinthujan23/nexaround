@@ -30,7 +30,7 @@ MUSEUM_META = {
     "country": "Greece",
     "annual_visitors": 1451727,
     "rank": 58,
-    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Athens_Acropolis_Museum_N1.JPG/1280px-Athens_Acropolis_Museum_N1.JPG",
+    "image_url": "https://images.unsplash.com/photo-1555992828-ca4dbe41d294?q=80&w=1200",
     "ticket_url": "https://www.theacropolismuseum.gr/en/tickets-acropolis-museum",
     "website": "https://www.theacropolismuseum.gr/",
     "latitude": 37.968294,

@@ -37,7 +37,8 @@ import 'package:http/http.dart' as http;
 
 class DiscoverPage extends StatefulWidget {
   final int initialTab;
-  const DiscoverPage({super.key, this.initialTab = 0});
+  final bool isActive;
+  const DiscoverPage({super.key, this.initialTab = 0, this.isActive = false});
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
@@ -90,11 +91,30 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       _fetchForTab(_selectedTab);
       if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
     }
+    if (widget.isActive && !oldWidget.isActive) {
+      _initLocationAndFetch();
+    }
   }
 
   Future<void> _initLocationAndFetch() async {
     try {
-      Position position = await Geolocator.getCurrentPosition();
+      Position position;
+      if (CacheService.overriddenLatitude != null && CacheService.overriddenLongitude != null) {
+        position = Position(
+          latitude: CacheService.overriddenLatitude!,
+          longitude: CacheService.overriddenLongitude!,
+          timestamp: DateTime.now(),
+          accuracy: 100,
+          altitude: 0,
+          heading: 0,
+          speed: 0,
+          speedAccuracy: 0,
+          altitudeAccuracy: 0,
+          headingAccuracy: 0,
+        );
+      } else {
+        position = await Geolocator.getCurrentPosition();
+      }
       if (!mounted) return;
       setState(() => _currentPosition = position);
       _fetchForTab(_selectedTab);

@@ -23,6 +23,10 @@ class CacheService {
   static final ValueNotifier<String?> discoveryResultNotifier = ValueNotifier(null);
   static final ValueNotifier<bool> isDiscoveringNotifier = ValueNotifier(false);
 
+  // Global State for Location Override (Search)
+  static double? overriddenLatitude;
+  static double? overriddenLongitude;
+
   // Onboarding
   static bool isFirstTime() {
     return _prefs.getBool('first_time') ?? true;
