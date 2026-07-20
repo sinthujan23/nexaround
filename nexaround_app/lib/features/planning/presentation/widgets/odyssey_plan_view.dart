@@ -338,19 +338,44 @@ class OdysseyPlanView extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          // Name, tip, and cost stacked vertically inside Expanded
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  act.name,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: act.visited ? Colors.black38 : Colors.black,
-                    decoration:
-                        act.visited ? TextDecoration.lineThrough : null,
-                  ),
+                // Name row with cost on the right
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        act.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: act.visited ? Colors.black38 : Colors.black,
+                          decoration:
+                              act.visited ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ),
+                    if (act.cost.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        flex: 2,
+                        child: ConvertedCurrencyText(
+                          rawText: act.cost,
+                          originalCurrency: odyssey.currency,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 if (act.tip.isNotEmpty) ...[
                   const SizedBox(height: 2),
@@ -366,18 +391,6 @@ class OdysseyPlanView extends StatelessWidget {
               ],
             ),
           ),
-          if (act.cost.isNotEmpty) ...[
-            const SizedBox(width: 8),
-            ConvertedCurrencyText(
-              rawText: act.cost,
-              originalCurrency: odyssey.currency,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
-              ),
-            ),
-          ],
           if (editable) ...[
             const SizedBox(width: 4),
             if (isSwapping)
