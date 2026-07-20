@@ -144,17 +144,25 @@ Format the search URL using this structure:
 (e.g., for Colombo to Narita: https://www.google.com/travel/flights?q=flights+from+CMB+to+NRT)
 You can also generate Skyscanner URLs.
 
+Field Rules:
+- "title": Concise 3-6 word strategy name (e.g., "Fly via Trincomalee & Colombo"). Do NOT put full paragraphs in title.
+- "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
+- "estimated_price_range": Short price string only (e.g., "USD 180 - 300").
+- "route": Short airport code route (e.g., "TRR -> CMB -> MAA").
+- "convenience": Star rating string ONLY (e.g., "★★★☆☆"). Do NOT add sentences or text explanations after the stars.
+- "best_months": Short month list under 5 words (e.g., "Jan-Mar, Jul-Sep").
+
 Return ONLY a JSON object with this exact shape:
-{{
+{
   "departure_city": "{departure_city}",
   "destination_city": "{destination}",
   "strategies": [
-    {{
+    {
       "rank": 1,
       "strategy": "split_ticket",
-      "title": "Strategy Title",
-      "description": "Explanation of how to book this.",
-      "estimated_savings": "Save ~35% vs direct",
+      "title": "Short Title",
+      "description": "Explanation of how to book this strategy.",
+      "estimated_savings": "Save ~35%",
       "estimated_price_range": "{currency} 100,000 - 150,000",
       "airlines": ["Airline A", "Airline B"],
       "route": "CMB -> KUL -> NRT",
@@ -163,14 +171,14 @@ Return ONLY a JSON object with this exact shape:
       "convenience": "★★★☆☆",
       "tip": "Short booking tip.",
       "booking_url": "Pre-filled URL"
-    }}
+    }
   ],
   "general_tips": [
     "Tip 1...",
     "Tip 2..."
   ],
   "best_months": "Jan-Mar"
-}}
+}
 """
     try:
         text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
@@ -422,6 +430,7 @@ Rules:
 
 
 async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinking_budget=None) -> str:
+    api_key = (api_key or "").strip().strip('"').strip("'")
     generation_config = {
         "temperature": 0.8,
         "maxOutputTokens": max_tokens,

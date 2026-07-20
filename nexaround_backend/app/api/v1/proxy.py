@@ -32,7 +32,8 @@ async def proxy_gemini_generate(
 ):
     """Proxy Gemini generative AI requests securely."""
     settings = SettingsService(db)
-    api_key = await settings.get_setting("gemini_api_key")
+    raw_key = await settings.get_setting("gemini_api_key")
+    api_key = (raw_key or "").strip().strip('"').strip("'")
     if not api_key:
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
 
