@@ -70,10 +70,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       website: 'http://www.njmuseum.com/en',
       hours: '9am–5pm (Closed Mon)',
     ),
-    'american-museum-of-natural-history': _MuseumExtraInfo(
-      website: 'https://www.amnh.org',
-      hours: '10am–5:30pm',
-    ),
+
     'tate-modern': _MuseumExtraInfo(
       website: 'https://www.tate.org.uk/visit/tate-modern',
       hours: '10am–6pm',
