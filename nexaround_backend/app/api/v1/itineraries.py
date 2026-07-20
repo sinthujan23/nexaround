@@ -98,6 +98,7 @@ async def _run_odyssey_generation(
         api_key = await SettingsService(db).get_setting("gemini_api_key")
         if not api_key:
             logger.error("Odyssey generation skipped: gemini_api_key not configured")
+            print(f"[ODYSSEY] FAILED {itinerary_id}: gemini_api_key not configured", flush=True)
             itin.status = "failed"
             await repo.update(itin)
             return
@@ -121,8 +122,12 @@ async def _run_odyssey_generation(
             itin.title = title
             itin.items = items
             itin.status = "active"
+            print(f"[ODYSSEY] SUCCESS {itinerary_id}: {title}", flush=True)
         except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
             logger.error(f"Odyssey generation failed for {itinerary_id}: {e}")
+            print(f"[ODYSSEY] FAILED {itinerary_id}: {e}\n{tb}", flush=True)
             itin.status = "failed"
         await repo.update(itin)
 
