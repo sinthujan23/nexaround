@@ -468,7 +468,8 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     async with httpx.AsyncClient(timeout=90.0) as client:
         for i, model in enumerate(attempts):
             generation_config = dict(base_generation_config)
-            if thinking_budget is not None:
+            # Only gemini-2.5+ models support thinkingConfig; 1.5/2.0 reject it
+            if thinking_budget is not None and ("2.5" in model or "thinking" in model):
                 generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
 
             body = {
