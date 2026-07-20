@@ -58,6 +58,10 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       website: 'https://www.nhm.ac.uk',
       hours: '10am–5:50pm',
     ),
+    'american-museum-of-natural-history': _MuseumExtraInfo(
+      website: 'https://www.amnh.org/',
+      hours: 'Open daily, 10 am–5:30 pm',
+    ),
     'metropolitan-museum-of-art': _MuseumExtraInfo(
       website: 'https://www.metmuseum.org',
       hours: '10am–5pm (Fri/Sat until 9pm, Closed Wed)',
