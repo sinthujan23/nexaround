@@ -17,9 +17,8 @@ logger = logging.getLogger(__name__)
 # is overloaded changes minute to minute, so retrying one model isn't enough.
 # Try a chain: a 503 on one model falls through to another that's healthy now.
 _MODELS = [
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 
