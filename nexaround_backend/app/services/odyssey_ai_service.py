@@ -152,11 +152,11 @@ Field Rules:
 - "best_months": Short month list under 5 words (e.g., "Jan-Mar, Jul-Sep").
 
 Return ONLY a JSON object with this exact shape:
-{
+{{
   "departure_city": "{departure_city}",
   "destination_city": "{destination}",
   "strategies": [
-    {
+    {{
       "rank": 1,
       "strategy": "split_ticket",
       "title": "Short Title",
@@ -170,17 +170,17 @@ Return ONLY a JSON object with this exact shape:
       "convenience": "★★★☆☆",
       "tip": "Short booking tip.",
       "booking_url": "Pre-filled URL"
-    }
+    }}
   ],
   "general_tips": [
     "Tip 1...",
     "Tip 2..."
   ],
   "best_months": "Jan-Mar"
-}
+}}
 """
     try:
-        text = await _call_gemini(prompt, api_key, max_tokens=4096)
+        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
         data = _parse_json(text)
         strategies = data.get("strategies")
         if isinstance(strategies, list):
@@ -237,21 +237,29 @@ async def generate_odyssey(
 
     async def _get_cover():
         if unsplash_api_key:
-            return await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
+            try:
+                return await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
+            except Exception as e:
+                logger.error(f"Cover photo fetch failed: {e}")
+                return ""
         return ""
 
     async def _get_flights():
         if include_flights and departure_city:
-            return await generate_flight_strategies(
-                departure_city=departure_city,
-                departure_country=departure_country,
-                destination=final_destination,
-                days=g_days,
-                budget=budget,
-                currency=str(plan.get("currency") or currency),
-                travelers=travelers,
-                api_key=api_key,
-            )
+            try:
+                return await generate_flight_strategies(
+                    departure_city=departure_city,
+                    departure_country=departure_country,
+                    destination=final_destination,
+                    days=g_days,
+                    budget=budget,
+                    currency=str(plan.get("currency") or currency),
+                    travelers=travelers,
+                    api_key=api_key,
+                )
+            except Exception as e:
+                logger.error(f"Flight strategy sub-job failed: {e}")
+                return {}
         return {}
 
     cover_url, flight_strategies = await asyncio.gather(_get_cover(), _get_flights())
@@ -460,7 +468,7 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     async with httpx.AsyncClient(timeout=90.0) as client:
         for i, model in enumerate(attempts):
             generation_config = dict(base_generation_config)
-            if thinking_budget is not None and "thinking" in model:
+            if thinking_budget is not None:
                 generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
 
             body = {

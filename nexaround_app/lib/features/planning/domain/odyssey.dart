@@ -8,6 +8,7 @@
 /// This needs no DB migration — the backend stores/returns the JSON verbatim.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 
 /// A single scheduled stop within a day.
@@ -142,8 +143,14 @@ class FlightStrategy {
     required this.bookingUrl,
   });
 
+  static int _parseInt(dynamic val, [int fallback = 0]) {
+    if (val is num) return val.toInt();
+    if (val is String) return int.tryParse(val) ?? double.tryParse(val)?.toInt() ?? fallback;
+    return fallback;
+  }
+
   factory FlightStrategy.fromJson(Map<String, dynamic> json) => FlightStrategy(
-        rank: (json['rank'] as num?)?.toInt() ?? 1,
+        rank: _parseInt(json['rank'], 1),
         strategy: (json['strategy'] ?? '').toString(),
         title: (json['title'] ?? '').toString(),
         description: (json['description'] ?? '').toString(),
@@ -155,7 +162,7 @@ class FlightStrategy {
                 ? [json['airlines'].toString()]
                 : <String>[],
         route: (json['route'] ?? '').toString(),
-        stops: (json['stops'] as num?)?.toInt() ?? 0,
+        stops: _parseInt(json['stops'], 0),
         duration: (json['total_duration'] ?? json['duration'] ?? '').toString(),
         convenience: (json['convenience'] ?? '').toString(),
         tip: (json['tip'] ?? '').toString(),
@@ -361,28 +368,32 @@ class Odyssey {
     final List<String> flightGeneralTips = [];
     String flightBestMonths = '';
 
-    if (flightStrategiesRaw is Map) {
-      final strategiesList = flightStrategiesRaw['strategies'] as List?;
-      if (strategiesList != null) {
-        for (final item in strategiesList) {
+    try {
+      if (flightStrategiesRaw is Map) {
+        final strategiesList = flightStrategiesRaw['strategies'] as List?;
+        if (strategiesList != null) {
+          for (final item in strategiesList) {
+            if (item is Map) {
+              flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
+            }
+          }
+        }
+        final tipsList = flightStrategiesRaw['general_tips'] as List?;
+        if (tipsList != null) {
+          for (final item in tipsList) {
+            flightGeneralTips.add(item.toString());
+          }
+        }
+        flightBestMonths = (flightStrategiesRaw['best_months'] ?? '').toString();
+      } else if (flightStrategiesRaw is List) {
+        for (final item in flightStrategiesRaw) {
           if (item is Map) {
             flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
           }
         }
       }
-      final tipsList = flightStrategiesRaw['general_tips'] as List?;
-      if (tipsList != null) {
-        for (final item in tipsList) {
-          flightGeneralTips.add(item.toString());
-        }
-      }
-      flightBestMonths = (flightStrategiesRaw['best_months'] ?? '').toString();
-    } else if (flightStrategiesRaw is List) {
-      for (final item in flightStrategiesRaw) {
-        if (item is Map) {
-          flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
-        }
-      }
+    } catch (e) {
+      debugPrint('Error parsing flight strategies in Odyssey: $e');
     }
 
     return Odyssey(
