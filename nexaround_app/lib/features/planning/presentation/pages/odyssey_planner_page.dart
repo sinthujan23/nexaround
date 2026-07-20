@@ -32,6 +32,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   int _travelers = 1;
   String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
+  bool _includeFlights = false;
+  String _departureCity = '';
+  String _departureCountry = '';
 
   final List<int> _dayOptions = const [2, 3, 4, 5, 7];
 
@@ -85,16 +88,26 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       final pos = await geo.Geolocator.getCurrentPosition(
         desiredAccuracy: geo.LocationAccuracy.medium,
       ).timeout(const Duration(seconds: 6));
-      final name = await GooglePlacesService.reverseGeocode(
+      
+      final details = await GooglePlacesService.reverseGeocodeDetailed(
         pos.latitude,
         pos.longitude,
       );
+      
       if (!mounted) return;
-      if (name.isNotEmpty &&
-          name != 'Nearby' &&
-          _destinationController.text.trim().isEmpty) {
-        setState(() => _destinationController.text = name);
-      }
+      
+      final name = details['location_name'] ?? 'Nearby';
+      final country = details['country'] ?? 'Nearby';
+      
+      setState(() {
+        _departureCity = name;
+        _departureCountry = country;
+        if (name.isNotEmpty &&
+            name != 'Nearby' &&
+            _destinationController.text.trim().isEmpty) {
+          _destinationController.text = name;
+        }
+      });
     } catch (_) {
       // Location unavailable — the user can type a destination instead.
     }
@@ -143,6 +156,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         days: _days,
         currency: _currency,
         travelers: _travelers,
+        includeFlights: _includeFlights,
+        departureCity: _departureCity,
+        departureCountry: _departureCountry,
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -417,6 +433,48 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 350.ms),
+          const SizedBox(height: 32),
+          const Text(
+            'FLIGHT RECOMMENDATIONS',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.black12),
+            ),
+            child: SwitchListTile(
+              activeColor: Colors.black,
+              activeTrackColor: Colors.black12,
+              inactiveThumbColor: Colors.grey,
+              inactiveTrackColor: Colors.black.withOpacity(0.05),
+              title: const Row(
+                children: [
+                  Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
+                  SizedBox(width: 12),
+                  Text(
+                    'Include Flight Options',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              subtitle: const Padding(
+                padding: EdgeInsets.only(left: 36, top: 4),
+                child: Text(
+                  'AI will suggest cheapest local/international flight strategies & pre-filled booking searches.',
+                  style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
+                ),
+              ),
+              value: _includeFlights,
+              onChanged: (bool val) {
+                setState(() {
+                  _includeFlights = val;
+                });
+              },
+            ),
+          ).animate().fade(delay: 400.ms),
         ],
       ),
     );

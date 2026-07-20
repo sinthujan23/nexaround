@@ -39,6 +39,9 @@ class OdysseyGenerateRequest(BaseModel):
     days: int = 3
     currency: str = "USD"
     travelers: int = 1
+    include_flights: bool = False
+    departure_city: str = ""
+    departure_country: str = ""
 
 class OdysseySwapRequest(BaseModel):
     """Request body for swapping a single activity in a saved Odyssey for an

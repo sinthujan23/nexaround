@@ -67,6 +67,9 @@ async def generate_odyssey(
         data.days,
         data.currency,
         data.travelers,
+        data.include_flights,
+        data.departure_city,
+        data.departure_country,
     )
     return saved
 
@@ -80,6 +83,9 @@ async def _run_odyssey_generation(
     days: int,
     currency: str,
     travelers: int = 1,
+    include_flights: bool = False,
+    departure_city: str = "",
+    departure_country: str = "",
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -108,6 +114,9 @@ async def _run_odyssey_generation(
                 travelers=travelers,
                 api_key=api_key,
                 unsplash_api_key=unsplash_api_key,
+                include_flights=include_flights,
+                departure_city=departure_city,
+                departure_country=departure_country,
             )
             itin.title = title
             itin.items = items

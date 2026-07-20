@@ -77,10 +77,19 @@ class GooglePlacesService {
       );
       final name = response.data['location_name'] as String? ?? 'Nearby';
       final district = response.data['district'] as String? ?? 'Nearby';
-      return {'location_name': name, 'district': district};
+      final country = response.data['country'] as String? ?? 'Nearby';
+      return {
+        'location_name': name,
+        'district': district,
+        'country': country,
+      };
     } catch (e) {
       debugPrint('Reverse geocode detailed error: $e');
-      return {'location_name': 'Nearby', 'district': 'Nearby'};
+      return {
+        'location_name': 'Nearby',
+        'district': 'Nearby',
+        'country': 'Nearby',
+      };
     }
   }
 

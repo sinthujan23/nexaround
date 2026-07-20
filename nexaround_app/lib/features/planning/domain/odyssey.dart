@@ -111,6 +111,70 @@ class OdysseyBookingPartner {
       };
 }
 
+class FlightStrategy {
+  final int rank;
+  final String strategy;
+  final String title;
+  final String description;
+  final String estimatedSavings;
+  final String priceRange;
+  final List<String> airlines;
+  final String route;
+  final int stops;
+  final String duration;
+  final String convenience;
+  final String tip;
+  final String bookingUrl;
+
+  const FlightStrategy({
+    required this.rank,
+    required this.strategy,
+    required this.title,
+    required this.description,
+    required this.estimatedSavings,
+    required this.priceRange,
+    required this.airlines,
+    required this.route,
+    required this.stops,
+    required this.duration,
+    required this.convenience,
+    required this.tip,
+    required this.bookingUrl,
+  });
+
+  factory FlightStrategy.fromJson(Map<String, dynamic> json) => FlightStrategy(
+        rank: (json['rank'] as num?)?.toInt() ?? 1,
+        strategy: (json['strategy'] ?? '').toString(),
+        title: (json['title'] ?? '').toString(),
+        description: (json['description'] ?? '').toString(),
+        estimatedSavings: (json['estimated_savings'] ?? '').toString(),
+        priceRange: (json['estimated_price_range'] ?? json['price_range'] ?? '').toString(),
+        airlines: List<String>.from(json['airlines'] ?? []),
+        route: (json['route'] ?? '').toString(),
+        stops: (json['stops'] as num?)?.toInt() ?? 0,
+        duration: (json['total_duration'] ?? json['duration'] ?? '').toString(),
+        convenience: (json['convenience'] ?? '').toString(),
+        tip: (json['tip'] ?? '').toString(),
+        bookingUrl: (json['booking_url'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'rank': rank,
+        'strategy': strategy,
+        'title': title,
+        'description': description,
+        'estimated_savings': estimatedSavings,
+        'estimated_price_range': priceRange,
+        'airlines': airlines,
+        'route': route,
+        'stops': stops,
+        'total_duration': duration,
+        'convenience': convenience,
+        'tip': tip,
+        'booking_url': bookingUrl,
+      };
+}
+
 class Odyssey {
   /// Backend itinerary id. Null until the Odyssey has been saved.
   final String? id;
@@ -127,6 +191,9 @@ class Odyssey {
   final String logistics; // multi-line blueprint
   final List<OdysseyDay> dayPlans;
   final List<OdysseyBookingPartner> bookingPartners;
+  final List<FlightStrategy> flightStrategies; // NEW
+  final List<String> flightGeneralTips; // NEW
+  final String flightBestMonths; // NEW
   final String status; // active | draft | completed
   final DateTime? createdAt;
   final String? coverUrl;
@@ -146,6 +213,9 @@ class Odyssey {
     required this.logistics,
     required this.dayPlans,
     this.bookingPartners = const [],
+    this.flightStrategies = const [], // NEW
+    this.flightGeneralTips = const [], // NEW
+    this.flightBestMonths = '', // NEW
     this.status = 'active',
     this.createdAt,
     this.coverUrl,
@@ -156,6 +226,9 @@ class Odyssey {
     String? status,
     List<OdysseyDay>? dayPlans,
     List<OdysseyBookingPartner>? bookingPartners,
+    List<FlightStrategy>? flightStrategies, // NEW
+    List<String>? flightGeneralTips, // NEW
+    String? flightBestMonths, // NEW
     String? coverUrl,
   }) =>
       Odyssey(
@@ -173,6 +246,9 @@ class Odyssey {
         logistics: logistics,
         dayPlans: dayPlans ?? this.dayPlans,
         bookingPartners: bookingPartners ?? this.bookingPartners,
+        flightStrategies: flightStrategies ?? this.flightStrategies, // NEW
+        flightGeneralTips: flightGeneralTips ?? this.flightGeneralTips, // NEW
+        flightBestMonths: flightBestMonths ?? this.flightBestMonths, // NEW
         status: status ?? this.status,
         createdAt: createdAt,
         coverUrl: coverUrl ?? this.coverUrl,
@@ -243,6 +319,11 @@ class Odyssey {
           'visa': visa,
           'logistics': logistics,
           'booking_partners': bookingPartners.map((bp) => bp.toJson()).toList(),
+          'flight_strategies': {
+            'strategies': flightStrategies.map((fs) => fs.toJson()).toList(),
+            'general_tips': flightGeneralTips,
+            'best_months': flightBestMonths,
+          },
           'cover_url': coverUrl ?? '',
         },
         ...dayPlans.map((d) => d.toJson()),
@@ -271,6 +352,35 @@ class Odyssey {
         : <String, dynamic>{};
     final dayItems = items.where((e) => e['kind'] == 'day').toList();
 
+    final flightStrategiesRaw = meta['flight_strategies'];
+    final List<FlightStrategy> flightStrategies = [];
+    final List<String> flightGeneralTips = [];
+    String flightBestMonths = '';
+
+    if (flightStrategiesRaw is Map) {
+      final strategiesList = flightStrategiesRaw['strategies'] as List?;
+      if (strategiesList != null) {
+        for (final item in strategiesList) {
+          if (item is Map) {
+            flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
+          }
+        }
+      }
+      final tipsList = flightStrategiesRaw['general_tips'] as List?;
+      if (tipsList != null) {
+        for (final item in tipsList) {
+          flightGeneralTips.add(item.toString());
+        }
+      }
+      flightBestMonths = (flightStrategiesRaw['best_months'] ?? '').toString();
+    } else if (flightStrategiesRaw is List) {
+      for (final item in flightStrategiesRaw) {
+        if (item is Map) {
+          flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
+        }
+      }
+    }
+
     return Odyssey(
       id: json['id']?.toString(),
       title: (json['title'] ?? 'Odyssey').toString(),
@@ -289,6 +399,9 @@ class Odyssey {
           .whereType<Map>()
           .map((bp) => OdysseyBookingPartner.fromJson(bp.cast<String, dynamic>()))
           .toList(),
+      flightStrategies: flightStrategies,
+      flightGeneralTips: flightGeneralTips,
+      flightBestMonths: flightBestMonths,
       status: (json['status'] ?? 'active').toString(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())

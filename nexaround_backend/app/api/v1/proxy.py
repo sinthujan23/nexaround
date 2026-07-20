@@ -186,7 +186,8 @@ async def proxy_geoapify_reverse(
                         or props.get("city")
                         or "Nearby"
                     )
-                    return {"location_name": name, "district": district}
+                    country = props.get("country") or "Nearby"
+                    return {"location_name": name, "district": district, "country": country}
             except Exception as e:
                 # If Geoapify request fails, fall back to Mapbox
                 pass
@@ -213,14 +214,16 @@ async def proxy_geoapify_reverse(
                     name = feature.get("text") or feature.get("place_name", "").split(",")[0] or "Nearby"
                     context = feature.get("context", [])
                     district = "Nearby"
+                    country = "Nearby"
                     for item in context:
                         id_str = item.get("id", "")
                         if "district" in id_str or "region" in id_str or "place" in id_str:
                             district = item.get("text")
-                            break
+                        if "country" in id_str:
+                            country = item.get("text", "Nearby")
                     if district == "Nearby":
                         district = name
-                    return {"location_name": name, "district": district}
+                    return {"location_name": name, "district": district, "country": country}
             except Exception as e:
                 pass
 
@@ -244,19 +247,22 @@ async def proxy_geoapify_reverse(
                     result = results[0]
                     name = "Nearby"
                     district = "Nearby"
+                    country = "Nearby"
                     for component in result.get("address_components", []):
                         types = component.get("types", [])
                         if "locality" in types or "sublocality" in types:
                             name = component.get("long_name")
                         if "administrative_area_level_2" in types:
                             district = component.get("long_name")
+                        if "country" in types:
+                            country = component.get("long_name")
                     if name == "Nearby" and result.get("formatted_address"):
                         name = result.get("formatted_address").split(",")[0]
                     if district == "Nearby":
                         district = name
-                    return {"location_name": name, "district": district}
+                    return {"location_name": name, "district": district, "country": country}
             except Exception as e:
                 pass
 
-    return {"location_name": "Nearby", "district": "Nearby"}
+    return {"location_name": "Nearby", "district": "Nearby", "country": "Nearby"}
 

@@ -30,6 +30,9 @@ class OdysseyRepository {
     required int days,
     String currency = 'USD',
     int travelers = 1,
+    bool includeFlights = false,
+    String departureCity = '',
+    String departureCountry = '',
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -40,6 +43,9 @@ class OdysseyRepository {
         'days': days,
         'currency': currency,
         'travelers': travelers,
+        'include_flights': includeFlights,
+        'departure_city': departureCity,
+        'departure_country': departureCountry,
       },
     );
     revision.value++;

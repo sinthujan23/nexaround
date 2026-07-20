@@ -53,6 +53,7 @@ def build_meta_item(
     logistics: str = "",
     booking_partners: list[dict] = None,
     cover_url: str = "",
+    flight_strategies: dict = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -71,6 +72,7 @@ def build_meta_item(
         "logistics": logistics,
         "booking_partners": booking_partners or [],
         "cover_url": cover_url,
+        "flight_strategies": flight_strategies or {},
     }
 
 
@@ -101,6 +103,84 @@ async def fetch_unsplash_cover_photo(destination: str, api_key: str) -> str:
     return ""
 
 
+async def generate_flight_strategies(
+    *,
+    departure_city: str,
+    departure_country: str,
+    destination: str,
+    days: int,
+    budget: float,
+    currency: str,
+    travelers: int,
+    api_key: str,
+) -> dict:
+    """Uses Gemini to generate flight routing strategies, typical budget/local airlines,
+    estimated price ranges, and pre-filled Google Flights search links.
+    """
+    if not departure_city:
+        return {}
+
+    prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
+The travelers want to find the cheapest flight options.
+
+Trip Details:
+- Departure: {departure_city}, {departure_country}
+- Destination: {destination}
+- Duration: {days} days
+- Group Size: {travelers} traveler(s)
+- Total Trip Budget: {int(budget)} {currency} (flights should fit or be optimized against this)
+
+Your task is to act as an agentic flight finder. Propose 2-4 distinct, realistic flight strategies.
+These can be:
+- "direct": Direct flight option (if available) or standard single-carrier route.
+- "budget_carrier": Utilizing low-cost carriers (e.g. AirAsia, Scoot, Ryanair, IndiGo, Cinnamon Air, FitsAir, Southwest, etc. depending on region).
+- "split_ticket": Booking separate tickets (e.g. CMB to Kuala Lumpur, then Kuala Lumpur to Tokyo) to save money.
+- "nearby_airport": Flying into or out of a nearby airport (e.g. Narita instead of Haneda, or from Mattala HRI instead of Colombo CMB).
+
+For each strategy, estimate realistic price ranges in {currency} (total for all {travelers} travelers combined) and estimate percentage savings or comparison details.
+Also, generate a pre-filled Google Flights search URL.
+Format the search URL using this structure:
+"https://www.google.com/travel/flights?q=flights+from+<OriginAirport>+to+<DestAirport>"
+(e.g., for Colombo to Narita: https://www.google.com/travel/flights?q=flights+from+CMB+to+NRT)
+You can also generate Skyscanner URLs.
+
+Return ONLY a JSON object with this exact shape:
+{{
+  "departure_city": "{departure_city}",
+  "destination_city": "{destination}",
+  "strategies": [
+    {{
+      "rank": 1,
+      "strategy": "split_ticket",
+      "title": "Strategy Title",
+      "description": "Explanation of how to book this.",
+      "estimated_savings": "Save ~35% vs direct",
+      "estimated_price_range": "{currency} 100,000 - 150,000",
+      "airlines": ["Airline A", "Airline B"],
+      "route": "CMB -> KUL -> NRT",
+      "stops": 1,
+      "total_duration": "12h",
+      "convenience": "★★★☆☆",
+      "tip": "Short booking tip.",
+      "booking_url": "Pre-filled URL"
+    }}
+  ],
+  "general_tips": [
+    "Tip 1...",
+    "Tip 2..."
+  ],
+  "best_months": "Jan-Mar"
+}}
+"""
+    try:
+        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        data = _parse_json(text)
+        return data
+    except Exception as e:
+        logger.error(f"Failed to generate flight strategies: {e}")
+        return {}
+
+
 async def generate_odyssey(
     *,
     destination: str,
@@ -111,6 +191,9 @@ async def generate_odyssey(
     travelers: int = 1,
     api_key: str,
     unsplash_api_key: str = "",
+    include_flights: bool = False,
+    departure_city: str = "",
+    departure_country: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary.
 
@@ -137,6 +220,20 @@ async def generate_odyssey(
     if unsplash_api_key:
         cover_url = await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
 
+    # Generate flight strategies if requested by user
+    flight_strategies = {}
+    if include_flights and departure_city:
+        flight_strategies = await generate_flight_strategies(
+            departure_city=departure_city,
+            departure_country=departure_country,
+            destination=final_destination,
+            days=g_days,
+            budget=budget,
+            currency=str(plan.get("currency") or currency),
+            travelers=travelers,
+            api_key=api_key,
+        )
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
@@ -151,6 +248,7 @@ async def generate_odyssey(
         logistics=_logistics_text(plan.get("logistics")),
         booking_partners=plan.get("booking_partners") or [],
         cover_url=cover_url,
+        flight_strategies=flight_strategies,
     )
 
     day_items: list[dict] = []
