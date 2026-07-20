@@ -149,7 +149,11 @@ class FlightStrategy {
         description: (json['description'] ?? '').toString(),
         estimatedSavings: (json['estimated_savings'] ?? '').toString(),
         priceRange: (json['estimated_price_range'] ?? json['price_range'] ?? '').toString(),
-        airlines: List<String>.from(json['airlines'] ?? []),
+        airlines: (json['airlines'] is List)
+            ? (json['airlines'] as List).map((e) => e.toString()).toList()
+            : (json['airlines'] != null && json['airlines'].toString().isNotEmpty)
+                ? [json['airlines'].toString()]
+                : <String>[],
         route: (json['route'] ?? '').toString(),
         stops: (json['stops'] as num?)?.toInt() ?? 0,
         duration: (json['total_duration'] ?? json['duration'] ?? '').toString(),

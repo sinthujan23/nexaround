@@ -30,7 +30,7 @@ MUSEUM_META = {
     "country": "Hong Kong",
     "annual_visitors": 2610000,
     "rank": 33,
-    "image_url": "https://upload.wikimedia.org/wikipedia/commons/e/e9/M%2B_Museum_Hong_Kong.jpg",
+    "image_url": "/api/v1/places/photo?ref=places/ChIJd3wXPZAABDQRDFz86-Qpbto/photos/AWCwydjGflUeFGRuT-TMWf00aEM8bXTy4lGY0EmOPxjHfHZoPRTcMtOsgWXaMcaro1aJh82mgF6XHDLeYgQdrgNGRgoP65gO4Ck8NqsSSCD3wNdqa06RyyyF_mtHsf8Ronv7xQFAT8hDEERjqpPfSmIRXuQSMGg663KMNcbNEaGWpQv9qUdKJE1_FgpRRsj55t9p65s5fM8socK6heUmvpuAQY1h3TcNS0ICn5GZHkgcGmVQnzxYw8-uRD0k-jlM9rWJeE1_LxR_AlacHOGScH9l4lrniCm-jzfVvESfZf15WwTiVBjFhIO3IxVn_8pW5ttqqat4P_Mui6QJEywUXr-k44ZdoQ_9QbnlrtEpQn412aRA-JsRC79aGXUKvq4STUmJgobzNZ6bqS_GKJpOEdwNHDDAUjjbnPy-JKt4zUzK5PSCnLTr",
     "ticket_url": "https://www.mplus.org.hk/en/",
     "latitude": 22.300958,
     "longitude": 114.159645,

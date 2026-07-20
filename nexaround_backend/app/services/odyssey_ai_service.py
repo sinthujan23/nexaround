@@ -17,10 +17,9 @@ logger = logging.getLogger(__name__)
 # is overloaded changes minute to minute, so retrying one model isn't enough.
 # Try a chain: a 503 on one model falls through to another that's healthy now.
 _MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-2.5-pro",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-pro",
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 
@@ -181,8 +180,19 @@ Return ONLY a JSON object with this exact shape:
 }
 """
     try:
-        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        text = await _call_gemini(prompt, api_key, max_tokens=4096)
         data = _parse_json(text)
+        strategies = data.get("strategies")
+        if isinstance(strategies, list):
+            for strat in strategies:
+                if isinstance(strat, dict):
+                    airlines = strat.get("airlines")
+                    if isinstance(airlines, str):
+                        strat["airlines"] = [a.strip() for a in airlines.split(",") if a.strip()]
+                    elif not isinstance(airlines, list):
+                        strat["airlines"] = []
+                    else:
+                        strat["airlines"] = [str(a) for a in airlines]
         return data
     except Exception as e:
         logger.error(f"Failed to generate flight strategies: {e}")
@@ -222,25 +232,29 @@ async def generate_odyssey(
     nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
     title = str(plan.get("title") or "Your Odyssey")
 
-    # Fetch Unsplash cover photo asynchronously if key is configured
+    # Fetch Unsplash cover photo and flight strategies concurrently
     final_destination = str(plan.get("destination") or destination)
-    cover_url = ""
-    if unsplash_api_key:
-        cover_url = await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
 
-    # Generate flight strategies if requested by user
-    flight_strategies = {}
-    if include_flights and departure_city:
-        flight_strategies = await generate_flight_strategies(
-            departure_city=departure_city,
-            departure_country=departure_country,
-            destination=final_destination,
-            days=g_days,
-            budget=budget,
-            currency=str(plan.get("currency") or currency),
-            travelers=travelers,
-            api_key=api_key,
-        )
+    async def _get_cover():
+        if unsplash_api_key:
+            return await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
+        return ""
+
+    async def _get_flights():
+        if include_flights and departure_city:
+            return await generate_flight_strategies(
+                departure_city=departure_city,
+                departure_country=departure_country,
+                destination=final_destination,
+                days=g_days,
+                budget=budget,
+                currency=str(plan.get("currency") or currency),
+                travelers=travelers,
+                api_key=api_key,
+            )
+        return {}
+
+    cover_url, flight_strategies = await asyncio.gather(_get_cover(), _get_flights())
 
     meta = build_meta_item(
         destination=final_destination,
@@ -431,19 +445,10 @@ Rules:
 
 async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinking_budget=None) -> str:
     api_key = (api_key or "").strip().strip('"').strip("'")
-    generation_config = {
+    base_generation_config = {
         "temperature": 0.8,
         "maxOutputTokens": max_tokens,
         "responseMimeType": "application/json",
-    }
-    # thinkingBudget=0 turns off gemini-2.5-flash's hidden reasoning tokens
-    # (which count against maxOutputTokens). Pass None to leave it on the default.
-    if thinking_budget is not None:
-        generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "system_instruction": {"parts": [{"text": _SYSTEM}]},
-        "generationConfig": generation_config,
     }
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     # Odyssey is a one-shot background job, so a single 503 would permanently
@@ -454,11 +459,20 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     attempts = _MODELS * 2
     async with httpx.AsyncClient(timeout=90.0) as client:
         for i, model in enumerate(attempts):
+            generation_config = dict(base_generation_config)
+            if thinking_budget is not None and "thinking" in model:
+                generation_config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+
+            body = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "system_instruction": {"parts": [{"text": _SYSTEM}]},
+                "generationConfig": generation_config,
+            }
             resp = await client.post(_model_url(model), json=body, headers=headers)
-            if resp.status_code in (429, 500, 503) and i < len(attempts) - 1:
+            if resp.status_code != 200 and i < len(attempts) - 1:
                 logger.warning(
-                    "Gemini %s for %s — falling through to next model",
-                    resp.status_code, model,
+                    "Gemini status %s for %s — falling through to next model (details: %s)",
+                    resp.status_code, model, resp.text[:200],
                 )
                 # Brief pause once we've cycled the whole chain once.
                 if (i + 1) % len(_MODELS) == 0:

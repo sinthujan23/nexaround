@@ -84,7 +84,37 @@ Ensure you have the following installed on your machine:
    uvicorn app.main:app --reload
    ```
 
+### 2.1 Seeding Museum Data from Excel
+Several museums have pre-defined itineraries and masterpieces defined in Excel spreadsheets (located in `nexaround_app/`). To seed them into the database, follow these steps:
+
+#### Method A: Using Docker (Recommended)
+1. **Copy the Excel spreadsheet** to the backend `app/` folder so it is visible within the API container volume mount:
+   ```bash
+   cp nexaround_app/Acropolis_Museum_Itineraries_with_Locations.xlsx nexaround_backend/app/
+   ```
+2. **Install required dependencies** (`pandas` and `openpyxl`) in the running container if not already installed:
+   ```bash
+   docker compose exec api pip install pandas openpyxl
+   ```
+3. **Execute the seed script** using `docker compose exec`, passing the Excel file path via the corresponding environment variable:
+   ```bash
+   docker compose exec -e ACROPOLIS_XLSX=/app/app/Acropolis_Museum_Itineraries_with_Locations.xlsx api python -m app.scripts.seed_acropolis
+   ```
+
+#### Method B: Using Host Python Virtual Environment
+1. Ensure the virtual environment is activated and requirements are installed:
+   ```bash
+   cd nexaround_backend
+   source venv/bin/activate
+   pip install pandas openpyxl
+   ```
+2. Run the seed script directly from the backend root directory (the script defaults to finding the spreadsheet in the peer `nexaround_app` directory):
+   ```bash
+   python -m app.scripts.seed_acropolis
+   ```
+
 ---
+
 
 ### 3. Flutter App Installation & Run
 1. Navigate to the mobile app directory:
