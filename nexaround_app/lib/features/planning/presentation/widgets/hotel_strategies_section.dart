@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 
 class HotelStrategiesSection extends StatelessWidget {
@@ -27,7 +28,7 @@ class HotelStrategiesSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: const Icon(
@@ -101,7 +102,7 @@ class HotelStrategiesSection extends StatelessWidget {
         border: Border.all(color: Colors.black12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -119,7 +120,7 @@ class HotelStrategiesSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: AppColors.actionTeal.withOpacity(0.12),
+                    color: AppColors.actionTeal.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.apartment_rounded, color: AppColors.actionTeal, size: 22),
@@ -148,7 +149,7 @@ class HotelStrategiesSection extends StatelessWidget {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: AppColors.ratingGold.withOpacity(0.2),
+                                color: AppColors.ratingGold.withValues(alpha: 0.2),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Row(
@@ -253,7 +254,7 @@ class HotelStrategiesSection extends StatelessWidget {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -268,29 +269,39 @@ class HotelStrategiesSection extends StatelessWidget {
 
             // Direct Booking Button
             if (hs.bookingUrl.isNotEmpty)
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: ElevatedButton.icon(
-                  onPressed: () => _launchUrl(context, hs.bookingUrl),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
-                  label: Text(
-                    'Book Hotel on $provider',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+              Builder(
+                builder: (context) {
+                  final deepUrl = BookingUrlHelper.buildHotelUrl(
+                    rawUrl: hs.bookingUrl,
+                    providerName: provider,
+                    hotelName: hs.name,
+                    destination: odyssey.destination,
+                  );
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _launchUrl(context, deepUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
+                      label: Text(
+                        'Book Hotel on $provider',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
                     ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                ),
+                  );
+                },
               ),
           ],
         ),
@@ -303,7 +314,7 @@ class HotelStrategiesSection extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.02),
+        color: Colors.black.withValues(alpha: 0.02),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.black12),
       ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -27,7 +28,7 @@ class FlightStrategiesSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -91,7 +92,7 @@ class FlightStrategiesSection extends StatelessWidget {
         border: Border.all(color: Colors.black12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -109,7 +110,7 @@ class FlightStrategiesSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: rankColor.withOpacity(0.15),
+                    color: rankColor.withValues(alpha: 0.15),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(rankIcon, color: rankColor, size: 22),
@@ -133,7 +134,7 @@ class FlightStrategiesSection extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                           decoration: BoxDecoration(
-                            color: AppColors.ratingGold.withOpacity(0.2),
+                            color: AppColors.ratingGold.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -158,7 +159,7 @@ class FlightStrategiesSection extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 borderRadius: BorderRadius.circular(16),
               ),
               child: Column(
@@ -217,7 +218,7 @@ class FlightStrategiesSection extends StatelessWidget {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.05),
+                      color: Colors.black.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
@@ -287,9 +288,9 @@ class FlightStrategiesSection extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: AppColors.actionTeal.withOpacity(0.05),
+                  color: AppColors.actionTeal.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.actionTeal.withOpacity(0.12)),
+                  border: Border.all(color: AppColors.actionTeal.withValues(alpha: 0.12)),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -331,11 +332,17 @@ class FlightStrategiesSection extends StatelessWidget {
                       provider = 'Flight Provider';
                     }
                   }
+                  final deepUrl = BookingUrlHelper.buildFlightUrl(
+                    rawUrl: fs.bookingUrl,
+                    providerName: provider,
+                    strategyTitle: fs.title,
+                    destination: odyssey.destination,
+                  );
                   return SizedBox(
                     width: double.infinity,
                     height: 48,
                     child: ElevatedButton.icon(
-                      onPressed: () => _launchUrl(context, fs.bookingUrl),
+                      onPressed: () => _launchUrl(context, deepUrl),
                       icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
                       label: Text(
                         'Book Flight on $provider',
@@ -369,7 +376,7 @@ class FlightStrategiesSection extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.02),
+        color: Colors.black.withValues(alpha: 0.02),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: Colors.black12),
       ),
@@ -398,7 +405,7 @@ class FlightStrategiesSection extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
