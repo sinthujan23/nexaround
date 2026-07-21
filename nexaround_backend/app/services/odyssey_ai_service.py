@@ -9,9 +9,91 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 import asyncio
 import json
 import logging
+import urllib.parse
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _build_deep_booking_url(
+    provider: str,
+    item_name: str,
+    destination: str,
+    start_date: str,
+    end_date: str,
+    travelers: int = 1,
+    is_flight: bool = False,
+) -> str:
+    prov_lower = (provider or "").lower()
+    dest = (destination or "").strip()
+    name = (item_name or "").strip()
+    query = f"{name} {dest}".strip() if name else dest
+    encoded_query = urllib.parse.quote_plus(query)
+    encoded_dest = urllib.parse.quote_plus(dest)
+
+    if is_flight:
+        if "google" in prov_lower:
+            date_q = f"flights from {name or 'origin'} to {dest}"
+            if start_date and end_date:
+                date_q += f" on {start_date} return {end_date}"
+            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(date_q)}"
+        elif "skyscanner" in prov_lower:
+            if start_date and end_date:
+                return f"https://www.skyscanner.com/transport/flights-from/{urllib.parse.quote_plus(name or 'flights')}-to-{encoded_dest}/?outbounddate={start_date}&inbounddate={end_date}&adultsv2={travelers}"
+            return f"https://www.skyscanner.com/transport/flights-from/{urllib.parse.quote_plus(name or 'flights')}-to-{encoded_dest}/"
+        elif "expedia" in prov_lower:
+            if start_date and end_date:
+                return f"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from:{urllib.parse.quote_plus(name or 'origin')},to:{encoded_dest},departure:{start_date}TANYT&leg2=from:{encoded_dest},to:{urllib.parse.quote_plus(name or 'origin')},departure:{end_date}TANYT&passengers=adults:{travelers}"
+            return f"https://www.expedia.com/Flights-Search?destination={encoded_dest}"
+        elif "kayak" in prov_lower:
+            if start_date and end_date:
+                return f"https://www.kayak.com/flights/{urllib.parse.quote_plus(name or 'origin')}-{encoded_dest}/{start_date}/{end_date}/{travelers}adults"
+            return f"https://www.kayak.com/flights/{encoded_dest}"
+        else:
+            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(f'flights to {dest}')}"
+    else:  # Hotel
+        if "booking" in prov_lower:
+            url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
+            if start_date:
+                url += f"&checkin={start_date}"
+            if end_date:
+                url += f"&checkout={end_date}"
+            url += f"&group_adults={travelers}"
+            return url
+        elif "agoda" in prov_lower:
+            url = f"https://www.agoda.com/search?text={encoded_query}"
+            if start_date:
+                url += f"&checkIn={start_date}"
+            if end_date:
+                url += f"&checkOut={end_date}"
+            url += f"&adults={travelers}"
+            return url
+        elif "expedia" in prov_lower:
+            url = f"https://www.expedia.com/Hotel-Search?destination={encoded_query}"
+            if start_date:
+                url += f"&startDate={start_date}"
+            if end_date:
+                url += f"&endDate={end_date}"
+            url += f"&adults={travelers}"
+            return url
+        elif "hotels" in prov_lower:
+            url = f"https://www.hotels.com/Hotel-Search?destination={encoded_query}"
+            if start_date:
+                url += f"&startDate={start_date}"
+            if end_date:
+                url += f"&endDate={end_date}"
+            url += f"&adults={travelers}"
+            return url
+        elif "airbnb" in prov_lower:
+            url = f"https://www.airbnb.com/s/{encoded_dest}/homes?query={encoded_query}"
+            if start_date:
+                url += f"&checkin={start_date}"
+            if end_date:
+                url += f"&checkout={end_date}"
+            url += f"&adults={travelers}"
+            return url
+        else:
+            return f"https://www.google.com/travel/hotels?q={encoded_query}"
 
 # Gemini Flash models rotate through transient 503 "high demand" — WHICH model
 # is overloaded changes minute to minute, so retrying one model isn't enough.
@@ -120,7 +202,7 @@ async def generate_flight_strategies(
     estimated price ranges, and pre-filled search/booking links.
     """
     if not departure_city:
-        return {}
+        departure_city = "Nearest Airport"
 
     date_str = ""
     if flight_start_date and flight_end_date:
@@ -198,6 +280,18 @@ Return ONLY a JSON object with this exact shape:
                         strat["airlines"] = []
                     else:
                         strat["airlines"] = [str(a) for a in airlines]
+                    # Ensure deep pre-filled booking URL
+                    provider = strat.get("provider_name") or "Google Flights"
+                    item_name = strat.get("title") or destination
+                    strat["booking_url"] = _build_deep_booking_url(
+                        provider=provider,
+                        item_name=item_name,
+                        destination=destination,
+                        start_date=flight_start_date,
+                        end_date=flight_end_date,
+                        travelers=travelers,
+                        is_flight=True,
+                    )
         return data
     except Exception as e:
         logger.error(f"Failed to generate flight strategies: {e}")
@@ -265,7 +359,23 @@ Return ONLY a JSON object with this exact shape:
 """
     try:
         text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
-        return _parse_json(text)
+        data = _parse_json(text)
+        strategies = data.get("strategies")
+        if isinstance(strategies, list):
+            for strat in strategies:
+                if isinstance(strat, dict):
+                    provider = strat.get("provider_name") or "Booking.com"
+                    item_name = strat.get("name") or destination
+                    strat["booking_url"] = _build_deep_booking_url(
+                        provider=provider,
+                        item_name=item_name,
+                        destination=destination,
+                        start_date=hotel_check_in_date,
+                        end_date=hotel_check_out_date,
+                        travelers=travelers,
+                        is_flight=False,
+                    )
+        return data
     except Exception as e:
         logger.error(f"Failed to generate hotel strategies: {e}")
         return {}
