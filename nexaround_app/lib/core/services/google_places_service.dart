@@ -445,6 +445,7 @@ class GooglePlacesService {
             'radius': 15000, // 15km strict bound
             'strictbounds': true, // Only return results within the radius
             'origin': '$latitude,$longitude',
+            'language': 'en',
           },
         );
 

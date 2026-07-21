@@ -58,9 +58,13 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
             'addressdetails': 1,
             'limit': 5,
             'featuretype': 'city', // Prefer cities/districts for global search
+            'accept-language': 'en',
           },
           options: Options(
-            headers: {'User-Agent': 'NexAroundApp/1.0'},
+            headers: {
+              'User-Agent': 'NexAroundApp/1.0',
+              'Accept-Language': 'en',
+            },
           ),
         );
 

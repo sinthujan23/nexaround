@@ -154,13 +154,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     }
   }
 
-  void _skipFlightAndHotelStep() {
-    setState(() {
-      _includeFlights = false;
-      _includeHotels = false;
-    });
-    _submit();
-  }
 
   /// Hand the brief to the server and leave — generation continues in the
   /// background and the finished plan shows up in My Odysseys.
@@ -477,30 +470,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(
-                child: Text(
-                  'Flight & Hotel\nRecommendations',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1),
-                ),
-              ),
-              TextButton.icon(
-                onPressed: _isSubmitting ? null : _skipFlightAndHotelStep,
-                icon: const Icon(Icons.skip_next_rounded, size: 18, color: Colors.black54),
-                label: const Text(
-                  'Skip Step',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black54),
-                ),
-                style: TextButton.styleFrom(
-                  backgroundColor: Colors.black.withValues(alpha: 0.05),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-            ],
+          const Text(
+            'Flight & Hotel\nRecommendations',
+            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1),
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
           const Text(
@@ -536,17 +508,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                       ),
                     ],
                   ),
-                  subtitle: const Padding(
-                    padding: EdgeInsets.only(left: 36, top: 4),
-                    child: Text(
-                      'AI will suggest cheapest local/international flight strategies & pre-filled booking searches.',
-                      style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
-                    ),
-                  ),
                   value: _includeFlights,
                   onChanged: (bool val) {
                     setState(() {
                       _includeFlights = val;
+                      if (val && _flightStartDate == null) {
+                        _pickFlightDateRange();
+                      }
                     });
                   },
                 ),
@@ -560,22 +528,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           child: _buildDatePickerTile(
                             label: 'Start Date',
                             selectedDate: _flightStartDate,
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: _flightStartDate ?? DateTime.now().add(const Duration(days: 1)),
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _flightStartDate = picked;
-                                  if (_flightEndDate != null && _flightEndDate!.isBefore(_flightStartDate!)) {
-                                    _flightEndDate = _flightStartDate!.add(Duration(days: _days));
-                                  }
-                                });
-                              }
-                            },
+                            onTap: _pickFlightDateRange,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -583,19 +536,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           child: _buildDatePickerTile(
                             label: 'End Date',
                             selectedDate: _flightEndDate,
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: _flightEndDate ?? (_flightStartDate ?? DateTime.now()).add(Duration(days: _days)),
-                                firstDate: _flightStartDate ?? DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _flightEndDate = picked;
-                                });
-                              }
-                            },
+                            onTap: _pickFlightDateRange,
                           ),
                         ),
                       ],
@@ -634,17 +575,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                       ),
                     ],
                   ),
-                  subtitle: const Padding(
-                    padding: EdgeInsets.only(left: 36, top: 4),
-                    child: Text(
-                      'AI will recommend stays & luxury/budget hotel search deals with direct booking links.',
-                      style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
-                    ),
-                  ),
                   value: _includeHotels,
                   onChanged: (bool val) {
                     setState(() {
                       _includeHotels = val;
+                      if (val && _hotelCheckInDate == null && _flightStartDate != null) {
+                        _hotelCheckInDate = _flightStartDate;
+                        _hotelCheckOutDate = _flightEndDate;
+                      } else if (val && _hotelCheckInDate == null) {
+                        _pickHotelDateRange();
+                      }
                     });
                   },
                 ),
@@ -658,22 +598,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           child: _buildDatePickerTile(
                             label: 'Check-in Date',
                             selectedDate: _hotelCheckInDate,
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: _hotelCheckInDate ?? DateTime.now().add(const Duration(days: 1)),
-                                firstDate: DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _hotelCheckInDate = picked;
-                                  if (_hotelCheckOutDate != null && _hotelCheckOutDate!.isBefore(_hotelCheckInDate!)) {
-                                    _hotelCheckOutDate = _hotelCheckInDate!.add(Duration(days: _days));
-                                  }
-                                });
-                              }
-                            },
+                            onTap: _pickHotelDateRange,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -681,19 +606,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           child: _buildDatePickerTile(
                             label: 'Check-out Date',
                             selectedDate: _hotelCheckOutDate,
-                            onTap: () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: _hotelCheckOutDate ?? (_hotelCheckInDate ?? DateTime.now()).add(Duration(days: _days)),
-                                firstDate: _hotelCheckInDate ?? DateTime.now(),
-                                lastDate: DateTime.now().add(const Duration(days: 365)),
-                              );
-                              if (picked != null) {
-                                setState(() {
-                                  _hotelCheckOutDate = picked;
-                                });
-                              }
-                            },
+                            onTap: _pickHotelDateRange,
                           ),
                         ),
                       ],
@@ -706,6 +619,73 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickFlightDateRange() async {
+    final initialRange = DateTimeRange(
+      start: _flightStartDate ?? DateTime.now().add(const Duration(days: 1)),
+      end: _flightEndDate ?? DateTime.now().add(Duration(days: 1 + _days)),
+    );
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: initialRange,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.black,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _flightStartDate = picked.start;
+        _flightEndDate = picked.end;
+        // Auto-copy flight dates to hotel check-in / check-out dates
+        _hotelCheckInDate = picked.start;
+        _hotelCheckOutDate = picked.end;
+      });
+    }
+  }
+
+  Future<void> _pickHotelDateRange() async {
+    final initialRange = DateTimeRange(
+      start: _hotelCheckInDate ?? (_flightStartDate ?? DateTime.now().add(const Duration(days: 1))),
+      end: _hotelCheckOutDate ?? (_flightEndDate ?? DateTime.now().add(Duration(days: 1 + _days))),
+    );
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: initialRange,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.black,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _hotelCheckInDate = picked.start;
+        _hotelCheckOutDate = picked.end;
+      });
+    }
   }
 
   Widget _buildDatePickerTile({

@@ -160,7 +160,7 @@ async def proxy_geoapify_reverse(
             try:
                 resp = await client.get(
                     "https://api.geoapify.com/v1/geocode/reverse",
-                    params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json"}
+                    params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json", "lang": "en"}
                 )
                 resp.raise_for_status()
                 data = resp.json()
