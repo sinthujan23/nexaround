@@ -23,6 +23,7 @@ def _build_deep_booking_url(
     end_date: str,
     travelers: int = 1,
     is_flight: bool = False,
+    origin_city: str = "",
 ) -> str:
     prov_lower = (provider or "").lower()
     dest = (destination or "").strip()
@@ -32,25 +33,33 @@ def _build_deep_booking_url(
     encoded_dest = urllib.parse.quote_plus(dest)
 
     if is_flight:
+        origin = (origin_city or "").strip()
+        if origin.lower() in ["nearest airport", "nearest international airport", "origin", ""]:
+            origin = ""
+        encoded_origin = urllib.parse.quote_plus(origin) if origin else ""
+
         if "google" in prov_lower:
-            date_q = f"flights from {name or 'origin'} to {dest}"
+            date_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
             if start_date and end_date:
                 date_q += f" on {start_date} return {end_date}"
             return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(date_q)}"
         elif "skyscanner" in prov_lower:
-            if start_date and end_date:
-                return f"https://www.skyscanner.com/transport/flights-from/{urllib.parse.quote_plus(name or 'flights')}-to-{encoded_dest}/?outbounddate={start_date}&inbounddate={end_date}&adultsv2={travelers}"
-            return f"https://www.skyscanner.com/transport/flights-from/{urllib.parse.quote_plus(name or 'flights')}-to-{encoded_dest}/"
+            if origin and start_date and end_date:
+                return f"https://www.skyscanner.com/transport/flights-from/{encoded_origin}-to-{encoded_dest}/?outbounddate={start_date}&inbounddate={end_date}&adultsv2={travelers}"
+            elif origin:
+                return f"https://www.skyscanner.com/transport/flights-from/{encoded_origin}-to-{encoded_dest}/"
+            return f"https://www.skyscanner.com/transport/flights/to-{encoded_dest}/"
         elif "expedia" in prov_lower:
-            if start_date and end_date:
-                return f"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from:{urllib.parse.quote_plus(name or 'origin')},to:{encoded_dest},departure:{start_date}TANYT&leg2=from:{encoded_dest},to:{urllib.parse.quote_plus(name or 'origin')},departure:{end_date}TANYT&passengers=adults:{travelers}"
+            if origin and start_date and end_date:
+                return f"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from:{encoded_origin},to:{encoded_dest},departure:{start_date}TANYT&leg2=from:{encoded_dest},to:{encoded_origin},departure:{end_date}TANYT&passengers=adults:{travelers}"
             return f"https://www.expedia.com/Flights-Search?destination={encoded_dest}"
         elif "kayak" in prov_lower:
-            if start_date and end_date:
-                return f"https://www.kayak.com/flights/{urllib.parse.quote_plus(name or 'origin')}-{encoded_dest}/{start_date}/{end_date}/{travelers}adults"
+            if origin and start_date and end_date:
+                return f"https://www.kayak.com/flights/{encoded_origin}-{encoded_dest}/{start_date}/{end_date}/{travelers}adults"
             return f"https://www.kayak.com/flights/{encoded_dest}"
         else:
-            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(f'flights to {dest}')}"
+            search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
         if "booking" in prov_lower:
             url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
@@ -291,6 +300,7 @@ Return ONLY a JSON object with this exact shape:
                         end_date=flight_end_date,
                         travelers=travelers,
                         is_flight=True,
+                        origin_city=departure_city,
                     )
         return data
     except Exception as e:
