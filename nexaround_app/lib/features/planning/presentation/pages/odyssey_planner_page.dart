@@ -147,23 +147,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       );
       return;
     }
-    if (_currentStep == 0 && _includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select Start Date and End Date for flights.')),
-      );
-      return;
-    }
-    if (_currentStep == 0 && _includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select Check-in Date and Check-out Date for hotels.')),
-      );
-      return;
-    }
-    if (_currentStep < 2) {
+    if (_currentStep < 3) {
       setState(() => _currentStep++);
     } else {
       _submit();
     }
+  }
+
+  void _skipFlightAndHotelStep() {
+    setState(() {
+      _includeFlights = false;
+      _includeHotels = false;
+    });
+    _submit();
   }
 
   /// Hand the brief to the server and leave — generation continues in the
@@ -256,10 +252,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ),
               ],
             ),
-            // iOS number pads have no "return"/Done key, so the keyboard can't be
-            // dismissed and the Continue button stays hidden behind it. Show a
-            // "Done" bar above the keyboard (iOS only — Android's keyboard already
-            // has an enter key) so users can close it and reach Continue.
             if (Theme.of(context).platform == TargetPlatform.iOS &&
                 MediaQuery.of(context).viewInsets.bottom > 0)
               Positioned(
@@ -275,8 +267,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
-  /// A "Done" accessory bar shown above the iOS keyboard (which lacks a return
-  /// key on number pads). Tapping it dismisses the keyboard.
   Widget _buildKeyboardDoneBar() {
     return Material(
       color: const Color(0xFFF2F2F7),
@@ -285,7 +275,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.symmetric(horizontal: 8),
         decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.black.withOpacity(0.12))),
+          border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.12))),
         ),
         child: TextButton(
           onPressed: () => FocusScope.of(context).unfocus(),
@@ -306,7 +296,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Row(
-        children: List.generate(3, (index) {
+        children: List.generate(4, (index) {
           final isActive = index <= _currentStep;
           return Expanded(
             child: AnimatedContainer(
@@ -332,6 +322,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         return _buildMoodStep();
       case 2:
         return _buildBudgetStep();
+      case 3:
+        return _buildFlightsAndHotelsStep();
       default:
         return const SizedBox();
     }
@@ -473,7 +465,49 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 350.ms),
-          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlightsAndHotelsStep() {
+    return SingleChildScrollView(
+      key: const ValueKey('flights_and_hotels'),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(
+                child: Text(
+                  'Flight & Hotel\nRecommendations',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _isSubmitting ? null : _skipFlightAndHotelStep,
+                icon: const Icon(Icons.skip_next_rounded, size: 18, color: Colors.black54),
+                label: const Text(
+                  'Skip Step',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black54),
+                ),
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.black.withValues(alpha: 0.05),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+            ],
+          ).animate().fade().slideY(begin: 0.1, end: 0),
+          const SizedBox(height: 8),
+          const Text(
+            'Optional: Enable flight or hotel options to get pre-filled deals with direct booking links.',
+            style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.35),
+          ),
+          const SizedBox(height: 28),
           const Text(
             'FLIGHT RECOMMENDATIONS',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
@@ -488,10 +522,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             child: Column(
               children: [
                 SwitchListTile(
-                  activeColor: Colors.black,
+                  activeThumbColor: Colors.black,
                   activeTrackColor: Colors.black12,
                   inactiveThumbColor: Colors.grey,
-                  inactiveTrackColor: Colors.black.withOpacity(0.05),
+                  inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
                   title: const Row(
                     children: [
                       Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
@@ -570,7 +604,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ],
             ),
-          ).animate().fade(delay: 400.ms),
+          ).animate().fade(delay: 200.ms),
           const SizedBox(height: 24),
           const Text(
             'HOTEL RECOMMENDATIONS',
@@ -586,10 +620,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             child: Column(
               children: [
                 SwitchListTile(
-                  activeColor: Colors.black,
+                  activeThumbColor: Colors.black,
                   activeTrackColor: Colors.black12,
                   inactiveThumbColor: Colors.grey,
-                  inactiveTrackColor: Colors.black.withOpacity(0.05),
+                  inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
                   title: const Row(
                     children: [
                       Icon(Icons.hotel_rounded, color: Colors.black87),
@@ -668,7 +702,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ],
             ),
-          ).animate().fade(delay: 450.ms),
+          ).animate().fade(delay: 300.ms),
         ],
       ),
     );
@@ -688,7 +722,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.grey.withOpacity(0.08),
+          color: Colors.grey.withValues(alpha: 0.08),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: selectedDate != null ? Colors.black : Colors.black12),
         ),
@@ -757,7 +791,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     borderRadius: BorderRadius.circular(24),
                     border: Border.all(color: isSelected ? Colors.black : Colors.black12),
                     boxShadow: isSelected
-                        ? [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 15, offset: const Offset(0, 8))]
+                        ? [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))]
                         : null,
                   ),
                   child: Column(
@@ -854,7 +888,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               activeTrackColor: Colors.black,
               inactiveTrackColor: Colors.black12,
               thumbColor: Colors.black,
-              overlayColor: Colors.black.withOpacity(0.1),
+              overlayColor: Colors.black.withValues(alpha: 0.1),
               trackHeight: 8,
             ),
             child: Slider(
@@ -882,12 +916,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Widget _buildBottomAction() {
-    final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
+    final String label = _currentStep == 3 ? 'GENERATE ODYSSEY' : 'CONTINUE';
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(top: BorderSide(color: Colors.black.withOpacity(0.05))),
+        border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05))),
       ),
       child: SizedBox(
         width: double.infinity,
@@ -896,7 +930,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 8))],
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8))],
           ),
           child: ElevatedButton(
             onPressed: _isSubmitting ? null : _onPrimaryAction,

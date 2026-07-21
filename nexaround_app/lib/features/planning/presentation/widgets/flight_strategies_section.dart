@@ -319,11 +319,17 @@ class FlightStrategiesSection extends StatelessWidget {
                   String provider = fs.providerName.trim();
                   if (provider.isEmpty) {
                     final lowerUrl = fs.bookingUrl.toLowerCase();
-                    if (lowerUrl.contains('expedia')) provider = 'Expedia';
-                    else if (lowerUrl.contains('skyscanner')) provider = 'Skyscanner';
-                    else if (lowerUrl.contains('google')) provider = 'Google Flights';
-                    else if (lowerUrl.contains('kayak')) provider = 'Kayak';
-                    else provider = 'Flight Provider';
+                    if (lowerUrl.contains('expedia')) {
+                      provider = 'Expedia';
+                    } else if (lowerUrl.contains('skyscanner')) {
+                      provider = 'Skyscanner';
+                    } else if (lowerUrl.contains('google')) {
+                      provider = 'Google Flights';
+                    } else if (lowerUrl.contains('kayak')) {
+                      provider = 'Kayak';
+                    } else {
+                      provider = 'Flight Provider';
+                    }
                   }
                   return SizedBox(
                     width: double.infinity,

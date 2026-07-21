@@ -78,12 +78,19 @@ class HotelStrategiesSection extends StatelessWidget {
     String provider = hs.providerName.trim();
     if (provider.isEmpty) {
       final lowerUrl = hs.bookingUrl.toLowerCase();
-      if (lowerUrl.contains('booking.com')) provider = 'Booking.com';
-      else if (lowerUrl.contains('agoda')) provider = 'Agoda';
-      else if (lowerUrl.contains('expedia')) provider = 'Expedia';
-      else if (lowerUrl.contains('hotels.com')) provider = 'Hotels.com';
-      else if (lowerUrl.contains('airbnb')) provider = 'Airbnb';
-      else provider = 'Hotel Provider';
+      if (lowerUrl.contains('booking.com')) {
+        provider = 'Booking.com';
+      } else if (lowerUrl.contains('agoda')) {
+        provider = 'Agoda';
+      } else if (lowerUrl.contains('expedia')) {
+        provider = 'Expedia';
+      } else if (lowerUrl.contains('hotels.com')) {
+        provider = 'Hotels.com';
+      } else if (lowerUrl.contains('airbnb')) {
+        provider = 'Airbnb';
+      } else {
+        provider = 'Hotel Provider';
+      }
     }
 
     return Container(
@@ -132,9 +139,12 @@ class HotelStrategiesSection extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      Row(
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 4,
                         children: [
-                          if (hs.rating.isNotEmpty) ...[
+                          if (hs.rating.isNotEmpty)
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
@@ -153,8 +163,6 @@ class HotelStrategiesSection extends StatelessWidget {
                                 ],
                               ),
                             ),
-                            const SizedBox(width: 8),
-                          ],
                           if (hs.category.isNotEmpty)
                             Text(
                               hs.category,
@@ -200,37 +208,41 @@ class HotelStrategiesSection extends StatelessWidget {
             const SizedBox(height: 12),
 
             // Location & Total Cost
-            Wrap(
-              spacing: 16,
-              runSpacing: 8,
-              children: [
-                if (hs.location.isNotEmpty)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.location_on_rounded, size: 14, color: Colors.black45),
-                      const SizedBox(width: 4),
-                      Text(
-                        hs.location,
-                        style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
-                      ),
-                    ],
+            if (hs.location.isNotEmpty) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(Icons.location_on_rounded, size: 14, color: Colors.black45),
                   ),
-                if (hs.totalEstimatedCost.isNotEmpty)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.receipt_long_rounded, size: 14, color: Colors.black45),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Est. Total: ${hs.totalEstimatedCost}',
-                        style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
-                      ),
-                    ],
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      hs.location,
+                      style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w600),
+                    ),
                   ),
-              ],
-            ),
-            const SizedBox(height: 12),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
+            if (hs.totalEstimatedCost.isNotEmpty) ...[
+              Row(
+                children: [
+                  const Icon(Icons.receipt_long_rounded, size: 14, color: Colors.black45),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Est. Total: ${hs.totalEstimatedCost}',
+                      style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+            ],
+            const SizedBox(height: 6),
 
             // Amenities
             if (hs.amenities.isNotEmpty) ...[
