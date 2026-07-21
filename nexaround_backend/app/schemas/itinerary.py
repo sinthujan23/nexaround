@@ -42,6 +42,11 @@ class OdysseyGenerateRequest(BaseModel):
     include_flights: bool = False
     departure_city: str = ""
     departure_country: str = ""
+    flight_start_date: Optional[str] = None
+    flight_end_date: Optional[str] = None
+    include_hotels: bool = False
+    hotel_check_in_date: Optional[str] = None
+    hotel_check_out_date: Optional[str] = None
 
 class OdysseySwapRequest(BaseModel):
     """Request body for swapping a single activity in a saved Odyssey for an

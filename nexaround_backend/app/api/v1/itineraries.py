@@ -70,6 +70,11 @@ async def generate_odyssey(
         data.include_flights,
         data.departure_city,
         data.departure_country,
+        data.flight_start_date,
+        data.flight_end_date,
+        data.include_hotels,
+        data.hotel_check_in_date,
+        data.hotel_check_out_date,
     )
     return saved
 
@@ -86,6 +91,11 @@ async def _run_odyssey_generation(
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
+    flight_start_date: Optional[str] = None,
+    flight_end_date: Optional[str] = None,
+    include_hotels: bool = False,
+    hotel_check_in_date: Optional[str] = None,
+    hotel_check_out_date: Optional[str] = None,
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -118,6 +128,11 @@ async def _run_odyssey_generation(
                 include_flights=include_flights,
                 departure_city=departure_city,
                 departure_country=departure_country,
+                flight_start_date=flight_start_date,
+                flight_end_date=flight_end_date,
+                include_hotels=include_hotels,
+                hotel_check_in_date=hotel_check_in_date,
+                hotel_check_out_date=hotel_check_out_date,
             )
             itin.title = title
             itin.items = items

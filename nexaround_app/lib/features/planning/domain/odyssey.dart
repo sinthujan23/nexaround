@@ -124,6 +124,7 @@ class FlightStrategy {
   final int stops;
   final String duration;
   final String convenience;
+  final String providerName;
   final String tip;
   final String bookingUrl;
 
@@ -139,6 +140,7 @@ class FlightStrategy {
     required this.stops,
     required this.duration,
     required this.convenience,
+    required this.providerName,
     required this.tip,
     required this.bookingUrl,
   });
@@ -165,6 +167,7 @@ class FlightStrategy {
         stops: _parseInt(json['stops'], 0),
         duration: (json['total_duration'] ?? json['duration'] ?? '').toString(),
         convenience: (json['convenience'] ?? '').toString(),
+        providerName: (json['provider_name'] ?? json['provider'] ?? '').toString(),
         tip: (json['tip'] ?? '').toString(),
         bookingUrl: (json['booking_url'] ?? '').toString(),
       );
@@ -181,7 +184,66 @@ class FlightStrategy {
         'stops': stops,
         'total_duration': duration,
         'convenience': convenience,
+        'provider_name': providerName,
         'tip': tip,
+        'booking_url': bookingUrl,
+      };
+}
+
+class HotelStrategy {
+  final int rank;
+  final String name;
+  final String providerName;
+  final String category;
+  final String rating;
+  final String pricePerNight;
+  final String totalEstimatedCost;
+  final String location;
+  final List<String> amenities;
+  final String description;
+  final String bookingUrl;
+
+  const HotelStrategy({
+    required this.rank,
+    required this.name,
+    required this.providerName,
+    required this.category,
+    required this.rating,
+    required this.pricePerNight,
+    required this.totalEstimatedCost,
+    required this.location,
+    required this.amenities,
+    required this.description,
+    required this.bookingUrl,
+  });
+
+  factory HotelStrategy.fromJson(Map<String, dynamic> json) => HotelStrategy(
+        rank: FlightStrategy._parseInt(json['rank'], 1),
+        name: (json['name'] ?? '').toString(),
+        providerName: (json['provider_name'] ?? json['provider'] ?? 'Booking.com').toString(),
+        category: (json['category'] ?? '').toString(),
+        rating: (json['rating'] ?? '').toString(),
+        pricePerNight: (json['price_per_night'] ?? '').toString(),
+        totalEstimatedCost: (json['total_estimated_cost'] ?? json['total_cost'] ?? '').toString(),
+        location: (json['location'] ?? '').toString(),
+        amenities: (json['amenities'] is List)
+            ? (json['amenities'] as List).map((e) => e.toString()).toList()
+            : <String>[],
+        description: (json['description'] ?? '').toString(),
+        bookingUrl: (json['booking_url'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'rank': rank,
+        'name': name,
+        'provider_name': providerName,
+        'category': category,
+        'rating': rating,
+        'price_per_night': pricePerNight,
+        'total_estimated_cost': totalEstimatedCost,
+        'location': location,
+        'amenities': amenities,
+        'description': description,
         'booking_url': bookingUrl,
       };
 }
@@ -205,6 +267,9 @@ class Odyssey {
   final List<FlightStrategy> flightStrategies; // NEW
   final List<String> flightGeneralTips; // NEW
   final String flightBestMonths; // NEW
+  final List<HotelStrategy> hotelStrategies;
+  final List<String> hotelGeneralTips;
+  final String hotelBestAreas;
   final String status; // active | draft | completed
   final DateTime? createdAt;
   final String? coverUrl;
@@ -227,6 +292,9 @@ class Odyssey {
     this.flightStrategies = const [], // NEW
     this.flightGeneralTips = const [], // NEW
     this.flightBestMonths = '', // NEW
+    this.hotelStrategies = const [],
+    this.hotelGeneralTips = const [],
+    this.hotelBestAreas = '',
     this.status = 'active',
     this.createdAt,
     this.coverUrl,
@@ -240,6 +308,9 @@ class Odyssey {
     List<FlightStrategy>? flightStrategies, // NEW
     List<String>? flightGeneralTips, // NEW
     String? flightBestMonths, // NEW
+    List<HotelStrategy>? hotelStrategies,
+    List<String>? hotelGeneralTips,
+    String? hotelBestAreas,
     String? coverUrl,
   }) =>
       Odyssey(
@@ -260,6 +331,9 @@ class Odyssey {
         flightStrategies: flightStrategies ?? this.flightStrategies, // NEW
         flightGeneralTips: flightGeneralTips ?? this.flightGeneralTips, // NEW
         flightBestMonths: flightBestMonths ?? this.flightBestMonths, // NEW
+        hotelStrategies: hotelStrategies ?? this.hotelStrategies,
+        hotelGeneralTips: hotelGeneralTips ?? this.hotelGeneralTips,
+        hotelBestAreas: hotelBestAreas ?? this.hotelBestAreas,
         status: status ?? this.status,
         createdAt: createdAt,
         coverUrl: coverUrl ?? this.coverUrl,
@@ -335,6 +409,11 @@ class Odyssey {
             'general_tips': flightGeneralTips,
             'best_months': flightBestMonths,
           },
+          'hotel_strategies': {
+            'strategies': hotelStrategies.map((hs) => hs.toJson()).toList(),
+            'general_tips': hotelGeneralTips,
+            'best_areas': hotelBestAreas,
+          },
           'cover_url': coverUrl ?? '',
         },
         ...dayPlans.map((d) => d.toJson()),
@@ -396,6 +475,39 @@ class Odyssey {
       debugPrint('Error parsing flight strategies in Odyssey: $e');
     }
 
+    final hotelStrategiesRaw = meta['hotel_strategies'];
+    final List<HotelStrategy> hotelStrategies = [];
+    final List<String> hotelGeneralTips = [];
+    String hotelBestAreas = '';
+
+    try {
+      if (hotelStrategiesRaw is Map) {
+        final strategiesList = hotelStrategiesRaw['strategies'] as List?;
+        if (strategiesList != null) {
+          for (final item in strategiesList) {
+            if (item is Map) {
+              hotelStrategies.add(HotelStrategy.fromJson(item.cast<String, dynamic>()));
+            }
+          }
+        }
+        final tipsList = hotelStrategiesRaw['general_tips'] as List?;
+        if (tipsList != null) {
+          for (final item in tipsList) {
+            hotelGeneralTips.add(item.toString());
+          }
+        }
+        hotelBestAreas = (hotelStrategiesRaw['best_areas'] ?? '').toString();
+      } else if (hotelStrategiesRaw is List) {
+        for (final item in hotelStrategiesRaw) {
+          if (item is Map) {
+            hotelStrategies.add(HotelStrategy.fromJson(item.cast<String, dynamic>()));
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error parsing hotel strategies in Odyssey: $e');
+    }
+
     return Odyssey(
       id: json['id']?.toString(),
       title: (json['title'] ?? 'Odyssey').toString(),
@@ -417,6 +529,9 @@ class Odyssey {
       flightStrategies: flightStrategies,
       flightGeneralTips: flightGeneralTips,
       flightBestMonths: flightBestMonths,
+      hotelStrategies: hotelStrategies,
+      hotelGeneralTips: hotelGeneralTips,
+      hotelBestAreas: hotelBestAreas,
       status: (json['status'] ?? 'active').toString(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'].toString())

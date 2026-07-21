@@ -52,6 +52,7 @@ def build_meta_item(
     booking_partners: list[dict] = None,
     cover_url: str = "",
     flight_strategies: dict = None,
+    hotel_strategies: dict = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -71,6 +72,7 @@ def build_meta_item(
         "booking_partners": booking_partners or [],
         "cover_url": cover_url,
         "flight_strategies": flight_strategies or {},
+        "hotel_strategies": hotel_strategies or {},
     }
 
 
@@ -110,13 +112,19 @@ async def generate_flight_strategies(
     budget: float,
     currency: str,
     travelers: int,
+    flight_start_date: str = "",
+    flight_end_date: str = "",
     api_key: str,
 ) -> dict:
     """Uses Gemini to generate flight routing strategies, typical budget/local airlines,
-    estimated price ranges, and pre-filled Google Flights search links.
+    estimated price ranges, and pre-filled search/booking links.
     """
     if not departure_city:
         return {}
+
+    date_str = ""
+    if flight_start_date and flight_end_date:
+        date_str = f"- Departure Date: {flight_start_date}\n- Return Date: {flight_end_date}"
 
     prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
 The travelers want to find the cheapest flight options.
@@ -124,6 +132,7 @@ The travelers want to find the cheapest flight options.
 Trip Details:
 - Departure: {departure_city}, {departure_country}
 - Destination: {destination}
+{date_str}
 - Duration: {days} days
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency} (flights should fit or be optimized against this)
@@ -132,23 +141,20 @@ Your task is to act as an agentic flight finder. Propose 2-4 distinct, realistic
 These can be:
 - "direct": Direct flight option (if available) or standard single-carrier route.
 - "budget_carrier": Utilizing low-cost carriers (e.g. AirAsia, Scoot, Ryanair, IndiGo, Cinnamon Air, FitsAir, Southwest, etc. depending on region).
-- "split_ticket": Booking separate tickets (e.g. CMB to Kuala Lumpur, then Kuala Lumpur to Tokyo) to save money.
-- "nearby_airport": Flying into or out of a nearby airport (e.g. Narita instead of Haneda, or from Mattala HRI instead of Colombo CMB).
+- "split_ticket": Booking separate tickets to save money.
+- "nearby_airport": Flying into or out of a nearby airport.
 
-For each strategy, estimate realistic price ranges in {currency} (total for all {travelers} travelers combined) and estimate percentage savings or comparison details.
-Also, generate a pre-filled Google Flights search URL.
-Format the search URL using this structure:
-"https://www.google.com/travel/flights?q=flights+from+<OriginAirport>+to+<DestAirport>"
-(e.g., for Colombo to Narita: https://www.google.com/travel/flights?q=flights+from+CMB+to+NRT)
-You can also generate Skyscanner URLs.
+For each strategy, estimate realistic price ranges in {currency} (total for all {travelers} travelers combined), specify the booking platform/provider name (e.g. "Expedia", "Skyscanner", "Google Flights", "Kayak"), and generate a pre-filled direct booking/search URL incorporating the dates if provided.
 
 Field Rules:
-- "title": Concise 3-6 word strategy name (e.g., "Fly via Trincomalee & Colombo"). Do NOT put full paragraphs in title.
+- "title": Concise 3-6 word strategy name (e.g., "Fly via Expedia Budget Deal").
+- "provider_name": Booking platform name (e.g. "Expedia", "Skyscanner", "Kayak", "Google Flights").
 - "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
 - "estimated_price_range": Short price string only (e.g., "USD 180 - 300").
 - "route": Short airport code route (e.g., "TRR -> CMB -> MAA").
-- "convenience": Star rating string ONLY (e.g., "★★★☆☆"). Do NOT add sentences or text explanations after the stars.
+- "convenience": Star rating string ONLY (e.g., "★★★☆☆").
 - "best_months": Short month list under 5 words (e.g., "Jan-Mar, Jul-Sep").
+- "booking_url": Real search landing page or booking URL (e.g. Expedia, Skyscanner, Google Flights).
 
 Return ONLY a JSON object with this exact shape:
 {{
@@ -158,7 +164,8 @@ Return ONLY a JSON object with this exact shape:
     {{
       "rank": 1,
       "strategy": "split_ticket",
-      "title": "Short Title",
+      "title": "Expedia Split Ticket Option",
+      "provider_name": "Expedia",
       "description": "Explanation of how to book this strategy.",
       "estimated_savings": "Save ~35%",
       "estimated_price_range": "{currency} 100,000 - 150,000",
@@ -168,14 +175,13 @@ Return ONLY a JSON object with this exact shape:
       "total_duration": "12h",
       "convenience": "★★★☆☆",
       "tip": "Short booking tip.",
-      "booking_url": "Pre-filled URL"
+      "booking_url": "https://www.expedia.com/Flights"
     }}
   ],
   "general_tips": [
     "Tip 1...",
     "Tip 2..."
-  ],
-  "best_months": "Jan-Mar"
+  ]
 }}
 """
     try:
@@ -198,6 +204,73 @@ Return ONLY a JSON object with this exact shape:
         return {}
 
 
+async def generate_hotel_strategies(
+    *,
+    destination: str,
+    days: int,
+    budget: float,
+    currency: str,
+    travelers: int,
+    hotel_check_in_date: str = "",
+    hotel_check_out_date: str = "",
+    api_key: str,
+) -> dict:
+    """Uses Gemini to generate hotel/accommodation options with pre-filled search/booking links."""
+    date_str = ""
+    if hotel_check_in_date and hotel_check_out_date:
+        date_str = f"- Check-in Date: {hotel_check_in_date}\n- Check-out Date: {hotel_check_out_date}"
+
+    prompt = f"""Analyze accommodation options for a trip to "{destination}".
+The travelers want recommended places to stay.
+
+Trip Details:
+- Destination: {destination}
+{date_str}
+- Duration: {days} days
+- Group Size: {travelers} traveler(s)
+- Total Trip Budget: {int(budget)} {currency}
+
+Your task is to act as an agentic hotel finder. Propose 2-4 distinct, realistic hotel/stay options (e.g. Luxury, Boutique, Budget, Resort, Apartment).
+For each option, include:
+- Name of hotel or stay category
+- Provider name (e.g. "Booking.com", "Agoda", "Expedia", "Hotels.com", "Airbnb")
+- Price per night and total estimated stay cost in {currency}
+- Rating (e.g. "4.8 ★")
+- Top 3 amenities
+- Direct search/booking URL for that platform (e.g. https://www.booking.com/searchresults.html?ss={destination})
+
+Return ONLY a JSON object with this exact shape:
+{{
+  "destination_city": "{destination}",
+  "strategies": [
+    {{
+      "rank": 1,
+      "name": "Hotel / Resort Name",
+      "provider_name": "Booking.com",
+      "category": "Boutique / Luxury / Budget",
+      "rating": "4.7 ★",
+      "price_per_night": "{currency} 120",
+      "total_estimated_cost": "{currency} 600",
+      "location": "City Center",
+      "amenities": ["Free WiFi", "Breakfast Included", "Pool"],
+      "description": "Short explanation of why this stay fits the trip.",
+      "booking_url": "https://www.booking.com/"
+    }}
+  ],
+  "general_tips": [
+    "Book at least 2 weeks in advance for best rates."
+  ],
+  "best_areas": "Central District, Beachfront"
+}}
+"""
+    try:
+        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        return _parse_json(text)
+    except Exception as e:
+        logger.error(f"Failed to generate hotel strategies: {e}")
+        return {}
+
+
 async def generate_odyssey(
     *,
     destination: str,
@@ -211,19 +284,14 @@ async def generate_odyssey(
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
+    flight_start_date: str = "",
+    flight_end_date: str = "",
+    include_hotels: bool = False,
+    hotel_check_in_date: str = "",
+    hotel_check_out_date: str = "",
 ) -> tuple[str, list[dict]]:
-    """Generate the plan. Returns (title, items) ready to store on an Itinerary.
-
-    Raises on any failure (no Gemini key handled by the caller, network error,
-    unparseable response, or an empty plan) so the caller can mark the itinerary
-    'failed'.
-    """
+    """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
     prompt = _build_prompt(destination, mood, budget, days, currency, travelers)
-    # thinking_budget=0 disables gemini-2.5-flash's hidden "thinking" tokens, which
-    # otherwise count against maxOutputTokens and were truncating the plan's JSON
-    # mid-output (finishReason MAX_TOKENS) -> _parse_json raised "did not return a
-    # JSON object". The plan is pure structured output and needs no reasoning. Give
-    # it a larger budget than the default so longer multi-day trips fit comfortably.
     text = await _call_gemini(prompt, api_key, max_tokens=8192, thinking_budget=0)
     plan = _parse_json(text)
 
@@ -231,7 +299,7 @@ async def generate_odyssey(
     nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
     title = str(plan.get("title") or "Your Odyssey")
 
-    # Fetch Unsplash cover photo and flight strategies concurrently
+    # Fetch Unsplash cover photo, flight strategies, and hotel strategies concurrently
     final_destination = str(plan.get("destination") or destination)
 
     async def _get_cover():
@@ -254,6 +322,8 @@ async def generate_odyssey(
                     budget=budget,
                     currency=str(plan.get("currency") or currency),
                     travelers=travelers,
+                    flight_start_date=flight_start_date or "",
+                    flight_end_date=flight_end_date or "",
                     api_key=api_key,
                 )
             except Exception as e:
@@ -261,7 +331,27 @@ async def generate_odyssey(
                 return {}
         return {}
 
-    cover_url, flight_strategies = await asyncio.gather(_get_cover(), _get_flights())
+    async def _get_hotels():
+        if include_hotels:
+            try:
+                return await generate_hotel_strategies(
+                    destination=final_destination,
+                    days=g_days,
+                    budget=budget,
+                    currency=str(plan.get("currency") or currency),
+                    travelers=travelers,
+                    hotel_check_in_date=hotel_check_in_date or "",
+                    hotel_check_out_date=hotel_check_out_date or "",
+                    api_key=api_key,
+                )
+            except Exception as e:
+                logger.error(f"Hotel strategy sub-job failed: {e}")
+                return {}
+        return {}
+
+    cover_url, flight_strategies, hotel_strategies = await asyncio.gather(
+        _get_cover(), _get_flights(), _get_hotels()
+    )
 
     meta = build_meta_item(
         destination=final_destination,
@@ -278,6 +368,7 @@ async def generate_odyssey(
         booking_partners=plan.get("booking_partners") or [],
         cover_url=cover_url,
         flight_strategies=flight_strategies,
+        hotel_strategies=hotel_strategies,
     )
 
     day_items: list[dict] = []

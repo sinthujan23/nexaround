@@ -312,30 +312,46 @@ class FlightStrategiesSection extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
-            // Action Button: Search Route
-            if (fs.bookingUrl.isNotEmpty)
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed: () => _launchUrl(context, fs.bookingUrl),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.black),
-                  label: const Text(
-                    'Search Pre-filled Route',
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
+            // Action Button: Direct Booking Link
+            if (fs.bookingUrl.isNotEmpty) ...[
+              Builder(
+                builder: (context) {
+                  String provider = fs.providerName.trim();
+                  if (provider.isEmpty) {
+                    final lowerUrl = fs.bookingUrl.toLowerCase();
+                    if (lowerUrl.contains('expedia')) provider = 'Expedia';
+                    else if (lowerUrl.contains('skyscanner')) provider = 'Skyscanner';
+                    else if (lowerUrl.contains('google')) provider = 'Google Flights';
+                    else if (lowerUrl.contains('kayak')) provider = 'Kayak';
+                    else provider = 'Flight Provider';
+                  }
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _launchUrl(context, fs.bookingUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
+                      label: Text(
+                        'Book Flight on $provider',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
                     ),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    side: const BorderSide(color: Colors.black, width: 1.5),
-                  ),
-                ),
+                  );
+                },
               ),
+            ],
           ],
         ),
       ),

@@ -5,6 +5,7 @@ import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -102,6 +103,7 @@ class OdysseyPlanView extends StatelessWidget {
           const SizedBox(height: 12),
           _buildBookingSection(context),
           FlightStrategiesSection(odyssey: odyssey),
+          HotelStrategiesSection(odyssey: odyssey),
           if (odyssey.dayPlans.isNotEmpty) ...[
             const SizedBox(height: 24),
             const Text(

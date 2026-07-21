@@ -33,6 +33,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
   bool _includeFlights = false;
+  DateTime? _flightStartDate;
+  DateTime? _flightEndDate;
+  bool _includeHotels = false;
+  DateTime? _hotelCheckInDate;
+  DateTime? _hotelCheckOutDate;
   String _departureCity = '';
   String _departureCountry = '';
 
@@ -128,12 +133,29 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     });
   }
 
+  String _formatDate(DateTime? date) {
+    if (date == null) return '';
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  }
+
   // ── Actions ────────────────────────────────────────────────────────────
   void _onPrimaryAction() {
     FocusScope.of(context).unfocus();
     if (_currentStep == 0 && _destinationController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Where do you want to go?')),
+      );
+      return;
+    }
+    if (_currentStep == 0 && _includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select Start Date and End Date for flights.')),
+      );
+      return;
+    }
+    if (_currentStep == 0 && _includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select Check-in Date and Check-out Date for hotels.')),
       );
       return;
     }
@@ -147,6 +169,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   /// Hand the brief to the server and leave — generation continues in the
   /// background and the finished plan shows up in My Odysseys.
   Future<void> _submit() async {
+    if (_includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select Departure Date and Return Date for flights.')),
+      );
+      return;
+    }
+    if (_includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select Check-in Date and Check-out Date for hotels.')),
+      );
+      return;
+    }
+
     setState(() => _isSubmitting = true);
     try {
       await _repository.requestGeneration(
@@ -159,6 +194,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeFlights: _includeFlights,
         departureCity: _departureCity,
         departureCountry: _departureCountry,
+        flightStartDate: _formatDate(_flightStartDate),
+        flightEndDate: _formatDate(_flightEndDate),
+        includeHotels: _includeHotels,
+        hotelCheckInDate: _formatDate(_hotelCheckInDate),
+        hotelCheckOutDate: _formatDate(_hotelCheckOutDate),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -445,37 +485,239 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(color: Colors.black12),
             ),
-            child: SwitchListTile(
-              activeColor: Colors.black,
-              activeTrackColor: Colors.black12,
-              inactiveThumbColor: Colors.grey,
-              inactiveTrackColor: Colors.black.withOpacity(0.05),
-              title: const Row(
+            child: Column(
+              children: [
+                SwitchListTile(
+                  activeColor: Colors.black,
+                  activeTrackColor: Colors.black12,
+                  inactiveThumbColor: Colors.grey,
+                  inactiveTrackColor: Colors.black.withOpacity(0.05),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
+                      SizedBox(width: 12),
+                      Text(
+                        'Include Flight Options',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(left: 36, top: 4),
+                    child: Text(
+                      'AI will suggest cheapest local/international flight strategies & pre-filled booking searches.',
+                      style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
+                    ),
+                  ),
+                  value: _includeFlights,
+                  onChanged: (bool val) {
+                    setState(() {
+                      _includeFlights = val;
+                    });
+                  },
+                ),
+                if (_includeFlights) ...[
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'Start Date',
+                            selectedDate: _flightStartDate,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _flightStartDate ?? DateTime.now().add(const Duration(days: 1)),
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _flightStartDate = picked;
+                                  if (_flightEndDate != null && _flightEndDate!.isBefore(_flightStartDate!)) {
+                                    _flightEndDate = _flightStartDate!.add(Duration(days: _days));
+                                  }
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'End Date',
+                            selectedDate: _flightEndDate,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _flightEndDate ?? (_flightStartDate ?? DateTime.now()).add(Duration(days: _days)),
+                                firstDate: _flightStartDate ?? DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _flightEndDate = picked;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ).animate().fade(delay: 400.ms),
+          const SizedBox(height: 24),
+          const Text(
+            'HOTEL RECOMMENDATIONS',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: Colors.black12),
+            ),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  activeColor: Colors.black,
+                  activeTrackColor: Colors.black12,
+                  inactiveThumbColor: Colors.grey,
+                  inactiveTrackColor: Colors.black.withOpacity(0.05),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.hotel_rounded, color: Colors.black87),
+                      SizedBox(width: 12),
+                      Text(
+                        'Include Hotel Options',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  subtitle: const Padding(
+                    padding: EdgeInsets.only(left: 36, top: 4),
+                    child: Text(
+                      'AI will recommend stays & luxury/budget hotel search deals with direct booking links.',
+                      style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
+                    ),
+                  ),
+                  value: _includeHotels,
+                  onChanged: (bool val) {
+                    setState(() {
+                      _includeHotels = val;
+                    });
+                  },
+                ),
+                if (_includeHotels) ...[
+                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'Check-in Date',
+                            selectedDate: _hotelCheckInDate,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _hotelCheckInDate ?? DateTime.now().add(const Duration(days: 1)),
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _hotelCheckInDate = picked;
+                                  if (_hotelCheckOutDate != null && _hotelCheckOutDate!.isBefore(_hotelCheckInDate!)) {
+                                    _hotelCheckOutDate = _hotelCheckInDate!.add(Duration(days: _days));
+                                  }
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'Check-out Date',
+                            selectedDate: _hotelCheckOutDate,
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _hotelCheckOutDate ?? (_hotelCheckInDate ?? DateTime.now()).add(Duration(days: _days)),
+                                firstDate: _hotelCheckInDate ?? DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _hotelCheckOutDate = picked;
+                                });
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ).animate().fade(delay: 450.ms),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatePickerTile({
+    required String label,
+    required DateTime? selectedDate,
+    required VoidCallback onTap,
+  }) {
+    final dateStr = selectedDate != null
+        ? '${selectedDate.day}/${selectedDate.month}/${selectedDate.year}'
+        : 'Select Date';
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: selectedDate != null ? Colors.black : Colors.black12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_month_rounded, size: 18, color: selectedDate != null ? Colors.black : Colors.black45),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
-                  SizedBox(width: 12),
                   Text(
-                    'Include Flight Options',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    label,
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    dateStr,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: selectedDate != null ? FontWeight.bold : FontWeight.normal,
+                      color: selectedDate != null ? Colors.black : Colors.black45,
+                    ),
                   ),
                 ],
               ),
-              subtitle: const Padding(
-                padding: EdgeInsets.only(left: 36, top: 4),
-                child: Text(
-                  'AI will suggest cheapest local/international flight strategies & pre-filled booking searches.',
-                  style: TextStyle(fontSize: 11, color: Colors.black54, height: 1.3),
-                ),
-              ),
-              value: _includeFlights,
-              onChanged: (bool val) {
-                setState(() {
-                  _includeFlights = val;
-                });
-              },
             ),
-          ).animate().fade(delay: 400.ms),
-        ],
+          ],
+        ),
       ),
     );
   }

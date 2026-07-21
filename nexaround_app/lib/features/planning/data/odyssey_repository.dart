@@ -33,6 +33,11 @@ class OdysseyRepository {
     bool includeFlights = false,
     String departureCity = '',
     String departureCountry = '',
+    String? flightStartDate,
+    String? flightEndDate,
+    bool includeHotels = false,
+    String? hotelCheckInDate,
+    String? hotelCheckOutDate,
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -46,6 +51,11 @@ class OdysseyRepository {
         'include_flights': includeFlights,
         'departure_city': departureCity,
         'departure_country': departureCountry,
+        'flight_start_date': flightStartDate,
+        'flight_end_date': flightEndDate,
+        'include_hotels': includeHotels,
+        'hotel_check_in_date': hotelCheckInDate,
+        'hotel_check_out_date': hotelCheckOutDate,
       },
     );
     revision.value++;
