@@ -1135,10 +1135,10 @@ Always provide a meaningful discovery opportunity.
     }
 
     models = [
-        "gemini-2.5-flash",
-        "gemini-2.5-flash-lite",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
         "gemini-flash-latest",
-        "gemini-2.5-pro",
+        "gemini-1.5-pro",
     ]
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     

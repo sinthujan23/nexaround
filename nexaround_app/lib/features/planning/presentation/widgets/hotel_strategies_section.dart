@@ -363,22 +363,41 @@ class HotelStrategiesSection extends StatelessWidget {
   }
 
   Future<void> _launchUrl(BuildContext context, String urlString) async {
-    final uri = Uri.parse(urlString);
-    try {
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched) {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
+    // Ensure url has a proper scheme
+    var sanitized = urlString.trim();
+    if (sanitized.isNotEmpty &&
+        !sanitized.startsWith('http://') &&
+        !sanitized.startsWith('https://')) {
+      sanitized = 'https://$sanitized';
+    }
+    final uri = Uri.tryParse(sanitized);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Invalid booking link: $urlString')),
+        );
       }
-    } catch (e) {
-      try {
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
-      } catch (_) {
-        if (context.mounted) {
+      return;
+    }
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        // Fallback to platform default
+        final launched = await launchUrl(uri, mode: LaunchMode.platformDefault);
+        if (!launched && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not open link: $urlString')),
+            SnackBar(content: Text('Could not open booking link: $sanitized')),
           );
         }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open link: $sanitized')),
+        );
       }
     }
   }
 }
+

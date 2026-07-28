@@ -1,6 +1,45 @@
 /// Utility to convert provider names and booking search parameters
 /// into deep pre-filled search URLs for external booking sites.
 class BookingUrlHelper {
+  /// Ensures [url] starts with http:// or https://. If missing, prepends https://.
+  static String _sanitizeUrl(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return trimmed;
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    // Strip leading "//" if present (protocol-relative)
+    if (trimmed.startsWith('//')) {
+      return 'https:$trimmed';
+    }
+    return 'https://$trimmed';
+  }
+
+  /// Try to deduce the provider from the raw URL domain when providerName is
+  /// empty or generic (e.g. "Hotel Provider", "Flight Provider").
+  static String _deduceProvider(String providerName, String rawUrl) {
+    final name = providerName.trim().toLowerCase();
+    // If we already know the provider, return as-is
+    if (name.isNotEmpty &&
+        name != 'hotel provider' &&
+        name != 'flight provider') {
+      return providerName;
+    }
+    final lowerUrl = rawUrl.toLowerCase();
+    if (lowerUrl.contains('booking.com')) return 'Booking.com';
+    if (lowerUrl.contains('agoda')) return 'Agoda';
+    if (lowerUrl.contains('expedia')) return 'Expedia';
+    if (lowerUrl.contains('hotels.com')) return 'Hotels.com';
+    if (lowerUrl.contains('airbnb')) return 'Airbnb';
+    if (lowerUrl.contains('google')) return 'Google';
+    if (lowerUrl.contains('skyscanner')) return 'Skyscanner';
+    if (lowerUrl.contains('kayak')) return 'Kayak';
+    if (lowerUrl.contains('getyourguide')) return 'GetYourGuide';
+    if (lowerUrl.contains('klook')) return 'Klook';
+    if (lowerUrl.contains('viator')) return 'Viator';
+    return providerName; // Return as-is if we can't deduce
+  }
+
   /// Builds a deep search URL for hotel recommendations pre-filled with:
   /// - Hotel name / query & destination
   /// - Check-in Date (YYYY-MM-DD)
@@ -15,18 +54,16 @@ class BookingUrlHelper {
     String checkOutDate = '',
     int travelers = 1,
   }) {
-    // If rawUrl is already a deep URL (has query parameters), use it directly
-    if (rawUrl.contains('?') && (rawUrl.contains('&') || rawUrl.contains('='))) {
-      return rawUrl;
-    }
-
-    final provider = providerName.trim().toLowerCase();
+    final sanitizedRawUrl = _sanitizeUrl(rawUrl);
+    final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
+    final provider = resolvedProvider.trim().toLowerCase();
     final query = hotelName.trim().isNotEmpty
         ? '${hotelName.trim()} ${destination.trim()}'
         : destination.trim();
     final encodedQuery = Uri.encodeComponent(query);
     final encodedDest = Uri.encodeComponent(destination.trim());
 
+    // Always build provider-specific URLs to guarantee destination is pre-filled.
     if (provider.contains('booking')) {
       var url = 'https://www.booking.com/searchresults.html?ss=$encodedQuery';
       if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
@@ -59,9 +96,11 @@ class BookingUrlHelper {
       return url;
     }
 
-    return rawUrl.isNotEmpty
-        ? rawUrl
-        : 'https://www.google.com/travel/hotels?q=$encodedQuery';
+    // Unknown provider: use raw URL if available, else Google Hotels search
+    if (sanitizedRawUrl.isNotEmpty && destination.trim().isEmpty) {
+      return sanitizedRawUrl;
+    }
+    return 'https://www.google.com/travel/hotels?q=$encodedQuery';
   }
 
   /// Builds a deep search URL for flight recommendations pre-filled with:
@@ -79,17 +118,15 @@ class BookingUrlHelper {
     String endDate = '',
     int travelers = 1,
   }) {
-    // If rawUrl is already a deep URL (has query parameters), use it directly
-    if (rawUrl.contains('?') && (rawUrl.contains('&') || rawUrl.contains('='))) {
-      return rawUrl;
-    }
-
-    final provider = providerName.trim().toLowerCase();
+    final sanitizedRawUrl = _sanitizeUrl(rawUrl);
+    final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
+    final provider = resolvedProvider.trim().toLowerCase();
     final origin = departureCity.trim().isNotEmpty ? departureCity.trim() : '';
     final dest = destination.trim();
     final encodedDest = Uri.encodeComponent(dest);
     final encodedOrigin = Uri.encodeComponent(origin);
 
+    // Always build provider-specific URLs to guarantee destination is pre-filled.
     if (provider.contains('google')) {
       var dateQ = origin.isNotEmpty
           ? 'flights from $origin to $dest'
@@ -112,11 +149,45 @@ class BookingUrlHelper {
       if (origin.isNotEmpty && startDate.isNotEmpty && endDate.isNotEmpty) {
         return 'https://www.kayak.com/flights/$encodedOrigin-$encodedDest/$startDate/$endDate/${travelers}adults';
       }
-      return 'https://www.kayak.com/flights/$encodedDest';
+      return 'https://www.kayak.com/flights?a=nexaround&destination=$encodedDest';
     }
 
-    return rawUrl.isNotEmpty
-        ? rawUrl
-        : 'https://www.google.com/travel/flights?q=${Uri.encodeComponent("flights to $dest")}';
+    // Unknown provider: use Google Flights as fallback with destination
+    if (dest.isNotEmpty) {
+      var dateQ = origin.isNotEmpty
+          ? 'flights from $origin to $dest'
+          : 'flights to $dest';
+      return 'https://www.google.com/travel/flights?q=${Uri.encodeComponent(dateQ)}';
+    }
+
+    return sanitizedRawUrl.isNotEmpty
+        ? sanitizedRawUrl
+        : 'https://www.google.com/travel/flights';
+  }
+
+  /// Builds a deep search URL for tour/activity providers pre-filled with destination.
+  static String buildToursUrl({
+    required String rawUrl,
+    required String providerName,
+    required String destination,
+  }) {
+    final sanitizedRawUrl = _sanitizeUrl(rawUrl);
+    final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
+    final provider = resolvedProvider.trim().toLowerCase();
+    final dest = destination.trim();
+    final encodedDest = Uri.encodeComponent(dest);
+
+    if (provider.contains('getyourguide')) {
+      return 'https://www.getyourguide.com/s?q=$encodedDest';
+    } else if (provider.contains('klook')) {
+      return 'https://www.klook.com/search?query=$encodedDest';
+    } else if (provider.contains('viator')) {
+      return 'https://www.viator.com/search/$encodedDest';
+    }
+
+    // Unknown tour provider: use raw URL if available
+    return sanitizedRawUrl.isNotEmpty
+        ? sanitizedRawUrl
+        : 'https://www.google.com/search?q=${Uri.encodeComponent("tours activities $dest")}';
   }
 }

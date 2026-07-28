@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
+import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
@@ -491,6 +492,31 @@ class OdysseyPlanView extends StatelessWidget {
             subtitle = 'Get rides or check transit in $dest via ${bp.name}';
           }
 
+          // Build a destination-aware URL through the helper instead of
+          // using the raw AI URL which often has empty search fields.
+          String resolvedUrl = bp.url;
+          if (type == 'hotels') {
+            resolvedUrl = BookingUrlHelper.buildHotelUrl(
+              rawUrl: bp.url,
+              providerName: bp.name,
+              hotelName: '',
+              destination: dest,
+            );
+          } else if (type == 'transit') {
+            resolvedUrl = BookingUrlHelper.buildFlightUrl(
+              rawUrl: bp.url,
+              providerName: bp.name,
+              strategyTitle: '',
+              destination: dest,
+            );
+          } else if (type == 'tours') {
+            resolvedUrl = BookingUrlHelper.buildToursUrl(
+              rawUrl: bp.url,
+              providerName: bp.name,
+              destination: dest,
+            );
+          }
+
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: _bookingCard(
@@ -499,7 +525,7 @@ class OdysseyPlanView extends StatelessWidget {
               subtitle: subtitle,
               icon: icon,
               color: color,
-              url: bp.url,
+              url: resolvedUrl,
               isAiGenerated: true,
             ),
           );
@@ -558,7 +584,7 @@ class OdysseyPlanView extends StatelessWidget {
         border: Border.all(color: Colors.black12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.02),
+            color: Colors.black.withValues(alpha: 0.02),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -596,7 +622,7 @@ class OdysseyPlanView extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(icon, color: color, size: 24),
@@ -637,16 +663,12 @@ class OdysseyPlanView extends StatelessWidget {
                     ),
                   )
                 else if (isAiGenerated && onSwapPartner != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {}, // absorb click
-                    child: IconButton(
-                      icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
-                      onPressed: () => onSwapPartner!(title),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      visualDensity: VisualDensity.compact,
-                    ),
+                  IconButton(
+                    icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
+                    onPressed: () => onSwapPartner!(title),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    visualDensity: VisualDensity.compact,
                   )
                 else
                   const Icon(
