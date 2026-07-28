@@ -29,7 +29,15 @@ def _build_deep_booking_url(
     prov_lower = (provider or "").lower()
     dest = (destination or "").strip()
     name = (item_name or "").strip()
-    query = f"{name} {dest}".strip() if name else dest
+
+    # Avoid duplicating destination if item_name already contains destination
+    if name and dest and dest.lower() in name.lower():
+        query = name
+    elif name and dest:
+        query = f"{name}, {dest}"
+    else:
+        query = name or dest
+
     encoded_query = urllib.parse.quote_plus(query)
     encoded_dest = urllib.parse.quote_plus(dest)
 
@@ -39,17 +47,12 @@ def _build_deep_booking_url(
             origin = ""
         encoded_origin = urllib.parse.quote_plus(origin) if origin else ""
 
-        if "google" in prov_lower:
-            date_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
-            if start_date and end_date:
-                date_q += f" on {start_date} return {end_date}"
-            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(date_q)}"
-        elif "skyscanner" in prov_lower:
-            if origin and start_date and end_date:
-                return f"https://www.skyscanner.com/transport/flights-from/{encoded_origin}-to-{encoded_dest}/?outbounddate={start_date}&inbounddate={end_date}&adultsv2={travelers}"
-            elif origin:
-                return f"https://www.skyscanner.com/transport/flights-from/{encoded_origin}-to-{encoded_dest}/"
-            return f"https://www.skyscanner.com/transport/flights/to-{encoded_dest}/"
+        if "skyscanner" in prov_lower:
+            # Skyscanner clean query URL
+            q_str = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+            if start_date:
+                q_str += f" on {start_date}"
+            return f"https://www.skyscanner.com/transport/flights/search?q={urllib.parse.quote_plus(q_str)}"
         elif "expedia" in prov_lower:
             if origin and start_date and end_date:
                 return f"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from:{encoded_origin},to:{encoded_dest},departure:{start_date}TANYT&leg2=from:{encoded_dest},to:{encoded_origin},departure:{end_date}TANYT&passengers=adults:{travelers}"
@@ -58,8 +61,10 @@ def _build_deep_booking_url(
             if origin and start_date and end_date:
                 return f"https://www.kayak.com/flights/{encoded_origin}-{encoded_dest}/{start_date}/{end_date}/{travelers}adults"
             return f"https://www.kayak.com/flights/{encoded_dest}"
-        else:
+        else:  # Google Flights or default
             search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+            if start_date and end_date:
+                search_q += f" on {start_date} return {end_date}"
             return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
         if "booking" in prov_lower:
@@ -68,7 +73,7 @@ def _build_deep_booking_url(
                 url += f"&checkin={start_date}"
             if end_date:
                 url += f"&checkout={end_date}"
-            url += f"&group_adults={travelers}"
+            url += f"&group_adults={max(travelers, 1)}"
             return url
         elif "agoda" in prov_lower:
             url = f"https://www.agoda.com/search?text={encoded_query}"
@@ -76,7 +81,7 @@ def _build_deep_booking_url(
                 url += f"&checkIn={start_date}"
             if end_date:
                 url += f"&checkOut={end_date}"
-            url += f"&adults={travelers}"
+            url += f"&adults={max(travelers, 1)}"
             return url
         elif "expedia" in prov_lower:
             url = f"https://www.expedia.com/Hotel-Search?destination={encoded_query}"
@@ -84,7 +89,7 @@ def _build_deep_booking_url(
                 url += f"&startDate={start_date}"
             if end_date:
                 url += f"&endDate={end_date}"
-            url += f"&adults={travelers}"
+            url += f"&adults={max(travelers, 1)}"
             return url
         elif "hotels" in prov_lower:
             url = f"https://www.hotels.com/Hotel-Search?destination={encoded_query}"
@@ -92,7 +97,7 @@ def _build_deep_booking_url(
                 url += f"&startDate={start_date}"
             if end_date:
                 url += f"&endDate={end_date}"
-            url += f"&adults={travelers}"
+            url += f"&adults={max(travelers, 1)}"
             return url
         elif "airbnb" in prov_lower:
             url = f"https://www.airbnb.com/s/{encoded_dest}/homes?query={encoded_query}"
@@ -100,7 +105,7 @@ def _build_deep_booking_url(
                 url += f"&checkin={start_date}"
             if end_date:
                 url += f"&checkout={end_date}"
-            url += f"&adults={travelers}"
+            url += f"&adults={max(travelers, 1)}"
             return url
         else:
             return f"https://www.google.com/travel/hotels?q={encoded_query}"

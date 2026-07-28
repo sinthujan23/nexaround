@@ -121,14 +121,17 @@ class RapidAPIService:
                     price_per_night_str = f"{curr_symbol} {int(per_night)}" if per_night > 0 else f"{curr_symbol} 100"
                     total_cost_str = f"{curr_symbol} {int(price_num)}" if price_num > 0 else f"{curr_symbol} {int(100 * days)}"
 
-                    # Build direct booking link
-                    enc_name = urllib.parse.quote_plus(f"{hotel_name} {destination}")
-                    booking_url = f"https://www.booking.com/searchresults.html?ss={enc_name}"
-                    if check_in_date:
-                        booking_url += f"&checkin={check_in_date}"
-                    if check_out_date:
-                        booking_url += f"&checkout={check_out_date}"
-                    booking_url += f"&group_adults={travelers}"
+                    # Build direct booking link using verified URL builder
+                    from app.services.odyssey_ai_service import _build_deep_booking_url
+                    booking_url = _build_deep_booking_url(
+                        provider="Booking.com",
+                        item_name=hotel_name,
+                        destination=destination,
+                        start_date=check_in_date,
+                        end_date=check_out_date,
+                        travelers=travelers,
+                        is_flight=False,
+                    )
 
                     address = hotel.get("address") or hotel.get("city_trans") or destination
                     unit_config = hotel.get("unit_configuration_label") or ""
@@ -228,11 +231,17 @@ class RapidAPIService:
                                 if duration_mins:
                                     duration_str = f"{duration_mins // 60}h {duration_mins % 60}m"
 
-                            enc_origin = urllib.parse.quote_plus(origin)
-                            enc_dest = urllib.parse.quote_plus(destination)
-                            booking_url = f"https://www.skyscanner.com/transport/flights-from/{enc_origin}-to-{enc_dest}/"
-                            if flight_start_date and flight_end_date:
-                                booking_url += f"?outbounddate={flight_start_date}&inbounddate={flight_end_date}&adultsv2={travelers}"
+                            from app.services.odyssey_ai_service import _build_deep_booking_url
+                            booking_url = _build_deep_booking_url(
+                                provider="Skyscanner",
+                                item_name=f"Flights to {destination}",
+                                destination=destination,
+                                start_date=flight_start_date,
+                                end_date=flight_end_date,
+                                travelers=travelers,
+                                is_flight=True,
+                                origin_city=origin,
+                            )
 
                             strategies.append({
                                 "rank": idx,
@@ -252,10 +261,27 @@ class RapidAPIService:
                             })
 
                 if not strategies:
-                    enc_origin = urllib.parse.quote_plus(origin)
-                    enc_dest = urllib.parse.quote_plus(destination)
-                    g_url = f"https://www.google.com/travel/flights?q=flights+from+{enc_origin}+to+{enc_dest}"
-                    exp_url = f"https://www.expedia.com/Flights-Search?destination={enc_dest}"
+                    from app.services.odyssey_ai_service import _build_deep_booking_url
+                    g_url = _build_deep_booking_url(
+                        provider="Google Flights",
+                        item_name=f"Flights to {destination}",
+                        destination=destination,
+                        start_date=flight_start_date,
+                        end_date=flight_end_date,
+                        travelers=travelers,
+                        is_flight=True,
+                        origin_city=origin,
+                    )
+                    exp_url = _build_deep_booking_url(
+                        provider="Expedia",
+                        item_name=f"Flights to {destination}",
+                        destination=destination,
+                        start_date=flight_start_date,
+                        end_date=flight_end_date,
+                        travelers=travelers,
+                        is_flight=True,
+                        origin_city=origin,
+                    )
 
                     strategies = [
                         {
