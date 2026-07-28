@@ -70,6 +70,7 @@ class SettingsResponse(BaseModel):
     geoapify_api_key: str
     default_geofence_radius: str
     unsplash_api_key: str
+    rapidapi_key: str = ""
 
 class SettingsUpdateRequest(BaseModel):
     platform_name: Optional[str] = None
@@ -80,6 +81,7 @@ class SettingsUpdateRequest(BaseModel):
     geoapify_api_key: Optional[str] = None
     default_geofence_radius: Optional[str] = None
     unsplash_api_key: Optional[str] = None
+    rapidapi_key: Optional[str] = None
 
 
 # --- Dependency to protect admin routes ---
@@ -583,7 +585,8 @@ async def get_admin_settings(
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
         geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
-        unsplash_api_key=await service.get_setting("unsplash_api_key", "")
+        unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
+        rapidapi_key=await service.get_setting("rapidapi_key", ""),
     )
 
 
@@ -611,6 +614,8 @@ async def update_admin_settings(
         await service.set_setting("default_geofence_radius", data.default_geofence_radius, "Default Geofence Radius in meters")
     if data.unsplash_api_key is not None:
         await service.set_setting("unsplash_api_key", data.unsplash_api_key, "Unsplash API Access Key")
+    if data.rapidapi_key is not None:
+        await service.set_setting("rapidapi_key", data.rapidapi_key, "RapidAPI Key for Live Flight & Hotel Search")
 
     return SettingsResponse(
         platform_name=await service.get_setting("platform_name", "NexARound"),
@@ -620,5 +625,6 @@ async def update_admin_settings(
         gemini_api_key=await service.get_setting("gemini_api_key", ""),
         geoapify_api_key=await service.get_setting("geoapify_api_key", ""),
         default_geofence_radius=await service.get_setting("default_geofence_radius", "100"),
-        unsplash_api_key=await service.get_setting("unsplash_api_key", "")
+        unsplash_api_key=await service.get_setting("unsplash_api_key", ""),
+        rapidapi_key=await service.get_setting("rapidapi_key", ""),
     )

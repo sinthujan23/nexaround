@@ -48,12 +48,14 @@ export default function Settings() {
   const [geoapifyApiKey, setGeoapifyApiKey] = useState('');
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('');
   const [unsplashApiKey, setUnsplashApiKey] = useState('');
+  const [rapidapiKey, setRapidapiKey] = useState('');
 
   const [showGoogleKey, setShowGoogleKey] = useState(false);
   const [showMapboxToken, setShowMapboxToken] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showGeoapifyKey, setShowGeoapifyKey] = useState(false);
   const [showUnsplashKey, setShowUnsplashKey] = useState(false);
+  const [showRapidapiKey, setShowRapidapiKey] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -77,6 +79,7 @@ export default function Settings() {
       setGeoapifyApiKey(res.geoapify_api_key || '');
       setDefaultGeofenceRadius(res.default_geofence_radius || '100');
       setUnsplashApiKey(res.unsplash_api_key || '');
+      setRapidapiKey(res.rapidapi_key || '');
     } catch (err) {
       setError(err.message || 'Failed to load system settings.');
     } finally {
@@ -99,6 +102,7 @@ export default function Settings() {
         geoapify_api_key: geoapifyApiKey,
         default_geofence_radius: String(defaultGeofenceRadius),
         unsplash_api_key: unsplashApiKey,
+        rapidapi_key: rapidapiKey,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -264,6 +268,41 @@ export default function Settings() {
                 }}
               >
                 {showGeminiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+              </button>
+            </div>
+          </div>
+          <div className="form-group" style={{ marginBottom: '16px' }}>
+            <label className="form-label">RapidAPI Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Live Flight & Hotel Search</span></label>
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                type="text"
+                className="form-input"
+                value={rapidapiKey}
+                onChange={(e) => setRapidapiKey(e.target.value)}
+                placeholder="X-RapidAPI-Key (Booking.com & Skyscanner)"
+                autoComplete="off"
+                style={{
+                  paddingRight: '46px',
+                  WebkitTextSecurity: showRapidapiKey ? 'none' : 'disc',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowRapidapiKey(!showRapidapiKey)}
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '4px',
+                }}
+              >
+                {showRapidapiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
               </button>
             </div>
           </div>
