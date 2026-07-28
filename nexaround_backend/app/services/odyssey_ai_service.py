@@ -11,6 +11,7 @@ import json
 import logging
 import urllib.parse
 import httpx
+from app.services.rapidapi_service import RapidAPIService
 
 logger = logging.getLogger(__name__)
 
@@ -208,10 +209,29 @@ async def generate_flight_strategies(
     flight_start_date: str = "",
     flight_end_date: str = "",
     api_key: str,
+    rapidapi_key: str = "",
 ) -> dict:
-    """Uses Gemini to generate flight routing strategies, typical budget/local airlines,
-    estimated price ranges, and pre-filled search/booking links.
-    """
+    """Uses RapidAPI (with Gemini fallback) to generate flight routing strategies."""
+    if rapidapi_key:
+        try:
+            logger.info("Attempting live flight search via RapidAPI...")
+            service = RapidAPIService(rapidapi_key)
+            result = await service.search_flights(
+                departure_city=departure_city,
+                departure_country=departure_country,
+                destination=destination,
+                days=days,
+                budget=budget,
+                currency=currency,
+                travelers=travelers,
+                flight_start_date=flight_start_date,
+                flight_end_date=flight_end_date,
+            )
+            if result and result.get("strategies"):
+                return result
+        except Exception as e:
+            logger.warning(f"RapidAPI flight search failed, falling back to Gemini: {e}")
+
     if not departure_city:
         departure_city = "Nearest Airport"
 
@@ -320,8 +340,26 @@ async def generate_hotel_strategies(
     hotel_check_in_date: str = "",
     hotel_check_out_date: str = "",
     api_key: str,
+    rapidapi_key: str = "",
 ) -> dict:
-    """Uses Gemini to generate hotel/accommodation options with pre-filled search/booking links."""
+    """Uses RapidAPI (with Gemini fallback) to generate hotel/accommodation options."""
+    if rapidapi_key:
+        try:
+            logger.info("Attempting live hotel search via RapidAPI...")
+            service = RapidAPIService(rapidapi_key)
+            result = await service.search_hotels(
+                destination=destination,
+                days=days,
+                budget=budget,
+                currency=currency,
+                travelers=travelers,
+                check_in_date=hotel_check_in_date,
+                check_out_date=hotel_check_out_date,
+            )
+            if result and result.get("strategies"):
+                return result
+        except Exception as e:
+            logger.warning(f"RapidAPI hotel search failed, falling back to Gemini: {e}")
     date_str = ""
     if hotel_check_in_date and hotel_check_out_date:
         date_str = f"- Check-in Date: {hotel_check_in_date}\n- Check-out Date: {hotel_check_out_date}"
@@ -403,6 +441,7 @@ async def generate_odyssey(
     travelers: int = 1,
     api_key: str,
     unsplash_api_key: str = "",
+    rapidapi_key: str = "",
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
@@ -447,6 +486,7 @@ async def generate_odyssey(
                     flight_start_date=flight_start_date or "",
                     flight_end_date=flight_end_date or "",
                     api_key=api_key,
+                    rapidapi_key=rapidapi_key,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
@@ -465,6 +505,7 @@ async def generate_odyssey(
                     hotel_check_in_date=hotel_check_in_date or "",
                     hotel_check_out_date=hotel_check_out_date or "",
                     api_key=api_key,
+                    rapidapi_key=rapidapi_key,
                 )
             except Exception as e:
                 logger.error(f"Hotel strategy sub-job failed: {e}")

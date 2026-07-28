@@ -114,6 +114,7 @@ async def _run_odyssey_generation(
             return
 
         unsplash_api_key = await SettingsService(db).get_setting("unsplash_api_key")
+        rapidapi_key = await SettingsService(db).get_setting("rapidapi_key")
 
         try:
             title, items = await odyssey_ai_service.generate_odyssey(
@@ -125,6 +126,7 @@ async def _run_odyssey_generation(
                 travelers=travelers,
                 api_key=api_key,
                 unsplash_api_key=unsplash_api_key,
+                rapidapi_key=rapidapi_key or "",
                 include_flights=include_flights,
                 departure_city=departure_city,
                 departure_country=departure_country,
