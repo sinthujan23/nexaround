@@ -10,7 +10,11 @@ import {
   Globe, 
   Zap,
   Menu,
-  X
+  X,
+  Compass,
+  Hotel,
+  Plane,
+  Library
 } from 'lucide-react';
 
 
@@ -300,6 +304,39 @@ export default function App() {
               <h3 className="feature-title">Quick Integrations</h3>
               <p className="feature-desc">
                 Direct actions from landmark cards: navigate via internal maps, check room availability on Booking.com, or summon an Uber with a single click.
+              </p>
+            </div>
+
+            <div className="glass-card">
+              <div className="feature-icon-wrapper bg-accent-gradient">
+                <Compass size={24} color="#fff" />
+              </div>
+              <h3 className="feature-title">Odyssey AI Travel Planner</h3>
+              <p className="feature-desc">
+                Create complete multi-day travel blueprints. Tweak and swap activities in real-time, receive background alerts when plans generate, and track visits with interactive checklists.
+              </p>
+            </div>
+
+            <div className="glass-card">
+              <div className="feature-icon-wrapper bg-secondary-gradient">
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <Plane size={18} color="#fff" />
+                  <Hotel size={18} color="#fff" />
+                </div>
+              </div>
+              <h3 className="feature-title">Hotel & Flight Strategies</h3>
+              <p className="feature-desc">
+                Compare routes and lodging setups optimized directly by AI. Coordinates seamless deep links to partner affiliate systems like Booking.com.
+              </p>
+            </div>
+
+            <div className="glass-card">
+              <div className="feature-icon-wrapper bg-primary-gradient">
+                <Library size={24} color="#fff" />
+              </div>
+              <h3 className="feature-title">Interactive Museum Guides</h3>
+              <p className="feature-desc">
+                Step-by-step custom walk-throughs of museum masterpieces (e.g. AMNH, Acropolis Museum) with offline coordinate seeding and detail tracking.
               </p>
             </div>
           </div>

@@ -38,7 +38,7 @@ async def get_nearby_attractions(
     radius: float = Query(1000.0, description="Radius in meters"),
     category_id: Optional[uuid.UUID] = None,
     limit: int = Query(50, ge=1, le=100),
-    sort: str = Query("proximity", regex="^(proximity|away)$"),
+    sort: str = Query("proximity", pattern="^(proximity|away)$"),
     db: AsyncSession = Depends(get_db)
 ):
     """Get attractions near specific coordinates."""
