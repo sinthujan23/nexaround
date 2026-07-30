@@ -152,6 +152,8 @@ def build_meta_item(
     cover_url: str = "",
     flight_strategies: dict = None,
     hotel_strategies: dict = None,
+    start_date: str = "",
+    end_date: str = "",
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -172,6 +174,8 @@ def build_meta_item(
         "cover_url": cover_url,
         "flight_strategies": flight_strategies or {},
         "hotel_strategies": hotel_strategies or {},
+        "start_date": start_date,
+        "end_date": end_date,
     }
 
 
@@ -455,6 +459,8 @@ async def generate_odyssey(
     include_hotels: bool = False,
     hotel_check_in_date: str = "",
     hotel_check_out_date: str = "",
+    start_date: str = "",
+    end_date: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
     prompt = _build_prompt(destination, mood, budget, days, currency, travelers)
@@ -521,6 +527,9 @@ async def generate_odyssey(
         _get_cover(), _get_flights(), _get_hotels()
     )
 
+    final_start_date = start_date or flight_start_date or hotel_check_in_date or ""
+    final_end_date = end_date or flight_end_date or hotel_check_out_date or ""
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
@@ -537,6 +546,8 @@ async def generate_odyssey(
         cover_url=cover_url,
         flight_strategies=flight_strategies,
         hotel_strategies=hotel_strategies,
+        start_date=final_start_date,
+        end_date=final_end_date,
     )
 
     day_items: list[dict] = []

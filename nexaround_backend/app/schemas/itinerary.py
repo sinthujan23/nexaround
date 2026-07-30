@@ -47,6 +47,8 @@ class OdysseyGenerateRequest(BaseModel):
     include_hotels: bool = False
     hotel_check_in_date: Optional[str] = None
     hotel_check_out_date: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 class OdysseySwapRequest(BaseModel):
     """Request body for swapping a single activity in a saved Odyssey for an

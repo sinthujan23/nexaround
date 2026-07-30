@@ -38,6 +38,8 @@ class OdysseyRepository {
     bool includeHotels = false,
     String? hotelCheckInDate,
     String? hotelCheckOutDate,
+    String? startDate,
+    String? endDate,
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -56,6 +58,8 @@ class OdysseyRepository {
         'include_hotels': includeHotels,
         'hotel_check_in_date': hotelCheckInDate,
         'hotel_check_out_date': hotelCheckOutDate,
+        'start_date': startDate,
+        'end_date': endDate,
       },
     );
     revision.value++;

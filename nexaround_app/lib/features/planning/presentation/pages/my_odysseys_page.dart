@@ -807,7 +807,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       children: [
                         _pillChip(
                           Icons.calendar_today_rounded,
-                          '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
+                          odyssey.formattedDateRange.isNotEmpty
+                              ? '${odyssey.formattedDateRange} (${odyssey.days}d)'
+                              : '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
                         ),
                         const SizedBox(width: 6),
                         _BudgetPill(

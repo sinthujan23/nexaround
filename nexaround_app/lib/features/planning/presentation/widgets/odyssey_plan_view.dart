@@ -79,6 +79,8 @@ class OdysseyPlanView extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 24),
+          if (odyssey.formattedDateRange.isNotEmpty)
+            _infoCard('Planned Dates', odyssey.formattedDateRange, Icons.calendar_month_rounded),
           _infoCard(
             'Duration',
             '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}'

@@ -259,9 +259,11 @@ class _HistoryPageState extends State<HistoryPage> {
                   ConvertedCurrencyText(
                     amount: o.budget,
                     originalCurrency: o.currency,
-                    prefix: o.destination.isNotEmpty
-                        ? '${o.destination} · ${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '
-                        : '${o.days} ${o.days == 1 ? 'Day' : 'Days'} · ',
+                    prefix: o.formattedDateRange.isNotEmpty
+                        ? '${o.destination.isNotEmpty ? "${o.destination} · " : ""}${o.formattedDateRange} · '
+                        : (o.destination.isNotEmpty
+                            ? '${o.destination} · ${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '
+                            : '${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '),
                     style: const TextStyle(fontSize: 12.5, color: Colors.black54),
                   ),
                 ],

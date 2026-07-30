@@ -32,6 +32,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   int _travelers = 1;
   String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
+  DateTime? _startDate;
+  DateTime? _endDate;
   bool _includeFlights = false;
   DateTime? _flightStartDate;
   DateTime? _flightEndDate;
@@ -188,6 +190,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeHotels: _includeHotels,
         hotelCheckInDate: _formatDate(_hotelCheckInDate),
         hotelCheckOutDate: _formatDate(_hotelCheckOutDate),
+        startDate: _formatDate(_startDate ?? _flightStartDate ?? _hotelCheckInDate),
+        endDate: _formatDate(_endDate ?? _flightEndDate ?? _hotelCheckOutDate),
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -458,6 +462,59 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 350.ms),
+          const SizedBox(height: 32),
+          const Text(
+            'TRIP DATES (OPTIONAL)',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+          ),
+          const SizedBox(height: 12),
+          InkWell(
+            onTap: _pickTripDateRange,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _startDate != null ? Colors.black : Colors.black12,
+                  width: _startDate != null ? 1.5 : 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.date_range_rounded, color: Colors.black54),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      _startDate != null && _endDate != null
+                          ? '${_formatDateNice(_startDate!)} – ${_formatDateNice(_endDate!)}'
+                          : (_startDate != null
+                              ? _formatDateNice(_startDate!)
+                              : 'Select trip start & end dates'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: _startDate != null ? FontWeight.w700 : FontWeight.w500,
+                        color: _startDate != null ? Colors.black : Colors.black45,
+                      ),
+                    ),
+                  ),
+                  if (_startDate != null)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _startDate = null;
+                          _endDate = null;
+                        });
+                      },
+                      child: const Icon(Icons.close_rounded, size: 20, color: Colors.black54),
+                    )
+                  else
+                    const Icon(Icons.calendar_month_rounded, size: 20, color: Colors.black54),
+                ],
+              ),
+            ),
+          ).animate().fade(delay: 400.ms),
         ],
       ),
     );
@@ -619,6 +676,52 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickTripDateRange() async {
+    final initialRange = DateTimeRange(
+      start: _startDate ?? DateTime.now().add(const Duration(days: 1)),
+      end: _endDate ?? DateTime.now().add(Duration(days: 1 + _days)),
+    );
+    final picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: initialRange,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.black,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
+        final computedDays = picked.end.difference(picked.start).inDays + 1;
+        if (computedDays > 0) {
+          _days = computedDays;
+          _daysController.text = computedDays.toString();
+        }
+        _flightStartDate ??= picked.start;
+        _flightEndDate ??= picked.end;
+        _hotelCheckInDate ??= picked.start;
+        _hotelCheckOutDate ??= picked.end;
+      });
+    }
+  }
+
+  String _formatDateNice(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
   }
 
   Future<void> _pickFlightDateRange() async {

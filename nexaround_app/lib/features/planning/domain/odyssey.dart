@@ -273,6 +273,8 @@ class Odyssey {
   final String status; // active | draft | completed
   final DateTime? createdAt;
   final String? coverUrl;
+  final String? startDate;
+  final String? endDate;
 
   const Odyssey({
     this.id,
@@ -298,6 +300,8 @@ class Odyssey {
     this.status = 'active',
     this.createdAt,
     this.coverUrl,
+    this.startDate,
+    this.endDate,
   });
 
   Odyssey copyWith({
@@ -312,6 +316,8 @@ class Odyssey {
     List<String>? hotelGeneralTips,
     String? hotelBestAreas,
     String? coverUrl,
+    String? startDate,
+    String? endDate,
   }) =>
       Odyssey(
         id: id ?? this.id,
@@ -337,6 +343,8 @@ class Odyssey {
         status: status ?? this.status,
         createdAt: createdAt,
         coverUrl: coverUrl ?? this.coverUrl,
+        startDate: startDate ?? this.startDate,
+        endDate: endDate ?? this.endDate,
       );
 
   // ── Trip progress (per-place check-off) ──────────────────────────────────
@@ -350,6 +358,33 @@ class Odyssey {
   /// One-line stats label used on cards, e.g. "4 Days · LKR 120,000".
   String get statsLabel =>
       '$days ${days == 1 ? 'Day' : 'Days'} · $currency ${formatAmount(budget)}';
+
+  /// User-facing date range string, e.g. "Aug 10, 2026 – Aug 13, 2026".
+  String get formattedDateRange {
+    final s = startDate?.trim() ?? '';
+    final e = endDate?.trim() ?? '';
+    if (s.isEmpty) return '';
+    try {
+      final startDt = DateTime.parse(s);
+      final startFormatted = _formatDateNice(startDt);
+      if (e.isNotEmpty) {
+        final endDt = DateTime.parse(e);
+        final endFormatted = _formatDateNice(endDt);
+        return '$startFormatted – $endFormatted';
+      }
+      return startFormatted;
+    } catch (_) {
+      if (e.isNotEmpty) {
+        return '$s – $e';
+      }
+      return s;
+    }
+  }
+
+  static String _formatDateNice(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[date.month - 1]} ${date.day}, ${date.year}';
+  }
 
   // ── Gemini output ────────────────────────────────────────────────────────
   /// Build from the JSON object Gemini returns. Tolerant of missing fields so a
@@ -385,6 +420,8 @@ class Odyssey {
           .map((bp) => OdysseyBookingPartner.fromJson(bp.cast<String, dynamic>()))
           .toList(),
       coverUrl: (json['cover_url'] ?? '').toString(),
+      startDate: (json['start_date'] ?? '').toString(),
+      endDate: (json['end_date'] ?? '').toString(),
     );
   }
 
@@ -415,6 +452,8 @@ class Odyssey {
             'best_areas': hotelBestAreas,
           },
           'cover_url': coverUrl ?? '',
+          'start_date': startDate ?? '',
+          'end_date': endDate ?? '',
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -537,6 +576,8 @@ class Odyssey {
           ? DateTime.tryParse(json['created_at'].toString())
           : null,
       coverUrl: (meta['cover_url'] ?? '').toString(),
+      startDate: (meta['start_date'] ?? meta['flight_start_date'] ?? meta['hotel_check_in_date'] ?? json['trip_date'] ?? '').toString(),
+      endDate: (meta['end_date'] ?? meta['flight_end_date'] ?? meta['hotel_check_out_date'] ?? '').toString(),
     );
   }
 

@@ -40,6 +40,17 @@ async def generate_odyssey(
     The mobile app polls GET /itineraries to see the status flip to 'active'.
     """
     repo = ItineraryRepository(db)
+    start_dt_str = data.start_date or data.flight_start_date or data.hotel_check_in_date or ""
+    end_dt_str = data.end_date or data.flight_end_date or data.hotel_check_out_date or ""
+
+    trip_dt = None
+    if start_dt_str:
+        try:
+            from datetime import datetime as dt
+            trip_dt = dt.strptime(start_dt_str, "%Y-%m-%d").date()
+        except Exception:
+            pass
+
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
         mood=data.mood,
@@ -48,12 +59,15 @@ async def generate_odyssey(
         days=data.days,
         nights=data.days - 1 if data.days > 1 else 0,
         travelers=data.travelers,
+        start_date=start_dt_str,
+        end_date=end_dt_str,
     )
     placeholder = Itinerary(
         user_id=current_user.id,
         title=f"Planning {data.destination}…" if data.destination else "Planning your Odyssey…",
         items=[meta],
         status="generating",
+        trip_date=trip_dt,
     )
     saved = await repo.create(placeholder)
 
@@ -75,6 +89,8 @@ async def generate_odyssey(
         data.include_hotels,
         data.hotel_check_in_date,
         data.hotel_check_out_date,
+        data.start_date,
+        data.end_date,
     )
     return saved
 
@@ -96,6 +112,8 @@ async def _run_odyssey_generation(
     include_hotels: bool = False,
     hotel_check_in_date: Optional[str] = None,
     hotel_check_out_date: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -135,10 +153,19 @@ async def _run_odyssey_generation(
                 include_hotels=include_hotels,
                 hotel_check_in_date=hotel_check_in_date,
                 hotel_check_out_date=hotel_check_out_date,
+                start_date=start_date or "",
+                end_date=end_date or "",
             )
             itin.title = title
             itin.items = items
             itin.status = "active"
+            start_dt_str = start_date or flight_start_date or hotel_check_in_date
+            if start_dt_str:
+                try:
+                    from datetime import datetime as dt
+                    itin.trip_date = dt.strptime(start_dt_str, "%Y-%m-%d").date()
+                except Exception:
+                    pass
             print(f"[ODYSSEY] SUCCESS {itinerary_id}: {title}", flush=True)
         except Exception as e:
             import traceback
