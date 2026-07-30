@@ -61,6 +61,7 @@ async def generate_odyssey(
         travelers=data.travelers,
         start_date=start_dt_str,
         end_date=end_dt_str,
+        departure_city=data.departure_city or "",
     )
     placeholder = Itinerary(
         user_id=current_user.id,

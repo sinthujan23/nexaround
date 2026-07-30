@@ -337,6 +337,10 @@ class FlightStrategiesSection extends StatelessWidget {
                     providerName: provider,
                     strategyTitle: fs.title,
                     destination: odyssey.destination,
+                    departureCity: odyssey.departureCity,
+                    startDate: odyssey.startDate ?? '',
+                    endDate: odyssey.endDate ?? '',
+                    travelers: odyssey.travelers,
                   );
                   return SizedBox(
                     width: double.infinity,

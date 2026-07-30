@@ -76,19 +76,23 @@ def _build_deep_booking_url(
             url += f"&group_adults={max(travelers, 1)}"
             return url
         elif "agoda" in prov_lower:
-            url = f"https://www.agoda.com/search?text={encoded_query}"
+            # Agoda searches best by destination only; hotel name in 'text'
+            # often yields zero results
+            agoda_query = encoded_dest if dest else encoded_query
+            url = f"https://www.agoda.com/search?city={agoda_query}"
             if start_date:
                 url += f"&checkIn={start_date}"
             if end_date:
+                url += f"&los={_days_between(start_date, end_date)}"
                 url += f"&checkOut={end_date}"
             url += f"&adults={max(travelers, 1)}"
             return url
         elif "expedia" in prov_lower:
             url = f"https://www.expedia.com/Hotel-Search?destination={encoded_query}"
             if start_date:
-                url += f"&startDate={start_date}"
+                url += f"&d1={_to_expedia_date(start_date)}"
             if end_date:
-                url += f"&endDate={end_date}"
+                url += f"&d2={_to_expedia_date(end_date)}"
             url += f"&adults={max(travelers, 1)}"
             return url
         elif "hotels" in prov_lower:
@@ -135,6 +139,28 @@ _SYSTEM = (
 )
 
 
+def _days_between(start: str, end: str) -> int:
+    """Calculate the number of days between two YYYY-MM-DD date strings."""
+    try:
+        from datetime import datetime as dt
+        s = dt.strptime(start, "%Y-%m-%d")
+        e = dt.strptime(end, "%Y-%m-%d")
+        return max((e - s).days, 1)
+    except Exception:
+        return 1
+
+
+def _to_expedia_date(date_str: str) -> str:
+    """Convert YYYY-MM-DD to MM/DD/YYYY for Expedia deep links."""
+    try:
+        parts = date_str.split("-")
+        if len(parts) == 3:
+            return f"{parts[1]}/{parts[2]}/{parts[0]}"
+    except Exception:
+        pass
+    return date_str
+
+
 def build_meta_item(
     *,
     destination: str,
@@ -154,6 +180,7 @@ def build_meta_item(
     hotel_strategies: dict = None,
     start_date: str = "",
     end_date: str = "",
+    departure_city: str = "",
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -176,6 +203,7 @@ def build_meta_item(
         "hotel_strategies": hotel_strategies or {},
         "start_date": start_date,
         "end_date": end_date,
+        "departure_city": departure_city,
     }
 
 
@@ -258,6 +286,13 @@ Trip Details:
 - Duration: {days} days
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency} (flights should fit or be optimized against this)
+
+IMPORTANT AIRPORT RESOLUTION RULES:
+- If "{departure_city}" does NOT have a commercial airport, you MUST identify the nearest major international airport city and use that as the real departure point.
+  For example: Trincomalee (no airport) → use Colombo (CMB). Kandy → use Colombo (CMB). Galle → use Mattala (HRI) or Colombo (CMB).
+- Similarly, if the destination city lacks an airport, resolve to the nearest airport city.
+- In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, NRT, LHR).
+- In the "description" field, note if the traveler needs ground transport to reach the departure airport.
 
 Your task is to act as an agentic flight finder. Propose 2-4 distinct, realistic flight strategies.
 These can be:
@@ -548,6 +583,7 @@ async def generate_odyssey(
         hotel_strategies=hotel_strategies,
         start_date=final_start_date,
         end_date=final_end_date,
+        departure_city=departure_city or "",
     )
 
     day_items: list[dict] = []

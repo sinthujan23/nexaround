@@ -71,15 +71,22 @@ class BookingUrlHelper {
       url += '&group_adults=$travelers';
       return url;
     } else if (provider.contains('agoda')) {
-      var url = 'https://www.agoda.com/search?text=$encodedQuery';
+      // Agoda searches best by destination; hotel name often yields zero results
+      final agodaQuery = destination.trim().isNotEmpty
+          ? Uri.encodeComponent(destination.trim())
+          : encodedQuery;
+      var url = 'https://www.agoda.com/search?city=$agodaQuery';
       if (checkInDate.isNotEmpty) url += '&checkIn=$checkInDate';
-      if (checkOutDate.isNotEmpty) url += '&checkOut=$checkOutDate';
+      if (checkOutDate.isNotEmpty) {
+        url += '&los=${_daysBetween(checkInDate, checkOutDate)}';
+        url += '&checkOut=$checkOutDate';
+      }
       url += '&adults=$travelers';
       return url;
     } else if (provider.contains('expedia')) {
       var url = 'https://www.expedia.com/Hotel-Search?destination=$encodedQuery';
-      if (checkInDate.isNotEmpty) url += '&startDate=$checkInDate';
-      if (checkOutDate.isNotEmpty) url += '&endDate=$checkOutDate';
+      if (checkInDate.isNotEmpty) url += '&d1=${_toExpediaDate(checkInDate)}';
+      if (checkOutDate.isNotEmpty) url += '&d2=${_toExpediaDate(checkOutDate)}';
       url += '&adults=$travelers';
       return url;
     } else if (provider.contains('hotels')) {
@@ -189,5 +196,30 @@ class BookingUrlHelper {
     return sanitizedRawUrl.isNotEmpty
         ? sanitizedRawUrl
         : 'https://www.google.com/search?q=${Uri.encodeComponent("tours activities $dest")}';
+  }
+
+  // ── Date format helpers ────────────────────────────────────────────────────
+
+  /// Convert YYYY-MM-DD to MM/DD/YYYY for Expedia deep links.
+  static String _toExpediaDate(String dateStr) {
+    try {
+      final parts = dateStr.split('-');
+      if (parts.length == 3) {
+        return '${parts[1]}/${parts[2]}/${parts[0]}';
+      }
+    } catch (_) {}
+    return dateStr;
+  }
+
+  /// Calculate the number of days between two YYYY-MM-DD date strings.
+  static int _daysBetween(String start, String end) {
+    try {
+      final s = DateTime.parse(start);
+      final e = DateTime.parse(end);
+      final diff = e.difference(s).inDays;
+      return diff > 0 ? diff : 1;
+    } catch (_) {
+      return 1;
+    }
   }
 }

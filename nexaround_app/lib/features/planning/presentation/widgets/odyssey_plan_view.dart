@@ -503,6 +503,9 @@ class OdysseyPlanView extends StatelessWidget {
               providerName: bp.name,
               hotelName: '',
               destination: dest,
+              checkInDate: odyssey.startDate ?? '',
+              checkOutDate: odyssey.endDate ?? '',
+              travelers: odyssey.travelers,
             );
           } else if (type == 'transit') {
             resolvedUrl = BookingUrlHelper.buildFlightUrl(
@@ -510,6 +513,10 @@ class OdysseyPlanView extends StatelessWidget {
               providerName: bp.name,
               strategyTitle: '',
               destination: dest,
+              departureCity: odyssey.departureCity,
+              startDate: odyssey.startDate ?? '',
+              endDate: odyssey.endDate ?? '',
+              travelers: odyssey.travelers,
             );
           } else if (type == 'tours') {
             resolvedUrl = BookingUrlHelper.buildToursUrl(

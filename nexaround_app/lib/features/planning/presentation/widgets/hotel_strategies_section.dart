@@ -276,6 +276,9 @@ class HotelStrategiesSection extends StatelessWidget {
                     providerName: provider,
                     hotelName: hs.name,
                     destination: odyssey.destination,
+                    checkInDate: odyssey.startDate ?? '',
+                    checkOutDate: odyssey.endDate ?? '',
+                    travelers: odyssey.travelers,
                   );
                   return SizedBox(
                     width: double.infinity,

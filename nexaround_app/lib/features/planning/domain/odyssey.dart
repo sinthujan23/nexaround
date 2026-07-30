@@ -275,6 +275,8 @@ class Odyssey {
   final String? coverUrl;
   final String? startDate;
   final String? endDate;
+  final String departureCity;
+  final int travelers;
 
   const Odyssey({
     this.id,
@@ -302,6 +304,8 @@ class Odyssey {
     this.coverUrl,
     this.startDate,
     this.endDate,
+    this.departureCity = '',
+    this.travelers = 1,
   });
 
   Odyssey copyWith({
@@ -318,6 +322,8 @@ class Odyssey {
     String? coverUrl,
     String? startDate,
     String? endDate,
+    String? departureCity,
+    int? travelers,
   }) =>
       Odyssey(
         id: id ?? this.id,
@@ -345,6 +351,8 @@ class Odyssey {
         coverUrl: coverUrl ?? this.coverUrl,
         startDate: startDate ?? this.startDate,
         endDate: endDate ?? this.endDate,
+        departureCity: departureCity ?? this.departureCity,
+        travelers: travelers ?? this.travelers,
       );
 
   // ── Trip progress (per-place check-off) ──────────────────────────────────
@@ -454,6 +462,7 @@ class Odyssey {
           'cover_url': coverUrl ?? '',
           'start_date': startDate ?? '',
           'end_date': endDate ?? '',
+          'departure_city': departureCity,
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -578,6 +587,8 @@ class Odyssey {
       coverUrl: (meta['cover_url'] ?? '').toString(),
       startDate: (meta['start_date'] ?? meta['flight_start_date'] ?? meta['hotel_check_in_date'] ?? json['trip_date'] ?? '').toString(),
       endDate: (meta['end_date'] ?? meta['flight_end_date'] ?? meta['hotel_check_out_date'] ?? '').toString(),
+      departureCity: (meta['departure_city'] ?? '').toString(),
+      travelers: (meta['travelers'] as num?)?.toInt() ?? 1,
     );
   }
 
