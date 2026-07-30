@@ -9,6 +9,7 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 import asyncio
 import json
 import logging
+import re
 import urllib.parse
 import httpx
 from app.services.serpapi_service import (
@@ -29,6 +30,7 @@ def _build_deep_booking_url(
     travelers: int = 1,
     is_flight: bool = False,
     origin_city: str = "",
+    airlines: list[str] = None,
 ) -> str:
     prov_lower = (provider or "").lower()
     dest = (destination or "").strip()
@@ -52,6 +54,8 @@ def _build_deep_booking_url(
 
         # Build clean Google Flights query URL
         search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+        if airlines and len(airlines) > 0:
+            search_q += f" with {', '.join(airlines[:2])}"
         if start_date and end_date:
             search_q += f" on {start_date} through {end_date}"
         elif start_date:
@@ -59,7 +63,7 @@ def _build_deep_booking_url(
         return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
         if "booking" in prov_lower:
-            url = f"https://www.booking.com/searchresults.html?ss={encoded_dest}"
+            url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
             if start_date:
                 url += f"&checkin={start_date}"
             if end_date:
@@ -68,8 +72,8 @@ def _build_deep_booking_url(
             return url
         else:
             # Google Hotels as primary fallback
-            google_hotel_q = f"hotels in {dest}"
-            google_url = f"https://www.google.com/travel/hotels/{urllib.parse.quote_plus(dest)}?q={urllib.parse.quote_plus(google_hotel_q)}"
+            google_hotel_q = query
+            google_url = f"https://www.google.com/travel/hotels?q={urllib.parse.quote_plus(google_hotel_q)}"
             if start_date and end_date:
                 google_url += f"&dates={start_date},{end_date}"
             return google_url
@@ -551,28 +555,56 @@ async def generate_odyssey(
     final_start_date = start_date or flight_start_date or hotel_check_in_date or ""
     final_end_date = end_date or flight_end_date or hotel_check_out_date or ""
 
-    raw_bd = plan.get("budget_breakdown")
-    if isinstance(raw_bd, dict) and ("stay" in raw_bd or "activities" in raw_bd):
-        budget_breakdown = {
-            "stay": float(raw_bd.get("stay") or 0),
-            "transit": float(raw_bd.get("transit") or 0),
-            "food": float(raw_bd.get("food") or 0),
-            "activities": float(raw_bd.get("activities") or 0),
-            "total": float(raw_bd.get("total") or budget),
-        }
-    else:
-        # Fallback 4-category calculation (35% Stay, 30% Transit, 20% Food, 15% Activities)
-        stay_amt = round(budget * 0.35, 2)
-        transit_amt = round(budget * 0.30, 2)
-        food_amt = round(budget * 0.20, 2)
-        activities_amt = round(budget - (stay_amt + transit_amt + food_amt), 2)
-        budget_breakdown = {
-            "stay": stay_amt,
-            "transit": transit_amt,
-            "food": food_amt,
-            "activities": activities_amt,
-            "total": budget,
-        }
+    # Extract cheapest flight & stay costs if available to synchronize budget breakdown
+    cheapest_flight_cost = 0.0
+    if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
+        f_costs = [
+            _extract_lowest_price(s.get("estimated_price_range"))
+            for s in flight_strategies["strategies"]
+            if isinstance(s, dict) and _extract_lowest_price(s.get("estimated_price_range")) > 0
+        ]
+        if f_costs:
+            cheapest_flight_cost = min(f_costs)
+
+    cheapest_hotel_cost = 0.0
+    if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
+        h_costs = [
+            _extract_lowest_price(s.get("total_estimated_cost") or s.get("price_per_night"))
+            for s in hotel_strategies["strategies"]
+            if isinstance(s, dict) and _extract_lowest_price(s.get("total_estimated_cost") or s.get("price_per_night")) > 0
+        ]
+        if h_costs:
+            cheapest_hotel_cost = min(h_costs)
+
+    # Base budget allocation
+    tot = float(budget) if budget > 0 else 1.0
+    transit_amt = cheapest_flight_cost if cheapest_flight_cost > 0 else round(tot * 0.30, 2)
+    stay_amt = cheapest_hotel_cost if cheapest_hotel_cost > 0 else round(tot * 0.35, 2)
+
+    # Ensure transit + stay does not exceed total budget (if so, scale down proportionally to 85% max of budget)
+    if (transit_amt + stay_amt) > tot * 0.85:
+        scale = (tot * 0.80) / (transit_amt + stay_amt)
+        transit_amt = round(transit_amt * scale, 2)
+        stay_amt = round(stay_amt * scale, 2)
+
+    rem = max(tot - (transit_amt + stay_amt), tot * 0.15)
+    food_amt = round(rem * 0.60, 2)
+    activities_amt = round(tot - (stay_amt + transit_amt + food_amt), 2)
+
+    budget_breakdown = {
+        "stay": stay_amt,
+        "transit": transit_amt,
+        "food": food_amt,
+        "activities": activities_amt,
+        "total": tot,
+    }
+
+    # Dynamically generate budget_split text string to guarantee 100% agreement with breakdown
+    stay_pct = round((stay_amt / tot) * 100)
+    transit_pct = round((transit_amt / tot) * 100)
+    food_pct = round((food_amt / tot) * 100)
+    activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
+    harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
     meta = build_meta_item(
         destination=final_destination,
@@ -583,7 +615,7 @@ async def generate_odyssey(
         nights=nights,
         travelers=travelers,
         summary=str(plan.get("summary") or ""),
-        budget_split=str(plan.get("budget_split") or ""),
+        budget_split=harmonized_budget_split,
         visa=str(plan.get("visa") or plan.get("visa_status") or ""),
         logistics=_logistics_text(plan.get("logistics")),
         booking_partners=plan.get("booking_partners") or [],
@@ -860,6 +892,20 @@ def _as_int(value, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _extract_lowest_price(price_str: str) -> float:
+    """Extracts the lowest numeric value from a price range or price string."""
+    if not price_str:
+        return 0.0
+    cleaned = re.sub(r"[^\d.\-\s]", "", str(price_str))
+    numbers = re.findall(r"\d+(?:\.\d+)?", cleaned)
+    if numbers:
+        try:
+            return float(numbers[0])
+        except ValueError:
+            pass
+    return 0.0
 
 
 async def generate_replacement_partner(

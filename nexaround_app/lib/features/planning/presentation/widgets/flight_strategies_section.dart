@@ -342,6 +342,7 @@ class FlightStrategiesSection extends StatelessWidget {
                     endDate: odyssey.endDate ?? '',
                     travelers: odyssey.travelers,
                     route: fs.route,
+                    airlines: fs.airlines,
                   );
                   return SizedBox(
                     width: double.infinity,

@@ -57,14 +57,29 @@ class BookingUrlHelper {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
     final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
     final provider = resolvedProvider.trim().toLowerCase();
-    final query = hotelName.trim().isNotEmpty
-        ? '${hotelName.trim()} ${destination.trim()}'
-        : destination.trim();
+    
+    final hName = hotelName.trim();
+    final dest = destination.trim();
+    String query;
+    if (hName.isNotEmpty && dest.isNotEmpty && hName.toLowerCase().contains(dest.toLowerCase())) {
+      query = hName;
+    } else if (hName.isNotEmpty && dest.isNotEmpty) {
+      query = '$hName, $dest';
+    } else {
+      query = hName.isNotEmpty ? hName : dest;
+    }
+    
     final encodedQuery = Uri.encodeComponent(query);
-    final encodedDest = Uri.encodeComponent(destination.trim());
+    final encodedDest = Uri.encodeComponent(dest);
 
     // Always build provider-specific URLs to guarantee destination is pre-filled.
-    if (provider.contains('booking')) {
+    if (provider.contains('google')) {
+      var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
+      if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
+        googleUrl += '&dates=$checkInDate,$checkOutDate';
+      }
+      return googleUrl;
+    } else if (provider.contains('booking')) {
       var url = 'https://www.booking.com/searchresults.html?ss=$encodedQuery';
       if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';
@@ -72,8 +87,8 @@ class BookingUrlHelper {
       return url;
     } else if (provider.contains('agoda')) {
       // Agoda searches best by destination; hotel name often yields zero results
-      final agodaQuery = destination.trim().isNotEmpty
-          ? Uri.encodeComponent(destination.trim())
+      final agodaQuery = dest.isNotEmpty
+          ? Uri.encodeComponent(dest)
           : encodedQuery;
       var url = 'https://www.agoda.com/search?city=$agodaQuery';
       if (checkInDate.isNotEmpty) url += '&checkIn=$checkInDate';
@@ -89,7 +104,7 @@ class BookingUrlHelper {
       if (checkOutDate.isNotEmpty) url += '&d2=${_toExpediaDate(checkOutDate)}';
       url += '&adults=$travelers';
       return url;
-    } else if (provider.contains('hotels')) {
+    } else if (provider.contains('hotels.com') || (provider.contains('hotels') && !provider.contains('google'))) {
       var url = 'https://www.hotels.com/Hotel-Search?destination=$encodedQuery';
       if (checkInDate.isNotEmpty) url += '&startDate=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&endDate=$checkOutDate';
@@ -103,11 +118,15 @@ class BookingUrlHelper {
       return url;
     }
 
-    // Unknown provider: use raw URL if available, else Google Hotels search
-    if (sanitizedRawUrl.isNotEmpty && destination.trim().isEmpty) {
+    // Unknown provider: use raw URL if available and no query, else Google Hotels search
+    if (sanitizedRawUrl.isNotEmpty && dest.isEmpty) {
       return sanitizedRawUrl;
     }
-    return 'https://www.google.com/travel/hotels?q=$encodedQuery';
+    var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
+    if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
+      googleUrl += '&dates=$checkInDate,$checkOutDate';
+    }
+    return googleUrl;
   }
 
   /// Builds a deep search URL for flight recommendations pre-filled with:
@@ -125,6 +144,7 @@ class BookingUrlHelper {
     String endDate = '',
     int travelers = 1,
     String route = '',
+    List<String> airlines = const [],
   }) {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
 
@@ -157,6 +177,9 @@ class BookingUrlHelper {
       var dateQ = origin.isNotEmpty
           ? 'flights from $origin to $dest'
           : 'flights to $dest';
+      if (airlines.isNotEmpty) {
+        dateQ += ' with ${airlines.take(2).join(", ")}';
+      }
       if (startDate.isNotEmpty && endDate.isNotEmpty) {
         dateQ += ' on $startDate through $endDate';
       } else if (startDate.isNotEmpty) {
@@ -185,6 +208,14 @@ class BookingUrlHelper {
       var dateQ = origin.isNotEmpty
           ? 'flights from $origin to $dest'
           : 'flights to $dest';
+      if (airlines.isNotEmpty) {
+        dateQ += ' with ${airlines.take(2).join(", ")}';
+      }
+      if (startDate.isNotEmpty && endDate.isNotEmpty) {
+        dateQ += ' on $startDate through $endDate';
+      } else if (startDate.isNotEmpty) {
+        dateQ += ' on $startDate';
+      }
       return 'https://www.google.com/travel/flights?q=${Uri.encodeComponent(dateQ)}';
     }
 
