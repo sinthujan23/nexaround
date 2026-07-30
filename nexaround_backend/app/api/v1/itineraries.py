@@ -62,6 +62,13 @@ async def generate_odyssey(
         start_date=start_dt_str,
         end_date=end_dt_str,
         departure_city=data.departure_city or "",
+        budget_breakdown={
+            "stay": round(data.budget * 0.35, 2),
+            "transit": round(data.budget * 0.30, 2),
+            "food": round(data.budget * 0.20, 2),
+            "activities": round(data.budget * 0.15, 2),
+            "total": data.budget,
+        },
     )
     placeholder = Itinerary(
         user_id=current_user.id,

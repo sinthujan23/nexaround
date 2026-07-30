@@ -141,6 +141,7 @@ def build_meta_item(
     start_date: str = "",
     end_date: str = "",
     departure_city: str = "",
+    budget_breakdown: dict = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -164,6 +165,7 @@ def build_meta_item(
         "start_date": start_date,
         "end_date": end_date,
         "departure_city": departure_city,
+        "budget_breakdown": budget_breakdown or {},
     }
 
 
@@ -549,6 +551,29 @@ async def generate_odyssey(
     final_start_date = start_date or flight_start_date or hotel_check_in_date or ""
     final_end_date = end_date or flight_end_date or hotel_check_out_date or ""
 
+    raw_bd = plan.get("budget_breakdown")
+    if isinstance(raw_bd, dict) and ("stay" in raw_bd or "activities" in raw_bd):
+        budget_breakdown = {
+            "stay": float(raw_bd.get("stay") or 0),
+            "transit": float(raw_bd.get("transit") or 0),
+            "food": float(raw_bd.get("food") or 0),
+            "activities": float(raw_bd.get("activities") or 0),
+            "total": float(raw_bd.get("total") or budget),
+        }
+    else:
+        # Fallback 4-category calculation (35% Stay, 30% Transit, 20% Food, 15% Activities)
+        stay_amt = round(budget * 0.35, 2)
+        transit_amt = round(budget * 0.30, 2)
+        food_amt = round(budget * 0.20, 2)
+        activities_amt = round(budget - (stay_amt + transit_amt + food_amt), 2)
+        budget_breakdown = {
+            "stay": stay_amt,
+            "transit": transit_amt,
+            "food": food_amt,
+            "activities": activities_amt,
+            "total": budget,
+        }
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
@@ -568,6 +593,7 @@ async def generate_odyssey(
         start_date=final_start_date,
         end_date=final_end_date,
         departure_city=departure_city or "",
+        budget_breakdown=budget_breakdown,
     )
 
     day_items: list[dict] = []
@@ -704,7 +730,14 @@ Return ONLY a JSON object with EXACTLY this shape:
   "nights": {nights},
   "currency": "{currency}",
   "summary": "1-2 sentence overview matching the '{mood}' style.",
-  "budget_split": "Short split, e.g. '40% Stay - 30% Food - 30% Experiences'",
+  "budget_split": "Short split, e.g. '35% Stay - 30% Transit - 20% Food - 15% Activities'",
+  "budget_breakdown": {{
+    "stay": {int(budget * 0.35)},
+    "transit": {int(budget * 0.30)},
+    "food": {int(budget * 0.20)},
+    "activities": {int(budget * 0.15)},
+    "total": {int(budget)}
+  }},
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
   "booking_partners": [
@@ -733,8 +766,9 @@ Rules for "booking_partners":
 
 Rules:
 - Plan for {travelers} traveler(s): size accommodation, meals and tickets for the group, and make every activity "cost" the TOTAL for all {travelers}.
+- In "budget_breakdown", strictly divide the total budget of {int(budget)} {currency} across the 4 core categories: "stay" (accommodation), "transit" (flights/intercity transport), "food" (all meals & dining), and "activities" (tours/tickets). Ensure stay + transit + food + activities == {int(budget)}.
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
-- Keep the SUM of all activity costs within the {int(budget)} {currency} budget (this covers all {travelers} travelers).
+- Keep the SUM of all activity costs within the "activities" and "food" budget portion of {int(budget)} {currency}.
 - Use real, recognisable places near "{destination}".
 - Be concise; tips under ~12 words.
 """

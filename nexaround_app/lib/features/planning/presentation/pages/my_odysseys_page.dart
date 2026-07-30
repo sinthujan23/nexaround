@@ -478,7 +478,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
     final double screenWidth = MediaQuery.of(context).size.width;
     final double cardWidth = (screenWidth - 32 - 12) / 2;
-    final double childAspectRatio = cardWidth / 140.0;
+    final double childAspectRatio = cardWidth / 175.0;
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -803,19 +803,22 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     ),
                     const SizedBox(height: 6),
                     // Days + Budget row
-                    Row(
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         _pillChip(
                           Icons.calendar_today_rounded,
-                          odyssey.formattedDateRange.isNotEmpty
-                              ? '${odyssey.formattedDateRange} (${odyssey.days}d)'
+                          odyssey.formattedShortDateRange.isNotEmpty
+                              ? '${odyssey.formattedShortDateRange} (${odyssey.days}d)'
                               : '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
                         ),
-                        const SizedBox(width: 6),
-                        _BudgetPill(
-                          amount: odyssey.budget,
-                          currency: odyssey.currency,
-                        ),
+                        if (odyssey.budget > 0)
+                          _BudgetPill(
+                            amount: odyssey.budget,
+                            currency: odyssey.currency,
+                          ),
                       ],
                     ),
                   ],
@@ -833,9 +836,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
   Widget _pillChip(IconData icon, String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
       decoration: BoxDecoration(
-        color: Colors.black38,
+        color: Colors.black45,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: Colors.white24),
       ),
@@ -844,12 +847,16 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
         children: [
           Icon(icon, size: 8, color: Colors.white70),
           const SizedBox(width: 3),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 9,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
             ),
           ),
         ],

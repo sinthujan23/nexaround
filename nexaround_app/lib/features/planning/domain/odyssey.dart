@@ -277,6 +277,7 @@ class Odyssey {
   final String? endDate;
   final String departureCity;
   final int travelers;
+  final Map<String, double> budgetBreakdown;
 
   const Odyssey({
     this.id,
@@ -306,6 +307,7 @@ class Odyssey {
     this.endDate,
     this.departureCity = '',
     this.travelers = 1,
+    this.budgetBreakdown = const {},
   });
 
   Odyssey copyWith({
@@ -324,6 +326,7 @@ class Odyssey {
     String? endDate,
     String? departureCity,
     int? travelers,
+    Map<String, double>? budgetBreakdown,
   }) =>
       Odyssey(
         id: id ?? this.id,
@@ -353,6 +356,7 @@ class Odyssey {
         endDate: endDate ?? this.endDate,
         departureCity: departureCity ?? this.departureCity,
         travelers: travelers ?? this.travelers,
+        budgetBreakdown: budgetBreakdown ?? this.budgetBreakdown,
       );
 
   // ── Trip progress (per-place check-off) ──────────────────────────────────
@@ -385,6 +389,28 @@ class Odyssey {
       if (e.isNotEmpty) {
         return '$s – $e';
       }
+      return s;
+    }
+  }
+
+  /// Compact date range for small grid cards, e.g. "Aug 10–12" or "Aug 10 – Sep 2".
+  String get formattedShortDateRange {
+    final s = startDate?.trim() ?? '';
+    final e = endDate?.trim() ?? '';
+    if (s.isEmpty) return '';
+    try {
+      final startDt = DateTime.parse(s);
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      if (e.isNotEmpty) {
+        final endDt = DateTime.parse(e);
+        if (startDt.month == endDt.month && startDt.year == endDt.year) {
+          return '${months[startDt.month - 1]} ${startDt.day}–${endDt.day}';
+        }
+        return '${months[startDt.month - 1]} ${startDt.day} – ${months[endDt.month - 1]} ${endDt.day}';
+      }
+      return '${months[startDt.month - 1]} ${startDt.day}';
+    } catch (_) {
+      if (e.isNotEmpty) return '$s – $e';
       return s;
     }
   }
@@ -463,6 +489,7 @@ class Odyssey {
           'start_date': startDate ?? '',
           'end_date': endDate ?? '',
           'departure_city': departureCity,
+          'budget_breakdown': budgetBreakdown,
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -589,6 +616,11 @@ class Odyssey {
       endDate: (meta['end_date'] ?? meta['flight_end_date'] ?? meta['hotel_check_out_date'] ?? '').toString(),
       departureCity: (meta['departure_city'] ?? '').toString(),
       travelers: (meta['travelers'] as num?)?.toInt() ?? 1,
+      budgetBreakdown: meta['budget_breakdown'] is Map
+          ? (meta['budget_breakdown'] as Map).map(
+              (k, v) => MapEntry(k.toString(), (v as num?)?.toDouble() ?? 0.0),
+            )
+          : const {},
     );
   }
 

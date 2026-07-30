@@ -92,8 +92,10 @@ class OdysseyPlanView extends StatelessWidget {
           if (odyssey.visa.isNotEmpty)
             _infoCard('Visa / Entry', odyssey.visa, Icons.description_rounded),
           if (odyssey.budgetSplit.isNotEmpty)
-            _infoCard('Budget Split', odyssey.budgetSplit, Icons.pie_chart_rounded),
-          const SizedBox(height: 24),
+            _infoCard('Budget Summary', odyssey.budgetSplit, Icons.pie_chart_rounded),
+          if (odyssey.budget > 0)
+            _budgetBreakdownCard(context),
+          const SizedBox(height: 16),
           const Text(
             'ODYSSEY BOOKING PARTNERS',
             style: TextStyle(
@@ -196,6 +198,125 @@ class OdysseyPlanView extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _budgetBreakdownCard(BuildContext context) {
+    final bd = odyssey.budgetBreakdown;
+    final currency = odyssey.currency;
+    final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : odyssey.budget;
+
+    // Default category estimates if breakdown dictionary is empty
+    final stay = bd['stay'] ?? (total * 0.35);
+    final transit = bd['transit'] ?? (total * 0.30);
+    final food = bd['food'] ?? (total * 0.20);
+    final activities = bd['activities'] ?? (total * 0.15);
+
+    double percent(double val) => total > 0 ? (val / total).clamp(0.0, 1.0) : 0.25;
+
+    Widget categoryBar(String name, String emoji, double val, Color color) {
+      final p = (percent(val) * 100).toStringAsFixed(0);
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '$emoji  $name',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                Text(
+                  '$currency ${val.toStringAsFixed(0)} ($p%)',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: percent(val),
+                minHeight: 8,
+                backgroundColor: color.withValues(alpha: 0.15),
+                valueColor: AlwaysStoppedAnimation<Color>(color),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.account_balance_wallet_rounded, size: 20, color: Colors.black),
+                  SizedBox(width: 8),
+                  Text(
+                    'BUDGET ALLOCATION',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.5,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'Total: $currency ${total.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.brandGreen,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          categoryBar('Stay / Accommodation', '🏨', stay, const Color(0xFF2563EB)),
+          categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),
+          categoryBar('Food & Dining', '🍔', food, const Color(0xFFD97706)),
+          categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
         ],
       ),
     );
