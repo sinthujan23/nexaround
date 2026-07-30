@@ -62,7 +62,7 @@ class SerpApiService:
             params["type"] = "2"  # one way if no return date
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(SERPAPI_BASE, params=params)
                 if resp.status_code != 200:
                     logger.warning(f"[SerpApi] Flights search returned {resp.status_code}: {resp.text[:200]}")
@@ -116,7 +116,7 @@ class SerpApiService:
             params["check_out_date"] = check_out_date
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(SERPAPI_BASE, params=params)
                 if resp.status_code != 200:
                     logger.warning(f"[SerpApi] Hotels search returned {resp.status_code}: {resp.text[:200]}")

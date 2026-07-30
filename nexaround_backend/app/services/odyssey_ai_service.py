@@ -78,12 +78,12 @@ def _build_deep_booking_url(
 # is overloaded changes minute to minute, so retrying one model isn't enough.
 # Try a chain: a 503 on one model falls through to another that's healthy now.
 _MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash",
     "gemini-flash-latest",
     "gemini-1.5-pro",
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
+
 
 
 def _model_url(model: str) -> str:
@@ -743,7 +743,7 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     # one that's currently healthy.
     data = None
     attempts = _MODELS * 2
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    async with httpx.AsyncClient(timeout=45.0) as client:
         for i, model in enumerate(attempts):
             generation_config = dict(base_generation_config)
             # Only gemini-2.5+ models support thinkingConfig; 1.5/2.0 reject it
@@ -755,19 +755,25 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
                 "system_instruction": {"parts": [{"text": _SYSTEM}]},
                 "generationConfig": generation_config,
             }
-            resp = await client.post(_model_url(model), json=body, headers=headers)
-            if resp.status_code != 200 and i < len(attempts) - 1:
-                logger.warning(
-                    "Gemini status %s for %s — falling through to next model (details: %s)",
-                    resp.status_code, model, resp.text[:200],
-                )
-                # Brief pause once we've cycled the whole chain once.
-                if (i + 1) % len(_MODELS) == 0:
-                    await asyncio.sleep(2)
-                continue
-            resp.raise_for_status()
-            data = resp.json()
-            break
+            try:
+                resp = await client.post(_model_url(model), json=body, headers=headers)
+                if resp.status_code != 200 and i < len(attempts) - 1:
+                    logger.warning(
+                        "Gemini status %s for %s — falling through to next model (details: %s)",
+                        resp.status_code, model, resp.text[:200],
+                    )
+                    # Brief pause once we've cycled the whole chain once (skip pause if 404)
+                    if (i + 1) % len(_MODELS) == 0 and resp.status_code != 404:
+                        await asyncio.sleep(1)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except Exception as e:
+                if i < len(attempts) - 1:
+                    logger.warning("Gemini exception for %s — falling through: %s", model, e)
+                    continue
+                raise e
 
     candidates = data.get("candidates") or []
     if not candidates:
