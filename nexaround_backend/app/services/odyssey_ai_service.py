@@ -11,7 +11,11 @@ import json
 import logging
 import urllib.parse
 import httpx
-from app.services.rapidapi_service import RapidAPIService
+from app.services.serpapi_service import (
+    SerpApiService,
+    format_flight_results_for_gemini,
+    format_hotel_results_for_gemini,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,74 +49,30 @@ def _build_deep_booking_url(
         origin = (origin_city or "").strip()
         if origin.lower() in ["nearest airport", "nearest international airport", "origin", ""]:
             origin = ""
-        encoded_origin = urllib.parse.quote_plus(origin) if origin else ""
 
-        if "skyscanner" in prov_lower:
-            # Skyscanner clean query URL
-            q_str = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
-            if start_date:
-                q_str += f" on {start_date}"
-            return f"https://www.skyscanner.com/transport/flights/search?q={urllib.parse.quote_plus(q_str)}"
-        elif "expedia" in prov_lower:
-            if origin and start_date and end_date:
-                return f"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from:{encoded_origin},to:{encoded_dest},departure:{start_date}TANYT&leg2=from:{encoded_dest},to:{encoded_origin},departure:{end_date}TANYT&passengers=adults:{travelers}"
-            return f"https://www.expedia.com/Flights-Search?destination={encoded_dest}"
-        elif "kayak" in prov_lower:
-            if origin and start_date and end_date:
-                return f"https://www.kayak.com/flights/{encoded_origin}-{encoded_dest}/{start_date}/{end_date}/{travelers}adults"
-            return f"https://www.kayak.com/flights/{encoded_dest}"
-        else:  # Google Flights or default
-            search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
-            if start_date and end_date:
-                search_q += f" on {start_date} return {end_date}"
-            return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
+        # Build clean Google Flights query URL
+        search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+        if start_date and end_date:
+            search_q += f" on {start_date} through {end_date}"
+        elif start_date:
+            search_q += f" on {start_date}"
+        return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
         if "booking" in prov_lower:
-            url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
+            url = f"https://www.booking.com/searchresults.html?ss={encoded_dest}"
             if start_date:
                 url += f"&checkin={start_date}"
             if end_date:
                 url += f"&checkout={end_date}"
             url += f"&group_adults={max(travelers, 1)}"
             return url
-        elif "agoda" in prov_lower:
-            # Agoda searches best by destination only; hotel name in 'text'
-            # often yields zero results
-            agoda_query = encoded_dest if dest else encoded_query
-            url = f"https://www.agoda.com/search?city={agoda_query}"
-            if start_date:
-                url += f"&checkIn={start_date}"
-            if end_date:
-                url += f"&los={_days_between(start_date, end_date)}"
-                url += f"&checkOut={end_date}"
-            url += f"&adults={max(travelers, 1)}"
-            return url
-        elif "expedia" in prov_lower:
-            url = f"https://www.expedia.com/Hotel-Search?destination={encoded_query}"
-            if start_date:
-                url += f"&d1={_to_expedia_date(start_date)}"
-            if end_date:
-                url += f"&d2={_to_expedia_date(end_date)}"
-            url += f"&adults={max(travelers, 1)}"
-            return url
-        elif "hotels" in prov_lower:
-            url = f"https://www.hotels.com/Hotel-Search?destination={encoded_query}"
-            if start_date:
-                url += f"&startDate={start_date}"
-            if end_date:
-                url += f"&endDate={end_date}"
-            url += f"&adults={max(travelers, 1)}"
-            return url
-        elif "airbnb" in prov_lower:
-            url = f"https://www.airbnb.com/s/{encoded_dest}/homes?query={encoded_query}"
-            if start_date:
-                url += f"&checkin={start_date}"
-            if end_date:
-                url += f"&checkout={end_date}"
-            url += f"&adults={max(travelers, 1)}"
-            return url
         else:
-            return f"https://www.google.com/travel/hotels?q={encoded_query}"
+            # Google Hotels as primary fallback
+            google_hotel_q = f"hotels in {dest}"
+            google_url = f"https://www.google.com/travel/hotels/{urllib.parse.quote_plus(dest)}?q={urllib.parse.quote_plus(google_hotel_q)}"
+            if start_date and end_date:
+                google_url += f"&dates={start_date},{end_date}"
+            return google_url
 
 # Gemini Flash models rotate through transient 503 "high demand" — WHICH model
 # is overloaded changes minute to minute, so retrying one model isn't enough.
@@ -246,35 +206,41 @@ async def generate_flight_strategies(
     flight_start_date: str = "",
     flight_end_date: str = "",
     api_key: str,
-    rapidapi_key: str = "",
+    serpapi_key: str = "",
 ) -> dict:
-    """Uses RapidAPI (with Gemini fallback) to generate flight routing strategies."""
-    if rapidapi_key:
-        try:
-            logger.info("Attempting live flight search via RapidAPI...")
-            service = RapidAPIService(rapidapi_key)
-            result = await service.search_flights(
-                departure_city=departure_city,
-                departure_country=departure_country,
-                destination=destination,
-                days=days,
-                budget=budget,
-                currency=currency,
-                travelers=travelers,
-                flight_start_date=flight_start_date,
-                flight_end_date=flight_end_date,
-            )
-            if result and result.get("strategies"):
-                return result
-        except Exception as e:
-            logger.warning(f"RapidAPI flight search failed, falling back to Gemini: {e}")
+    """Generates flight routing strategies using live SerpApi Google Flights data + Gemini."""
+    real_data_context = ""
 
-    if not departure_city:
-        departure_city = "Nearest Airport"
+    if serpapi_key:
+        try:
+            logger.info("Fetching live flight data via SerpApi (Google Flights)...")
+            serp = SerpApiService(serpapi_key)
+            serp_result = await serp.search_flights(
+                departure_city=departure_city,
+                destination=destination,
+                outbound_date=flight_start_date,
+                return_date=flight_end_date,
+                adults=travelers,
+                currency=currency,
+            )
+            real_data_context = format_flight_results_for_gemini(
+                serp_result, departure_city, destination, currency
+            )
+        except Exception as e:
+            logger.warning(f"SerpApi flight search failed, falling back to Gemini knowledge: {e}")
 
     date_str = ""
     if flight_start_date and flight_end_date:
         date_str = f"- Departure Date: {flight_start_date}\n- Return Date: {flight_end_date}"
+
+    real_data_prompt_section = ""
+    if real_data_context:
+        real_data_prompt_section = f"""
+LIVE GOOGLE FLIGHTS SEARCH RESULTS:
+{real_data_context}
+
+INSTRUCTION: Base your strategies on the real Google Flights data above. Extract the exact departure/arrival airport codes, actual airlines, actual durations, and real price ranges.
+"""
 
     prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
 The travelers want to find the cheapest flight options.
@@ -286,32 +252,28 @@ Trip Details:
 - Duration: {days} days
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency} (flights should fit or be optimized against this)
-
-IMPORTANT AIRPORT RESOLUTION RULES:
-- If "{departure_city}" does NOT have a commercial airport, you MUST identify the nearest major international airport city and use that as the real departure point.
-  For example: Trincomalee (no airport) → use Colombo (CMB). Kandy → use Colombo (CMB). Galle → use Mattala (HRI) or Colombo (CMB).
-- Similarly, if the destination city lacks an airport, resolve to the nearest airport city.
-- In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, NRT, LHR).
-- In the "description" field, note if the traveler needs ground transport to reach the departure airport.
-
+{real_data_prompt_section}
 Your task is to act as an agentic flight finder. Propose 2-4 distinct, realistic flight strategies.
 These can be:
 - "direct": Direct flight option (if available) or standard single-carrier route.
-- "budget_carrier": Utilizing low-cost carriers (e.g. AirAsia, Scoot, Ryanair, IndiGo, Cinnamon Air, FitsAir, Southwest, etc. depending on region).
+- "budget_carrier": Utilizing low-cost carriers (e.g. AirAsia, Scoot, Ryanair, IndiGo, FitsAir, Southwest, etc. depending on region).
 - "split_ticket": Booking separate tickets to save money.
 - "nearby_airport": Flying into or out of a nearby airport.
 
-For each strategy, estimate realistic price ranges in {currency} (total for all {travelers} travelers combined), specify the booking platform/provider name (e.g. "Expedia", "Skyscanner", "Google Flights", "Kayak"), and generate a pre-filled direct booking/search URL incorporating the dates if provided.
+IMPORTANT RULES:
+- In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, KUL, NRT, LHR). If the departure city (e.g., Kinniya) does not have an airport, use the nearest major airport (e.g., CMB for Colombo).
+- provider_name MUST be "Google Flights" for all strategies.
+- Estimate realistic price ranges in {currency}.
 
 Field Rules:
-- "title": Concise 3-6 word strategy name (e.g., "Fly via Expedia Budget Deal").
-- "provider_name": Booking platform name (e.g. "Expedia", "Skyscanner", "Kayak", "Google Flights").
+- "title": Concise 3-6 word strategy name.
+- "provider_name": MUST be "Google Flights".
 - "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
 - "estimated_price_range": Short price string only (e.g., "USD 180 - 300").
-- "route": Short airport code route (e.g., "TRR -> CMB -> MAA").
+- "route": Short IATA airport code route (e.g., "CMB → KUL").
 - "convenience": Star rating string ONLY (e.g., "★★★☆☆").
-- "best_months": Short month list under 5 words (e.g., "Jan-Mar, Jul-Sep").
-- "booking_url": Real search landing page or booking URL (e.g. Expedia, Skyscanner, Google Flights).
+- "tip": Short booking tip.
+- "booking_url": Leave empty, will be generated server-side.
 
 Return ONLY a JSON object with this exact shape:
 {{
@@ -320,19 +282,19 @@ Return ONLY a JSON object with this exact shape:
   "strategies": [
     {{
       "rank": 1,
-      "strategy": "split_ticket",
-      "title": "Expedia Split Ticket Option",
-      "provider_name": "Expedia",
-      "description": "Explanation of how to book this strategy.",
-      "estimated_savings": "Save ~35%",
-      "estimated_price_range": "{currency} 100,000 - 150,000",
+      "strategy": "direct",
+      "title": "Direct Flight via Google Flights",
+      "provider_name": "Google Flights",
+      "description": "Description of route and strategy.",
+      "estimated_savings": "Save ~15%",
+      "estimated_price_range": "{currency} 200 - 400",
       "airlines": ["Airline A", "Airline B"],
-      "route": "CMB -> KUL -> NRT",
-      "stops": 1,
-      "total_duration": "12h",
-      "convenience": "★★★☆☆",
+      "route": "CMB → KUL",
+      "stops": 0,
+      "total_duration": "4h 30m",
+      "convenience": "★★★★★",
       "tip": "Short booking tip.",
-      "booking_url": "https://www.expedia.com/Flights"
+      "booking_url": ""
     }}
   ],
   "general_tips": [
@@ -355,12 +317,11 @@ Return ONLY a JSON object with this exact shape:
                         strat["airlines"] = []
                     else:
                         strat["airlines"] = [str(a) for a in airlines]
-                    # Ensure deep pre-filled booking URL
-                    provider = strat.get("provider_name") or "Google Flights"
-                    item_name = strat.get("title") or destination
+                    # Force Google Flights as provider and build deep search URL
+                    strat["provider_name"] = "Google Flights"
                     strat["booking_url"] = _build_deep_booking_url(
-                        provider=provider,
-                        item_name=item_name,
+                        provider="Google Flights",
+                        item_name=strat.get("title") or destination,
                         destination=destination,
                         start_date=flight_start_date,
                         end_date=flight_end_date,
@@ -384,29 +345,40 @@ async def generate_hotel_strategies(
     hotel_check_in_date: str = "",
     hotel_check_out_date: str = "",
     api_key: str,
-    rapidapi_key: str = "",
+    serpapi_key: str = "",
 ) -> dict:
-    """Uses RapidAPI (with Gemini fallback) to generate hotel/accommodation options."""
-    if rapidapi_key:
+    """Generates hotel/accommodation strategies using SerpApi Google Hotels + Gemini."""
+    real_data_context = ""
+
+    if serpapi_key:
         try:
-            logger.info("Attempting live hotel search via RapidAPI...")
-            service = RapidAPIService(rapidapi_key)
-            result = await service.search_hotels(
+            logger.info("Fetching live hotel data via SerpApi (Google Hotels)...")
+            serp = SerpApiService(serpapi_key)
+            serp_result = await serp.search_hotels(
                 destination=destination,
-                days=days,
-                budget=budget,
-                currency=currency,
-                travelers=travelers,
                 check_in_date=hotel_check_in_date,
                 check_out_date=hotel_check_out_date,
+                adults=travelers,
+                currency=currency,
             )
-            if result and result.get("strategies"):
-                return result
+            real_data_context = format_hotel_results_for_gemini(
+                serp_result, destination, currency
+            )
         except Exception as e:
-            logger.warning(f"RapidAPI hotel search failed, falling back to Gemini: {e}")
+            logger.warning(f"SerpApi hotel search failed, falling back to Gemini knowledge: {e}")
+
     date_str = ""
     if hotel_check_in_date and hotel_check_out_date:
         date_str = f"- Check-in Date: {hotel_check_in_date}\n- Check-out Date: {hotel_check_out_date}"
+
+    real_data_prompt_section = ""
+    if real_data_context:
+        real_data_prompt_section = f"""
+LIVE GOOGLE HOTELS SEARCH RESULTS:
+{real_data_context}
+
+INSTRUCTION: Use the REAL hotel data above to select 2-4 actual hotel options in {destination}. Use their real names, real per-night rates, real ratings, and real amenities from the search results.
+"""
 
     prompt = f"""Analyze accommodation options for a trip to "{destination}".
 The travelers want recommended places to stay.
@@ -417,15 +389,16 @@ Trip Details:
 - Duration: {days} days
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency}
+{real_data_prompt_section}
+Your task is to act as an agentic hotel finder. Propose 2-4 distinct, realistic hotel/stay options.
+For each option, include a REAL, well-known hotel name that actually exists in {destination}.
+Categories: Luxury, Boutique, Budget, Resort, or Apartment.
 
-Your task is to act as an agentic hotel finder. Propose 2-4 distinct, realistic hotel/stay options (e.g. Luxury, Boutique, Budget, Resort, Apartment).
-For each option, include:
-- Name of hotel or stay category
-- Provider name (e.g. "Booking.com", "Agoda", "Expedia", "Hotels.com", "Airbnb")
-- Price per night and total estimated stay cost in {currency}
-- Rating (e.g. "4.8 ★")
-- Top 3 amenities
-- Direct search/booking URL for that platform (e.g. https://www.booking.com/searchresults.html?ss={destination})
+IMPORTANT RULES:
+- provider_name MUST be either "Booking.com" or "Google Hotels" only.
+- Use REAL hotel names that exist in {destination}.
+- Estimate realistic prices in {currency} for the destination.
+- booking_url: Leave empty, will be generated server-side.
 
 Return ONLY a JSON object with this exact shape:
 {{
@@ -433,7 +406,7 @@ Return ONLY a JSON object with this exact shape:
   "strategies": [
     {{
       "rank": 1,
-      "name": "Hotel / Resort Name",
+      "name": "Real Hotel Name",
       "provider_name": "Booking.com",
       "category": "Boutique / Luxury / Budget",
       "rating": "4.7 ★",
@@ -442,7 +415,7 @@ Return ONLY a JSON object with this exact shape:
       "location": "City Center",
       "amenities": ["Free WiFi", "Breakfast Included", "Pool"],
       "description": "Short explanation of why this stay fits the trip.",
-      "booking_url": "https://www.booking.com/"
+      "booking_url": ""
     }}
   ],
   "general_tips": [
@@ -485,7 +458,7 @@ async def generate_odyssey(
     travelers: int = 1,
     api_key: str,
     unsplash_api_key: str = "",
-    rapidapi_key: str = "",
+    serpapi_key: str = "",
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
@@ -532,7 +505,7 @@ async def generate_odyssey(
                     flight_start_date=flight_start_date or "",
                     flight_end_date=flight_end_date or "",
                     api_key=api_key,
-                    rapidapi_key=rapidapi_key,
+                    serpapi_key=serpapi_key,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
@@ -551,7 +524,7 @@ async def generate_odyssey(
                     hotel_check_in_date=hotel_check_in_date or "",
                     hotel_check_out_date=hotel_check_out_date or "",
                     api_key=api_key,
-                    rapidapi_key=rapidapi_key,
+                    serpapi_key=serpapi_key,
                 )
             except Exception as e:
                 logger.error(f"Hotel strategy sub-job failed: {e}")

@@ -139,7 +139,9 @@ class BookingUrlHelper {
           ? 'flights from $origin to $dest'
           : 'flights to $dest';
       if (startDate.isNotEmpty && endDate.isNotEmpty) {
-        dateQ += ' on $startDate return $endDate';
+        dateQ += ' on $startDate through $endDate';
+      } else if (startDate.isNotEmpty) {
+        dateQ += ' on $startDate';
       }
       return 'https://www.google.com/travel/flights?q=${Uri.encodeComponent(dateQ)}';
     } else if (provider.contains('skyscanner')) {

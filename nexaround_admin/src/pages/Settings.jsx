@@ -48,14 +48,14 @@ export default function Settings() {
   const [geoapifyApiKey, setGeoapifyApiKey] = useState('');
   const [defaultGeofenceRadius, setDefaultGeofenceRadius] = useState('');
   const [unsplashApiKey, setUnsplashApiKey] = useState('');
-  const [rapidapiKey, setRapidapiKey] = useState('');
+  const [serpapiKey, setSerpapiKey] = useState('');
 
   const [showGoogleKey, setShowGoogleKey] = useState(false);
   const [showMapboxToken, setShowMapboxToken] = useState(false);
   const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [showGeoapifyKey, setShowGeoapifyKey] = useState(false);
   const [showUnsplashKey, setShowUnsplashKey] = useState(false);
-  const [showRapidapiKey, setShowRapidapiKey] = useState(false);
+  const [showSerpapiKey, setShowSerpapiKey] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -79,7 +79,7 @@ export default function Settings() {
       setGeoapifyApiKey(res.geoapify_api_key || '');
       setDefaultGeofenceRadius(res.default_geofence_radius || '100');
       setUnsplashApiKey(res.unsplash_api_key || '');
-      setRapidapiKey(res.rapidapi_key || '');
+      setSerpapiKey(res.serpapi_key || '');
     } catch (err) {
       setError(err.message || 'Failed to load system settings.');
     } finally {
@@ -102,7 +102,7 @@ export default function Settings() {
         geoapify_api_key: geoapifyApiKey,
         default_geofence_radius: String(defaultGeofenceRadius),
         unsplash_api_key: unsplashApiKey,
-        rapidapi_key: rapidapiKey,
+        serpapi_key: serpapiKey,
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -272,23 +272,23 @@ export default function Settings() {
             </div>
           </div>
           <div className="form-group" style={{ marginBottom: '16px' }}>
-            <label className="form-label">RapidAPI Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Live Flight & Hotel Search</span></label>
+            <label className="form-label">SerpApi Key <span style={{ fontSize: '11px', color: 'var(--accent)', fontWeight: 700 }}>Live Google Flight & Hotel Search</span></label>
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
               <input
                 type="text"
                 className="form-input"
-                value={rapidapiKey}
-                onChange={(e) => setRapidapiKey(e.target.value)}
-                placeholder="X-RapidAPI-Key (Booking.com & Skyscanner)"
+                value={serpapiKey}
+                onChange={(e) => setSerpapiKey(e.target.value)}
+                placeholder="SerpApi Private Key (Google Flights & Hotels)"
                 autoComplete="off"
                 style={{
                   paddingRight: '46px',
-                  WebkitTextSecurity: showRapidapiKey ? 'none' : 'disc',
+                  WebkitTextSecurity: showSerpapiKey ? 'none' : 'disc',
                 }}
               />
               <button
                 type="button"
-                onClick={() => setShowRapidapiKey(!showRapidapiKey)}
+                onClick={() => setShowSerpapiKey(!showSerpapiKey)}
                 style={{
                   position: 'absolute',
                   right: '12px',
@@ -302,7 +302,7 @@ export default function Settings() {
                   padding: '4px',
                 }}
               >
-                {showRapidapiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
+                {showSerpapiKey ? <EyeOffIcon size={18} /> : <EyeIcon size={18} />}
               </button>
             </div>
           </div>
