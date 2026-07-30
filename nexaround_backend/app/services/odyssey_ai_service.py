@@ -317,17 +317,28 @@ Return ONLY a JSON object with this exact shape:
                         strat["airlines"] = []
                     else:
                         strat["airlines"] = [str(a) for a in airlines]
+                    # Extract origin & destination airport/city from route (e.g. "CMB → LHR")
+                    route_str = str(strat.get("route") or "")
+                    route_origin = departure_city
+                    route_dest = destination
+                    if route_str:
+                        r_parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
+                        if r_parts:
+                            route_origin = r_parts[0]
+                        if len(r_parts) > 1:
+                            route_dest = r_parts[-1]
+
                     # Force Google Flights as provider and build deep search URL
                     strat["provider_name"] = "Google Flights"
                     strat["booking_url"] = _build_deep_booking_url(
                         provider="Google Flights",
                         item_name=strat.get("title") or destination,
-                        destination=destination,
+                        destination=route_dest,
                         start_date=flight_start_date,
                         end_date=flight_end_date,
                         travelers=travelers,
                         is_flight=True,
-                        origin_city=departure_city,
+                        origin_city=route_origin,
                     )
         return data
     except Exception as e:

@@ -124,12 +124,31 @@ class BookingUrlHelper {
     String startDate = '',
     String endDate = '',
     int travelers = 1,
+    String route = '',
   }) {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
+
+    // If rawUrl is already a valid pre-filled Google Flights search URL from backend, use it!
+    if (sanitizedRawUrl.contains('google.com/travel/flights') && sanitizedRawUrl.contains('q=')) {
+      return sanitizedRawUrl;
+    }
+
     final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
     final provider = resolvedProvider.trim().toLowerCase();
-    final origin = departureCity.trim().isNotEmpty ? departureCity.trim() : '';
-    final dest = destination.trim();
+
+    // Extract origin & destination from route if available (e.g. "CMB -> LHR" -> "CMB")
+    String origin = departureCity.trim();
+    String dest = destination.trim();
+    if (route.isNotEmpty) {
+      final parts = route.replaceAll('->', '→').split('→').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      if (parts.isNotEmpty) {
+        origin = parts.first;
+      }
+      if (parts.length > 1) {
+        dest = parts.last;
+      }
+    }
+
     final encodedDest = Uri.encodeComponent(dest);
     final encodedOrigin = Uri.encodeComponent(origin);
 
