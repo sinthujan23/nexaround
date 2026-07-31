@@ -35,7 +35,7 @@ export default function Navbar() {
         </NavLink>
 
         {/* Desktop Nav */}
-        <nav className="desktop-nav" style={{ display: 'flex', gap: '8px' }}>
+        <nav className="desktop-nav" style={{ display: 'flex', gap: '4px', marginLeft: '40px', flexGrow: 1 }}>
           {navItems.map((item) => (
             <NavLink
               key={item.path}

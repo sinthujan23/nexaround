@@ -103,21 +103,6 @@ export default function Home() {
                 Get in Touch
               </NavLink>
             </div>
-
-            {/* Metrics Bar */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px', marginTop: '64px', borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '32px' }} className="grid-2">
-              {[
-                { val: "6+", label: "Core Capabilities" },
-                { val: "99.9%", label: "System Uptime" },
-                { val: "8+", label: "Industries Served" },
-                { val: "100%", label: "Secure & Scalable" }
-              ].map((m, i) => (
-                <div key={i} style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--orange-light)', lineHeight: 1.1 }}>{m.val}</div>
-                  <div style={{ fontSize: '0.78rem', color: 'rgba(255, 255, 255, 0.6)', fontWeight: 600, marginTop: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{m.label}</div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
