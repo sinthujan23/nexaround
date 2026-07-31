@@ -38,7 +38,7 @@ export default function Home() {
     <div>
       
       {/* ═══ HERO ═══ */}
-      <section className="dark-section" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'flex-start', overflow: 'hidden', background: 'var(--navy)', padding: '160px 0 60px' }}>
+      <section className="dark-section" style={{ position: 'relative', minHeight: '101.5vh', display: 'flex', alignItems: 'flex-start', overflow: 'hidden', background: 'var(--navy)', padding: '160px 0 60px' }}>
         
         {/* Background Video */}
         <video 
