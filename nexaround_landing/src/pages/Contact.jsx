@@ -35,7 +35,7 @@ export default function Contact() {
     <div style={{ paddingBottom: '80px' }}>
       
       {/* Header */}
-      <section style={{ paddingTop: '64px', textAlign: 'center', maxWidth: '700px', margin: '0 auto', padding: '64px 24px 0' }}>
+      <section style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto', padding: '110px 24px 0' }}>
         <div className="badge badge-orange" style={{ margin: '0 auto 20px' }}>Connect With Us</div>
         <h1 style={{ fontSize: 'clamp(2rem, 4.5vw, 2.8rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px', lineHeight: 1.15 }}>
           Let's Build Something <br />

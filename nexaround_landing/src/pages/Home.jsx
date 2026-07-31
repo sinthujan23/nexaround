@@ -38,8 +38,30 @@ export default function Home() {
     <div>
       
       {/* ═══ HERO ═══ */}
-      <section style={{ position: 'relative', padding: '120px 0 100px', overflow: 'hidden', background: 'linear-gradient(180deg, rgba(10,22,40,0.03) 0%, transparent 60%)' }}>
-        <div style={{ position: 'absolute', top: '-100px', right: '-60px', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,86,219,0.06) 0%, transparent 70%)', filter: 'blur(50px)', pointerEvents: 'none' }} />
+      <section className="dark-section" style={{ position: 'relative', minHeight: '100vh', display: 'flex', alignItems: 'flex-start', overflow: 'hidden', background: 'var(--navy)', padding: '160px 0 60px' }}>
+        
+        {/* Background Video */}
+        <video 
+          autoPlay 
+          loop 
+          muted 
+          playsInline 
+          style={{ 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            width: '100%', 
+            height: '100%', 
+            objectFit: 'cover', 
+            zIndex: 1, 
+            pointerEvents: 'none', 
+            opacity: 0.28
+          }}
+        >
+          <source src="/hero_bg.mp4" type="video/mp4" />
+        </video>
+
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(10,22,40,0.4), rgba(10,22,40,0.75))', zIndex: 1, pointerEvents: 'none' }} />
 
         <div className="container" style={{ padding: '0 24px', position: 'relative', zIndex: 2 }}>
           <div style={{ maxWidth: '820px' }}>
@@ -47,28 +69,28 @@ export default function Home() {
             {/* Pillar Icons Bar */}
             <div style={{ display: 'flex', gap: '24px', marginBottom: '40px', flexWrap: 'wrap' }}>
               {[
-                { icon: <Code2 style={{ width: '20px', height: '20px', color: 'var(--blue)' }} />, label: 'Full-Stack Engineering' },
-                { icon: <BrainCircuit style={{ width: '20px', height: '20px', color: 'var(--blue)' }} />, label: 'AI & Data' },
-                { icon: <Blocks style={{ width: '20px', height: '20px', color: 'var(--blue)' }} />, label: 'Blockchain' },
-                { icon: <Cloud style={{ width: '20px', height: '20px', color: 'var(--blue)' }} />, label: 'Cloud & ERP' },
+                { icon: <Code2 style={{ width: '20px', height: '20px', color: 'var(--blue-light)' }} />, label: 'Full-Stack Engineering' },
+                { icon: <BrainCircuit style={{ width: '20px', height: '20px', color: 'var(--blue-light)' }} />, label: 'AI & Data' },
+                { icon: <Blocks style={{ width: '20px', height: '20px', color: 'var(--blue-light)' }} />, label: 'Blockchain' },
+                { icon: <Cloud style={{ width: '20px', height: '20px', color: 'var(--blue-light)' }} />, label: 'Cloud & ERP' },
               ].map((p, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
+                <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'rgba(255, 255, 255, 0.6)' }}>
                   {p.icon}
                   {p.label}
                 </div>
               ))}
             </div>
 
-            <h1 style={{ fontSize: 'clamp(3rem, 6vw, 4.4rem)', fontWeight: 900, color: 'var(--navy)', lineHeight: 1.1, margin: '0 0 24px', letterSpacing: '-0.03em' }}>
+            <h1 style={{ fontSize: 'clamp(3rem, 6vw, 4.4rem)', fontWeight: 900, color: '#ffffff', lineHeight: 1.1, margin: '0 0 24px', letterSpacing: '-0.03em' }}>
               NexARound{' '}
               <span className="text-gradient-blue">Technologies</span>
             </h1>
 
-            <p style={{ fontSize: '1.6rem', fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 20px', lineHeight: 1.4 }}>
+            <p style={{ fontSize: '1.6rem', fontWeight: 600, color: '#ffffff', margin: '0 0 20px', lineHeight: 1.4 }}>
               Full-stack engineering to fast-track your growth.
             </p>
 
-            <p style={{ fontSize: '1.15rem', color: 'var(--text-secondary)', margin: '0 0 40px', lineHeight: 1.7, maxWidth: '700px' }}>
+            <p style={{ fontSize: '1.15rem', color: 'rgba(255, 255, 255, 0.75)', margin: '0 0 40px', lineHeight: 1.7, maxWidth: '700px' }}>
               Tailored digital solutions for every sector. We help businesses, institutions, and 
               communities design, build, and scale intelligent software systems — across Sri Lanka and beyond.
             </p>
@@ -77,7 +99,7 @@ export default function Home() {
               <NavLink to="/solutions" className="btn-primary" style={{ padding: '12px 26px', fontSize: '0.9rem' }}>
                 Explore Solutions <ArrowRight style={{ width: '18px', height: '18px' }} />
               </NavLink>
-              <NavLink to="/contact" className="btn-secondary" style={{ padding: '12px 26px', fontSize: '0.9rem' }}>
+              <NavLink to="/contact" className="btn-secondary" style={{ padding: '12px 26px', fontSize: '0.9rem', background: 'transparent', color: '#fff', borderColor: 'rgba(255, 255, 255, 0.3)' }}>
                 Get in Touch
               </NavLink>
             </div>

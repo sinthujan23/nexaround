@@ -21,7 +21,7 @@ export default function App() {
       <ScrollToTop />
       <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-white)' }}>
         <Navbar />
-        <main style={{ flex: 1, paddingTop: '88px' }}>
+        <main style={{ flex: 1, paddingTop: '0px' }}>
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/services" element={<Services />} />
