@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contact — NexARound Technologies</title>
+<meta name="description" content="Contact NexARound Technologies about ERP, AI and data, blockchain, cloud, software engineering, and the nexARound app.">
+<meta name="author" content="NexARound Technologies">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="nav" id="siteNav">
+  <div class="nav__inner">
+    <button class="nav__burger" id="navBurger" aria-label="Open menu"><i></i><i></i><i></i></button>
+    <a href="index.html" class="nav__logo" aria-label="NexARound Technologies home"><svg class="nav__logo-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16" cy="16" r="4.4" stroke="currentColor" stroke-width="1.6"/></svg><span>nex<b>AR</b>ound</span></a>
+    <nav class="nav__pill" aria-label="Primary"><a href="services.html">Services</a><a href="erp.html">ERP Solution</a><a href="ai-data.html">AI &amp; Data</a><a href="app.html">nexARound App</a><a href="about.html" aria-current="page">About Us</a></nav>
+    <a href="contact.html" class="nav__ai">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.5 6.5L15 8L9.5 9.5L8 15L6.5 9.5L1 8L6.5 6.5L8 1Z"/></svg>
+      Let's Talk</a>
+  </div>
+</header>
+
+<div class="mega" id="mega" role="dialog" aria-modal="true" aria-label="Site menu">
+  <div class="mega__left">
+    <button class="mega__close" id="megaClose" aria-label="Close menu">&#10005;</button>
+    <nav class="mega__nav" aria-label="All pages">
+      <a href="index.html">Home</a><a href="services.html">Services</a><a href="erp.html">ERP Solution</a><a href="ai-data.html">AI, ML &amp; Data</a><a href="blockchain.html">Blockchain &amp; Web3</a><a href="app.html">nexARound App</a><a href="industries.html">Industries</a><a href="about.html" class="is-active">About Us</a>
+    </nav>
+    <div class="mega__sub">
+      <a href="technology.html">Technology Expertise</a><a href="about.html#process">Engagement Process</a><a href="about.html#models">Engagement Models</a><a href="contact.html">Contact Us</a>
+    </div>
+    <div class="mega__social"><span>in</span><span>&#10005;</span><span>f</span><span>&#9654;</span></div>
+  </div>
+  <div class="mega__right">
+    <h2>Full-stack engineering to fast-track your growth</h2>
+    <div class="mega__cards">
+      <a href="erp.html" class="mega__card art art--1"><h3>Complete ERP Solution</h3><a href="erp.html" class="rm">Know More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></a>
+      <a href="app.html" class="mega__card art art--4"><h3>The nexARound App</h3><a href="app.html" class="rm">Know More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></a>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+<main>
+<section class="hero">
+    <div class="hero__media"><div class="vidph art art--6 art--drift"><span class="vidph__label"><b>VIDEO PLACEHOLDER</b> &mdash; Contact page background film</span></div></div>
+    <div class="hero__inner">
+      <p class="hero__crumb rv"><a href="index.html">Home</a> &rsaquo; <span>Contact</span></p>
+      <h1 class="display rv" style="--d:.06s">Let's talk</h1>
+      <p class="hero__sub rv" style="--d:.14s">Tell us what you are trying to build. We will come back with a view on scope, approach, and timeline.</p>
+      <div class="hero__cta rv" style="--d:.22s"><a href="#form" class="btn btn--onDark">Send a message <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="mailto:support@nexaround.com" class="btn btn--outlineDark">Email us directly</a></div>
+    </div>
+    
+  </section>
+
+  <section id="form">
+    <div class="wrap cgrid">
+      <div class="rv">
+        <span class="chip">Send a message</span>
+        <h2 class="display" style="margin:20px 0 30px;">Start the conversation</h2>
+        <form class="form" id="contactForm">
+          <div class="form__row">
+            <div><label for="fn">First name</label><input id="fn" name="fn" type="text" required></div>
+            <div><label for="ln">Last name</label><input id="ln" name="ln" type="text" required></div>
+          </div>
+          <div class="form__row">
+            <div><label for="em">Email</label><input id="em" name="em" type="email" required></div>
+            <div><label for="ph">Phone (optional)</label><input id="ph" name="ph" type="tel"></div>
+          </div>
+          <div><label for="org">Organisation</label><input id="org" name="org" type="text"></div>
+          <div><label for="tp">What do you need?</label>
+            <select id="tp" name="tp">
+              <option>ERP Solution</option><option>AI, ML &amp; Data</option>
+              <option>Blockchain &amp; Web3</option><option>Cloud &amp; DevOps</option>
+              <option>Software Engineering</option><option>nexARound app enquiry</option>
+              <option>Something else</option>
+            </select></div>
+          <div><label for="msg">Message</label><textarea id="msg" name="msg" required></textarea></div>
+          <button type="submit" class="btn btn--dark" style="align-self:flex-start;">Send message <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          <p class="form__status" hidden style="color:var(--blue); font-weight:600; font-size:14.5px;">
+            Your message is ready. Connect this form to your mail service or backend to deliver it.</p>
+        </form>
+      </div>
+      <div class="rv" style="--d:.1s">
+        <div class="cinfo__item"><h4>Email</h4><p><a href="mailto:support@nexaround.com">support@nexaround.com</a></p></div>
+        <div class="cinfo__item"><h4>Phone</h4><p><a href="tel:+97455816148">+974 5581 6148</a></p></div>
+        <div class="cinfo__item"><h4>Website</h4><p><a href="https://www.nexaround.com">www.nexaround.com</a></p></div>
+        <div class="cinfo__item"><h4>Get the app</h4>
+          <div class="stores" style="margin-top:14px;"><a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.536c-.028-2.79 2.28-4.128 2.383-4.19-1.298-1.9-3.32-2.16-4.043-2.19-1.72-.176-3.36 1.014-4.23 1.014-.87 0-2.222-.99-3.652-.963-1.878.028-3.61 1.09-4.577 2.77-1.95 3.383-.497 8.39 1.404 11.14.93 1.35 2.036 2.86 3.49 2.807 1.4-.056 1.93-.905 3.62-.905 1.688 0 2.168.905 3.65.877 1.51-.028 2.463-1.375 3.386-2.73 1.066-1.56 1.505-3.08 1.526-3.157-.033-.014-2.93-1.124-2.957-4.473z"/></svg><span><small>Download on the</small>App Store</span></a><a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.6 2.6c-.4.2-.6.6-.6 1.1v16.6c0 .5.2.9.6 1.1l9.4-9.4-9.4-9.4zM15 8.2l2.7-1.5L21.4 9c.5.3.6.8.6 1s-.1.7-.6 1l-3.7 2.3-2.7-1.5 2-2-2-2zM4.3 21.8L14 16.2l-2.4-2.4L4.3 21.8zM4.3 2.2l7.3 7.3 2.4-2.4L4.3 2.2z"/></svg><span><small>Get it on</small>Google Play</span></a></div></div>
+        <div class="cinfo__item" style="border-bottom:none;"><h4>Follow</h4>
+          <div class="footer__social" style="margin-top:12px;">
+            <a href="#" aria-label="LinkedIn">in</a><a href="#" aria-label="X">&#10005;</a>
+            <a href="#" aria-label="Facebook">f</a><a href="#" aria-label="YouTube">&#9654;</a>
+          </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="band__inner">
+      <div class="rv">
+        <span class="chip">Let's build</span>
+        <h2>Ready to fast-track your growth?</h2>
+        <p>Tell us where you are and where you want to be. We will map the roadmap, the architecture, and the
+          success metrics before a line of code is written.</p>
+        <a href="contact.html" class="btn btn--onDark">Start a conversation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      </div>
+      <div class="band__art art art--8 art--drift rv" style="--d:.1s"></div>
+    </div>
+  </section>
+</main>
+<footer class="footer">
+  <div class="footer__cols">
+    <div class="footer__col">
+      <h4>Services</h4>
+      <a href="services.html">Digital Transformation</a>
+      <a href="services.html">Software Engineering</a>
+      <a href="services.html">Cloud Implementation</a>
+      <a href="ai-data.html">AI, ML &amp; Data</a>
+      <a href="services.html">UI / UX Design</a>
+      <a href="services.html">Quality &amp; Automation</a>
+    </div>
+    <div class="footer__col">
+      <h4>Products &amp; Solutions</h4>
+      <a href="app.html">nexARound App</a>
+      <a href="erp.html">ERP &amp; Business Solutions</a>
+      <a href="ai-data.html">AI, ML &amp; Data Solutions</a>
+      <a href="blockchain.html">Blockchain &amp; Web3</a>
+      <a href="services.html">Cloud &amp; DevOps Engineering</a>
+      <a href="technology.html">Technology Expertise</a>
+    </div>
+    <div class="footer__col">
+      <h4>Company</h4>
+      <a href="about.html">About Us</a>
+      <a href="industries.html">Industries We Serve</a>
+      <a href="about.html#process">Engagement Process</a>
+      <a href="about.html#models">Engagement Models</a>
+      <a href="about.html#why">Why Partner With Us</a>
+    </div>
+    <div class="footer__col">
+      <h4>Support</h4>
+      <a href="contact.html">Contact Us</a>
+      <a href="mailto:support@nexaround.com">support@nexaround.com</a>
+      <a href="tel:+97455816148">+974 5581 6148</a>
+      <a href="#">Privacy Statement</a>
+      <a href="#">Terms of Use</a>
+    </div>
+  </div>
+  <div class="footer__brand">
+    <p>&copy; <span data-year></span> NexARound Technologies. Full-stack engineering to fast-track your growth.</p>
+    <div class="footer__social">
+      <a href="#" aria-label="LinkedIn">in</a>
+      <a href="#" aria-label="X">&#10005;</a>
+      <a href="#" aria-label="Facebook">f</a>
+      <a href="#" aria-label="YouTube">&#9654;</a>
+    </div>
+  </div>
+</footer>
+
+<button class="totop" id="toTop" aria-label="Back to top">
+  <svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+</button>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
