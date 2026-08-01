@@ -1,8 +1,5 @@
 import { useState } from 'react';
-import { 
-  Mail, Phone, Globe, Send, ShieldCheck, 
-  Users, Eye, Target, Sparkles, CheckCircle2 
-} from 'lucide-react';
+import { Mail, Phone, Globe, MapPin, Send, CheckCircle2, Sparkles } from 'lucide-react';
 
 export default function Contact() {
   const [submitted, setSubmitted] = useState(false);
@@ -10,190 +7,186 @@ export default function Contact() {
     name: '',
     email: '',
     company: '',
-    subject: 'General Inquiry',
+    service: 'Enterprise Software & Development',
     message: ''
   });
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setSubmitted(true);
-    setTimeout(() => {
-      setSubmitted(false);
-      setFormData({ name: '', email: '', company: '', subject: 'General Inquiry', message: '' });
-    }, 3000);
   };
 
-  const partnerReasons = [
-    { title: 'Expert Team', desc: 'Skilled professionals with deep domain knowledge and hands-on experience.' },
-    { title: 'Quality & Reliability', desc: 'We follow industry best practices to deliver secure, robust, and scalable solutions.' },
-    { title: 'Agile & Transparent', desc: 'Agile delivery with clear communication and full transparency at every step.' },
-    { title: 'Innovation Driven', desc: 'We leverage emerging technologies to build innovative solutions.' },
-    { title: 'Long-term Partnership', desc: 'We focus on building long-term relationships and shared success.' }
-  ];
-
   return (
-    <div style={{ paddingBottom: '80px' }}>
+    <div style={{ paddingBottom: '100px' }}>
       
-      {/* Header */}
-      <section style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto', padding: '110px 24px 0' }}>
-        <div className="badge badge-orange" style={{ margin: '0 auto 20px' }}>Connect With Us</div>
-        <h1 style={{ fontSize: 'clamp(2rem, 4.5vw, 2.8rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px', lineHeight: 1.15 }}>
-          Let's Build Something <br />
+      {/* Header Section */}
+      <section style={{ textAlign: 'center', maxWidth: '900px', margin: '0 auto', padding: '160px 24px 64px' }}>
+        <div className="badge badge-blue" style={{ margin: '0 auto 22px' }}>
+          <Sparkles style={{ width: '14px', height: '14px' }} /> Direct Engineering Line
+        </div>
+        <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 3.6rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 20px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
+          Let’s Build Something <br />
           <span className="text-gradient-blue">Extraordinary Together</span>
         </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.7, margin: 0 }}>
-          We are ready to turn your ideas into powerful digital solutions. Get in touch with our team today.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '1.12rem', lineHeight: 1.7, margin: 0, maxWidth: '680px', marginLeft: 'auto', marginRight: 'auto' }}>
+          Whether you need full-stack software development, custom ERPNext integration, AI data pipelines, or a flagship mobile app build, our senior team is ready.
         </p>
       </section>
 
-      {/* Form and info row */}
-      <section className="container" style={{ paddingTop: '64px', paddingLeft: '24px', paddingRight: '24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '32px' }} className="grid-2">
+      {/* Main Contact Grid */}
+      <section className="container" style={{ padding: '0 40px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '48px', alignItems: 'start' }} className="grid-2">
           
-          {/* Form */}
-          <div className="glass-card" style={{ padding: '40px 36px' }}>
-            {submitted ? (
-              <div style={{ textAlign: 'center', padding: '40px 0' }}>
-                <CheckCircle2 className="w-12 h-12 text-brand-blue" style={{ color: 'var(--blue)', margin: '0 auto 16px' }} />
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 8px' }}>Thank You!</h3>
-                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: 0 }}>Your message has been sent. We'll get back to you shortly.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px', textAlign: 'left' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }} className="grid-2">
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#8a8f9d', marginBottom: '6px', fontWeight: 600 }}>YOUR NAME</label>
-                    <input 
-                      type="text" 
-                      required
-                      placeholder="Alex Morgan" 
-                      value={formData.name}
-                      onChange={(e) => setFormData({...formData, name: e.target.value})}
-                      style={{ width: '100%', padding: '10px 14px', background: '#f8f9fa', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.82rem', color: '#121212', outline: 'none' }} 
-                    />
+          {/* Left: Contact Info */}
+          <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            <div className="service-page-card" style={{ padding: '36px 32px' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '8px' }}>Global Headquarters</div>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px' }}>Technical Operations & Support</h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(26,86,219,0.08)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Mail style={{ width: '20px', height: '20px' }} />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#8a8f9d', marginBottom: '6px', fontWeight: 600 }}>EMAIL ADDRESS</label>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--navy)' }}>Email Inquiry</div>
+                    <a href="mailto:support@nexaround.com" style={{ color: 'var(--blue)', fontWeight: 600 }}>support@nexaround.com</a>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(26,86,219,0.08)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Phone style={{ width: '20px', height: '20px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--navy)' }}>Direct Phone</div>
+                    <a href="tel:+97455816148" style={{ color: 'var(--navy)', fontWeight: 600 }}>+974 5581 6148</a>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(26,86,219,0.08)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <Globe style={{ width: '20px', height: '20px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--navy)' }}>Website</div>
+                    <a href="https://www.nexaround.com" target="_blank" rel="noreferrer" style={{ color: 'var(--navy)', fontWeight: 600 }}>www.nexaround.com</a>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '12px', background: 'rgba(26,86,219,0.08)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <MapPin style={{ width: '20px', height: '20px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--navy)' }}>Coverage Region</div>
+                    <span style={{ color: 'var(--navy)', fontWeight: 600 }}>Sri Lanka & Global Engineering Clients</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '28px 30px', background: 'rgba(26,86,219,0.03)', border: '1px solid rgba(26,86,219,0.12)', borderRadius: 'var(--radius-md)' }}>
+              <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--navy)', marginBottom: '6px' }}>Fast Technical Response</div>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+                Our senior engineering team reviews all incoming inquiries within 24 business hours to provide an initial architectural assessment.
+              </p>
+            </div>
+          </div>
+
+          {/* Right: Glass Form */}
+          <div className="service-page-card" style={{ padding: '44px 40px', textAlign: 'left' }}>
+            {submitted ? (
+              <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                <div style={{ width: '64px', height: '64px', borderRadius: '50%', background: 'rgba(26, 86, 219, 0.1)', color: 'var(--blue)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+                  <CheckCircle2 style={{ width: '32px', height: '32px' }} />
+                </div>
+                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 12px' }}>Inquiry Received</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.98rem', lineHeight: 1.65, margin: '0 0 28px' }}>
+                  Thank you for reaching out. A senior engineering lead will contact you shortly to discuss your project requirements.
+                </p>
+                <button onClick={() => setSubmitted(false)} className="btn-primary" style={{ padding: '12px 28px', fontSize: '0.9rem' }}>
+                  Send Another Inquiry
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+                <h3 style={{ fontSize: '1.45rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 4px' }}>Send Us a Message</h3>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0 0 8px' }}>Fill out the form below and we will get back to you promptly.</p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--navy)', marginBottom: '6px' }}>Your Name *</label>
+                    <input 
+                      type="text" 
+                      required 
+                      className="form-input" 
+                      placeholder="e.g. Alexander Wright" 
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--navy)', marginBottom: '6px' }}>Business Email *</label>
                     <input 
                       type="email" 
-                      required
+                      required 
+                      className="form-input" 
                       placeholder="alex@company.com" 
                       value={formData.email}
-                      onChange={(e) => setFormData({...formData, email: e.target.value})}
-                      style={{ width: '100%', padding: '10px 14px', background: '#f8f9fa', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.82rem', color: '#121212', outline: 'none' }} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     />
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }} className="grid-2">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#8a8f9d', marginBottom: '6px', fontWeight: 600 }}>COMPANY NAME</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--navy)', marginBottom: '6px' }}>Company Name</label>
                     <input 
                       type="text" 
-                      placeholder="Acme Corp" 
+                      className="form-input" 
+                      placeholder="e.g. Global Tech Solutions" 
                       value={formData.company}
-                      onChange={(e) => setFormData({...formData, company: e.target.value})}
-                      style={{ width: '100%', padding: '10px 14px', background: '#f8f9fa', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.82rem', color: '#121212', outline: 'none' }} 
+                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
                     />
                   </div>
+
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#8a8f9d', marginBottom: '6px', fontWeight: 600 }}>SUBJECT</label>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--navy)', marginBottom: '6px' }}>Primary Service Required</label>
                     <select 
-                      value={formData.subject}
-                      onChange={(e) => setFormData({...formData, subject: e.target.value})}
-                      style={{ width: '100%', padding: '10px 14px', background: '#f8f9fa', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.82rem', color: '#121212', outline: 'none', height: '38px' }}
+                      className="form-select"
+                      value={formData.service}
+                      onChange={(e) => setFormData({ ...formData, service: e.target.value })}
                     >
-                      <option>General Inquiry</option>
-                      <option>ERPNext Implementation</option>
-                      <option>Custom Software Project</option>
-                      <option>AI / Data Solutions</option>
-                      <option>Partnership Inquiry</option>
+                      <option value="Enterprise Software & Development">Enterprise Software & Development</option>
+                      <option value="ERPNext Implementation">ERPNext Implementation</option>
+                      <option value="AI & Data Intelligence">AI & Data Intelligence</option>
+                      <option value="Blockchain & Web3">Blockchain & Web3</option>
+                      <option value="Flagship Mobile App Customization">Flagship Mobile App Customization</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.7rem', fontFamily: 'var(--font-mono)', color: '#8a8f9d', marginBottom: '6px', fontWeight: 600 }}>MESSAGE</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: 'var(--navy)', marginBottom: '6px' }}>Project Summary & Requirements *</label>
                   <textarea 
-                    rows="4" 
-                    required
-                    placeholder="How can we help your business succeed?" 
+                    required 
+                    rows={5} 
+                    className="form-textarea" 
+                    placeholder="Tell us about your objectives, timeline, and technical scope..."
                     value={formData.message}
-                    onChange={(e) => setFormData({...formData, message: e.target.value})}
-                    style={{ width: '100%', padding: '10px 14px', background: '#f8f9fa', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '0.82rem', color: '#121212', outline: 'none', resize: 'vertical' }} 
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   />
                 </div>
 
-                <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-                  <Send className="w-4 h-4" /> Send Message
+                <button type="submit" className="btn-primary" style={{ marginTop: '8px', justifyContent: 'center', width: '100%' }}>
+                  Submit Technical Inquiry <Send style={{ width: '16px', height: '16px' }} />
                 </button>
               </form>
             )}
           </div>
 
-          {/* Info */}
-          <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '28px', justifyContent: 'center' }}>
-            <div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--navy)', marginBottom: '8px' }}>NexARound Technologies</h3>
-              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
-                Enterprise software firm specializing in custom development, AI data systems, ERP deployments, and digital transformation.
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(26,86,219,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Mail className="w-5 h-5 text-brand-blue" style={{ color: 'var(--blue)' }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#8a8f9d', fontFamily: 'var(--font-mono)' }}>EMAIL</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--navy)' }}>support@nexaround.com</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(26,86,219,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Phone className="w-5 h-5 text-brand-blue" style={{ color: 'var(--blue)' }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#8a8f9d', fontFamily: 'var(--font-mono)' }}>PHONE</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--navy)' }}>+974 5581 6148</div>
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'rgba(26,86,219,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Globe className="w-5 h-5 text-brand-blue" style={{ color: 'var(--blue)' }} />
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#8a8f9d', fontFamily: 'var(--font-mono)' }}>WEBSITE</div>
-                  <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--navy)' }}>www.nexaround.com</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* Why Partner Section */}
-      <section style={{ marginTop: '80px', background: 'var(--navy)', color: '#fff', padding: '80px 0' }}>
-        <div className="container" style={{ padding: '0 24px' }}>
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 48px' }}>
-            <div className="badge badge-orange" style={{ marginBottom: '14px' }}>Why Partner With NexARound?</div>
-            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: '#fff', margin: '0 0 12px' }}>
-              Your success is our mission
-            </h2>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }} className="grid-2">
-            {partnerReasons.map((r, i) => (
-              <div key={i} className="dark-card" style={{ padding: '24px 20px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff' }}>{r.title}</div>
-                <p style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.6)', lineHeight: 1.6, margin: 0 }}>{r.desc}</p>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 

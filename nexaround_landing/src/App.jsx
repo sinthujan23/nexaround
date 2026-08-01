@@ -6,6 +6,7 @@ import Footer from './components/Footer';
 import Home from './pages/Home';
 import Services from './pages/Services';
 import Solutions from './pages/Solutions';
+import NexARoundApp from './pages/NexARoundApp';
 import About from './pages/About';
 import Contact from './pages/Contact';
 
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/services" element={<Services />} />
             <Route path="/solutions" element={<Solutions />} />
+            <Route path="/app" element={<NexARoundApp />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
           </Routes>

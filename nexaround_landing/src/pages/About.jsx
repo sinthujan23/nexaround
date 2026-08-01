@@ -1,74 +1,95 @@
 import { 
-  Compass, Shield, Cpu, Users, Eye, Target, 
-  Settings, ArrowRight, ShieldCheck, Zap 
+  Target, Cpu, GitCommit, CheckCircle2, ShieldCheck, 
+  ArrowRight, Sparkles, Code2, Users, Layers, Lock, Award
 } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
 
 export default function About() {
   const values = [
-    { title: 'End-to-end', desc: 'Discovery to delivery, one accountable team managing your entire product cycle.' },
-    { title: 'Secure', desc: 'Security and privacy engineered in from day one across frontend and backend layers.' },
-    { title: 'Scalable', desc: 'Software architectures designed to support high transaction volumes and business growth.' },
-    { title: 'Quality First', desc: 'Code audits, unit testing, and automated quality assurance built into our process.' },
-    { title: 'Client Focused', desc: 'Transparent, collaborative partnerships focused on delivering measurable outcomes.' }
+    { title: 'Full Accountability', desc: 'End-to-end ownership from architecture to production SLA monitoring.' },
+    { title: 'Security First', desc: 'Enterprise encryption, audited protocols, and strict data privacy compliance.' },
+    { title: 'Built to Scale', desc: 'Architectures engineered for multi-region scale and high peak concurrency.' },
+    { title: 'Rigorous QA', desc: 'Automated CI/CD security scans and regression testing on every build.' },
+    { title: 'Transparent Partnership', desc: 'Direct collaboration with senior engineers, clear roadmaps, and agile delivery.' }
   ];
 
   const expertises = [
-    { title: 'Management & Advisory', desc: 'Strategy and IT advisory leadership guiding every software engagement.' },
-    { title: 'Project Coordination', desc: 'Agile steering, business analysis, and dedicated client milestones.' },
-    { title: 'Architecture & Security', desc: 'System blueprints and cybersecurity guidelines built into every layer.' },
-    { title: 'Full Stack Development', desc: 'Custom engineering in Python (Flask/Django), PHP, and Node.js.' },
-    { title: 'Frontend & UI/UX', desc: 'Human-centred design designed in Figma and implemented in React, Next.js, and Tailwind.' },
-    { title: 'Mobile Development', desc: 'Native Android and iOS engineering alongside Flutter and React Native.' },
-    { title: 'DevOps & Cloud', desc: 'CI/CD pipeline configuration, container orchestration, and server administration.' },
-    { title: 'Quality Assurance', desc: 'Manual and automated testing frameworks across every build cycle.' },
-    { title: 'Database Management', desc: 'Relational database scaling and indexing in PostgreSQL, MySQL, and MongoDB.' }
+    { name: 'Software Architecture', desc: 'Microservices, event-driven design, and cloud-native systems.' },
+    { name: 'Full-Stack Development', desc: 'Modern web, mobile, and backend microservice development.' },
+    { name: 'Data & Machine Learning', desc: 'ETL pipelines, predictive models, and document processing LLMs.' },
+    { name: 'DevOps & Cloud Ops', desc: 'Terraform IaC, Kubernetes orchestration, and zero-downtime CI/CD.' },
+    { name: 'Web3 & Smart Contracts', desc: 'Audited Ethereum, Polygon & Solana smart contract architecture.' },
+    { name: 'UI / UX Design', desc: 'User-centered design systems, interactive prototypes, and modern UI.' },
+    { name: 'Quality Assurance', desc: 'End-to-end automated testing, load testing, and security auditing.' },
+    { name: 'ERP Implementation', desc: 'Custom ERPNext modules, workflow automation, and enterprise support.' },
+    { name: 'Mobile Engineering', desc: 'High-performance Flutter apps with AR camera vision and geolocation.' },
   ];
 
-  const techStack = {
-    languages: ['Python', 'JavaScript', 'TypeScript', 'PHP', 'Java', 'HTML/CSS'],
-    frontend: ['Next.js', 'React.js', 'Angular', 'Vue.js', 'Tailwind CSS'],
-    backend: ['Node.js', 'Django', 'Flask', 'FastAPI', 'Express.js'],
-    mobile: ['Flutter', 'React Native', 'Android Native', 'iOS Native'],
-    databases: ['MySQL', 'PostgreSQL', 'MongoDB', 'Redis', 'Firebase'],
-    cloudDevops: ['AWS', 'Azure', 'Docker', 'Kubernetes', 'GitHub Actions'],
-    blockchain: ['Ethereum', 'Solana', 'Hyperledger', 'Polygon', 'Smart Contracts'],
-    aiData: ['TensorFlow', 'PyTorch', 'scikit-learn', 'Pandas', 'NumPy']
-  };
+  const stages = [
+    { num: '01', title: 'Discovery & Requirements', desc: 'Deep dive into operational workflows, tech debt, and strategic objectives.' },
+    { num: '02', title: 'Architecture & Design', desc: 'Detailed system blueprints, API schemas, security models, and UI wireframes.' },
+    { num: '03', title: 'Agile Engineering', desc: 'Iterative sprint development with continuous client feedback and code reviews.' },
+    { num: '04', title: 'Automated QA & Testing', desc: 'Load testing, vulnerability scans, and user acceptance testing (UAT).' },
+    { num: '05', title: 'Deployment & Support', desc: 'Zero-downtime cloud release, continuous monitoring, and ongoing SLA maintenance.' },
+  ];
 
   return (
-    <div style={{ paddingBottom: '80px' }}>
+    <div style={{ paddingBottom: '100px' }}>
       
-      {/* Header */}
-      <section style={{ textAlign: 'center', maxWidth: '700px', margin: '0 auto', padding: '110px 24px 0' }}>
-        <div className="badge badge-blue" style={{ margin: '0 auto 20px' }}>Technology Expertise</div>
-        <h1 style={{ fontSize: 'clamp(2rem, 4.5vw, 2.8rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px', lineHeight: 1.15 }}>
-          Expertise-driven Delivery & <br />
+      {/* Header Section with Office Showcase Image */}
+      <section style={{ textAlign: 'center', maxWidth: '1020px', margin: '0 auto', padding: '160px 24px 64px', position: 'relative' }}>
+        <div className="badge badge-blue" style={{ margin: '0 auto 22px' }}>
+          <Sparkles style={{ width: '14px', height: '14px' }} /> Engineering Excellence
+        </div>
+        <h1 style={{ fontSize: 'clamp(2.5rem, 5vw, 3.6rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 20px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
+          Technical Delivery & <br />
           <span className="text-gradient-blue">Team Excellence</span>
         </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', lineHeight: 1.7, margin: 0 }}>
-          NexARound Technologies is a Sri Lankan-based software engineering firm delivering next-generation digital solutions globally.
+        <p style={{ color: 'var(--text-secondary)', fontSize: '1.12rem', lineHeight: 1.7, margin: '0 auto 48px', maxWidth: '720px' }}>
+          NexARound Technologies is a premier software engineering firm delivering next-generation digital solutions globally across Sri Lanka and worldwide.
         </p>
+
+        {/* Corporate Office Image Showcase */}
+        <div style={{ position: 'relative', borderRadius: 'var(--radius-lg)', overflow: 'hidden', border: '1px solid rgba(26,86,219,0.2)', boxShadow: 'var(--shadow-lg)' }}>
+          <img 
+            src="/about_office.png" 
+            alt="NexARound Technologies Engineering HQ" 
+            style={{ width: '100%', height: '400px', objectFit: 'cover' }} 
+          />
+          <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '28px 36px', background: 'linear-gradient(to top, rgba(10,22,40,0.92) 0%, rgba(10,22,40,0) 100%)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', color: '#ffffff' }}>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '1px' }}>Global Delivery Center</div>
+              <div style={{ fontSize: '1.3rem', fontWeight: 800 }}>Full-Stack Software Engineering HQ</div>
+            </div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.15)', padding: '8px 18px', borderRadius: '9999px', backdropFilter: 'blur(12px)' }}>
+              Sri Lanka & International Operations
+            </div>
+          </div>
+        </div>
       </section>
 
-      {/* Engineering with Purpose / values */}
-      <section className="container" style={{ paddingTop: '80px', paddingLeft: '24px', paddingRight: '24px' }}>
-        <div className="glass-card" style={{ padding: '48px 40px', background: 'linear-gradient(180deg, rgba(26,86,219,0.03) 0%, #fff 100%)' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '32px', textAlign: 'left' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '10px', background: 'rgba(26,86,219,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Target className="w-6 h-6" style={{ color: 'var(--blue)' }} />
+      {/* Core Principles */}
+      <section className="container" style={{ padding: '36px 40px 0' }}>
+        <div className="service-page-card" style={{ padding: '52px 48px' }}>
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '36px' }}>
+              <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(26, 86, 219, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Target style={{ width: '26px', height: '26px', color: 'var(--blue)' }} />
               </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--navy)', margin: 0 }}>Engineering with Purpose</h2>
+              <div>
+                <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '1px' }}>Core Philosophy</div>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--navy)', margin: 0 }}>Engineering with Purpose</h2>
+              </div>
             </div>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }} className="grid-2">
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }} className="grid-2">
               {values.map((v, i) => (
-                <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <ShieldCheck className="w-4 h-4" style={{ color: 'var(--orange)', flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--navy)' }}>{v.title}</span>
+                <div key={i} style={{ padding: '24px 18px', background: 'rgba(26,86,219,0.03)', border: '1px solid rgba(26,86,219,0.08)', borderRadius: '14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                    <ShieldCheck style={{ width: '18px', height: '18px', color: 'var(--orange)', flexShrink: 0 }} />
+                    <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--navy)' }}>{v.title}</div>
                   </div>
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{v.desc}</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{v.desc}</p>
                 </div>
               ))}
             </div>
@@ -76,94 +97,79 @@ export default function About() {
         </div>
       </section>
 
-      {/* Tech Expertise Grid */}
-      <section className="container" style={{ paddingTop: '80px', paddingLeft: '24px', paddingRight: '24px' }}>
-        <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 48px' }}>
-          <div className="badge badge-orange" style={{ marginBottom: '14px' }}>Capabilities</div>
-          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 12px' }}>
-            A comprehensive, cross-functional tech force
+      {/* Expertise Grid */}
+      <section className="container" style={{ padding: '90px 40px 0' }}>
+        <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 64px' }}>
+          <div className="badge badge-orange" style={{ marginBottom: '18px' }}>
+            <Cpu style={{ width: '14px', height: '14px' }} /> Cross-Functional Capabilities
+          </div>
+          <h2 style={{ fontSize: 'clamp(2.1rem, 3.8vw, 2.9rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px' }}>
+            A Comprehensive Tech Force
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: 0 }}>
-            At the helm of our operations is a visionary team orchestration backing Strategy, Architecture, Development, and Quality.
+          <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.65 }}>
+            Our cross-functional teams integrate strategy, architecture, development, and quality assurance into one cohesive unit.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }} className="grid-2">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '28px' }} className="grid-2">
           {expertises.map((e, i) => (
-            <div key={i} className="glass-card" style={{ padding: '28px 24px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <span style={{
-                  width: '28px', height: '28px', borderRadius: '50%',
-                  background: 'rgba(26,86,219,0.08)', color: 'var(--blue)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.75rem', fontWeight: 800
-                }}>{i + 1}</span>
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--navy)', margin: 0 }}>{e.title}</h3>
+            <div key={i} className="service-page-card" style={{ padding: '32px 28px', textAlign: 'left' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                <CheckCircle2 style={{ width: '18px', height: '18px', color: 'var(--blue)', flexShrink: 0 }} />
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--navy)', margin: 0 }}>{e.name}</h3>
               </div>
-              <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{e.desc}</p>
+              <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>{e.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Engagement Process */}
-      <section style={{ marginTop: '80px', background: 'var(--bg-light)', padding: '80px 0' }}>
-        <div className="container" style={{ padding: '0 24px' }}>
-          <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 48px' }}>
-            <div className="badge badge-blue" style={{ marginBottom: '14px' }}>Our Process</div>
-            <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 12px' }}>
-              From idea to impact
-            </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: 0 }}>
-              A proven, agile approach that ensures clarity, quality, and on-time delivery.
-            </p>
+      {/* Delivery Lifecycle */}
+      <section className="container" style={{ padding: '90px 40px 0' }}>
+        <div className="service-page-card" style={{ padding: '52px 48px', textAlign: 'left' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '40px' }}>
+            <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(26, 86, 219, 0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <GitCommit style={{ width: '26px', height: '26px', color: 'var(--blue)' }} />
+            </div>
+            <div>
+              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '1px' }}>Structured Workflow</div>
+              <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--navy)', margin: 0 }}>5-Stage Delivery Lifecycle</h2>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '16px' }} className="grid-2">
-            {[
-              { num: '01', title: 'DISCOVER', desc: 'Understand your goals, challenges, and opportunities.' },
-              { num: '02', title: 'PLAN', desc: 'Action roadmap, scope, architecture and success metrics.' },
-              { num: '03', title: 'BUILD', desc: 'Agile development with continuous collaboration.' },
-              { num: '04', title: 'TEST & VALIDATE', desc: 'Rigorous testing to ensure quality, security and performance.' },
-              { num: '05', title: 'DEPLOY & SUPPORT', desc: 'Seamless deployment and ongoing support for long-term success.' }
-            ].map((p, i) => (
-              <div key={i} className="glass-card" style={{ padding: '24px 20px', background: '#fff', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--blue)', opacity: 0.8, fontFamily: 'var(--font-mono)' }}>{p.num}</div>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy)' }}>{p.title}</div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>{p.desc}</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '20px' }} className="grid-2">
+            {stages.map((st, i) => (
+              <div key={i} style={{ padding: '24px 18px', background: 'rgba(15, 23, 42, 0.03)', border: '1px solid rgba(15, 23, 42, 0.08)', borderRadius: '14px' }}>
+                <div style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--blue)', fontFamily: 'var(--font-mono)', marginBottom: '8px' }}>{st.num}</div>
+                <div style={{ fontSize: '0.92rem', fontWeight: 800, color: 'var(--navy)', marginBottom: '8px' }}>{st.title}</div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>{st.desc}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Tech Stack we use */}
-      <section className="container" style={{ paddingTop: '80px', paddingLeft: '24px', paddingRight: '24px' }}>
-        <div style={{ textAlign: 'center', maxWidth: '600px', margin: '0 auto 48px' }}>
-          <div className="badge badge-orange" style={{ marginBottom: '14px' }}>Technologies We Use</div>
-          <h2 style={{ fontSize: '2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 12px' }}>
-            Our full stack capabilities
+      {/* CTA Section */}
+      <section className="container" style={{ padding: '90px 40px 0' }}>
+        <div style={{ 
+          padding: '64px 44px', 
+          textAlign: 'center', 
+          background: 'linear-gradient(135deg, rgba(26,86,219,0.06) 0%, #ffffff 50%, rgba(232,119,34,0.06) 100%)', 
+          border: '1px solid rgba(26,86,219,0.2)',
+          borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-md)',
+          maxWidth: '1000px',
+          margin: '0 auto'
+        }}>
+          <h2 style={{ fontSize: 'clamp(1.9rem, 3.5vw, 2.7rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 16px' }}>
+            Partner with a World-Class Engineering Team
           </h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', margin: 0 }}>
-            We work with standard technologies across frontend, backend, databases, cloud, and AI.
+          <p style={{ color: 'var(--text-secondary)', margin: '0 0 36px', fontSize: '1.05rem', maxWidth: '600px', marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.7 }}>
+            Let us build the custom software architecture your business requires to scale.
           </p>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }} className="grid-2">
-          {Object.entries(techStack).map(([category, items], i) => (
-            <div key={i} className="glass-card" style={{ padding: '24px 20px', textAlign: 'left' }}>
-              <div style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--blue)', textTransform: 'uppercase', marginBottom: '14px', letterSpacing: '0.5px' }}>
-                {category.replace(/([A-Z])/g, ' $1').trim()}
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {items.map((item, idx) => (
-                  <span key={idx} className="badge" style={{ fontSize: '0.68rem', padding: '4px 8px', textTransform: 'none', letterSpacing: 'normal' }}>
-                    {item}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
+          <NavLink to="/contact" className="btn-primary">
+            Get in Touch <ArrowRight style={{ width: '18px', height: '18px' }} />
+          </NavLink>
         </div>
       </section>
 
