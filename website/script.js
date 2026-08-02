@@ -10,7 +10,7 @@
   var toTop = document.getElementById('toTop');
   function onScroll(){
     var y = window.scrollY || document.documentElement.scrollTop;
-    if(nav) nav.classList.toggle('is-scrolled', y > 60);
+    if(nav) nav.classList.toggle('is-scrolled', y > 30);
     if(toTop) toTop.classList.toggle('is-shown', y > 500);
   }
   window.addEventListener('scroll', onScroll, {passive:true});
@@ -150,21 +150,74 @@
   document.querySelectorAll('[data-appshow]').forEach(function(box){
     var phones = box.querySelectorAll('.phone');
     var btns = box.querySelectorAll('.apbtn');
+    var section = box.closest('section') || document;
     var cur = 0, timer = null;
+
     function show(i){
       cur = i;
       phones.forEach(function(p,n){ p.classList.toggle('is-on', n===i); });
       btns.forEach(function(b,n){ b.classList.toggle('is-on', n===i); });
+      
+      var bgs = section.querySelectorAll('.appshow__bg');
+      bgs.forEach(function(bg,n){
+        if(n === i){
+          bg.classList.add('is-on');
+          bg.style.opacity = '1';
+          bg.style.zIndex = '2';
+        } else {
+          bg.classList.remove('is-on');
+          bg.style.opacity = '0';
+          bg.style.zIndex = '1';
+        }
+      });
     }
     function play(){ stop(); timer = setInterval(function(){ show((cur+1)%phones.length); }, 4500); }
     function stop(){ if(timer) clearInterval(timer); }
+
     if(phones.length && btns.length){
-      btns.forEach(function(b){
-        b.addEventListener('click', function(){ show(parseInt(b.getAttribute('data-i'),10)); play(); });
+      btns.forEach(function(b, idx){
+        var i = parseInt(b.getAttribute('data-i'), 10);
+        if(isNaN(i)) i = idx;
+        b.addEventListener('mouseenter', function(){
+          stop();
+          show(i);
+        });
+        b.addEventListener('click', function(e){
+          e.preventDefault();
+          stop();
+          show(i);
+          play();
+        });
       });
-      box.addEventListener('mouseenter', stop);
       box.addEventListener('mouseleave', play);
+      show(0);
       play();
     }
   });
+})();
+
+// YouTube API auto-trigger for seamless hero background video
+(function(){
+  if (document.getElementById('ytHeroPlayer')) {
+    window.onYouTubeIframeAPIReady = function() {
+      new YT.Player('ytHeroPlayer', {
+        events: {
+          onReady: function(event) {
+            event.target.mute();
+            event.target.playVideo();
+          }
+        }
+      });
+    };
+    if (!window.YT) {
+      var tag = document.createElement('script');
+      tag.src = "https://www.youtube.com/iframe_api";
+      var firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      } else {
+        document.head.appendChild(tag);
+      }
+    }
+  }
 })();

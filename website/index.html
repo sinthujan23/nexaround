@@ -17,7 +17,7 @@
   <div class="nav__inner">
     <button class="nav__burger" id="navBurger" aria-label="Open menu"><i></i><i></i><i></i></button>
     <a href="index.html" class="nav__logo" aria-label="NexARound Technologies home"><svg class="nav__logo-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16" cy="16" r="4.4" stroke="currentColor" stroke-width="1.6"/></svg><span>nex<b>AR</b>ound</span></a>
-    <nav class="nav__pill" aria-label="Primary"><a href="services.html">Services</a><a href="erp.html">ERP Solution</a><a href="ai-data.html">AI &amp; Data</a><a href="app.html">nexARound App</a><a href="about.html">About Us</a></nav>
+    <nav class="nav__pill" aria-label="Primary"><a href="app.html">nexARound App</a><a href="services.html">Services</a><a href="offerings.html">Offerings</a><a href="ai-data.html">AI &amp; Blockchain</a><a href="about.html">About Us</a><a href="case-studies.html">Case Studies</a></nav>
     <a href="contact.html" class="nav__ai">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.5 6.5L15 8L9.5 9.5L8 15L6.5 9.5L1 8L6.5 6.5L8 1Z"/></svg>
       Let's Talk</a>
@@ -28,7 +28,7 @@
   <div class="mega__left">
     <button class="mega__close" id="megaClose" aria-label="Close menu">&#10005;</button>
     <nav class="mega__nav" aria-label="All pages">
-      <a href="index.html" class="is-active">Home</a><a href="services.html">Services</a><a href="erp.html">ERP Solution</a><a href="ai-data.html">AI, ML &amp; Data</a><a href="blockchain.html">Blockchain &amp; Web3</a><a href="app.html">nexARound App</a><a href="industries.html">Industries</a><a href="about.html">About Us</a>
+      <a href="index.html" class="is-active">Home</a><a href="app.html">nexARound App</a><a href="services.html">Services</a><a href="offerings.html">Offerings</a><a href="ai-data.html">AI &amp; Blockchain</a><a href="about.html">About Us</a><a href="case-studies.html">Case Studies</a><a href="industries.html">Industries</a><a href="contact.html">Contact Us</a>
     </nav>
     <div class="mega__sub">
       <a href="technology.html">Technology Expertise</a><a href="about.html#process">Engagement Process</a><a href="about.html#models">Engagement Models</a><a href="contact.html">Contact Us</a>
@@ -47,7 +47,10 @@
 <div class="shell">
 <main>
 <section class="hero hero--full">
-    <div class="hero__media"><div class="vidph art art--6 art--drift"><span class="vidph__label"><b>VIDEO PLACEHOLDER</b> &mdash; Corporate brand film — replace with your hero video</span></div></div>
+    <div class="hero__media">
+      <div class="hero__yt-cover"></div>
+      <iframe id="ytHeroPlayer" src="https://www.youtube-nocookie.com/embed/aNcv6H4j0LE?autoplay=1&mute=1&loop=1&playlist=aNcv6H4j0LE&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1&disablekb=1&playsinline=1" title="Hero Background Video" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+    </div>
     <div class="hero__inner">
       
       <h1 class="display rv" style="--d:.06s">Full-stack engineering<br>to fast-track your growth.</h1>
@@ -66,21 +69,21 @@
     </div>
     <div class="wrap grid-3">
       <article class="tile rv">
-        <div class="tile__art art art--1 art--drift"></div>
+        <div class="tile__art art art--drift" style="background: url('digital_transformation.png') center/cover no-repeat;"></div>
         <div class="tile__body"><span class="chip">01</span>
           <h3>Digital Transformation</h3>
           <p>Reimagine operations end-to-end with modern, connected systems and clear roadmaps.</p>
           <a href="services.html" class="rm">Learn More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
       </article>
       <article class="tile rv" style="--d:.08s">
-        <div class="tile__art art art--4 art--drift"></div>
+        <div class="tile__art art art--drift" style="background: url('software_engineering.png') center/cover no-repeat;"></div>
         <div class="tile__body"><span class="chip">02</span>
           <h3>Software Engineering</h3>
           <p>Custom, full-stack development delivered with quality and scalability built in.</p>
           <a href="services.html" class="rm">Learn More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
       </article>
       <article class="tile rv" style="--d:.16s">
-        <div class="tile__art art art--3 art--drift"></div>
+        <div class="tile__art art art--drift" style="background: url('cloud_implementation.png') center/cover no-repeat;"></div>
         <div class="tile__body"><span class="chip">03</span>
           <h3>Cloud Implementation</h3>
           <p>Cloud-native architecture, DevOps, and secure infrastructure that grows with you.</p>
@@ -89,80 +92,85 @@
     </div>
   </section>
 
-  <section class="section--black">
+  <section class="section--black section--appshow">
+    <div class="appshow__bgs" aria-hidden="true">
+      <div class="appshow__bg is-on" style="background-image: url('bg_great_wall.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_sigiriya.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_eiffel_tower.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_pyramids_giza.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_statue_liberty.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_machu_picchu.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_sydney_opera.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_colosseum_rome.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_taj_mahal.png');"></div>
+      <div class="appshow__bg" style="background-image: url('bg_eiffel_tower.png');"></div>
+      <div class="appshow__overlay"></div>
+    </div>
     <div class="shead rv">
       <span class="chip chip--light">Our Own Product</span>
       <h2 class="display" style="margin-top:20px;">The <span class="h-accent">nexARound</span> app</h2>
-      <p class="lede">We do not only build for clients. nexARound is our AI-powered smart tourism companion:
-        real-time AR landmark identification, a location recommendation engine, and Neva &mdash; a personal AI
-        travel companion.</p>
+      <p class="lede">We do not only build for clients. nexARound is our AI-powered smart tourism companion that transforms how people explore the world — from Paris to Patagonia, Tokyo to New York.</p>
     </div>
     <div class="appshow" data-appshow>
       <div class="appshow__stage">
         <div class="appshow__glow" aria-hidden="true"></div>
         <div class="phone is-on">
-        <div class="phone__notch"></div>
-        <div class="phone__screen"><div class="scr-ar">
-          <div class="scr__top"><span class="scr__pill">&#9679; Live AR</span><span class="scr__pill scr__pill--dim">Lens</span></div>
-          <div class="scr-ar__view">
-            <div class="scr-ar__grid"></div>
-            <div class="tgt tgt--a"><div class="tgt__box"><i></i><i></i><i></i><i></i></div>
-              <div class="tgt__card"><b>Clocktower Square</b><span>Landmark &middot; 96% match</span></div></div>
-            <div class="tgt tgt--b"><div class="tgt__box"><i></i><i></i><i></i><i></i></div>
-              <div class="tgt__card tgt__card--sm"><b>Riverside Market</b><span>4 min walk</span></div></div>
-            <div class="scr-ar__scan"></div>
-          </div>
-          <div class="scr__sheet"><i></i><b>Neva</b>
-            <p>Built in three phases over sixty years &mdash; that is why the brickwork changes halfway up.</p></div>
-        </div></div>
-      </div><div class="phone">
-        <div class="phone__notch"></div>
-        <div class="phone__screen"><div class="scr-chat">
-          <div class="scr-chat__top"><span class="scr-chat__av">N</span>
-            <div><b>Neva</b><span>Listening</span></div></div>
-          <div class="scr-chat__body">
-            <div class="bub bub--me">Somewhere quiet with a view, not touristy</div>
-            <div class="bub bub--ai">Found three. My pick is the terrace above the old grain silo &mdash; five minutes off the main path, best at golden hour.</div>
-            <div class="bub bub--me">Perfect, take me there</div>
-            <div class="bub bub--ai bub--typing"><i></i><i></i><i></i></div>
-          </div>
-          <div class="scr-chat__input"><span>Ask Neva anything&hellip;</span><span>&#127908;</span></div>
-        </div></div>
-      </div><div class="phone">
-        <div class="phone__notch"></div>
-        <div class="phone__screen"><div class="scr-disc">
-          <b>Discover near you</b>
-          <div class="dcard"><div class="dcard__art art art--4"></div>
-            <div><b>Riverside Market</b><span>4 min walk &middot; Matches your pace</span></div></div>
-          <div class="dcard"><div class="dcard__art art art--3"></div>
-            <div><b>Grain Silo Terrace</b><span>9 min walk &middot; Quiet pick</span></div></div>
-          <div class="dcard"><div class="dcard__art art art--5"></div>
-            <div><b>Old Botanic Steps</b><span>12 min walk &middot; Trending today</span></div></div>
-          <div class="dcard"><div class="dcard__art art art--8"></div>
-            <div><b>Harbour Lookout</b><span>16 min walk &middot; Saved offline</span></div></div>
-        </div></div>
-      </div><div class="phone">
-        <div class="phone__notch"></div>
-        <div class="phone__screen"><div class="scr-map">
-          <div class="scr-map__grid"></div>
-          <svg class="scr-map__route" viewBox="0 0 240 400"><path d="M40 350 C 80 300, 60 260, 100 220 S 180 160, 150 90 S 190 50, 200 30" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-dasharray="1 10"/></svg>
-          <span class="mpin mpin--a"><b>A</b></span>
-          <span class="mpin mpin--b"><b>B</b></span>
-          <div class="scr__sheet" style="position:absolute; left:0; right:0; bottom:0;"><i></i>
-            <b>Cached for offline</b><p>4 stops saved &middot; No signal needed</p></div>
-        </div></div>
-      </div>
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('app_scan_landmark.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('meet_neva.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('app_travel_stories.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('app_cap_04.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('new_journal_entry.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('app_cap_02.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('discovery_nature_tab.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('nexaround_app.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('app_download.png') center/cover no-repeat;"></div>
+        </div>
+        <div class="phone">
+          <div class="phone__notch"></div>
+          <div class="phone__screen" style="background: url('discovery_food_tab.png') center/cover no-repeat;"></div>
+        </div>
       </div>
       <div class="appshow__nav">
-        <button class="apbtn is-on" data-i="0"><em>01</em><span>Scan a landmark</span></button>
-        <button class="apbtn" data-i="1"><em>02</em><span>Ask Neva</span></button>
-        <button class="apbtn" data-i="2"><em>03</em><span>Discover nearby</span></button>
-        <button class="apbtn" data-i="3"><em>04</em><span>Cache for offline</span></button>
+        <button class="apbtn is-on" data-i="0"><em>01</em><span>AR Location Discovery</span></button>
+        <button class="apbtn" data-i="1"><em>02</em><span>Neva AI Companion</span></button>
+        <button class="apbtn" data-i="2"><em>03</em><span>Travel Stories</span></button>
+        <button class="apbtn" data-i="3"><em>04</em><span>Odyssey Travel Planner</span></button>
+        <button class="apbtn" data-i="4"><em>05</em><span>Travel Journal</span></button>
+        <button class="apbtn" data-i="5"><em>06</em><span>Guides</span></button>
+        <button class="apbtn" data-i="6"><em>07</em><span>Mood Based Journey Planner</span></button>
+        <button class="apbtn" data-i="7"><em>08</em><span>Maps</span></button>
+        <button class="apbtn" data-i="8"><em>09</em><span>Seamless Hotel &amp; Taxi Bookings</span></button>
+        <button class="apbtn" data-i="9"><em>10</em><span>Curated Experiences &amp; Locations</span></button>
       </div>
     </div>
     <div class="wrap" style="margin-top:44px; display:flex; gap:14px; flex-wrap:wrap; justify-content:center;">
       <a href="app.html" class="btn btn--onDark">Explore the app <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-      <a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 12.536c-.028-2.79 2.28-4.128 2.383-4.19-1.298-1.9-3.32-2.16-4.043-2.19-1.72-.176-3.36 1.014-4.23 1.014-.87 0-2.222-.99-3.652-.963-1.878.028-3.61 1.09-4.577 2.77-1.95 3.383-.497 8.39 1.404 11.14.93 1.35 2.036 2.86 3.49 2.807 1.4-.056 1.93-.905 3.62-.905 1.688 0 2.168.905 3.65.877 1.51-.028 2.463-1.375 3.386-2.73 1.066-1.56 1.505-3.08 1.526-3.157-.033-.014-2.93-1.124-2.957-4.473z"/></svg><span><small>Download on the</small>App Store</span></a><a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.6 2.6c-.4.2-.6.6-.6 1.1v16.6c0 .5.2.9.6 1.1l9.4-9.4-9.4-9.4zM15 8.2l2.7-1.5L21.4 9c.5.3.6.8.6 1s-.1.7-.6 1l-3.7 2.3-2.7-1.5 2-2-2-2zM4.3 21.8L14 16.2l-2.4-2.4L4.3 21.8zM4.3 2.2l7.3 7.3 2.4-2.4L4.3 2.2z"/></svg><span><small>Get it on</small>Google Play</span></a>
+      <a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 6.32c.67-.82 1.13-1.97.99-3.12-1 .04-2.18.67-2.88 1.49-.62.72-1.16 1.89-.99 3.02 1.11.09 2.22-.56 2.88-1.39z"/></svg><span><small>Download on the</small>App Store</span></a><a href="#" class="store"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.609 1.814L13.792 12 3.61 22.186A2.37 2.37 0 0 1 3 20.5V3.5c0-.654.218-1.258.609-1.686zM15.207 13.414l2.657 2.657-12.78 7.373 10.123-10.03zM15.207 10.586L5.084.556l12.78 7.373-2.657 2.657zM16.621 12l2.979-1.72a1.86 1.86 0 0 1 0 3.44L16.621 12z"/></svg><span><small>Get it on</small>Google Play</span></a>
     </div>
   </section>
 
@@ -181,7 +189,7 @@
         </div>
         <a href="erp.html" class="btn btn--dark">Explore the ERP Solution <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </div>
-      <div><div class="video-block art art--6 art--drift"><span class="video-block__tag">Video placeholder</span><button class="video-block__play" type="button" aria-label="Play: ERP Solution walkthrough"><svg width="22" height="24" viewBox="0 0 22 24" fill="#fff"><path d="M21 12L0 24V0L21 12Z"/></svg></button><span class="video-block__cap">ERP Solution walkthrough</span></div></div>
+      <div><div class="video-block art art--drift" style="background: url('erp_solution.png') center/cover no-repeat;"><span class="video-block__tag">Video placeholder</span><button class="video-block__play" type="button" aria-label="Play: ERP Solution walkthrough"><svg width="22" height="24" viewBox="0 0 22 24" fill="#fff"><path d="M21 12L0 24V0L21 12Z"/></svg></button><span class="video-block__cap">ERP Solution walkthrough</span></div></div>
     </div>
   </section>
 
@@ -192,21 +200,21 @@
     </div>
     <div class="wrap story-grid">
       <article class="story rv">
-        <div class="story__art art art--2 art--drift"></div>
+        <div class="story__art art art--drift" style="background: url('nexaround_app.png') center/cover no-repeat;"></div>
         <div class="story__body"><span class="chip">Product</span>
           <h3><a href="app.html">nexARound &mdash; smart tourism companion</a></h3>
           <p>AR landmark identification, smart recommendations, and Neva, all in one app built in-house.</p>
           <a href="app.html" class="rm">Read More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
       </article>
       <article class="story rv" style="--d:.08s">
-        <div class="story__art art art--5 art--drift"></div>
+        <div class="story__art art art--drift" style="background: url('ai_ml_data.png') center/cover no-repeat;"></div>
         <div class="story__body"><span class="chip">Solution</span>
           <h3><a href="ai-data.html">AI, ML &amp; Data Solutions</a></h3>
           <p>Predictive models, automation, and data pipelines that turn information into decisions.</p>
           <a href="ai-data.html" class="rm">Read More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
       </article>
       <article class="story rv" style="--d:.16s">
-        <div class="story__art art art--8 art--drift"></div>
+        <div class="story__art art art--drift" style="background: url('blockchain_web3.png') center/cover no-repeat;"></div>
         <div class="story__body"><span class="chip">Solution</span>
           <h3><a href="blockchain.html">Blockchain &amp; Web3 Solutions</a></h3>
           <p>Decentralized systems built for trust and transparency, from smart contracts to permissioned
@@ -214,7 +222,7 @@
           <a href="blockchain.html" class="rm">Read More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
       </article>
       <article class="story rv" style="--d:.24s">
-        <div class="story__art art art--7 art--drift"></div>
+        <div class="story__art art art--drift" style="background: url('cloud_devops.png') center/cover no-repeat;"></div>
         <div class="story__body"><span class="chip">Solution</span>
           <h3><a href="services.html">Cloud &amp; DevOps Engineering</a></h3>
           <p>Cloud-native architecture and secure infrastructure, with automation that keeps releases
@@ -264,7 +272,7 @@
           success metrics before a line of code is written.</p>
         <a href="contact.html" class="btn btn--onDark">Start a conversation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </div>
-      <div class="band__art art art--8 art--drift rv" style="--d:.1s"></div>
+      <div class="band__art art art--drift rv" style="--d:.1s; background: url('lets_build.png') center/cover no-repeat;"></div>
     </div>
   </section>
 </main>
@@ -300,7 +308,7 @@
       <h4>Support</h4>
       <a href="contact.html">Contact Us</a>
       <a href="mailto:support@nexaround.com">support@nexaround.com</a>
-      <a href="tel:+97455816148">+974 5581 6148</a>
+      
       <a href="#">Privacy Statement</a>
       <a href="#">Terms of Use</a>
     </div>
