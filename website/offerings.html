@@ -16,8 +16,8 @@
 <header class="nav nav--onDark" id="siteNav">
   <div class="nav__inner">
     <button class="nav__burger" id="navBurger" aria-label="Open menu"><i></i><i></i><i></i></button>
-    <a href="/" class="nav__logo" aria-label="NexARound Technologies home"><svg class="nav__logo-mark" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M16 2L29 9V23L16 30L3 23V9L16 2Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="16" cy="16" r="4.4" stroke="currentColor" stroke-width="1.6"/></svg><span>nex<b>AR</b>ound</span></a>
-    <nav class="nav__pill" aria-label="Primary"><a href="app.html">nexARound App</a><a href="services.html">Services</a><a href="offerings.html" aria-current="page">Offerings</a><a href="ai-data.html">AI &amp; Blockchain</a><a href="about.html">About Us</a><a href="case-studies.html">Case Studies</a></nav>
+    <a href="/" class="nav__logo" aria-label="NexARound Technologies home"><span class="nav__logo-badge"><img src="tech_logo_v3.png" alt="nexARound Technologies" class="nav__logo-img"></span><span class="nav__logo-text"><span class="nav__logo-main">nex<b>AR</b>ound</span><span class="nav__logo-sub">Technologies</span></span></a>
+    <nav class="nav__pill" aria-label="Primary"><a href="/app">nexARound App</a><a href="/services">Services</a><a href="offerings.html" aria-current="page">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a></nav>
     <a href="/contact" class="nav__ai">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.5 6.5L15 8L9.5 9.5L8 15L6.5 9.5L1 8L6.5 6.5L8 1Z"/></svg>
       Let's Talk</a>
@@ -28,7 +28,7 @@
   <div class="mega__left">
     <button class="mega__close" id="megaClose" aria-label="Close menu">&#10005;</button>
     <nav class="mega__nav" aria-label="All pages">
-      <a href="index.html">Home</a><a href="app.html">nexARound App</a><a href="services.html">Services</a><a href="offerings.html" class="is-active">Offerings</a><a href="ai-data.html">AI &amp; Blockchain</a><a href="about.html">About Us</a><a href="case-studies.html">Case Studies</a><a href="industries.html">Industries</a><a href="contact.html">Contact Us</a>
+      <a href="/">Home</a><a href="/app">nexARound App</a><a href="/services">Services</a><a href="offerings.html" class="is-active">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a><a href="/industries">Industries</a><a href="/contact">Contact Us</a>
     </nav>
     <div class="mega__sub">
       <a href="/technology">Technology Expertise</a><a href="/about#process">Engagement Process</a><a href="/about#models">Engagement Models</a><a href="/contact">Contact Us</a>
@@ -46,15 +46,15 @@
 
 <div class="shell">
 <main>
-<section class="hero hero--sub">
-    <div class="hero__media"><div class="vidph art art--1 art--drift"></div></div>
-    <div class="hero__inner">
+  <section class="hero hero--offerings">
+    <div class="hero__media" style="background: linear-gradient(180deg, rgba(8,10,20,0.15) 0%, rgba(8,10,20,0.35) 100%), url('offerings_hero_bg.jpg') center/cover no-repeat; filter: brightness(1.05) contrast(1.05);"></div>
+    <div class="hero__inner" style="text-shadow: 0 2px 12px rgba(0,0,0,0.9);">
       <p class="hero__crumb rv"><a href="/">Home</a> &rsaquo; <span>Offerings</span></p>
-      <h1 class="display rv" style="--d:.06s">Enterprise offerings,<br>delivered end-to-end.</h1>
-      <p class="hero__sub rv" style="--d:.14s">From Turnkey ERP deployments to intelligent CRM platforms and structured Project Management systems — we deliver complete, production-ready solutions, not just software.</p>
-      <div class="hero__cta rv" style="--d:.22s"><a href="/contact" class="btn btn--onDark">Discuss your requirements <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="#offerings" class="btn btn--outlineDark">See all offerings</a></div>
+      <h1 class="display rv" style="--d:.06s; text-shadow: 0 3px 16px rgba(0,0,0,0.95);">Enterprise offerings,<br>delivered end-to-end.</h1>
+      <p class="hero__sub rv" style="--d:.14s; text-shadow: 0 2px 10px rgba(0,0,0,0.95); font-weight:400; color:#ffffff;">From Turnkey Enterprise Management Software deployments to intelligent CRM platforms and structured Project Management systems — we deliver complete, production-ready solutions, not just software.</p>
+      <div class="hero__cta rv" style="--d:.22s"><a href="/contact" class="btn btn--onDark" style="box-shadow: 0 8px 24px rgba(0,0,0,0.5);">Discuss your requirements <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a><a href="#offerings" class="btn btn--outlineDark" style="background: rgba(0,0,0,0.4); backdrop-filter: blur(8px);">See all offerings</a></div>
     </div>
-</section>
+  </section>
 
 <section id="offerings">
   <div class="shead rv">
@@ -63,26 +63,30 @@
     <p class="lede">Each offering is a complete, end-to-end solution — designed, implemented, and supported by our team so you can focus on running your business.</p>
   </div>
 
-  <!-- ERP -->
+  <!-- Enterprise Management Software -->
   <div class="wrap split rv" style="margin-bottom:80px;">
     <div>
       <span class="chip">01</span>
-      <h2 class="display" style="margin:20px 0 18px;">Turnkey ERP Solutions</h2>
-      <p class="lede">Run your entire business on a single enterprise platform. We don't just license software — we deploy, configure, migrate, and support your ERP from day one through steady-state operations.</p>
-      <p style="margin-top:18px; font-size:15px; line-height:1.7; color:var(--ink-soft);">Our ERP practice covers the full lifecycle: requirements gathering, system architecture, data migration, user training, go-live support, and ongoing managed services. Whether you are replacing a legacy system or implementing for the first time, we reduce risk and accelerate time-to-value.</p>
-      <div class="pills" style="margin:30px 0;">
-        <span><i></i>Accounting &amp; Finance</span><span><i></i>Inventory Management</span><span><i></i>Manufacturing</span>
-        <span><i></i>HR &amp; Payroll</span><span><i></i>Sales &amp; Procurement</span><span><i></i>Reports &amp; BI</span>
-        <span><i></i>Multi-company &amp; Multi-currency</span><span><i></i>Compliance &amp; Audit Trails</span>
+      <h2 class="display" style="margin:20px 0 18px;">Enterprise Management Software</h2>
+      <p class="lede">Run your entire business on a single unified platform. We deploy, configure, migrate, and support tailored modular software systems from day one through steady-state operations.</p>
+      <p style="margin-top:18px; font-size:15px; line-height:1.7; color:var(--ink-soft);">Our enterprise software practice covers the full lifecycle across core operational modules: accounting, supply chain, manufacturing, HR, and sales automation. We reduce risk and accelerate time-to-value for growing businesses and multi-entity organizations.</p>
+      <div class="pills" style="margin:24px 0;">
+        <span><i></i>Accounting &amp; Finance Module</span>
+        <span><i></i>Inventory &amp; Supply Chain Logistics Module</span>
+        <span><i></i>Manufacturing &amp; Shop-Floor Operations Module</span>
+        <span><i></i>Human Resources &amp; Global Payroll Module</span>
+        <span><i></i>Sales, CRM &amp; Procurement Module</span>
+        <span><i></i>Business Intelligence &amp; Executive Analytics Module</span>
       </div>
-      <a href="/contact" class="btn btn--dark">Get an ERP consultation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <p style="margin-top:20px; font-weight:600; color:var(--blue); font-size:15px; line-height:1.5; background: rgba(0,102,255,0.06); padding: 14px 18px; border-radius: 10px; border-left: 3px solid var(--blue);">Together, these modules can be delivered as a cohesive Enterprise Management Software platform.</p>
+      <div style="margin-top:24px;"><a href="/contact" class="btn btn--dark">Get a consultation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
     </div>
-    <div><div class="video-block art art--drift" style="background: url('erp_solution.png') center/cover no-repeat;"></div></div>
+    <div style="display:flex; justify-content:center; align-items:center;"><img src="enterprise_management_chaos.jpg" alt="Enterprise Management Software" style="width:100%; max-width:440px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
   </div>
 
   <!-- CRM -->
   <div class="wrap split rv" style="margin-bottom:80px;">
-    <div><div class="video-block art art--drift" style="background: url('featured_solutions.png') center/cover no-repeat;"></div></div>
+    <div style="display:flex; justify-content:center; align-items:center;"><img src="crm_solutions_chaos.jpg" alt="CRM Solutions" style="width:100%; max-width:440px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
     <div>
       <span class="chip">02</span>
       <h2 class="display" style="margin:20px 0 18px;">CRM Solutions</h2>
@@ -110,7 +114,7 @@
       </div>
       <a href="/contact" class="btn btn--dark">Talk to a PM specialist <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     </div>
-    <div><div class="video-block art art--drift" style="background: url('ai_in_action.png') center/cover no-repeat;"></div></div>
+    <div style="display:flex; justify-content:center; align-items:center;"><img src="project_management_solutions.png" alt="Project Management Solutions" style="width:100%; max-width:440px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
   </div>
 </section>
 
@@ -136,34 +140,55 @@
   </div>
 </section>
 
-<section class="section--tint">
-  <div class="shead rv">
+<section style="padding: 80px 0; background: #ffffff !important;">
+  <div class="shead shead--center rv">
     <span class="chip">Our Delivery Process</span>
-    <h2 class="display" style="margin-top:20px;">How we take you from<br>requirements to results</h2>
+    <h2 class="display" style="margin-top:16px;">How we take you from<br>requirements to results</h2>
+    <p class="lede" style="margin-top:10px;">A proven 5-stage enterprise delivery framework engineered for zero downtime and measurable business impact.</p>
   </div>
-  <div class="wrap steps">
-    <div class="step rv"><span class="step__n">01</span><div><h3>Discovery &amp; Scoping</h3>
-      <p>We map your current processes, pain points, and growth objectives to define a clear scope and success criteria.</p></div></div>
-    <div class="step rv"><span class="step__n">02</span><div><h3>Solution Design</h3>
-      <p>Our architects design the system configuration, integration architecture, and data model tailored to your business.</p></div></div>
-    <div class="step rv"><span class="step__n">03</span><div><h3>Implementation &amp; Migration</h3>
-      <p>Agile sprints with regular client reviews. Data migration, testing, and UAT are built into the process — not bolted on at the end.</p></div></div>
-    <div class="step rv"><span class="step__n">04</span><div><h3>Training &amp; Go-Live</h3>
-      <p>Role-based training, runbooks, and hypercare support during the critical go-live window ensure a smooth transition.</p></div></div>
-    <div class="step rv"><span class="step__n">05</span><div><h3>Managed Support</h3>
-      <p>Ongoing enhancements, SLA-backed incident response, and quarterly reviews keep the system aligned with business growth.</p></div></div>
+  <div class="wrap delivery-matrix">
+    <div class="delivery-card rv" style="--d:0s;">
+      <span class="delivery-card__watermark">01</span>
+      <span class="delivery-card__chip">Phase 01 &bull; Scoping</span>
+      <h3>Discovery &amp; Scoping</h3>
+      <p>We map your current operational processes, technical bottlenecks, and growth objectives to define a razor-sharp scope and success criteria.</p>
+    </div>
+    <div class="delivery-card rv" style="--d:0.08s;">
+      <span class="delivery-card__watermark">02</span>
+      <span class="delivery-card__chip">Phase 02 &bull; Architecture</span>
+      <h3>Solution Design</h3>
+      <p>Our senior system architects engineer the platform topology, microservices configuration, API integrations, and scalable data models.</p>
+    </div>
+    <div class="delivery-card rv" style="--d:0.16s;">
+      <span class="delivery-card__watermark">03</span>
+      <span class="delivery-card__chip">Phase 03 &bull; Sprints</span>
+      <h3>Implementation &amp; Migration</h3>
+      <p>Agile 2-week sprints with continuous deployment and client demos. Automated data migration, UAT, and security validation are baked in.</p>
+    </div>
+    <div class="delivery-card rv" style="--d:0.24s;">
+      <span class="delivery-card__watermark">04</span>
+      <span class="delivery-card__chip">Phase 04 &bull; Go-Live</span>
+      <h3>Training &amp; Go-Live</h3>
+      <p>Role-based team training, automated deployment runbooks, and 24/7 hypercare support during the critical launch window.</p>
+    </div>
+    <div class="delivery-card rv" style="--d:0.32s;">
+      <span class="delivery-card__watermark">05</span>
+      <span class="delivery-card__chip">Phase 05 &bull; SLA Support</span>
+      <h3>Managed Support</h3>
+      <p>Dedicated ongoing enhancements, SLA-backed 24/7 incident response, performance optimization, and quarterly roadmap reviews.</p>
+    </div>
   </div>
 </section>
 
 <section class="band">
   <div class="band__inner">
     <div class="rv">
-      <span class="chip">Let's build</span>
+      <span class="chip chip--light">Let's build</span>
       <h2>Ready to deploy your next enterprise platform?</h2>
       <p>Tell us what you are running today and where you need to be. We will scope the solution, the timeline, and the engagement model before any contract is signed.</p>
       <a href="/contact" class="btn btn--onDark">Start a conversation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
     </div>
-    <div class="band__art rv" style="--d:.1s"></div>
+    <div class="band__art art art--drift rv" style="--d:.1s; background: url('lets_build.png') center/cover no-repeat; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); box-shadow: 0 20px 48px rgba(0,0,0,0.5);"></div>
   </div>
 </section>
 </main>

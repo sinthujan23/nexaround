@@ -5,6 +5,22 @@
     el.textContent = new Date().getFullYear();
   });
 
+  /* ---------- Tabbed Capabilities Filter ---------- */
+  document.querySelectorAll('.cap-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.cap-tab').forEach(function(t){ t.classList.remove('is-active'); });
+      tab.classList.add('is-active');
+      var filter = tab.getAttribute('data-filter');
+      document.querySelectorAll('.cap-card').forEach(function(card){
+        if(filter === 'all' || card.getAttribute('data-category') === filter){
+          card.classList.remove('is-hidden');
+        } else {
+          card.classList.add('is-hidden');
+        }
+      });
+    });
+  });
+
   /* ---------- Nav scroll state ---------- */
   var nav = document.getElementById('siteNav');
   var toTop = document.getElementById('toTop');
@@ -196,18 +212,53 @@
   });
 })();
 
-// YouTube API auto-trigger for seamless hero background video
+// YouTube API auto-trigger for seamless background video loop
 (function(){
-  if (document.getElementById('ytHeroPlayer')) {
-    window.onYouTubeIframeAPIReady = function() {
-      new YT.Player('ytHeroPlayer', {
-        events: {
-          onReady: function(event) {
-            event.target.mute();
+  function initYTPlayer(iframeId) {
+    var iframe = document.getElementById(iframeId);
+    if (!iframe) return;
+    var cover = iframe.parentElement.querySelector('.hero__yt-cover');
+    new YT.Player(iframeId, {
+      playerVars: {
+        autoplay: 1,
+        controls: 0,
+        showinfo: 0,
+        rel: 0,
+        modestbranding: 1,
+        loop: 1,
+        fs: 0,
+        cc_load_policy: 0,
+        iv_load_policy: 3,
+        autohide: 1,
+        disablekb: 1,
+        playsinline: 1
+      },
+      events: {
+        onReady: function(event) {
+          event.target.mute();
+          event.target.playVideo();
+        },
+        onStateChange: function(event) {
+          if (event.data === YT.PlayerState.PLAYING) {
+            if (cover) cover.classList.add('is-playing');
+          }
+          if (event.data === YT.PlayerState.ENDED) {
+            if (cover) cover.classList.remove('is-playing');
+            event.target.seekTo(0);
+            event.target.playVideo();
+          }
+          if (event.data === YT.PlayerState.PAUSED) {
             event.target.playVideo();
           }
         }
-      });
+      }
+    });
+  }
+
+  if (document.getElementById('ytHeroPlayer') || document.getElementById('ytAppHeroPlayer')) {
+    window.onYouTubeIframeAPIReady = function() {
+      initYTPlayer('ytHeroPlayer');
+      initYTPlayer('ytAppHeroPlayer');
     };
     if (!window.YT) {
       var tag = document.createElement('script');
@@ -218,6 +269,10 @@
       } else {
         document.head.appendChild(tag);
       }
+    } else if (window.YT && window.YT.Player) {
+      initYTPlayer('ytHeroPlayer');
+      initYTPlayer('ytAppHeroPlayer');
     }
   }
 })();
+
