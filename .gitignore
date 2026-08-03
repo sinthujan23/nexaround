@@ -43,4 +43,6 @@ nexaround_backend/fix_templates.py
 fix_nginx.py
 *.json
 !nexaround_backend/alembic.ini
-
+# Large media / archives
+website/*.zip
+website/*.mp4
