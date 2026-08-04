@@ -420,7 +420,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       return raw.startsWith('/') ? '${ApiConstants.baseUrl}$raw' : raw;
     }
     if (widget.museum.slug == 'musee-dorsay') {
-      return 'assets/images/musee_dorsay.jpg';
+      return 'https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80';
     }
     if (widget.museum.slug == 'louvre') {
       return 'https://images.unsplash.com/photo-1565099824688-e93eb20fe622?auto=format&fit=crop&w=1200&q=80';
@@ -460,29 +460,28 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                 fit: StackFit.expand,
                 children: [
                   if (_effectiveImageUrl != null)
-                    (_effectiveImageUrl!.startsWith('assets/')
-                        ? Image.asset(_effectiveImageUrl!, fit: BoxFit.cover)
-                        : CachedNetworkImage(
-                            imageUrl: _effectiveImageUrl!,
-                            fit: BoxFit.cover,
-                            placeholder: (_, __) => Container(
-                              color: AppColors.charcoal,
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 30,
-                                  height: 30,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: AppColors.brandGreen,
-                                  ),
-                                ),
-                              ),
+                    CachedNetworkImage(
+                      imageUrl: _effectiveImageUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        color: AppColors.charcoal,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 30,
+                            height: 30,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.brandGreen,
                             ),
-                            errorWidget: (_, __, ___) => Image.asset(
-                              'assets/images/musee_dorsay.jpg',
-                              fit: BoxFit.cover,
-                            ),
-                          )
+                          ),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        color: AppColors.charcoal,
+                        child: const Icon(Icons.museum_rounded,
+                            color: Colors.white38, size: 80),
+                      ),
+                    )
                   else
                     Container(
                       color: AppColors.charcoal,

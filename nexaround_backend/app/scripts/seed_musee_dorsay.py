@@ -25,7 +25,7 @@ MUSEE_DORSAY_DATA = {
     "country": "France",
     "annual_visitors": 3751000,
     "rank": 16,
-    "image_url": "/static/photo_cache/musee_dorsay.jpg",
+    "image_url": "https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80",
     "ticket_url": "https://www.musee-orsay.fr/en/visit/tickets",
     "website": "https://www.musee-orsay.fr",
     "opening_hours": "Tue - Sun: 9:30 AM - 6:00 PM (Thu late opening until 9:45 PM). Closed Mondays.",

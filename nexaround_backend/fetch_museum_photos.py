@@ -4,7 +4,7 @@ import httpx
 import os
 from urllib.parse import quote
 
-DATABASE_URL = "postgresql://nexaround:nexaround@localhost:5432/nexaround"
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://nexaround:nexaround@db:5432/nexaround").replace("postgresql+asyncpg://", "postgresql://")
 
 async def fetch_museum_photos():
     print("Connecting to database...")

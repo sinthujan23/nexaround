@@ -30,7 +30,7 @@ MUSEUMS_DATA = [
     {"rank": 12, "name": "Tate Modern", "visitors": 4514266, "city": "London", "country": "United Kingdom", "slug": "tate-modern"},
     {"rank": 13, "name": "Hubei Provincial Museum", "visitors": 4356943, "city": "Wuhan", "country": "China", "slug": "hubei-provincial-museum"},
     {"rank": 15, "name": "National Gallery of Art", "visitors": 3936543, "city": "Washington, D.C.", "country": "United States", "slug": "national-gallery-of-art"},
-    {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay", "image_url": "/static/photo_cache/musee_dorsay.jpg"},
+    {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay", "image_url": "https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80"},
     {"rank": 17, "name": "National Museum of Anthropology", "visitors": 3700000, "city": "Mexico City", "country": "Mexico", "slug": "national-museum-of-anthropology"},
     {"rank": 18, "name": "State Russian Museum", "visitors": 5087276, "city": "Saint Petersburg", "country": "Russia", "slug": "state-russian-museum"},
     # Skip 19 (State Hermitage Museum) as it is already seeded with full details
