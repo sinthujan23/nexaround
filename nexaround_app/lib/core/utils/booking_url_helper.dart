@@ -80,6 +80,11 @@ class BookingUrlHelper {
     final hName = hotelName.trim();
     final dest = cleanDestination(destination);
 
+    // For Google Hotels: AI-generated hotel names often don't exist as exact
+    // matches in Google's database, causing "No results". Always use a
+    // destination-based search that guarantees results.
+    // For Booking.com / others: their search is more forgiving, so we can
+    // include the hotel name in the query.
     String query;
     if (hName.isNotEmpty && dest.isNotEmpty && hName.toLowerCase().contains(dest.toLowerCase())) {
       query = hName;
@@ -90,29 +95,33 @@ class BookingUrlHelper {
     } else {
       query = dest.isNotEmpty ? 'hotels in $dest' : 'hotels';
     }
+
+    // Google Hotels query: always destination-based so it never shows "No results"
+    final googleQuery = dest.isNotEmpty ? 'hotels in $dest' : query;
     
     final encodedQuery = Uri.encodeComponent(query);
+    final encodedGoogleQuery = Uri.encodeComponent(googleQuery);
     final encodedDest = Uri.encodeComponent(dest.isNotEmpty ? dest : query);
+
+    // Ensure destination-based encoding across all providers so no link returns zero/empty results.
+    final safeDestQuery = dest.isNotEmpty ? dest : query;
+    final encodedSafeDest = Uri.encodeComponent(safeDestQuery);
 
     // Always build provider-specific URLs to guarantee destination is pre-filled.
     if (provider.contains('google')) {
-      var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
+      var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedGoogleQuery';
       if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
         googleUrl += '&dates=$checkInDate,$checkOutDate';
       }
       return googleUrl;
     } else if (provider.contains('booking')) {
-      var url = 'https://www.booking.com/searchresults.html?ss=$encodedQuery';
+      var url = 'https://www.booking.com/searchresults.html?ss=$encodedSafeDest';
       if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';
       url += '&group_adults=$travelers';
       return url;
     } else if (provider.contains('agoda')) {
-      // Agoda searches best by destination; hotel name often yields zero results
-      final agodaQuery = dest.isNotEmpty
-          ? Uri.encodeComponent(dest)
-          : encodedQuery;
-      var url = 'https://www.agoda.com/search?city=$agodaQuery';
+      var url = 'https://www.agoda.com/search?city=$encodedSafeDest';
       if (checkInDate.isNotEmpty) url += '&checkIn=$checkInDate';
       if (checkOutDate.isNotEmpty) {
         url += '&los=${_daysBetween(checkInDate, checkOutDate)}';
@@ -121,19 +130,19 @@ class BookingUrlHelper {
       url += '&adults=$travelers';
       return url;
     } else if (provider.contains('expedia')) {
-      var url = 'https://www.expedia.com/Hotel-Search?destination=$encodedQuery';
+      var url = 'https://www.expedia.com/Hotel-Search?destination=$encodedSafeDest';
       if (checkInDate.isNotEmpty) url += '&d1=${_toExpediaDate(checkInDate)}';
       if (checkOutDate.isNotEmpty) url += '&d2=${_toExpediaDate(checkOutDate)}';
       url += '&adults=$travelers';
       return url;
     } else if (provider.contains('hotels.com') || (provider.contains('hotels') && !provider.contains('google'))) {
-      var url = 'https://www.hotels.com/Hotel-Search?destination=$encodedQuery';
+      var url = 'https://www.hotels.com/Hotel-Search?destination=$encodedSafeDest';
       if (checkInDate.isNotEmpty) url += '&startDate=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&endDate=$checkOutDate';
       url += '&adults=$travelers';
       return url;
     } else if (provider.contains('airbnb')) {
-      var url = 'https://www.airbnb.com/s/$encodedDest/homes?query=$encodedQuery';
+      var url = 'https://www.airbnb.com/s/$encodedSafeDest/homes';
       if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';
       url += '&adults=$travelers';
@@ -144,7 +153,7 @@ class BookingUrlHelper {
     if (sanitizedRawUrl.isNotEmpty && dest.isEmpty) {
       return sanitizedRawUrl;
     }
-    var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
+    var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedGoogleQuery';
     if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
       googleUrl += '&dates=$checkInDate,$checkOutDate';
     }

@@ -3,7 +3,7 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 
 void main() {
   group('BookingUrlHelper tests', () {
-    test('Google Hotels provider resolves to google.com/travel/hotels with hotel name query', () {
+    test('Google Hotels always uses destination-based search to avoid No Results', () {
       final url = BookingUrlHelper.buildHotelUrl(
         rawUrl: '',
         providerName: 'Google Hotels',
@@ -15,11 +15,12 @@ void main() {
       );
 
       expect(url, contains('google.com/travel/hotels'));
-      expect(url, contains('q=Lilit%20Bang%20Lumphu%20Hotel%20-%20Bangkok'));
+      // Should use destination-based query, NOT hotel name (which may not exist)
+      expect(url, contains('q=hotels%20in%20Bangkok'));
       expect(url, isNot(contains('hotels.com')));
     });
 
-    test('Booking.com provider resolves to booking.com with hotel name search query', () {
+    test('Booking.com provider resolves to booking.com with destination search query', () {
       final url = BookingUrlHelper.buildHotelUrl(
         rawUrl: '',
         providerName: 'Booking.com',
@@ -31,7 +32,7 @@ void main() {
       );
 
       expect(url, contains('booking.com/searchresults.html'));
-      expect(url, contains('ss=Lilit%20Bang%20Lumphu%20Hotel%20-%20Bangkok'));
+      expect(url, contains('ss=Bangkok'));
     });
 
     test('cleanDestination removes duplicate location tokens', () {
@@ -52,8 +53,24 @@ void main() {
       );
 
       expect(url, contains('google.com/travel/hotels'));
-      expect(url, contains('q=Grand%20Hotel%20Downtown%2C%20Germany'));
+      // Should use destination-based query with cleaned destination
+      expect(url, contains('q=hotels%20in%20Germany'));
       expect(url, isNot(contains('Germany%2C%20Germany')));
+    });
+
+    test('Booking.com uses destination in query to guarantee valid results', () {
+      final url = BookingUrlHelper.buildHotelUrl(
+        rawUrl: '',
+        providerName: 'Booking.com',
+        hotelName: 'Grand Hotel Downtown',
+        destination: 'Germany',
+        checkInDate: '2026-08-10',
+        checkOutDate: '2026-08-12',
+        travelers: 1,
+      );
+
+      expect(url, contains('booking.com/searchresults.html'));
+      expect(url, contains('ss=Germany'));
     });
 
     test('Google Flights provider resolves to google.com/travel/flights with airlines', () {
