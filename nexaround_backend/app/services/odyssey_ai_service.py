@@ -580,7 +580,8 @@ async def generate_odyssey(
             if isinstance(s, dict) and _extract_lowest_price(s.get("estimated_price_range")) > 0
         ]
         if f_costs:
-            cheapest_flight_cost = min(f_costs)
+            # Flight strategies express per-person rate; multiply by travelers for group total
+            cheapest_flight_cost = min(f_costs) * max(travelers, 1)
 
     cheapest_hotel_cost = 0.0
     if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
@@ -594,17 +595,22 @@ async def generate_odyssey(
 
     # Base budget allocation
     tot = float(budget) if budget > 0 else 1.0
-    transit_amt = cheapest_flight_cost if cheapest_flight_cost > 0 else round(tot * 0.30, 2)
-    stay_amt = cheapest_hotel_cost if cheapest_hotel_cost > 0 else round(tot * 0.35, 2)
+    
+    if cheapest_flight_cost > 0:
+        # Cap transit to max 85% of total budget if flight cost is extremely high
+        transit_amt = min(cheapest_flight_cost, round(tot * 0.85, 2))
+    else:
+        transit_amt = round(tot * 0.30, 2)
 
-    # Ensure transit + stay does not exceed total budget (if so, scale down proportionally to 85% max of budget)
-    if (transit_amt + stay_amt) > tot * 0.85:
-        scale = (tot * 0.80) / (transit_amt + stay_amt)
-        transit_amt = round(transit_amt * scale, 2)
-        stay_amt = round(stay_amt * scale, 2)
+    rem_after_transit = max(tot - transit_amt, round(tot * 0.15, 2))
 
-    rem = max(tot - (transit_amt + stay_amt), tot * 0.15)
-    food_amt = round(rem * 0.60, 2)
+    if cheapest_hotel_cost > 0:
+        stay_amt = min(cheapest_hotel_cost, round(rem_after_transit * 0.60, 2))
+    else:
+        stay_amt = round(rem_after_transit * 0.45, 2)
+
+    rem_for_food_act = max(tot - (transit_amt + stay_amt), round(tot * 0.05, 2))
+    food_amt = round(rem_for_food_act * 0.60, 2)
     activities_amt = round(tot - (stay_amt + transit_amt + food_amt), 2)
 
     budget_breakdown = {

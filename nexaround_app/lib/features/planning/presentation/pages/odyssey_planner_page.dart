@@ -34,10 +34,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   bool _isSubmitting = false;
   DateTime? _startDate;
   DateTime? _endDate;
-  bool _includeFlights = false;
+  bool _includeFlights = true;
   DateTime? _flightStartDate;
   DateTime? _flightEndDate;
-  bool _includeHotels = false;
+  bool _includeHotels = true;
   DateTime? _hotelCheckInDate;
   DateTime? _hotelCheckOutDate;
   String _departureCity = '';
@@ -178,7 +178,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       await _repository.requestGeneration(
         destination: _destinationController.text.trim(),
         mood: _selectedMood,
-        budget: _budget,
+        budget: _budget * _travelers,
         days: _days,
         currency: _currency,
         travelers: _travelers,
@@ -316,11 +316,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       case 0:
         return _buildDestinationStep();
       case 1:
-        return _buildMoodStep();
-      case 2:
-        return _buildBudgetStep();
-      case 3:
         return _buildFlightsAndHotelsStep();
+      case 2:
+        return _buildMoodStep();
+      case 3:
+        return _buildBudgetStep();
       default:
         return const SizedBox();
     }
@@ -369,67 +369,58 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade(delay: 150.ms),
           const SizedBox(height: 32),
           const Text(
-            'DURATION',
+            'TRIP DATES',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: _dayOptions.map((d) {
-              final selected = _days == d;
-              return GestureDetector(
-                onTap: () => setState(() {
-                  _days = d;
-                  _daysController.text = d.toString();
-                }),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: selected ? Colors.black : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: selected ? Colors.black : Colors.black12),
-                  ),
-                  child: Text(
-                    '$d Days',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: selected ? Colors.white : Colors.black,
+          InkWell(
+            onTap: _pickTripDateRange,
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _startDate != null ? Colors.black : Colors.black12,
+                  width: _startDate != null ? 1.5 : 1.0,
+                ),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.date_range_rounded, color: Colors.black54),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      _startDate != null && _endDate != null
+                          ? '${_formatDateNice(_startDate!)} – ${_formatDateNice(_endDate!)} ($_days ${_days == 1 ? "Day" : "Days"})'
+                          : (_startDate != null
+                              ? _formatDateNice(_startDate!)
+                              : 'Select trip start & end dates'),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: _startDate != null ? FontWeight.w700 : FontWeight.w500,
+                        color: _startDate != null ? Colors.black : Colors.black45,
+                      ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ).animate().fade(delay: 250.ms),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _daysController,
-            keyboardType: TextInputType.number,
-            onChanged: (val) {
-              final parsed = int.tryParse(val);
-              if (parsed != null && parsed > 0) {
-                setState(() => _days = parsed);
-              }
-            },
-            decoration: InputDecoration(
-              labelText: 'Or enter custom days',
-              hintText: 'e.g. 10',
-              prefixIcon: const Icon(Icons.calendar_today_rounded, color: Colors.black54),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Colors.black12),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(18),
-                borderSide: const BorderSide(color: Colors.black, width: 1.5),
+                  if (_startDate != null)
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _startDate = null;
+                          _endDate = null;
+                          _days = 3;
+                        });
+                      },
+                      child: const Icon(Icons.close_rounded, size: 20, color: Colors.black54),
+                    )
+                  else
+                    const Icon(Icons.calendar_month_rounded, size: 20, color: Colors.black54),
+                ],
               ),
             ),
-          ).animate().fade(delay: 300.ms),
+          ).animate().fade(delay: 250.ms),
           const SizedBox(height: 32),
           const Text(
             'NUMBER OF TRAVELERS',
@@ -462,59 +453,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 350.ms),
-          const SizedBox(height: 32),
-          const Text(
-            'TRIP DATES (OPTIONAL)',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
-          ),
-          const SizedBox(height: 12),
-          InkWell(
-            onTap: _pickTripDateRange,
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: _startDate != null ? Colors.black : Colors.black12,
-                  width: _startDate != null ? 1.5 : 1.0,
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.date_range_rounded, color: Colors.black54),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Text(
-                      _startDate != null && _endDate != null
-                          ? '${_formatDateNice(_startDate!)} – ${_formatDateNice(_endDate!)}'
-                          : (_startDate != null
-                              ? _formatDateNice(_startDate!)
-                              : 'Select trip start & end dates'),
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: _startDate != null ? FontWeight.w700 : FontWeight.w500,
-                        color: _startDate != null ? Colors.black : Colors.black45,
-                      ),
-                    ),
-                  ),
-                  if (_startDate != null)
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          _startDate = null;
-                          _endDate = null;
-                        });
-                      },
-                      child: const Icon(Icons.close_rounded, size: 20, color: Colors.black54),
-                    )
-                  else
-                    const Icon(Icons.calendar_month_rounded, size: 20, color: Colors.black54),
-                ],
-              ),
-            ),
-          ).animate().fade(delay: 400.ms),
         ],
       ),
     );
@@ -847,7 +785,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'How do you want to\nexperience the world?',
+            'How do you want the\nexperience to be?',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 32),
@@ -917,12 +855,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
           const Text(
-            'What is your\naffordable limit?',
+            'What is your budget\nper person?',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
           ).animate().fade(),
           const SizedBox(height: 12),
           const Text(
-            'AI will optimize the odyssey based on this cap.',
+            'AI will optimize the odyssey based on this per-person budget.',
             style: TextStyle(color: Colors.black54),
           ),
           const Spacer(),
@@ -933,7 +871,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   '$_currency ${formatAmount(_budget)}',
                   style: const TextStyle(fontSize: 48, fontWeight: FontWeight.w900, letterSpacing: -1),
                 ),
-                const Text('ESTIMATED TOTAL BUDGET', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                const Text('BUDGET PER PERSON', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 2)),
+                if (_travelers > 1) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Total for $_travelers travelers: $_currency ${formatAmount(_budget * _travelers)}',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
+                  ),
+                ],
               ],
             ),
           ).animate().scale(),
@@ -948,7 +893,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               }
             },
             decoration: InputDecoration(
-              labelText: 'Or enter custom budget limit',
+              labelText: 'Or enter custom budget per person',
               hintText: 'e.g. 75000',
               prefixText: '$_currency ',
               prefixIcon: const Icon(Icons.wallet_rounded, color: Colors.black54),

@@ -80,13 +80,18 @@ class OdysseyPlanView extends StatelessWidget {
           ],
           const SizedBox(height: 24),
           if (odyssey.formattedDateRange.isNotEmpty)
-            _infoCard('Planned Dates', odyssey.formattedDateRange, Icons.calendar_month_rounded),
-          _infoCard(
-            'Duration',
-            '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}'
-                '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
-            Icons.wb_sunny_rounded,
-          ),
+            _infoCard(
+              'Trip Dates & Duration',
+              '${odyssey.formattedDateRange} (${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''})',
+              Icons.calendar_month_rounded,
+            )
+          else
+            _infoCard(
+              'Duration',
+              '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}'
+                  '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+              Icons.wb_sunny_rounded,
+            ),
           if (odyssey.destination.isNotEmpty)
             _infoCard('Destination', odyssey.destination, Icons.place_rounded),
           if (odyssey.visa.isNotEmpty)
@@ -259,21 +264,51 @@ class OdysseyPlanView extends StatelessWidget {
       );
     }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return Column(
+      children: [
+        if (transit > (total * 0.65) || (transit + stay) > (total * 0.85))
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF3E0),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFFFB74D)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Budget Notice: Flight and transit expenses for this destination consume a large portion of your allocated budget. A higher budget per person is recommended for a more comfortable stay.',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFBF360C),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ],
-      ),
+        Container(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.black12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -319,6 +354,8 @@ class OdysseyPlanView extends StatelessWidget {
           categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
         ],
       ),
+    ),
+    ],
     );
   }
 
