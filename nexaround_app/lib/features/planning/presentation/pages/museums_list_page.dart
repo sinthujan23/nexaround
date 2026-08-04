@@ -352,6 +352,32 @@ class _MuseumCard extends StatelessWidget {
 
   const _MuseumCard({required this.museum, required this.onTap});
 
+  String? get _effectiveImageUrl {
+    final raw = museum.imageUrl;
+    if (raw != null && raw.trim().isNotEmpty) {
+      return raw.startsWith('/') ? '${ApiConstants.baseUrl}$raw' : raw;
+    }
+    if (museum.slug == 'musee-dorsay') {
+      return 'https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (museum.slug == 'louvre') {
+      return 'https://images.unsplash.com/photo-1565099824688-e93eb20fe622?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (museum.slug == 'vatican-museums') {
+      return 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (museum.slug == 'american-museum-of-natural-history') {
+      return 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (museum.slug == 'metropolitan-museum-of-art') {
+      return 'https://images.unsplash.com/photo-1582555172866-f73bb12a2ab3?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (museum.slug == 'british-museum') {
+      return 'https://images.unsplash.com/photo-1568849676085-51415703900f?auto=format&fit=crop&w=1200&q=80';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Material(
@@ -376,11 +402,9 @@ class _MuseumCard extends StatelessWidget {
                     // Museum Image or fallback
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
-                      child: museum.imageUrl != null
+                      child: _effectiveImageUrl != null
                           ? CachedNetworkImage(
-                              imageUrl: museum.imageUrl!.startsWith('/')
-                                  ? '${ApiConstants.baseUrl}${museum.imageUrl}'
-                                  : museum.imageUrl!,
+                              imageUrl: _effectiveImageUrl!,
                               fit: BoxFit.cover,
                               placeholder: (_, __) => Container(
                                 color: AppColors.surface,
@@ -411,7 +435,7 @@ class _MuseumCard extends StatelessWidget {
                                 gradient: museum.rank != null && museum.rank! <= 3
                                     ? AppColors.achievementGradient
                                     : AppColors.secondaryGradient,
-                              ),
+                               ),
                             ),
                     ),
                     // Masterpiece count badge (top-right)
