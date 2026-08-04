@@ -358,7 +358,7 @@ class _MuseumCard extends StatelessWidget {
       return raw.startsWith('/') ? '${ApiConstants.baseUrl}$raw' : raw;
     }
     if (museum.slug == 'musee-dorsay') {
-      return 'https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80';
+      return 'assets/images/musee_dorsay.jpg';
     }
     if (museum.slug == 'louvre') {
       return 'https://images.unsplash.com/photo-1565099824688-e93eb20fe622?auto=format&fit=crop&w=1200&q=80';
@@ -403,39 +403,35 @@ class _MuseumCard extends StatelessWidget {
                     ClipRRect(
                       borderRadius: const BorderRadius.vertical(top: Radius.circular(15)),
                       child: _effectiveImageUrl != null
-                          ? CachedNetworkImage(
-                              imageUrl: _effectiveImageUrl!,
-                              fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
-                                color: AppColors.surface,
-                                child: const Center(
-                                  child: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 1.5,
-                                      color: AppColors.brandGreen,
+                          ? (_effectiveImageUrl!.startsWith('assets/')
+                              ? Image.asset(_effectiveImageUrl!, fit: BoxFit.cover)
+                              : CachedNetworkImage(
+                                  imageUrl: _effectiveImageUrl!,
+                                  fit: BoxFit.cover,
+                                  placeholder: (_, __) => Container(
+                                    color: AppColors.surface,
+                                    child: const Center(
+                                      child: SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 1.5,
+                                          color: AppColors.brandGreen,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                color: AppColors.surface,
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.museum_rounded,
-                                    size: 32,
-                                    color: AppColors.textTertiary,
+                                  errorWidget: (context, url, error) => Image.asset(
+                                    'assets/images/musee_dorsay.jpg',
+                                    fit: BoxFit.cover,
                                   ),
-                                ),
-                              ),
-                            )
+                                ))
                           : Container(
                               decoration: BoxDecoration(
                                 gradient: museum.rank != null && museum.rank! <= 3
                                     ? AppColors.achievementGradient
                                     : AppColors.secondaryGradient,
-                               ),
+                              ),
                             ),
                     ),
                     // Masterpiece count badge (top-right)
