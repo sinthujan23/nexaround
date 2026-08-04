@@ -113,6 +113,9 @@ Several museums have pre-defined itineraries and masterpieces defined in Excel s
    python -m app.scripts.seed_acropolis
    ```
 
+### 2.2 VPS Docker Deployment Guide
+For full VPS deployment instructions, Docker Compose stack configurations, and database seeding procedures, see [VPS_DEPLOYMENT_GUIDE.md](file:///var/www/nexaround/VPS_DEPLOYMENT_GUIDE.md).
+
 ---
 
 

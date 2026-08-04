@@ -414,6 +414,23 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
     return Icons.palette_rounded;
   }
 
+  String? get _effectiveImageUrl {
+    final raw = widget.museum.imageUrl;
+    if (raw != null && raw.trim().isNotEmpty) {
+      return raw.startsWith('/') ? '${ApiConstants.baseUrl}$raw' : raw;
+    }
+    if (widget.museum.slug == 'musee-dorsay') {
+      return 'https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (widget.museum.slug == 'louvre') {
+      return 'https://images.unsplash.com/photo-1565099824688-e93eb20fe622?auto=format&fit=crop&w=1200&q=80';
+    }
+    if (widget.museum.slug == 'vatican-museums') {
+      return 'https://images.unsplash.com/photo-1552832230-c0197dd311b5?auto=format&fit=crop&w=1200&q=80';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -442,11 +459,9 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
               background: Stack(
                 fit: StackFit.expand,
                 children: [
-                  if (widget.museum.imageUrl != null)
+                  if (_effectiveImageUrl != null)
                     CachedNetworkImage(
-                      imageUrl: widget.museum.imageUrl!.startsWith('/')
-                          ? '${ApiConstants.baseUrl}${widget.museum.imageUrl}'
-                          : widget.museum.imageUrl!,
+                      imageUrl: _effectiveImageUrl!,
                       fit: BoxFit.cover,
                       placeholder: (_, __) => Container(
                         color: AppColors.charcoal,

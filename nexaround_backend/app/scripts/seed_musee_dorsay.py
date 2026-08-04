@@ -1,240 +1,850 @@
 """
-Seed Musée d'Orsay masterpieces and opening hours into the database.
+Seed script for Musée d'Orsay itineraries, opening hours, and masterpieces.
+Matches exact 5-Hour (40 Stops) and 1-Day (60 Stops) Excel structure.
 
-Usage (from backend root):
+Usage (from backend root or Docker container):
     python -m app.scripts.seed_musee_dorsay
 """
 
 import asyncio
 import os
-import re
 import sys
 import uuid
-import pandas as pd
 from sqlalchemy import select
 
-# ── Bootstrap the app so models / settings are importable ────────────────────
+# Bootstrap app so models / settings are importable
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from app.core.database import engine, async_session, Base  # noqa: E402
-from app.models.museum import Museum, MuseumMasterpiece  # noqa: E402
+from app.core.database import engine, async_session, Base
+from app.models.museum import Museum, MuseumMasterpiece
 
-APP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "nexaround_app"))
-MUSEE_DORSAY_XLSX = os.environ.get(
-    "MUSEE_DORSAY_XLSX",
-    os.path.join(APP_DIR, "Musee_dOrsay_5hr_1day_Itineraries.xlsx")
-)
+MUSEE_DORSAY_DATA = {
+    "slug": "musee-dorsay",
+    "name": "Musée d'Orsay",
+    "city": "Paris",
+    "country": "France",
+    "annual_visitors": 3751000,
+    "rank": 16,
+    "image_url": "https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80",
+    "ticket_url": "https://www.musee-orsay.fr/en/visit/tickets",
+    "website": "https://www.musee-orsay.fr",
+    "opening_hours": "Tue - Sun: 9:30 AM - 6:00 PM (Thu late opening until 9:45 PM). Closed Mondays.",
+    "closing_hours": "6:00 PM (9:45 PM on Thursdays)",
+    "latitude": 48.859967,
+    "longitude": 2.326561,
+}
 
+# 60 Total Stops:
+# Ranks 1 to 40 -> 5-Hour Itinerary (40 Stops) & 1-Day Itinerary (60 Stops)
+# Ranks 41 to 60 -> 1-Day Itinerary extension (+20 Stops = 60 Stops Total)
+MASTERPIECES = [
+    # --- STOPS 1 to 40 (5-HOUR ITINERARY: 40 STOPS) ---
+    {
+        "rank": 1,
+        "building": "Level 5",
+        "room_gallery": "L'Impressionnisme, premières années",
+        "must_see_item": "Impression, soleil levant / Le Bassin aux nymphéas",
+        "artist": "Claude Monet",
+        "category": "Impressionism",
+        "description": "Monet's groundbreaking masterpiece that gave Impressionism its name.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 2,
+        "building": "Level 5",
+        "room_gallery": "Monet et l'Impressionnisme",
+        "must_see_item": "Les Coquelicots (Poppies)",
+        "artist": "Claude Monet",
+        "category": "Impressionism",
+        "description": "Monet's vibrant landscape of his wife Camille and son walking through poppies.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 3,
+        "building": "Level 5",
+        "room_gallery": "Monet et la modernité",
+        "must_see_item": "La Gare Saint-Lazare",
+        "artist": "Claude Monet",
+        "category": "Impressionism",
+        "description": "Monet's dynamic depiction of steam engines at Paris's Saint-Lazare train station.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 4,
+        "building": "Level 5",
+        "room_gallery": "Renoir et la vie parisienne",
+        "must_see_item": "Bal du moulin de la Galette",
+        "artist": "Pierre-Auguste Renoir",
+        "category": "Impressionism",
+        "description": "Renoir's joyous scene of outdoor dancing in 19th-century Montmartre.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 5,
+        "building": "Level 5",
+        "room_gallery": "Renoir",
+        "must_see_item": "Danse à la ville / Danse à la campagne",
+        "artist": "Pierre-Auguste Renoir",
+        "category": "Impressionism",
+        "description": "Renoir's paired full-length portraits comparing urban and rural ballroom dances.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 6,
+        "building": "Level 5",
+        "room_gallery": "Degas et la danse",
+        "must_see_item": "La Classe de danse",
+        "artist": "Edgar Degas",
+        "category": "Impressionism",
+        "description": "Degas's famous glimpse into a Parisian ballet rehearsal under master Jules Perrot.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 7,
+        "building": "Level 5",
+        "room_gallery": "Degas",
+        "must_see_item": "L'Absinthe",
+        "artist": "Edgar Degas",
+        "category": "Impressionism",
+        "description": "Degas's realistic portrait of café life and solitude in modern Paris.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 8,
+        "building": "Level 5",
+        "room_gallery": "Pissarro et le paysage",
+        "must_see_item": "Le Gel blanc",
+        "artist": "Camille Pissarro",
+        "category": "Impressionism",
+        "description": "Pissarro's delicate winter study of hoarfrost on ploughed fields in Éragny.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 9,
+        "building": "Level 5",
+        "room_gallery": "Sisley",
+        "must_see_item": "L'Inondation à Port-Marly",
+        "artist": "Alfred Sisley",
+        "category": "Impressionism",
+        "description": "Sisley's atmospheric landscape capturing rising floodwaters reflecting skies.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 10,
+        "building": "Level 5",
+        "room_gallery": "Caillebotte",
+        "must_see_item": "Les Raboteurs de parquet (The Floor Scrapers)",
+        "artist": "Gustave Caillebotte",
+        "category": "Realism / Impressionism",
+        "description": "Caillebotte's raw perspective of working-class men refinishing hardwood floors.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 11,
+        "building": "Level 5",
+        "room_gallery": "Whistler",
+        "must_see_item": "Arrangement in Grey and Black No. 1 (Whistler's Mother)",
+        "artist": "James Abbott McNeill Whistler",
+        "category": "Realism",
+        "description": "Whistler's world-renowned portrait of his mother Anna McNeill Whistler.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 12,
+        "building": "Level 5",
+        "room_gallery": "Cézanne",
+        "must_see_item": "Les Joueurs de cartes (The Card Players)",
+        "artist": "Paul Cézanne",
+        "category": "Post-Impressionism",
+        "description": "Cézanne's quiet masterpiece portraying Provençal peasants playing cards.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 13,
+        "building": "Level 5",
+        "room_gallery": "Cézanne",
+        "must_see_item": "Pommes et Oranges",
+        "artist": "Paul Cézanne",
+        "category": "Post-Impressionism",
+        "description": "Cézanne's iconic still life celebrating form, color, and geometric balance.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 14,
+        "building": "Level 5",
+        "room_gallery": "Les débuts de Cézanne",
+        "must_see_item": "Autoportrait au chapeau blanc",
+        "artist": "Paul Cézanne",
+        "category": "Post-Impressionism",
+        "description": "Cézanne's self-portrait reflecting his early stylistic development.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 15,
+        "building": "Level 5",
+        "room_gallery": "Les débuts de Cézanne",
+        "must_see_item": "Montagne Sainte-Victoire",
+        "artist": "Paul Cézanne",
+        "category": "Post-Impressionism",
+        "description": "Cézanne's famed view of the Sainte-Victoire mountain near Aix-en-Provence.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 16,
+        "building": "Level 5",
+        "room_gallery": "Les débuts de Cézanne",
+        "must_see_item": "Rochers près des grottes au-dessus du Château-Noir",
+        "artist": "Paul Cézanne",
+        "category": "Post-Impressionism",
+        "description": "Cézanne's dramatic landscape of rocky terrain near Château-Noir.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 17,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "La Nuit étoilée sur le Rhône",
+        "artist": "Vincent van Gogh",
+        "category": "Post-Impressionism",
+        "description": "Van Gogh's glowing nocturnal depiction of Arles and gaslights over the Rhône.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 18,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "Autoportrait (1889)",
+        "artist": "Vincent van Gogh",
+        "category": "Post-Impressionism",
+        "description": "Van Gogh's intense self-portrait painted against swirling blue backgrounds.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 19,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "L'Église d'Auvers-sur-Oise",
+        "artist": "Vincent van Gogh",
+        "category": "Post-Impressionism",
+        "description": "Van Gogh's expressive, undulating view of the parish church at Auvers.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 20,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "La Salle de danse à Arles",
+        "artist": "Vincent van Gogh",
+        "category": "Post-Impressionism",
+        "description": "Van Gogh's energetic painting of evening crowds in an Arles dance hall.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 21,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "The Circus",
+        "artist": "Georges Seurat",
+        "category": "Neo-Impressionism",
+        "description": "Seurat's unfinished Pointillist masterwork capturing circus acrobats.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 22,
+        "building": "Level 5",
+        "room_gallery": "Néo- et Post-Impressionnisme",
+        "must_see_item": "Portrait of Berthe Signac",
+        "artist": "Paul Signac",
+        "category": "Neo-Impressionism",
+        "description": "Signac's Pointillist portrait of his wife Berthe in luminous dot technique.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 23,
+        "building": "Level 5",
+        "room_gallery": "Pont-Aven",
+        "must_see_item": "Paysage de Bretagne",
+        "artist": "Paul Gauguin",
+        "category": "Post-Impressionism",
+        "description": "Gauguin's Synthetist landscape of the rustic countryside in Brittany.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 24,
+        "building": "Level 5",
+        "room_gallery": "Pont-Aven",
+        "must_see_item": "La Belle Angèle",
+        "artist": "Paul Gauguin",
+        "category": "Post-Impressionism",
+        "description": "Gauguin's bold portrait of Angélique Satre in traditional Breton costume.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 25,
+        "building": "Level 5",
+        "room_gallery": "Pont-Aven",
+        "must_see_item": "Les Bretonnes aux ombrelles",
+        "artist": "Émile Bernard",
+        "category": "Post-Impressionism",
+        "description": "Émile Bernard's Cloisonnism painting featuring flattened forms and dark outlines.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 26,
+        "building": "Level 5",
+        "room_gallery": "Pont-Aven",
+        "must_see_item": "Le champ de blé d'or et de sarrasin",
+        "artist": "Paul Sérusier",
+        "category": "Post-Impressionism",
+        "description": "Sérusier's harmonious depiction of golden wheat fields and buckwheat.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 27,
+        "building": "Level 5",
+        "room_gallery": "Pont-Aven",
+        "must_see_item": "Tetrahedra",
+        "artist": "Paul Sérusier",
+        "category": "Post-Impressionism",
+        "description": "Sérusier's mystical geometric composition inspired by Nabis theories.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 28,
+        "building": "Level 5",
+        "room_gallery": "Gauguin à Tahiti",
+        "must_see_item": "Et l'Or de Leur Corps",
+        "artist": "Paul Gauguin",
+        "category": "Post-Impressionism",
+        "description": "Gauguin's radiant Polynesian canvas depicting two women on the beach.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 29,
+        "building": "Level 2",
+        "room_gallery": "Sculpture (1870–1914)",
+        "must_see_item": "Fugit Amor",
+        "artist": "Auguste Rodin",
+        "category": "Sculpture",
+        "description": "Rodin's emotional bronze sculpture of Paolo and Francesca from Dante's Inferno.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 30,
+        "building": "Level 2",
+        "room_gallery": "Sculpture (1870–1914)",
+        "must_see_item": "Polar Bear",
+        "artist": "François Pompon",
+        "category": "Sculpture",
+        "description": "Pompon's famous smooth, simplified white marble sculpture of a walking polar bear.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 31,
+        "building": "Level 2",
+        "room_gallery": "Toulouse-Lautrec, spectacles et coulisses",
+        "must_see_item": "Blonde Prostitute (Study for the Medical Inspection)",
+        "artist": "Henri de Toulouse-Lautrec",
+        "category": "Post-Impressionism",
+        "description": "Toulouse-Lautrec's empathetic portrait of Montmartre nightlife figures.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 32,
+        "building": "Level 2",
+        "room_gallery": "Toulouse-Lautrec, spectacles et coulisses",
+        "must_see_item": "Woman Pulling Up Her Stocking",
+        "artist": "Henri de Toulouse-Lautrec",
+        "category": "Post-Impressionism",
+        "description": "Toulouse-Lautrec's intimate candid drawing of a woman dressing.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 33,
+        "building": "Level 2",
+        "room_gallery": "Art Nouveau",
+        "must_see_item": "Banquette de fumoir",
+        "artist": "Hector Guimard",
+        "category": "Decorative Arts",
+        "description": "Guimard's organic Art Nouveau carved wooden smoking bench.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 34,
+        "building": "Level 0",
+        "room_gallery": "Courbet, grands formats",
+        "must_see_item": "Un enterrement à Ornans",
+        "artist": "Gustave Courbet",
+        "category": "Realism",
+        "description": "Courbet's massive Realist painting recording a provincial funeral in his hometown.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 35,
+        "building": "Level 0",
+        "room_gallery": "Courbet et le réalisme",
+        "must_see_item": "L'Origine du Monde",
+        "artist": "Gustave Courbet",
+        "category": "Realism",
+        "description": "Courbet's famous and provocative close-up nude study.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 36,
+        "building": "Level 0",
+        "room_gallery": "Manet",
+        "must_see_item": "Olympia",
+        "artist": "Édouard Manet",
+        "category": "Realism / Impressionism",
+        "description": "Manet's controversial 1863 masterpiece challenging traditional nude painting.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 37,
+        "building": "Level 0",
+        "room_gallery": "Manet",
+        "must_see_item": "Le Déjeuner sur l'Herbe",
+        "artist": "Édouard Manet",
+        "category": "Realism / Impressionism",
+        "description": "Manet's revolutionary picnic scene featuring a female nude among dressed gentlemen.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 38,
+        "building": "Level 0",
+        "room_gallery": "Manet",
+        "must_see_item": "Un Bar aux Folies-Bergère",
+        "artist": "Édouard Manet",
+        "category": "Impressionism",
+        "description": "Manet's final masterpiece examining reflection and social detachment in a Paris cabaret.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 39,
+        "building": "Level 0",
+        "room_gallery": "Manet",
+        "must_see_item": "Sur la Plage",
+        "artist": "Édouard Manet",
+        "category": "Impressionism",
+        "description": "Manet's coastal scene depicting his wife Suzanne and brother Eugène on the beach.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 40,
+        "building": "Level 0",
+        "room_gallery": "Collection Alfred Chauchard",
+        "must_see_item": "Named museum collection",
+        "artist": "Various Artists",
+        "category": "Collection Highlights",
+        "description": "Chauchard's bequest including Barbizon school gems like Millet's L'Angélus.",
+        "included_5h": True,
+        "included_1d": True,
+        "included_2d": False,
+    },
 
-def guess_category_dorsay(item_name: str, artist: str | None, location: str) -> str:
-    """Classify items to display rich icons and theme colors in the app UI."""
-    item_lower = (item_name or "").lower()
-    artist_lower = (artist or "").lower()
-    loc_lower = (location or "").lower()
+    # --- STOPS 41 to 60 (1-DAY ITINERARY EXTENSION: +20 STOPS = 60 STOPS TOTAL) ---
+    {
+        "rank": 41,
+        "building": "Level 2",
+        "room_gallery": "Architecture – Paris au XIXe siècle",
+        "must_see_item": "Architecture gallery",
+        "artist": "Victor Laloux & Team",
+        "category": "Architecture",
+        "description": "Exhibits detailing the architectural transformation of 19th-century Paris.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 42,
+        "building": "Level 2",
+        "room_gallery": "Portraits (1880–1914)",
+        "must_see_item": "Portrait gallery",
+        "artist": "Various Artists",
+        "category": "Portraiture",
+        "description": "A rich display of Belle Époque portraiture and social status.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 43,
+        "building": "Level 2",
+        "room_gallery": "Salle des fêtes",
+        "must_see_item": "Historic ceremonial hall",
+        "artist": "Victor Laloux",
+        "category": "Architecture",
+        "description": "The lavishly gilded hotel ballroom preserved from the original Gare d'Orsay.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 44,
+        "building": "Level 2",
+        "room_gallery": "Galerie des médailles",
+        "must_see_item": "Medal gallery",
+        "artist": "Various Artists",
+        "category": "Decorative Arts",
+        "description": "Intricate 19th-century commemorative medals and bas-relief engravings.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 45,
+        "building": "Level 2",
+        "room_gallery": "Terrasse Rodin",
+        "must_see_item": "Outdoor sculpture terrace",
+        "artist": "Auguste Rodin",
+        "category": "Sculpture",
+        "description": "Statues and studies by Rodin overlooking the grand central nave.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 46,
+        "building": "Level 0",
+        "room_gallery": "Paris, capitale d'une nation moderne",
+        "must_see_item": "Modern Paris",
+        "artist": "Various Artists",
+        "category": "History & Modernity",
+        "description": "Paintings documenting Haussmannization and urban life in Paris.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 47,
+        "building": "Level 0",
+        "room_gallery": "Millet",
+        "must_see_item": "Millet gallery",
+        "artist": "Jean-François Millet",
+        "category": "Realism",
+        "description": "Millet's celebrated rural peasant scenes including The Gleaners.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 48,
+        "building": "Level 0",
+        "room_gallery": "Portraits manifestes, les années 1860",
+        "must_see_item": "Portraits of the 1860s",
+        "artist": "Various Artists",
+        "category": "Portraiture",
+        "description": "Early modern portraiture experimenting with realism and lighting.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 49,
+        "building": "Level 0",
+        "room_gallery": "Carpeaux, esquisses",
+        "must_see_item": "Jean-Baptiste Carpeaux",
+        "artist": "Jean-Baptiste Carpeaux",
+        "category": "Sculpture",
+        "description": "Sculptural models and sketches by the Second Empire master.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 50,
+        "building": "Level 0",
+        "room_gallery": "Voyages d'artistes : de l'Italie à l'Orient",
+        "must_see_item": "Travel-inspired paintings",
+        "artist": "Various Artists",
+        "category": "Orientalism / Travel",
+        "description": "Exotic landscapes and travel scenes from Italy, North Africa, and the Levant.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 51,
+        "building": "Level 5",
+        "room_gallery": "Collection Moreau-Nélaton",
+        "must_see_item": "Collection highlights",
+        "artist": "Various Impressionists",
+        "category": "Impressionism",
+        "description": "Major gifts from Etienne Moreau-Nélaton including Corot and Delacroix.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 52,
+        "building": "Level 5",
+        "room_gallery": "Cabinet d'arts graphiques",
+        "must_see_item": "Graphic Arts",
+        "artist": "Various Artists",
+        "category": "Graphic Arts",
+        "description": "Rotating collection of pastel, watercolor, and ink drawings.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 53,
+        "building": "Level 5",
+        "room_gallery": "Le Cabaret du Chat Noir",
+        "must_see_item": "Cabaret culture",
+        "artist": "Théophile Steinlen",
+        "category": "Poster & Cabaret Art",
+        "description": "Iconic Bohemian posters and shadow theater art from Montmartre's Chat Noir.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 54,
+        "building": "Level 5",
+        "room_gallery": "Cinéma (1895–1914)",
+        "must_see_item": "Early cinema",
+        "artist": "Lumière Brothers",
+        "category": "Early Cinema",
+        "description": "Tribute to the birth of motion pictures in late 19th-century Paris.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 55,
+        "building": "Level 5",
+        "room_gallery": "Terrasse des Sculptures",
+        "must_see_item": "Outdoor sculpture terrace",
+        "artist": "Various Sculptors",
+        "category": "Sculpture",
+        "description": "High-altitude sculpture balcony framing views of the central station hall.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 56,
+        "building": "Level 2",
+        "room_gallery": "Les Nabis",
+        "must_see_item": "Bonnard, Denis, Vallotton & Vuillard",
+        "artist": "Les Nabis Group",
+        "category": "Post-Impressionism",
+        "description": "Symbolist and decorative panels created by the avant-garde Nabis brotherhood.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 57,
+        "building": "Level 2",
+        "room_gallery": "Décors modernes (1905–1914)",
+        "must_see_item": "Modern decorative interiors",
+        "artist": "Various Designers",
+        "category": "Decorative Arts",
+        "description": "Turn-of-the-century furniture, stained glass, and interior design innovations.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 58,
+        "building": "Level 2",
+        "room_gallery": "Le paysage autour de 1900",
+        "must_see_item": "Landscape painting",
+        "artist": "Various Artists",
+        "category": "Landscape",
+        "description": "Evolution of landscape art leading into early 20th-century modernism.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 59,
+        "building": "Level 0",
+        "room_gallery": "Collection Alfred Chauchard",
+        "must_see_item": "Collection highlights",
+        "artist": "Alfred Chauchard Donors",
+        "category": "Collection Highlights",
+        "description": "Late 19th-century French landscape and genre paintings.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+    {
+        "rank": 60,
+        "building": "Level 0",
+        "room_gallery": "Un tournant pour la peinture d'histoire (1850–1870)",
+        "must_see_item": "History painting",
+        "artist": "Various Academic Painters",
+        "category": "History Painting",
+        "description": "Key transition works charting the shift from Academic History painting to Modernism.",
+        "included_5h": False,
+        "included_1d": True,
+        "included_2d": False,
+    },
+]
 
-    if any(x in artist_lower for x in ["monet", "renoir", "degas", "manet", "pissarro", "sisley", "morisot", "caillebotte", "fantin-latour", "bazille"]):
-        return "Impressionist Painting"
-    if any(x in artist_lower for x in ["van gogh", "gauguin", "cezanne", "cézanne", "seurat", "signac", "toulouse-lautrec", "redon", "vuillard", "bonnard"]):
-        return "Post-Impressionist Painting"
-    if any(x in artist_lower for x in ["rodin", "carpeaux", "maillol", "claudel", "bourdelle", "barye", "pompon", "sculpture"]) or "statue" in item_lower or "sculpture" in item_lower or "bronze" in item_lower or "marble" in item_lower:
-        return "Sculpture"
-    if any(x in artist_lower for x in ["guimard", "majorelle", "lalique", "galle", "gallé", "tiffany", "art nouveau"]) or "furniture" in item_lower or "decorative" in item_lower or "clock" in item_lower:
-        return "Art Nouveau & Decorative Arts"
-    if any(x in artist_lower for x in ["courbet", "millet", "daumier", "corot", "rousseau", "barbizon"]) or "realism" in loc_lower:
-        return "Realist & Barbizon Painting"
-    
-    if "impressionnism" in loc_lower or "impression" in loc_lower:
-        return "Impressionist Painting"
-    if "post-impressionnism" in loc_lower:
-        return "Post-Impressionist Painting"
-    if "sculpture" in loc_lower:
-        return "Sculpture"
-    
-    return "Museum Masterpiece"
-
-
-def clean_text(text: str) -> str:
-    """Clean text, replace unicode dash variations, and fix common accents."""
-    text = str(text).strip()
-    text = re.sub(r"\s*[\ufffd\u2013\u2014–—]\s*", " - ", text)
-    text = text.replace("\ufffd", "é")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-def parse_highlight(raw_text: str) -> tuple[str | None, str]:
-    """Parse 'Artist - Masterpiece' or return (None, Masterpiece)."""
-    text = clean_text(raw_text)
-    if " - " in text:
-        parts = text.split(" - ", 1)
-        artist = parts[0].strip()
-        item = parts[1].strip()
-        if artist and item:
-            return artist, item
-    return None, text
-
-
-def process_musee_dorsay(file_path: str):
-    """Reads and merges 5-Hour (40 Stops) and 1-Day (60 Stops) itineraries."""
-    if not os.path.exists(file_path):
-        print(f"❌ Musée d'Orsay Excel file not found at: {file_path}")
-        return None
-
-    xl = pd.ExcelFile(file_path)
-    merged = {}
-
-    sheet_5h = "5 Hour (40 Stops)" if "5 Hour (40 Stops)" in xl.sheet_names else xl.sheet_names[0]
-    sheet_1d = "1 Day (60 Stops)" if "1 Day (60 Stops)" in xl.sheet_names else (xl.sheet_names[1] if len(xl.sheet_names) > 1 else sheet_5h)
-
-    # 1. Process 5-Hour sheet
-    df_5h = pd.read_excel(xl, sheet_5h)
-    for idx, row in df_5h.iterrows():
-        raw_highlight = str(row.get("Highlight", "")).strip()
-        if not raw_highlight or raw_highlight == "nan":
-            continue
-
-        artist, item_name = parse_highlight(raw_highlight)
-        level_val = str(row.get("Level", "")).strip()
-        building_val = f"Level {level_val}" if level_val and not level_val.lower().startswith("level") else (level_val or "Main Building")
-        room_val = str(row.get("Official Location", "")).strip()
-        
-        key = item_name.lower()
-        rank_val = int(row.get("Stop", idx + 1))
-
-        merged[key] = {
-            "rank": rank_val,
-            "building": building_val,
-            "room_gallery": room_val,
-            "must_see_item": item_name,
-            "artist": artist,
-            "category": guess_category_dorsay(item_name, artist, room_val),
-            "description": None,
-            "included_5h": True,
-            "included_1d": False,
-            "included_2d": False,
-        }
-
-    # 2. Process 1-Day sheet
-    df_1d = pd.read_excel(xl, sheet_1d)
-    for idx, row in df_1d.iterrows():
-        raw_highlight = str(row.get("Highlight", "")).strip()
-        if not raw_highlight or raw_highlight == "nan":
-            continue
-
-        artist, item_name = parse_highlight(raw_highlight)
-        level_val = str(row.get("Level", "")).strip()
-        building_val = f"Level {level_val}" if level_val and not level_val.lower().startswith("level") else (level_val or "Main Building")
-        room_val = str(row.get("Official Location", "")).strip()
-
-        key = item_name.lower()
-        rank_val = int(row.get("Stop", idx + 1))
-
-        if key in merged:
-            merged[key]["included_1d"] = True
-        else:
-            merged[key] = {
-                "rank": rank_val,
-                "building": building_val,
-                "room_gallery": room_val,
-                "must_see_item": item_name,
-                "artist": artist,
-                "category": guess_category_dorsay(item_name, artist, room_val),
-                "description": None,
-                "included_5h": False,
-                "included_1d": True,
-                "included_2d": False,
-            }
-
-    sorted_items = list(merged.values())
-    sorted_items.sort(key=lambda x: (not x["included_5h"], x["rank"]))
-
-    for index, item in enumerate(sorted_items, 1):
-        item["rank"] = index
-
-    return sorted_items
-
-
-async def seed_dorsay(slug: str = "musee-dorsay", file_path: str = MUSEE_DORSAY_XLSX):
-    masterpieces = process_musee_dorsay(file_path)
-
-    async with async_session() as session:
-        result = await session.execute(select(Museum).where(Museum.slug == slug))
-        museum = result.scalar_one_or_none()
-
-        if not museum:
-            print(f"➕ Creating new Museum entry for Musée d'Orsay ({slug})...")
-            museum = Museum(
-                id=uuid.uuid4(),
-                slug=slug,
-                name="Musée d'Orsay",
-                city="Paris",
-                country="France",
-                annual_visitors=3751000,
-                rank=16,
-            )
-            session.add(museum)
-            await session.flush()
-
-        print(f"⚙️ Updating details and schedule for {museum.name} ({slug})...")
-
-        # Update metadata and schedules
-        museum.website = "https://www.musee-orsay.fr/en"
-        museum.ticket_url = "https://www.musee-orsay.fr/en/visit/tickets-pricing"
-        museum.latitude = 48.859967
-        museum.longitude = 2.326561
-        museum.image_url = "https://images.unsplash.com/photo-1597910037310-7dd8ddb93e24"
-        museum.opening_hours = (
-            "Tuesday, Wednesday, Friday, Saturday, Sunday: 9:30 AM – 6:00 PM | "
-            "Thursday: 9:30 AM – 9:45 PM (Late Night Opening) | "
-            "Monday: Closed"
-        )
-        museum.closing_hours = (
-            "Closed every Monday, May 1, and December 25. "
-            "Last admission to museum at 5:00 PM (9:00 PM on Thursdays), "
-            "last admission to exhibitions at 5:15 PM (9:00 PM on Thursdays), "
-            "galleries close at 5:30 PM (9:15 PM on Thursdays)."
-        )
-
-        if masterpieces:
-            # Clear existing masterpieces for idempotency
-            existing = await session.execute(
-                select(MuseumMasterpiece).where(MuseumMasterpiece.museum_id == museum.id)
-            )
-            for old in existing.scalars().all():
-                await session.delete(old)
-            await session.flush()
-
-            count = 0
-            for item in masterpieces:
-                mp = MuseumMasterpiece(
-                    id=uuid.uuid4(),
-                    museum_id=museum.id,
-                    rank=item["rank"],
-                    building=item["building"],
-                    room_gallery=item["room_gallery"],
-                    must_see_item=item["must_see_item"],
-                    artist=item["artist"],
-                    category=item["category"],
-                    description=item["description"],
-                    included_5h=item["included_5h"],
-                    included_1d=item["included_1d"],
-                    included_2d=item["included_2d"],
-                )
-                session.add(mp)
-                count += 1
-            print(f"✅ Successfully seeded {count} masterpieces for Musée d'Orsay!")
-
-        await session.commit()
-        print(f"🎉 Musée d'Orsay updated successfully!")
-
-
-async def main():
+async def seed():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    await seed_dorsay()
-    await engine.dispose()
+    async with async_session() as session:
+        # 1. Seed or update Museum record
+        result = await session.execute(
+            select(Museum).where(Museum.slug == MUSEE_DORSAY_DATA["slug"])
+        )
+        museum = result.scalar_one_or_none()
 
+        if museum is None:
+            museum = Museum(
+                id=uuid.uuid4(),
+                slug=MUSEE_DORSAY_DATA["slug"],
+                name=MUSEE_DORSAY_DATA["name"],
+                city=MUSEE_DORSAY_DATA["city"],
+                country=MUSEE_DORSAY_DATA["country"],
+                annual_visitors=MUSEE_DORSAY_DATA["annual_visitors"],
+                rank=MUSEE_DORSAY_DATA["rank"],
+                image_url=MUSEE_DORSAY_DATA["image_url"],
+                ticket_url=MUSEE_DORSAY_DATA["ticket_url"],
+                website=MUSEE_DORSAY_DATA["website"],
+                opening_hours=MUSEE_DORSAY_DATA["opening_hours"],
+                closing_hours=MUSEE_DORSAY_DATA["closing_hours"],
+                latitude=MUSEE_DORSAY_DATA["latitude"],
+                longitude=MUSEE_DORSAY_DATA["longitude"],
+            )
+            session.add(museum)
+            await session.flush()
+            print(f"✅ Created museum: {museum.name}")
+        else:
+            museum.name = MUSEE_DORSAY_DATA["name"]
+            museum.city = MUSEE_DORSAY_DATA["city"]
+            museum.country = MUSEE_DORSAY_DATA["country"]
+            museum.annual_visitors = MUSEE_DORSAY_DATA["annual_visitors"]
+            museum.rank = MUSEE_DORSAY_DATA["rank"]
+            museum.image_url = MUSEE_DORSAY_DATA["image_url"]
+            museum.ticket_url = MUSEE_DORSAY_DATA["ticket_url"]
+            museum.website = MUSEE_DORSAY_DATA["website"]
+            museum.opening_hours = MUSEE_DORSAY_DATA["opening_hours"]
+            museum.closing_hours = MUSEE_DORSAY_DATA["closing_hours"]
+            museum.latitude = MUSEE_DORSAY_DATA["latitude"]
+            museum.longitude = MUSEE_DORSAY_DATA["longitude"]
+            print(f"🔄 Updated museum: {museum.name}")
+
+        # 2. Clear existing masterpieces for idempotency
+        existing = await session.execute(
+            select(MuseumMasterpiece).where(MuseumMasterpiece.museum_id == museum.id)
+        )
+        for old in existing.scalars().all():
+            await session.delete(old)
+        await session.flush()
+
+        # 3. Add all 60 masterpieces
+        count_5h = 0
+        count_1d = 0
+        for item in MASTERPIECES:
+            mp = MuseumMasterpiece(
+                id=uuid.uuid4(),
+                museum_id=museum.id,
+                rank=item["rank"],
+                building=item["building"],
+                room_gallery=item["room_gallery"],
+                must_see_item=item["must_see_item"],
+                artist=item["artist"],
+                category=item["category"],
+                description=item["description"],
+                included_5h=item["included_5h"],
+                included_1d=item["included_1d"],
+                included_2d=item["included_2d"],
+            )
+            session.add(mp)
+            if item["included_5h"]:
+                count_5h += 1
+            if item["included_1d"]:
+                count_1d += 1
+
+        await session.commit()
+        print(f"✅ Successfully seeded {len(MASTERPIECES)} total masterpieces for {museum.name}!")
+        print(f"   -> 5-Hour Itinerary: {count_5h} stops")
+        print(f"   -> 1-Day Itinerary: {count_1d} stops")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(seed())
