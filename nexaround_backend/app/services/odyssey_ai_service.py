@@ -21,6 +21,18 @@ from app.services.serpapi_service import (
 logger = logging.getLogger(__name__)
 
 
+def _clean_destination(dest: str) -> str:
+    """Deduplicate comma-separated destination tokens (e.g. 'Germany, Germany' -> 'Germany')."""
+    if not dest:
+        return ""
+    parts = [p.strip() for p in dest.split(",") if p.strip()]
+    unique_parts = []
+    for p in parts:
+        if not any(p.lower() == existing.lower() for existing in unique_parts):
+            unique_parts.append(p)
+    return ", ".join(unique_parts)
+
+
 def _build_deep_booking_url(
     provider: str,
     item_name: str,
@@ -33,7 +45,7 @@ def _build_deep_booking_url(
     airlines: list[str] = None,
 ) -> str:
     prov_lower = (provider or "").lower()
-    dest = (destination or "").strip()
+    dest = _clean_destination(destination)
     name = (item_name or "").strip()
 
     # Avoid duplicating destination if item_name already contains destination
@@ -41,14 +53,16 @@ def _build_deep_booking_url(
         query = name
     elif name and dest:
         query = f"{name}, {dest}"
+    elif name:
+        query = name
     else:
-        query = name or dest
+        query = f"hotels in {dest}" if dest else "hotels"
 
     encoded_query = urllib.parse.quote_plus(query)
     encoded_dest = urllib.parse.quote_plus(dest)
 
     if is_flight:
-        origin = (origin_city or "").strip()
+        origin = _clean_destination(origin_city)
         if origin.lower() in ["nearest airport", "nearest international airport", "origin", ""]:
             origin = ""
 

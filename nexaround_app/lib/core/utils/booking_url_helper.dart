@@ -40,6 +40,25 @@ class BookingUrlHelper {
     return providerName; // Return as-is if we can't deduce
   }
 
+  /// Cleans location strings by removing duplicate/redundant location tokens.
+  /// Example: "Germany, Germany" -> "Germany"
+  /// Example: "Colombo, Sri Lanka, Sri Lanka" -> "Colombo, Sri Lanka"
+  static String cleanDestination(String input) {
+    var str = input.trim();
+    if (str.isEmpty) return '';
+
+    final parts = str.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (parts.isEmpty) return '';
+
+    final uniqueParts = <String>[];
+    for (final p in parts) {
+      if (!uniqueParts.any((existing) => existing.toLowerCase() == p.toLowerCase())) {
+        uniqueParts.add(p);
+      }
+    }
+    return uniqueParts.join(', ');
+  }
+
   /// Builds a deep search URL for hotel recommendations pre-filled with:
   /// - Hotel name / query & destination
   /// - Check-in Date (YYYY-MM-DD)
@@ -59,18 +78,21 @@ class BookingUrlHelper {
     final provider = resolvedProvider.trim().toLowerCase();
     
     final hName = hotelName.trim();
-    final dest = destination.trim();
+    final dest = cleanDestination(destination);
+
     String query;
     if (hName.isNotEmpty && dest.isNotEmpty && hName.toLowerCase().contains(dest.toLowerCase())) {
       query = hName;
     } else if (hName.isNotEmpty && dest.isNotEmpty) {
       query = '$hName, $dest';
+    } else if (hName.isNotEmpty) {
+      query = hName;
     } else {
-      query = hName.isNotEmpty ? hName : dest;
+      query = dest.isNotEmpty ? 'hotels in $dest' : 'hotels';
     }
     
     final encodedQuery = Uri.encodeComponent(query);
-    final encodedDest = Uri.encodeComponent(dest);
+    final encodedDest = Uri.encodeComponent(dest.isNotEmpty ? dest : query);
 
     // Always build provider-specific URLs to guarantee destination is pre-filled.
     if (provider.contains('google')) {
@@ -157,15 +179,15 @@ class BookingUrlHelper {
     final provider = resolvedProvider.trim().toLowerCase();
 
     // Extract origin & destination from route if available (e.g. "CMB -> LHR" -> "CMB")
-    String origin = departureCity.trim();
-    String dest = destination.trim();
+    String origin = cleanDestination(departureCity);
+    String dest = cleanDestination(destination);
     if (route.isNotEmpty) {
       final parts = route.replaceAll('->', '→').split('→').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       if (parts.isNotEmpty) {
-        origin = parts.first;
+        origin = cleanDestination(parts.first);
       }
       if (parts.length > 1) {
-        dest = parts.last;
+        dest = cleanDestination(parts.last);
       }
     }
 
@@ -233,7 +255,7 @@ class BookingUrlHelper {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
     final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
     final provider = resolvedProvider.trim().toLowerCase();
-    final dest = destination.trim();
+    final dest = cleanDestination(destination);
     final encodedDest = Uri.encodeComponent(dest);
 
     if (provider.contains('getyourguide')) {

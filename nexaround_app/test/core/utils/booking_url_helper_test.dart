@@ -34,6 +34,28 @@ void main() {
       expect(url, contains('ss=Lilit%20Bang%20Lumphu%20Hotel%20-%20Bangkok'));
     });
 
+    test('cleanDestination removes duplicate location tokens', () {
+      expect(BookingUrlHelper.cleanDestination('Germany, Germany'), equals('Germany'));
+      expect(BookingUrlHelper.cleanDestination('Colombo, Sri Lanka, Sri Lanka'), equals('Colombo, Sri Lanka'));
+      expect(BookingUrlHelper.cleanDestination(''), equals(''));
+    });
+
+    test('buildHotelUrl cleans duplicate destination tokens like Germany, Germany', () {
+      final url = BookingUrlHelper.buildHotelUrl(
+        rawUrl: '',
+        providerName: 'Google Hotels',
+        hotelName: 'Grand Hotel Downtown',
+        destination: 'Germany, Germany',
+        checkInDate: '2026-08-10',
+        checkOutDate: '2026-08-12',
+        travelers: 1,
+      );
+
+      expect(url, contains('google.com/travel/hotels'));
+      expect(url, contains('q=Grand%20Hotel%20Downtown%2C%20Germany'));
+      expect(url, isNot(contains('Germany%2C%20Germany')));
+    });
+
     test('Google Flights provider resolves to google.com/travel/flights with airlines', () {
       final url = BookingUrlHelper.buildFlightUrl(
         rawUrl: '',
