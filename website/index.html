@@ -6,6 +6,10 @@
 <title>NexARound Technologies — Full-stack engineering to fast-track your growth</title>
 <meta name="description" content="NexARound Technologies is a next-generation enterprise technology firm specializing in digital transformation, ERP deployment, AI-integrated solutions, and the nexARound smart tourism app.">
 <meta name="author" content="NexARound Technologies">
+<link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -48,8 +52,26 @@
 <main>
 <section class="hero hero--full">
     <div class="hero__media">
-      <div class="hero__yt-cover"></div>
-      <iframe id="ytHeroPlayer" src="https://www.youtube-nocookie.com/embed/aNcv6H4j0LE?autoplay=1&mute=1&loop=1&playlist=aNcv6H4j0LE&controls=0&showinfo=0&rel=0&modestbranding=1&iv_load_policy=3&enablejsapi=1&disablekb=1&playsinline=1" title="Hero Background Video" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+      <div style="position:absolute; inset:0; z-index:1; background: linear-gradient(180deg, rgba(8,10,20,0.25) 0%, rgba(8,10,20,0.55) 55%, rgba(8,10,20,0.98) 92%); pointer-events:none;"></div>
+      <video 
+        id="nexaroundHomepageVideo"
+        style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%) scale(1.04); width:100%; height:100%; min-width:100%; min-height:100%; object-fit:cover; z-index:0;"
+        autoplay 
+        muted 
+        loop 
+        playsinline 
+        preload="auto"
+        poster="homepage_video_poster.jpg">
+        <source src="homepage_hero_1080p.mp4" type="video/mp4" media="(min-width: 769px)">
+        <source src="homepage_hero_720p.mp4" type="video/mp4" media="(max-width: 768px)">
+        <source src="homepage_hero_720p.mp4" type="video/mp4">
+      </video>
+      <script>
+        document.addEventListener('DOMContentLoaded', function(){
+          var v = document.getElementById('nexaroundHomepageVideo');
+          if(v) { v.muted = true; v.play().catch(function(){}); }
+        });
+      </script>
     </div>
     <div class="hero__inner">
       
@@ -155,16 +177,16 @@
         </div>
       </div>
       <div class="appshow__nav">
-        <button class="apbtn is-on" data-i="0"><em>01</em><span>AR Location Discovery</span></button>
-        <button class="apbtn" data-i="1"><em>02</em><span>Neva AI Companion</span></button>
-        <button class="apbtn" data-i="2"><em>03</em><span>Travel Stories</span></button>
-        <button class="apbtn" data-i="3"><em>04</em><span>Odyssey Travel Planner</span></button>
-        <button class="apbtn" data-i="4"><em>05</em><span>Travel Journal</span></button>
-        <button class="apbtn" data-i="5"><em>06</em><span>Guides</span></button>
-        <button class="apbtn" data-i="6"><em>07</em><span>Mood Based Journey Planner</span></button>
-        <button class="apbtn" data-i="7"><em>08</em><span>Maps</span></button>
-        <button class="apbtn" data-i="8"><em>09</em><span>Seamless Hotel &amp; Taxi Bookings</span></button>
-        <button class="apbtn" data-i="9"><em>10</em><span>Curated Experiences &amp; Locations</span></button>
+        <button type="button" class="apbtn is-on" data-i="0"><em>01</em><span>AR Location Discovery</span></button>
+        <button type="button" class="apbtn" data-i="1"><em>02</em><span>Neva AI Companion</span></button>
+        <button type="button" class="apbtn" data-i="2"><em>03</em><span>Travel Stories</span></button>
+        <button type="button" class="apbtn" data-i="3"><em>04</em><span>Odyssey Travel Planner</span></button>
+        <button type="button" class="apbtn" data-i="4"><em>05</em><span>Travel Journal</span></button>
+        <button type="button" class="apbtn" data-i="5"><em>06</em><span>Guides</span></button>
+        <button type="button" class="apbtn" data-i="6"><em>07</em><span>Mood Based Journey Planner</span></button>
+        <button type="button" class="apbtn" data-i="7"><em>08</em><span>Maps</span></button>
+        <button type="button" class="apbtn" data-i="8"><em>09</em><span>Seamless Hotel &amp; Taxi Bookings</span></button>
+        <button type="button" class="apbtn" data-i="9"><em>10</em><span>Curated Experiences &amp; Locations</span></button>
       </div>
     </div>
     <div class="wrap" style="margin-top:24px; display:flex; gap:14px; flex-wrap:wrap; justify-content:center;">

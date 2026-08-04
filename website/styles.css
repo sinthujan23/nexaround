@@ -271,10 +271,10 @@ h3{font-weight:600; letter-spacing:-.01em;}
 .hero__yt-cover.is-playing{background:transparent;}
 .hero__media iframe, .hero__media video{
   position:absolute; top:50%; left:50%;
-  width:100vw; height:56.25vw;
-  min-height:100vh; min-width:177.77vh;
-  transform:translate(-50%, -50%) scale(1.6);
-  border:0; pointer-events:none !important; z-index:1; object-fit:cover;
+  width:100vw; height:100vh;
+  min-height:100%; min-width:100%;
+  transform:translate(-50%, -50%);
+  border:0; pointer-events:none !important; z-index:0; object-fit:cover;
 }
 .hero__media::after{
   content:''; position:absolute; inset:0; z-index:3; pointer-events:none;
@@ -787,11 +787,11 @@ section{position:relative; padding:96px 40px;}
 .section--appshow{padding:36px 0 32px;}
 .section--appshow .shead{margin-bottom:12px;}
 .section--appshow .shead .lede{margin-top:8px;}
-.appshow{display:grid; grid-template-columns:1fr 540px; gap:36px; align-items:center; max-width:var(--container); margin:0 auto;}
-.appshow__stage{position:relative; height:430px; display:flex; align-items:center; justify-content:center;}
-.appshow__stage .phone{position:absolute; width:215px; height:430px; border-radius:32px; padding:8px; opacity:0; transform:scale(.94) translateY(12px); pointer-events:none; transition:opacity .55s var(--ease), transform .55s var(--ease);}
-.appshow__stage .phone .phone__notch{width:70px; height:16px; top:8px; border-radius:10px;}
-.appshow__stage .phone .phone__screen{border-radius:24px;}
+.appshow{display:grid; grid-template-columns:1fr 340px; gap:36px; align-items:center; max-width:var(--container); margin:0 auto;}
+.appshow__stage{position:relative; height:460px; display:flex; align-items:center; justify-content:center;}
+.appshow__stage .phone{position:absolute; width:225px; height:450px; border-radius:32px; padding:8px; opacity:0; transform:scale(.94) translateY(12px); pointer-events:none; transition:opacity .55s var(--ease), transform .55s var(--ease);}
+.appshow__stage .phone .phone__notch{width:70px; height:16px; top:8px; border-radius:10px; z-index:5;}
+.appshow__stage .phone .phone__screen{width:100%; height:100%; border-radius:24px; background-size:100% 100% !important; background-position:center !important; background-repeat:no-repeat !important;}
 .appshow__stage .phone.is-on{opacity:1; transform:scale(1) translateY(0); pointer-events:auto;}
 .appshow__glow{position:absolute; width:340px; height:340px; border-radius:50%; background:radial-gradient(circle, rgba(75,123,255,.28), transparent 70%); filter:blur(20px);}
 
@@ -945,21 +945,72 @@ section{position:relative; padding:96px 40px;}
     grid-template-columns: 1fr !important;
     gap: 20px !important;
   }
+  .section--appshow {
+    padding: 40px 0 !important;
+    box-sizing: border-box !important;
+  }
+  .section--appshow .shead {
+    padding: 0 20px !important;
+    box-sizing: border-box !important;
+  }
   .appshow {
     grid-template-columns: 1fr !important;
     gap: 24px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 20px !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
   }
   .appshow__nav {
+    order: 1 !important;
     grid-template-columns: 1fr !important;
-    order: 2 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin-bottom: 20px !important;
+    box-sizing: border-box !important;
   }
   .appshow__stage {
-    order: 1 !important;
-    height: 380px !important;
+    order: 2 !important;
+    height: 440px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    position: relative !important;
+    margin: 0 auto !important;
+    box-sizing: border-box !important;
   }
   .appshow__stage .phone {
-    width: 190px !important;
-    height: 380px !important;
+    width: 215px !important;
+    height: 430px !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) scale(0.95) !important;
+    margin: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.45s ease, transform 0.45s ease !important;
+  }
+  .appshow__stage .phone.is-on {
+    opacity: 1 !important;
+    transform: translate(-50%, -50%) scale(1) !important;
+    pointer-events: auto !important;
+  }
+  .appshow__stage .phone .phone__screen {
+    width: 100% !important;
+    height: 100% !important;
+    background-size: 100% 100% !important;
+    background-position: center !important;
+    background-repeat: no-repeat !important;
+    background-color: #000000 !important;
+  }
+  .apbtn {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    touch-action: manipulation !important;
   }
   .hero__cta, .stores {
     flex-direction: column !important;

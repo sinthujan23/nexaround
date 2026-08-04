@@ -194,16 +194,34 @@
       btns.forEach(function(b, idx){
         var i = parseInt(b.getAttribute('data-i'), 10);
         if(isNaN(i)) i = idx;
+        
         b.addEventListener('mouseenter', function(){
-          stop();
-          show(i);
+          if (window.matchMedia && window.matchMedia('(hover: hover)').matches) {
+            stop();
+            show(i);
+          }
         });
-        b.addEventListener('click', function(e){
-          e.preventDefault();
+
+        function handleSelect(e, targetIdx) {
+          if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
           stop();
-          show(i);
+          show(targetIdx);
           play();
-        });
+          if (b.blur) b.blur();
+
+          if (window.innerWidth <= 900) {
+            var stage = box.querySelector('.appshow__stage');
+            if (stage) {
+              stage.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+          }
+        }
+
+        b.addEventListener('click', function(e){ handleSelect(e, i); });
+        b.addEventListener('touchend', function(e){ handleSelect(e, i); });
       });
       box.addEventListener('mouseleave', play);
       show(0);
