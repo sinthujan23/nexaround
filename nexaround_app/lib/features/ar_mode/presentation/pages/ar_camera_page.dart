@@ -3983,6 +3983,9 @@ class _ArCameraPageState extends State<ArCameraPage>
       );
     }
 
+    final double screenW = MediaQuery.of(context).size.width;
+    final double screenH = MediaQuery.of(context).size.height;
+
     // Only location permission is required - camera is handled by Android system
     if (!_isLocationGranted) {
       return _buildLocationPermissionBarrier();
@@ -4063,6 +4066,13 @@ class _ArCameraPageState extends State<ArCameraPage>
               right: 0,
               child: Center(child: _buildFetchingPlacesPill()),
             ),
+
+          // Selected place direction guidance (card floating on screen + turn chevrons)
+          if (_showInfoCard &&
+              _selectedLandmark >= 0 &&
+              _selectedLandmark < _landmarks.length &&
+              !_isNavigating)
+            _buildSelectedPlaceGuidanceOverlay(screenW, screenH),
 
           // Tap-triggered place detail card (compact bottom card) - Consolidated Explore & Navigation Page!
           if (_isNavigating && _navigationTarget != null)
@@ -5399,15 +5409,15 @@ class _ArCameraPageState extends State<ArCameraPage>
                             ),
                           ),
                           const SizedBox(width: 6),
-                          // ── DIRECTION BADGE — white chip with cardinal ──
+                          // ── DIRECTION BADGE — white chip with cardinal & arrow pointer ──
                           Container(
-                            width: 30,
-                            height: 30,
+                            width: 32,
+                            height: 32,
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(9),
                               border: Border.all(
-                                color: Colors.black.withOpacity(0.06),
+                                color: Colors.black.withOpacity(0.08),
                               ),
                               boxShadow: [
                                 BoxShadow(
@@ -5417,16 +5427,60 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 ),
                               ],
                             ),
-                            child: Center(
-                              child: Text(
-                                cardinal,
-                                style: const TextStyle(
-                                  color: Colors.black87,
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.3,
+                            child: Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                // Cardinal Direction Text
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(top: 2, right: 2),
+                                    child: Text(
+                                      cardinal,
+                                      style: const TextStyle(
+                                        color: Colors.black87,
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: -0.5,
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                // Small Black Circle with White Rotated Arrow in Top-Right
+                                Positioned(
+                                  top: 1,
+                                  right: 1,
+                                  child: Container(
+                                    width: 11,
+                                    height: 11,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.black,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Center(
+                                      child: Transform.rotate(
+                                        angle: () {
+                                          switch (cardinal.toUpperCase()) {
+                                            case 'N': return 0.0;
+                                            case 'NE': return pi / 4;
+                                            case 'E': return pi / 2;
+                                            case 'SE': return 3 * pi / 4;
+                                            case 'S': return pi;
+                                            case 'SW': return 5 * pi / 4;
+                                            case 'W': return 3 * pi / 2;
+                                            case 'NW': return 7 * pi / 4;
+                                            default: return 0.0;
+                                          }
+                                        }(),
+                                        child: const Icon(
+                                          Icons.navigation,
+                                          color: Colors.white,
+                                          size: 7,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -10015,6 +10069,345 @@ class _CornerBracketPainter extends CustomPainter {
 }
 
 extension _ArCameraNavigation on _ArCameraPageState {
+  Widget _buildSelectedPlaceGuidanceOverlay(double screenW, double screenH) {
+    const double localPi = 3.1415926535897932;
+    if (_selectedLandmark < 0 || _selectedLandmark >= _landmarks.length) {
+      return const SizedBox.shrink();
+    }
+
+    final lm = _landmarks[_selectedLandmark];
+
+    final double liveBearing =
+        (_currentPosition != null && lm.lat != null && lm.lng != null)
+            ? _calculateBearing(
+                _currentPosition!.latitude,
+                _currentPosition!.longitude,
+                lm.lat!,
+                lm.lng!,
+              )
+            : lm.bearing;
+
+    double diff = liveBearing - _heading;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+
+    final double? dx = _ArCameraPageState._projectAngleToScreenX(diff);
+    final bool isInView = dx != null;
+
+    if (isInView) {
+      // selected place is in camera view -> render its card floating
+      const double cardW = 160;
+      const double cardH = 64;
+      final double centerX = (screenW * dx).clamp(
+        cardW / 2 + 8,
+        screenW - cardW / 2 - 8,
+      );
+
+      final double safeBottomY = screenH - 280;
+      final double topY = MediaQuery.of(context).padding.top + 70.0;
+      final double bottomY = safeBottomY - 40;
+      // Float it in the middle of safe vertical band
+      final double topPos = (topY + bottomY) / 2;
+
+      final cardinal = _cardinalFromHeading(liveBearing);
+      final bool isAligned = diff.abs() <= 5.0; // meets exact direction of location
+
+      // Color coding (default Cyan, turn Green when aligned)
+      final Color badgeBgColor = Colors.white;
+      final Color badgeBorderColor = isAligned ? const Color(0xFF00E676) : Colors.black.withOpacity(0.08);
+      final Color indicatorCircleColor = isAligned ? const Color(0xFF00E676) : Colors.black;
+      final double badgeBorderWidth = isAligned ? 2.5 : 1.0;
+
+      return Positioned(
+        left: centerX - cardW / 2,
+        top: topPos,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Highlight outer border glow if aligned!
+                Container(
+                  width: cardW,
+                  height: cardH,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.82),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: isAligned
+                          ? const Color(0xFF00E676).withOpacity(0.8)
+                          : Colors.white.withOpacity(0.12),
+                      width: isAligned ? 2.0 : 1.0,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: isAligned
+                            ? const Color(0xFF00E676).withOpacity(0.35)
+                            : Colors.black.withOpacity(0.35),
+                        blurRadius: isAligned ? 16 : 12,
+                        spreadRadius: isAligned ? 2 : 0,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              lm.name,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                height: 1.1,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.star_rounded,
+                                  color: Colors.amber,
+                                  size: 11,
+                                ),
+                                const SizedBox(width: 2),
+                                Text(
+                                  '${lm.rating}',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 9.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '• ${lm.distance}',
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.75),
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              lm.category.toUpperCase(),
+                              style: TextStyle(
+                                color: isAligned ? const Color(0xFF00E676) : const Color(0xFF00E5FF),
+                                fontSize: 8,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+
+                      // White Direction Badge (turns Green when aligned!)
+                      Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: badgeBgColor,
+                          borderRadius: BorderRadius.circular(9),
+                          border: Border.all(
+                            color: badgeBorderColor,
+                            width: badgeBorderWidth,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isAligned
+                                  ? const Color(0xFF00E676).withOpacity(0.5)
+                                  : Colors.black.withOpacity(0.25),
+                              blurRadius: isAligned ? 8 : 6,
+                              spreadRadius: isAligned ? 1 : 0,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // Cardinal Direction Text
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 2, right: 2),
+                                child: Text(
+                                  cardinal,
+                                  style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: -0.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // Black Circle (turns Green when aligned!) with White Rotated Arrow in Top-Right
+                            Positioned(
+                              top: 1,
+                              right: 1,
+                              child: Container(
+                                width: 11,
+                                height: 11,
+                                decoration: BoxDecoration(
+                                  color: indicatorCircleColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Center(
+                                  child: Transform.rotate(
+                                    angle: () {
+                                      switch (cardinal.toUpperCase()) {
+                                        case 'N': return 0.0;
+                                        case 'NE': return localPi / 4;
+                                        case 'E': return localPi / 2;
+                                        case 'SE': return 3 * localPi / 4;
+                                        case 'S': return localPi;
+                                        case 'SW': return 5 * localPi / 4;
+                                        case 'W': return 3 * localPi / 2;
+                                        case 'NW': return 7 * localPi / 4;
+                                        default: return 0.0;
+                                      }
+                                    }(),
+                                    child: const Icon(
+                                      Icons.navigation,
+                                      color: Colors.white,
+                                      size: 7,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(
+                            begin: const Offset(1.0, 1.0),
+                            end: const Offset(1.04, 1.04),
+                            duration: 1.5.seconds,
+                            curve: Curves.easeInOut,
+                          ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Dotted vertical drop line to ground anchor
+            SizedBox(
+              width: 2,
+              height: 40.0,
+              child: CustomPaint(
+                painter: _DottedDropLinePainter(
+                  color: isAligned
+                      ? const Color(0xFF00E676).withOpacity(0.7)
+                      : Colors.white.withOpacity(0.55),
+                ),
+              ),
+            ),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isAligned ? const Color(0xFF00E676) : Colors.white,
+                boxShadow: [
+                  BoxShadow(
+                    color: isAligned
+                        ? const Color(0xFF00E676).withOpacity(0.5)
+                        : Colors.white.withOpacity(0.5),
+                    blurRadius: 6,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // selected place is NOT in camera view -> render left/right guiding chevrons
+      final bool turnRight = diff > 0;
+      final int degrees = diff.abs().round();
+      final String dirLabel = turnRight ? 'RIGHT' : 'LEFT';
+
+      return Positioned(
+        left: !turnRight ? 24 : null,
+        right: turnRight ? 24 : null,
+        top: screenH * 0.35,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: turnRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            // Chevron Indicators (<<< or >>>) with staggered running animation
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (i) {
+                final int staggerIndex = !turnRight ? (2 - i) : i;
+                return Text(
+                  !turnRight ? '<' : '>',
+                  style: const TextStyle(
+                    color: Color(0xFF00E5FF),
+                    fontSize: 42,
+                    fontWeight: FontWeight.w800,
+                    height: 1.0,
+                  ),
+                )
+                .animate(onPlay: (c) => c.repeat())
+                .fadeIn(
+                  delay: (staggerIndex * 150).ms,
+                  duration: 300.ms,
+                )
+                .fadeOut(
+                  delay: (staggerIndex * 150 + 350).ms,
+                  duration: 300.ms,
+                )
+                .moveX(
+                  begin: !turnRight ? 6.0 : -6.0,
+                  end: !turnRight ? -6.0 : 6.0,
+                  delay: (staggerIndex * 150).ms,
+                  duration: 650.ms,
+                );
+              }),
+            ),
+            const SizedBox(height: 6),
+            // Subtitle Guidance text
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.72),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF00E5FF).withOpacity(0.3),
+                ),
+              ),
+              child: Text(
+                'TURN $dirLabel ${degrees}° TO FIND',
+                style: const TextStyle(
+                  color: Color(0xFF00E5FF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.8,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
   Widget _buildNavigationBubble(_ArLandmark landmark) {
     return Column(
       mainAxisSize: MainAxisSize.min,
