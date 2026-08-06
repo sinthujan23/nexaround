@@ -814,6 +814,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                               ? '${odyssey.formattedShortDateRange} (${odyssey.days}d)'
                               : '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
                         ),
+                        if (odyssey.travelers > 0)
+                          _pillChip(
+                            Icons.people_rounded,
+                            '${odyssey.travelers} ${odyssey.travelers == 1 ? 'Pax' : 'Pax'}',
+                          ),
                         if (odyssey.budget > 0)
                           _BudgetPill(
                             amount: odyssey.budget,

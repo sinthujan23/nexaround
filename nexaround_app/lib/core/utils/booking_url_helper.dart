@@ -178,14 +178,13 @@ class BookingUrlHelper {
     List<String> airlines = const [],
   }) {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
-
-    // If rawUrl is already a valid pre-filled Google Flights search URL from backend, use it!
-    if (sanitizedRawUrl.contains('google.com/travel/flights') && sanitizedRawUrl.contains('q=')) {
-      return sanitizedRawUrl;
-    }
-
     final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
     final provider = resolvedProvider.trim().toLowerCase();
+
+    // If provider is explicitly Google, or if providerName is empty and rawUrl is Google Flights, use raw Google URL
+    if (provider.contains('google') && sanitizedRawUrl.contains('google.com/travel/flights')) {
+      return sanitizedRawUrl;
+    }
 
     // Extract origin & destination from route if available (e.g. "CMB -> LHR" -> "CMB")
     String origin = cleanDestination(departureCity);
@@ -204,20 +203,7 @@ class BookingUrlHelper {
     final encodedOrigin = Uri.encodeComponent(origin);
 
     // Always build provider-specific URLs to guarantee destination is pre-filled.
-    if (provider.contains('google')) {
-      var dateQ = origin.isNotEmpty
-          ? 'flights from $origin to $dest'
-          : 'flights to $dest';
-      if (airlines.isNotEmpty) {
-        dateQ += ' with ${airlines.take(2).join(", ")}';
-      }
-      if (startDate.isNotEmpty && endDate.isNotEmpty) {
-        dateQ += ' on $startDate through $endDate';
-      } else if (startDate.isNotEmpty) {
-        dateQ += ' on $startDate';
-      }
-      return 'https://www.google.com/travel/flights?q=${Uri.encodeComponent(dateQ)}';
-    } else if (provider.contains('skyscanner')) {
+    if (provider.contains('skyscanner')) {
       if (origin.isNotEmpty && startDate.isNotEmpty && endDate.isNotEmpty) {
         return 'https://www.skyscanner.com/transport/flights-from/$encodedOrigin-to-$encodedDest/?outbounddate=$startDate&inbounddate=$endDate&adultsv2=$travelers';
       }
@@ -232,6 +218,8 @@ class BookingUrlHelper {
         return 'https://www.kayak.com/flights/$encodedOrigin-$encodedDest/$startDate/$endDate/${travelers}adults';
       }
       return 'https://www.kayak.com/flights?a=nexaround&destination=$encodedDest';
+    } else if (provider.contains('aviasales')) {
+      return 'https://www.aviasales.com/search?origin=$encodedOrigin&destination=$encodedDest';
     }
 
     // Unknown provider: use Google Flights as fallback with destination
@@ -267,18 +255,25 @@ class BookingUrlHelper {
     final dest = cleanDestination(destination);
     final encodedDest = Uri.encodeComponent(dest);
 
-    if (provider.contains('getyourguide')) {
+    if (provider.contains('viator')) {
+      return 'https://www.viator.com/search/$encodedDest';
+    } else if (provider.contains('getyourguide')) {
       return 'https://www.getyourguide.com/s?q=$encodedDest';
     } else if (provider.contains('klook')) {
       return 'https://www.klook.com/search?query=$encodedDest';
-    } else if (provider.contains('viator')) {
-      return 'https://www.viator.com/search/$encodedDest';
+    } else if (provider.contains('tripadvisor')) {
+      return 'https://www.tripadvisor.com/Search?q=$encodedDest';
     }
 
-    // Unknown tour provider: use raw URL if available
-    return sanitizedRawUrl.isNotEmpty
-        ? sanitizedRawUrl
-        : 'https://www.google.com/search?q=${Uri.encodeComponent("tours activities $dest")}';
+    if (sanitizedRawUrl.isNotEmpty && sanitizedRawUrl.contains('viator.com')) {
+      return sanitizedRawUrl;
+    }
+    if (sanitizedRawUrl.isNotEmpty && !sanitizedRawUrl.contains('google.com')) {
+      return sanitizedRawUrl;
+    }
+
+    // Default to Viator search with destination
+    return 'https://www.viator.com/search/$encodedDest';
   }
 
   // ── Date format helpers ────────────────────────────────────────────────────

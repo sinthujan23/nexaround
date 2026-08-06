@@ -77,11 +77,9 @@ class HotelStrategiesSection extends StatelessWidget {
 
   Widget _buildHotelCard(BuildContext context, HotelStrategy hs) {
     String provider = hs.providerName.trim();
-    if (provider.isEmpty) {
+    if (provider.isEmpty || provider.toLowerCase() == 'hotel provider' || provider.toLowerCase().contains('google')) {
       final lowerUrl = hs.bookingUrl.toLowerCase();
-      if (lowerUrl.contains('booking.com')) {
-        provider = 'Booking.com';
-      } else if (lowerUrl.contains('agoda')) {
+      if (lowerUrl.contains('agoda')) {
         provider = 'Agoda';
       } else if (lowerUrl.contains('expedia')) {
         provider = 'Expedia';
@@ -90,7 +88,7 @@ class HotelStrategiesSection extends StatelessWidget {
       } else if (lowerUrl.contains('airbnb')) {
         provider = 'Airbnb';
       } else {
-        provider = 'Hotel Provider';
+        provider = 'Booking.com';
       }
     }
 
@@ -329,7 +327,7 @@ class HotelStrategiesSection extends StatelessWidget {
               Icon(Icons.lightbulb_rounded, color: Colors.amber, size: 20),
               SizedBox(width: 8),
               Text(
-                'AI Accommodation Insights',
+                'Accommodation Insights',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.black),
               ),
             ],

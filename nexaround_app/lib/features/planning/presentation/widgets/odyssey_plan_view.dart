@@ -92,6 +92,12 @@ class OdysseyPlanView extends StatelessWidget {
                   '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
               Icons.wb_sunny_rounded,
             ),
+          if (odyssey.travelers > 0)
+            _infoCard(
+              'Travelers / Group Size',
+              '${odyssey.travelers} ${odyssey.travelers == 1 ? 'Traveler (1 Pax)' : 'Travelers (${odyssey.travelers} Pax)'}',
+              Icons.people_rounded,
+            ),
           if (odyssey.destination.isNotEmpty)
             _infoCard('Destination', odyssey.destination, Icons.place_rounded),
           if (odyssey.visa.isNotEmpty)
@@ -100,6 +106,8 @@ class OdysseyPlanView extends StatelessWidget {
             _infoCard('Budget Summary', odyssey.budgetSplit, Icons.pie_chart_rounded),
           if (odyssey.budget > 0)
             _budgetBreakdownCard(context),
+          if (odyssey.budgetAdvisory.isNotEmpty)
+            _budgetAdvisoryCard(context),
           const SizedBox(height: 16),
           const Text(
             'ODYSSEY BOOKING PARTNERS',
@@ -592,6 +600,52 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
+  Widget _budgetAdvisoryCard(BuildContext context) {
+    if (odyssey.budgetAdvisory.isEmpty) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFFFE082)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: Color(0xFFF57F17), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'BUDGET ADVISORY',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFFF57F17),
+                    letterSpacing: 1.0,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  odyssey.budgetAdvisory,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBookingSection(BuildContext context) {
     final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
 
@@ -642,20 +696,24 @@ class OdysseyPlanView extends StatelessWidget {
             color = const Color(0xFF077078); // Skyscanner Teal
           }
 
+          final bool isHotelCategory = type.contains('hotel') || type.contains('stay') || type.contains('accommodation') || nameLower.contains('booking') || nameLower.contains('agoda') || nameLower.contains('expedia') || nameLower.contains('ostrovok');
+          final bool isFlightCategory = type.contains('transit') || type.contains('flight') || type.contains('transport') || nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak');
+          final bool isTourCategory = type.contains('tour') || type.contains('activity') || type.contains('experience') || nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook');
+
           // Deduce Subtitle
-          String subtitle = 'Find $type services for $dest';
-          if (type == 'hotels') {
+          String subtitle = 'Find services for $dest via ${bp.name}';
+          if (isHotelCategory) {
             subtitle = 'Book top-rated stays in $dest via ${bp.name}';
-          } else if (type == 'tours') {
+          } else if (isTourCategory) {
             subtitle = 'Explore local experiences in $dest via ${bp.name}';
-          } else if (type == 'transit') {
+          } else if (isFlightCategory) {
             subtitle = 'Get rides or check transit in $dest via ${bp.name}';
           }
 
           // Build a destination-aware URL through the helper instead of
           // using the raw AI URL which often has empty search fields.
           String resolvedUrl = bp.url;
-          if (type == 'hotels') {
+          if (isHotelCategory) {
             resolvedUrl = BookingUrlHelper.buildHotelUrl(
               rawUrl: bp.url,
               providerName: bp.name,
@@ -665,7 +723,7 @@ class OdysseyPlanView extends StatelessWidget {
               checkOutDate: odyssey.endDate ?? '',
               travelers: odyssey.travelers,
             );
-          } else if (type == 'transit') {
+          } else if (isFlightCategory) {
             resolvedUrl = BookingUrlHelper.buildFlightUrl(
               rawUrl: bp.url,
               providerName: bp.name,
@@ -676,12 +734,21 @@ class OdysseyPlanView extends StatelessWidget {
               endDate: odyssey.endDate ?? '',
               travelers: odyssey.travelers,
             );
-          } else if (type == 'tours') {
+          } else if (isTourCategory) {
             resolvedUrl = BookingUrlHelper.buildToursUrl(
               rawUrl: bp.url,
               providerName: bp.name,
               destination: dest,
             );
+          } else {
+            // Additional fallback by provider name
+            if (nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook')) {
+              resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: bp.name, destination: dest);
+            } else if (nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak')) {
+              resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: odyssey.departureCity, startDate: odyssey.startDate ?? '', endDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+            } else if (nameLower.contains('booking') || nameLower.contains('agoda')) {
+              resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: odyssey.startDate ?? '', checkOutDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+            }
           }
 
           return Padding(

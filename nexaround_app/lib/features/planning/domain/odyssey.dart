@@ -278,6 +278,7 @@ class Odyssey {
   final String departureCity;
   final int travelers;
   final Map<String, double> budgetBreakdown;
+  final String budgetAdvisory;
 
   const Odyssey({
     this.id,
@@ -308,6 +309,7 @@ class Odyssey {
     this.departureCity = '',
     this.travelers = 1,
     this.budgetBreakdown = const {},
+    this.budgetAdvisory = '',
   });
 
   Odyssey copyWith({
@@ -489,7 +491,9 @@ class Odyssey {
           'start_date': startDate ?? '',
           'end_date': endDate ?? '',
           'departure_city': departureCity,
+          'travelers': travelers,
           'budget_breakdown': budgetBreakdown,
+          'budget_advisory': budgetAdvisory,
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -518,74 +522,40 @@ class Odyssey {
     final dayItems = items.where((e) => e['kind'] == 'day').toList();
 
     final flightStrategiesRaw = meta['flight_strategies'];
-    final List<FlightStrategy> flightStrategies = [];
-    final List<String> flightGeneralTips = [];
-    String flightBestMonths = '';
-
-    try {
-      if (flightStrategiesRaw is Map) {
-        final strategiesList = flightStrategiesRaw['strategies'] as List?;
-        if (strategiesList != null) {
-          for (final item in strategiesList) {
-            if (item is Map) {
-              flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
-            }
-          }
-        }
-        final tipsList = flightStrategiesRaw['general_tips'] as List?;
-        if (tipsList != null) {
-          for (final item in tipsList) {
-            flightGeneralTips.add(item.toString());
-          }
-        }
-        flightBestMonths = (flightStrategiesRaw['best_months'] ?? '').toString();
-      } else if (flightStrategiesRaw is List) {
-        for (final item in flightStrategiesRaw) {
-          if (item is Map) {
-            flightStrategies.add(FlightStrategy.fromJson(item.cast<String, dynamic>()));
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error parsing flight strategies in Odyssey: $e');
-    }
+    final List<FlightStrategy> flightStrategies = flightStrategiesRaw is Map
+        ? ((flightStrategiesRaw['strategies'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((fs) => FlightStrategy.fromJson(fs.cast<String, dynamic>()))
+            .toList()
+        : const [];
+    final List<String> flightGeneralTips = flightStrategiesRaw is Map
+        ? ((flightStrategiesRaw['general_tips'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList()
+        : const [];
+    final String flightBestMonths = flightStrategiesRaw is Map
+        ? (flightStrategiesRaw['best_months'] ?? '').toString()
+        : '';
 
     final hotelStrategiesRaw = meta['hotel_strategies'];
-    final List<HotelStrategy> hotelStrategies = [];
-    final List<String> hotelGeneralTips = [];
-    String hotelBestAreas = '';
-
-    try {
-      if (hotelStrategiesRaw is Map) {
-        final strategiesList = hotelStrategiesRaw['strategies'] as List?;
-        if (strategiesList != null) {
-          for (final item in strategiesList) {
-            if (item is Map) {
-              hotelStrategies.add(HotelStrategy.fromJson(item.cast<String, dynamic>()));
-            }
-          }
-        }
-        final tipsList = hotelStrategiesRaw['general_tips'] as List?;
-        if (tipsList != null) {
-          for (final item in tipsList) {
-            hotelGeneralTips.add(item.toString());
-          }
-        }
-        hotelBestAreas = (hotelStrategiesRaw['best_areas'] ?? '').toString();
-      } else if (hotelStrategiesRaw is List) {
-        for (final item in hotelStrategiesRaw) {
-          if (item is Map) {
-            hotelStrategies.add(HotelStrategy.fromJson(item.cast<String, dynamic>()));
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('Error parsing hotel strategies in Odyssey: $e');
-    }
+    final List<HotelStrategy> hotelStrategies = hotelStrategiesRaw is Map
+        ? ((hotelStrategiesRaw['strategies'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((hs) => HotelStrategy.fromJson(hs.cast<String, dynamic>()))
+            .toList()
+        : const [];
+    final List<String> hotelGeneralTips = hotelStrategiesRaw is Map
+        ? ((hotelStrategiesRaw['general_tips'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList()
+        : const [];
+    final String hotelBestAreas = hotelStrategiesRaw is Map
+        ? (hotelStrategiesRaw['best_areas'] ?? '').toString()
+        : '';
 
     return Odyssey(
       id: json['id']?.toString(),
-      title: (json['title'] ?? 'Odyssey').toString(),
+      title: (meta['title'] ?? json['title'] ?? 'Odyssey').toString(),
       destination: (meta['destination'] ?? '').toString(),
       mood: (meta['mood'] ?? '').toString(),
       budget: (meta['budget'] as num?)?.toDouble() ?? 0,
@@ -621,6 +591,7 @@ class Odyssey {
               (k, v) => MapEntry(k.toString(), (v as num?)?.toDouble() ?? 0.0),
             )
           : const {},
+      budgetAdvisory: (meta['budget_advisory'] ?? '').toString(),
     );
   }
 

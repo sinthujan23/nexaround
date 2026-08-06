@@ -397,7 +397,7 @@ class FlightStrategiesSection extends StatelessWidget {
                   Icon(Icons.info_outline_rounded, size: 18, color: Colors.black87),
                   SizedBox(width: 8),
                   Text(
-                    'AI Flight Planning Insights',
+                    'Flight Planning Insights',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,

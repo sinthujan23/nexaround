@@ -428,9 +428,9 @@ For each option, include a REAL, well-known hotel name that actually exists in {
 Categories: Luxury, Boutique, Budget, Resort, or Apartment.
 
 IMPORTANT RULES:
-- provider_name MUST be either "Booking.com" or "Google Hotels" only.
+- provider_name MUST be either "Booking.com" or "Agoda" only. NEVER output "Google Hotels" or generic provider names.
 - Use REAL hotel names that exist in {destination}.
-- Estimate realistic prices in {currency} for the destination.
+- Estimate REALISTIC per-night rates in {currency} for the room/stay. Per-night prices MUST be realistic for the target destination and hotel class in {currency} (e.g. for luxury/boutique hotels, rates must reflect real local costs in {currency}, NEVER arbitrary small numbers like 30 or 12).
 - booking_url: Leave empty, will be generated server-side.
 
 Return ONLY a JSON object with this exact shape:
@@ -776,6 +776,15 @@ Trip brief:
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
 
+CRITICAL BUDGET PRIORITY RULES:
+1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
+2. Allocate realistic funds for Flights (~40-50%) and Stay (~30-35%).
+3. Stay (Accommodation) budget MUST NEVER be near zero or under 25% of total budget unless flights alone exceed 70%.
+4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget.
+5. IF the total budget of {int(budget)} {currency} is NOT SUFFICIENT to realistically cover flights and accommodation for {travelers} traveler(s) in {destination} for {days} days:
+   Add a "budget_advisory" field explaining clearly: "Flights and hotel costs for {travelers} traveler(s) in {destination} typically require at least {currency} X. We recommend allocating an extra {currency} Y for a comfortable trip."
+   If the budget is sufficient, set "budget_advisory": "".
+
 Return ONLY a JSON object with EXACTLY this shape:
 {{
   "title": "Evocative 2-4 word trip name",
@@ -784,19 +793,21 @@ Return ONLY a JSON object with EXACTLY this shape:
   "nights": {nights},
   "currency": "{currency}",
   "summary": "1-2 sentence overview matching the '{mood}' style.",
-  "budget_split": "Short split, e.g. '35% Stay - 30% Transit - 20% Food - 15% Activities'",
+  "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
+  "budget_advisory": "Optional notice if budget cap is insufficient for realistic flight/hotel rates, otherwise empty string.",
   "budget_breakdown": {{
     "stay": {int(budget * 0.35)},
-    "transit": {int(budget * 0.30)},
-    "food": {int(budget * 0.20)},
-    "activities": {int(budget * 0.15)},
+    "transit": {int(budget * 0.45)},
+    "food": {int(budget * 0.12)},
+    "activities": {int(budget * 0.08)},
     "total": {int(budget)}
   }},
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
   "booking_partners": [
-    {{ "name": "Agoda", "type": "hotels", "url": "https://www.agoda.com/search?query=Colombo" }},
-    {{ "name": "PickMe", "type": "transit", "url": "https://pickme.lk/" }}
+    {{ "name": "Booking.com", "type": "hotels", "url": "https://www.booking.com" }},
+    {{ "name": "Viator", "type": "tours", "url": "https://www.viator.com" }},
+    {{ "name": "Skyscanner", "type": "transit", "url": "https://www.skyscanner.com" }}
   ],
   "day_plans": [
     {{
@@ -814,8 +825,8 @@ Rules for "booking_partners":
 - For Russia: Use Yandex Travel (transit/hotels), Ostrovok (hotels), or Aviasales (flights). Do not use Booking.com or Skyscanner for Russia.
 - For Sri Lanka: Use Booking.com (hotels), PickMe (transit/cabs), Klook (tours), or similar.
 - For general South-East Asia: Use Agoda (hotels), Grab (transit), or Klook (tours).
-- For Western Europe / Americas: Use Booking.com (hotels), Viator (tours), Skyscanner (flights/transit).
-- The "url" field should be a real search landing page or homepage URL for that provider, prefilled/related to the destination if possible.
+- For Western Europe / Americas / Africa / Global: Use Booking.com (hotels), Viator (tours), Skyscanner (flights/transit).
+- The "url" field MUST be the official search URL of that exact provider (e.g. https://www.viator.com for Viator, https://www.skyscanner.com for Skyscanner, https://www.booking.com for Booking.com). Never use generic google.com links for non-Google providers.
 - The "type" field must be one of: "hotels", "tours", "transit".
 
 Rules:

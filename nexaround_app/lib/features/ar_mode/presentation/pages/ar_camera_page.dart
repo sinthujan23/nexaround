@@ -5099,7 +5099,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 ),
                                 const SizedBox(height: 6),
                                 const Text(
-                                  'Point camera at a place to see details',
+                                  'Move the phone around to discover places',
                                   style: TextStyle(
                                     color: Colors.white60,
                                     fontSize: 12,
@@ -5198,8 +5198,8 @@ class _ArCameraPageState extends State<ArCameraPage>
     // Bottom banner and navigation buttons sit roughly 250-280px from the bottom.
     final double safeBottomY = screenH - 280;
     final double bottomY = safeBottomY - 40;
-    const double cardW = 125;
-    const double cardH = 60;
+    const double cardW = 172;
+    const double cardH = 68;
     const double gap = 8;
 
     // Pre-compute candidate placements, sorted by distance ascending so
@@ -5409,15 +5409,16 @@ class _ArCameraPageState extends State<ArCameraPage>
                             ),
                           ),
                           const SizedBox(width: 6),
-                          // ── DIRECTION BADGE — white chip with cardinal & arrow pointer ──
+                          // ── DIRECTION BADGE — 44x44 white square with vertical arrow on top & cardinal text below ──
                           Container(
-                            width: 32,
-                            height: 32,
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius: BorderRadius.circular(9),
+                              borderRadius: BorderRadius.circular(12),
                               border: Border.all(
                                 color: Colors.black.withOpacity(0.08),
+                                width: 1.0,
                               ),
                               boxShadow: [
                                 BoxShadow(
@@ -5427,57 +5428,50 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 ),
                               ],
                             ),
-                            child: Stack(
-                              clipBehavior: Clip.none,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // Cardinal Direction Text
-                                Center(
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(top: 2, right: 2),
-                                    child: Text(
-                                      cardinal,
-                                      style: const TextStyle(
-                                        color: Colors.black87,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: -0.5,
+                                // Top: Black Circle with White Rotated Arrow
+                                Container(
+                                  width: 20,
+                                  height: 20,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Center(
+                                    child: Transform.rotate(
+                                      angle: () {
+                                        switch (cardinal.toUpperCase()) {
+                                          case 'N': return 0.0;
+                                          case 'NE': return pi / 4;
+                                          case 'E': return pi / 2;
+                                          case 'SE': return 3 * pi / 4;
+                                          case 'S': return pi;
+                                          case 'SW': return 5 * pi / 4;
+                                          case 'W': return 3 * pi / 2;
+                                          case 'NW': return 7 * pi / 4;
+                                          default: return 0.0;
+                                        }
+                                      }(),
+                                      child: const Icon(
+                                        Icons.navigation,
+                                        color: Colors.white,
+                                        size: 12,
                                       ),
                                     ),
                                   ),
                                 ),
-                                // Small Black Circle with White Rotated Arrow in Top-Right
-                                Positioned(
-                                  top: 1,
-                                  right: 1,
-                                  child: Container(
-                                    width: 11,
-                                    height: 11,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Center(
-                                      child: Transform.rotate(
-                                        angle: () {
-                                          switch (cardinal.toUpperCase()) {
-                                            case 'N': return 0.0;
-                                            case 'NE': return pi / 4;
-                                            case 'E': return pi / 2;
-                                            case 'SE': return 3 * pi / 4;
-                                            case 'S': return pi;
-                                            case 'SW': return 5 * pi / 4;
-                                            case 'W': return 3 * pi / 2;
-                                            case 'NW': return 7 * pi / 4;
-                                            default: return 0.0;
-                                          }
-                                        }(),
-                                        child: const Icon(
-                                          Icons.navigation,
-                                          color: Colors.white,
-                                          size: 7,
-                                        ),
-                                      ),
-                                    ),
+                                const SizedBox(height: 2),
+                                // Bottom: Cardinal Direction Text
+                                Text(
+                                  cardinal,
+                                  style: const TextStyle(
+                                    color: Colors.black87,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.0,
+                                    letterSpacing: -0.3,
                                   ),
                                 ),
                               ],
@@ -10096,8 +10090,8 @@ extension _ArCameraNavigation on _ArCameraPageState {
 
     if (isInView) {
       // selected place is in camera view -> render its card floating
-      const double cardW = 160;
-      const double cardH = 64;
+      const double cardW = 172;
+      const double cardH = 68;
       final double centerX = (screenW * dx).clamp(
         cardW / 2 + 8,
         screenW - cardW / 2 - 8,
@@ -10216,13 +10210,13 @@ extension _ArCameraNavigation on _ArCameraPageState {
                       ),
                       const SizedBox(width: 6),
 
-                      // White Direction Badge (turns Green when aligned!)
+                      // White Direction Badge (turns Green when aligned!) — 44x44 vertical layout
                       Container(
-                        width: 32,
-                        height: 32,
+                        width: 44,
+                        height: 44,
                         decoration: BoxDecoration(
                           color: badgeBgColor,
-                          borderRadius: BorderRadius.circular(9),
+                          borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: badgeBorderColor,
                             width: badgeBorderWidth,
@@ -10238,57 +10232,50 @@ extension _ArCameraNavigation on _ArCameraPageState {
                             ),
                           ],
                         ),
-                        child: Stack(
-                          clipBehavior: Clip.none,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Cardinal Direction Text
-                            Center(
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 2, right: 2),
-                                child: Text(
-                                  cardinal,
-                                  style: const TextStyle(
-                                    color: Colors.black87,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: -0.5,
+                            // Top: Circle with Rotated White Arrow
+                            Container(
+                              width: 20,
+                              height: 20,
+                              decoration: BoxDecoration(
+                                color: indicatorCircleColor,
+                                shape: BoxShape.circle,
+                              ),
+                              child: Center(
+                                child: Transform.rotate(
+                                  angle: () {
+                                    switch (cardinal.toUpperCase()) {
+                                      case 'N': return 0.0;
+                                      case 'NE': return localPi / 4;
+                                      case 'E': return localPi / 2;
+                                      case 'SE': return 3 * localPi / 4;
+                                      case 'S': return localPi;
+                                      case 'SW': return 5 * localPi / 4;
+                                      case 'W': return 3 * localPi / 2;
+                                      case 'NW': return 7 * localPi / 4;
+                                      default: return 0.0;
+                                    }
+                                  }(),
+                                  child: const Icon(
+                                    Icons.navigation,
+                                    color: Colors.white,
+                                    size: 12,
                                   ),
                                 ),
                               ),
                             ),
-                            // Black Circle (turns Green when aligned!) with White Rotated Arrow in Top-Right
-                            Positioned(
-                              top: 1,
-                              right: 1,
-                              child: Container(
-                                width: 11,
-                                height: 11,
-                                decoration: BoxDecoration(
-                                  color: indicatorCircleColor,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: Center(
-                                  child: Transform.rotate(
-                                    angle: () {
-                                      switch (cardinal.toUpperCase()) {
-                                        case 'N': return 0.0;
-                                        case 'NE': return localPi / 4;
-                                        case 'E': return localPi / 2;
-                                        case 'SE': return 3 * localPi / 4;
-                                        case 'S': return localPi;
-                                        case 'SW': return 5 * localPi / 4;
-                                        case 'W': return 3 * localPi / 2;
-                                        case 'NW': return 7 * localPi / 4;
-                                        default: return 0.0;
-                                      }
-                                    }(),
-                                    child: const Icon(
-                                      Icons.navigation,
-                                      color: Colors.white,
-                                      size: 7,
-                                    ),
-                                  ),
-                                ),
+                            const SizedBox(height: 2),
+                            // Bottom: Cardinal Direction Text
+                            Text(
+                              cardinal,
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w900,
+                                height: 1.0,
+                                letterSpacing: -0.3,
                               ),
                             ),
                           ],
