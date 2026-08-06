@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Integer, Boolean, Text, Float, DateTime, ForeignKey
+from sqlalchemy import String, Integer, Boolean, Text, Float, DateTime, ForeignKey, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -32,6 +32,14 @@ class Museum(Base):
     closing_hours: Mapped[str | None] = mapped_column(Text, nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    image_data: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True,
+        comment="JPEG photo bytes stored permanently in DB",
+    )
+    image_content_type: Mapped[str | None] = mapped_column(
+        String(50), nullable=True, default="image/jpeg",
+        comment="MIME type of the stored image",
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -10,7 +10,9 @@ GET  /museums/{slug}/itinerary?duration=5h  → time-filtered walking route
 
 from collections import OrderedDict
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
+import hashlib
 
 from app.core.database import get_db
 from app.repositories.museum_repository import MuseumRepository
@@ -88,4 +90,30 @@ async def get_museum_itinerary(
         duration=duration.lower(),
         total_items=len(masterpieces),
         buildings=sections,
+    )
+
+
+@router.get("/{slug}/image")
+async def get_museum_image(slug: str, db: AsyncSession = Depends(get_db)):
+    """Serve museum photo bytes directly from the database.
+
+    Returns the permanently stored JPEG image for a given museum.
+    Includes ETag header for efficient client-side caching.
+    """
+    museum = await MuseumRepository.get_by_slug(db, slug)
+    if museum is None:
+        raise HTTPException(status_code=404, detail="Museum not found")
+    if not museum.image_data:
+        raise HTTPException(status_code=404, detail="No image stored for this museum")
+
+    etag = hashlib.md5(museum.image_data).hexdigest()
+    content_type = museum.image_content_type or "image/jpeg"
+
+    return Response(
+        content=museum.image_data,
+        media_type=content_type,
+        headers={
+            "ETag": etag,
+            "Cache-Control": "public, max-age=86400",
+        },
     )

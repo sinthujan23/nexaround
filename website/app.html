@@ -32,10 +32,10 @@
   <div class="mega__left">
     <button class="mega__close" id="megaClose" aria-label="Close menu">&#10005;</button>
     <nav class="mega__nav" aria-label="All pages">
-      <a href="/">Home</a><a href="/app" class="is-active">nexARound App</a><a href="/services">Services</a><a href="offerings.html">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a><a href="/industries">Industries</a><a href="/contact">Contact Us</a>
+      <a href="/">Home</a><a href="/app" class="is-active">nexARound App</a><a href="/services">Services</a><a href="offerings.html">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a><a href="/industries">Industries</a>
     </nav>
     <div class="mega__sub">
-      <a href="/technology">Technology Expertise</a><a href="/about#process">Engagement Process</a><a href="/about#models">Engagement Models</a><a href="/contact">Contact Us</a>
+      <a href="/technology">Technology Expertise</a><a href="/about#process">Engagement Process</a><a href="/about#models">Engagement Models</a>
     </div>
     <div class="mega__social"><span>in</span><span>&#10005;</span><span>f</span><span>&#9654;</span></div>
   </div>
@@ -60,23 +60,28 @@
         muted 
         loop 
         playsinline 
-        preload="auto"
+        preload="metadata"
         poster="nexaround_video_poster.jpg">
-        <source src="nexaround_hero_1080p.mp4" type="video/mp4" media="(min-width: 769px)">
-        <source src="nexaround_hero_720p.mp4" type="video/mp4" media="(max-width: 768px)">
+        <source src="nexaround_hero_1080p.mp4" type="video/mp4">
         <source src="nexaround_hero_720p.mp4" type="video/mp4">
       </video>
       <script>
-        document.addEventListener('DOMContentLoaded', function(){
+        (function(){
           var v = document.getElementById('nexaroundAppVideo');
-          if(v) { v.muted = true; v.play().catch(function(){}); }
-        });
+          if (v) {
+            v.muted = true;
+            var playPromise = v.play();
+            if (playPromise !== undefined) {
+              playPromise.catch(function(){});
+            }
+          }
+        })();
       </script>
     </div>
     <div class="hero__inner">
       <p class="hero__crumb rv"><a href="/">Home</a> &rsaquo; <span>nexARound App</span></p>
       <h1 class="display rv" style="--d:.06s; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-        <span class="nav__logo-badge" style="width:60px; height:60px; border-radius:14px; flex:none; box-shadow:0 0 24px rgba(0,102,255,.5); display:inline-flex; align-items:center; justify-content:center;"><img src="app_icon_v1.png" alt="nexARound App" class="nav__logo-img"></span>
+        <img src="app_icon_v1.png" alt="nexARound App" style="width:90px; height:90px; flex:none; object-fit:contain;">
         <div><span>nex<b>AR</b>ound</span><span style="font-size: clamp(22px, 3vw, 34px); display: block; color: rgba(255,255,255,0.92); font-weight: 300; margin-top: 4px;">"Discover What's Next Around You!"</span></div>
       </h1>
       <p class="hero__sub rv" style="--d:.14s">Every place has a story and every street hides a surprise. nexARound is your AI-powered smart tourism companion that helps you discover authentic local experiences, right here, right now.</p>
@@ -323,7 +328,7 @@
     </div>
     <div class="footer__col">
       <h4>Support</h4>
-      <a href="/contact">Contact Us</a>
+      
       <a href="mailto:support@nexaround.com">support@nexaround.com</a>
       
       <a href="#">Privacy Statement</a>
