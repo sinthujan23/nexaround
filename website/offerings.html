@@ -60,67 +60,235 @@
     </div>
   </section>
 
-<section id="offerings">
-  <div class="shead rv">
+<section id="offerings" class="section--offerings-tabs">
+  <div class="shead shead--center rv">
     <span class="chip">What We Deliver</span>
     <h2 class="display" style="margin-top:20px;">Three core offerings,<br>built for real business impact</h2>
     <p class="lede">Each offering is a complete, end-to-end solution — designed, implemented, and supported by our team so you can focus on running your business.</p>
   </div>
 
-  <!-- Enterprise Management Software -->
-  <div class="wrap split rv" style="margin-bottom:80px;">
-    <div>
-      <span class="chip">01</span>
-      <h2 class="display" style="margin:20px 0 18px;">Enterprise Management Software</h2>
-      <p class="lede">Run your entire business on a single unified platform. We deploy, configure, migrate, and support tailored modular software systems from day one through steady-state operations.</p>
-      <p style="margin-top:18px; font-size:15px; line-height:1.7; color:var(--ink-soft);">Our enterprise software practice covers the full lifecycle across core operational modules: accounting, supply chain, manufacturing, HR, and sales automation. We reduce risk and accelerate time-to-value for growing businesses and multi-entity organizations.</p>
-      <div class="pills" style="margin:24px 0;">
-        <span><i></i>Accounting &amp; Finance Module</span>
-        <span><i></i>Inventory &amp; Supply Chain Logistics Module</span>
-        <span><i></i>Manufacturing &amp; Shop-Floor Operations Module</span>
-        <span><i></i>Human Resources &amp; Global Payroll Module</span>
-        <span><i></i>Sales, CRM &amp; Procurement Module</span>
-        <span><i></i>Business Intelligence &amp; Executive Analytics Module</span>
-      </div>
-      <p style="margin-top:20px; font-weight:600; color:var(--blue); font-size:15px; line-height:1.5; background: rgba(0,102,255,0.06); padding: 14px 18px; border-radius: 10px; border-left: 3px solid var(--blue);">Together, these modules can be delivered as a cohesive Enterprise Management Software platform.</p>
-      <div style="margin-top:24px;"><a href="/contact" class="btn btn--dark">Get a consultation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></div>
+  <!-- Interactive Workstation Container -->
+  <div class="wrap offerings-workstation rv">
+    <!-- Horizontal Tab Switcher Bar -->
+    <div class="offerings-tab-bar" role="tablist">
+      <button class="offering-tab-btn is-active" data-tab="tab-erp" role="tab" aria-selected="true">
+        <span class="tab-num">01</span>
+        <span class="tab-title">Enterprise Management</span>
+      </button>
+      <button class="offering-tab-btn" data-tab="tab-crm" role="tab" aria-selected="false">
+        <span class="tab-num">02</span>
+        <span class="tab-title">CRM Solutions</span>
+      </button>
+      <button class="offering-tab-btn" data-tab="tab-pm" role="tab" aria-selected="false">
+        <span class="tab-num">03</span>
+        <span class="tab-title">Project Management</span>
+      </button>
     </div>
-    <div style="display:flex; justify-content:center; align-items:center;"><img src="enterprise_management_software.jpg" alt="Enterprise Management Software" style="width:100%; max-width:520px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
-  </div>
 
-  <!-- CRM -->
-  <div class="wrap split rv" style="margin-bottom:80px;">
-    <div style="display:flex; justify-content:center; align-items:center;"><img src="crm_solutions.png" alt="CRM Solutions" style="width:100%; max-width:520px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
-    <div>
-      <span class="chip">02</span>
-      <h2 class="display" style="margin:20px 0 18px;">CRM Solutions</h2>
-      <p class="lede">Transform how you acquire, retain, and grow your customer base. Our CRM implementations put your customer data, pipelines, and engagement workflows in one intelligent, connected system.</p>
-      <p style="margin-top:18px; font-size:15px; line-height:1.7; color:var(--ink-soft);">We build and deploy CRM platforms that integrate seamlessly with your ERP, marketing automation, and support systems — giving every team a unified view of the customer. From sales pipeline management to automated follow-ups and customer lifecycle analytics, we make every interaction count.</p>
-      <div class="pills" style="margin:30px 0;">
-        <span><i></i>Lead &amp; Pipeline Management</span><span><i></i>Customer 360 View</span><span><i></i>Sales Automation</span>
-        <span><i></i>Email &amp; Campaign Integration</span><span><i></i>Customer Analytics</span><span><i></i>Support Ticketing</span>
-      </div>
-      <a href="/contact" class="btn btn--dark">Explore CRM solutions <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-    </div>
-  </div>
+    <!-- Tab Panels Container -->
+    <div class="offerings-panels">
 
-  <!-- Project Management -->
-  <div class="wrap split rv">
-    <div>
-      <span class="chip">03</span>
-      <h2 class="display" style="margin:20px 0 18px;">Project Management Solutions</h2>
-      <p class="lede">Deliver every project on time, on budget, and on scope. We implement structured project management systems that give leadership real-time visibility and teams clear accountability.</p>
-      <p style="margin-top:18px; font-size:15px; line-height:1.7; color:var(--ink-soft);">From construction and engineering to IT delivery and professional services, our project management platforms are tailored to sector-specific workflows. We combine software implementation with process design, so your teams adopt the system quickly and derive measurable value from day one.</p>
-      <div class="pills" style="margin:30px 0;">
-        <span><i></i>Project Planning &amp; Scheduling</span><span><i></i>Resource Allocation</span><span><i></i>Budget &amp; Cost Tracking</span>
-        <span><i></i>Risk Management</span><span><i></i>Milestone Tracking</span><span><i></i>Reporting &amp; Dashboards</span>
-        <span><i></i>Document Management</span><span><i></i>Stakeholder Portals</span>
+      <!-- Panel 01: ERP -->
+      <div class="offering-panel is-active" id="tab-erp" role="tabpanel">
+        <div class="offering-panel__grid">
+          <div class="offering-panel__info">
+            <div class="offering-badge">
+              <span class="chip chip--accent">Unified Operations Platform</span>
+            </div>
+            <h2 class="display">Enterprise Management Software</h2>
+            <p class="lede">Run your entire business on a single unified platform. We deploy, configure, migrate, and support tailored modular software systems from day one through steady-state operations.</p>
+            <p class="offering-desc">Our enterprise software practice covers the full lifecycle across core operational modules: accounting, supply chain, manufacturing, HR, and sales automation. We reduce risk and accelerate time-to-value for growing businesses and multi-entity organizations.</p>
+            
+            <div class="module-matrix">
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+                <div><h4>Accounting &amp; Finance</h4><p>General ledger, AP/AR, multi-currency &amp; financial compliance.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg></div>
+                <div><h4>Inventory &amp; Supply Chain</h4><p>Multi-warehouse tracking, procurement &amp; automated reordering.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+                <div><h4>Manufacturing &amp; Shop-Floor</h4><p>BOM management, work orders &amp; shop-floor telemetry.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                <div><h4>HR &amp; Global Payroll</h4><p>Employee lifecycle, attendance, benefits &amp; automated payroll.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div>
+                <div><h4>Sales, CRM &amp; Procurement</h4><p>Quote-to-cash, vendor management &amp; purchase workflows.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+                <div><h4>BI &amp; Executive Analytics</h4><p>Real-time KPI dashboards, financial forecasting &amp; custom reports.</p></div>
+              </div>
+            </div>
+
+            <div class="offering-callout">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              <span>Together, these modules can be delivered as a cohesive Enterprise Management Software platform.</span>
+            </div>
+
+            <div class="offering-actions">
+              <a href="/contact" class="btn btn--dark">Get a consultation <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </div>
+          </div>
+
+          <div class="offering-panel__preview">
+            <div class="preview-frame">
+              <img src="enterprise_management_software.jpg" alt="Enterprise Management Software" class="preview-img">
+              <div class="preview-tag"><span class="pulse-dot"></span> End-to-End Enterprise Suite</div>
+            </div>
+          </div>
+        </div>
       </div>
-      <a href="/contact" class="btn btn--dark">Talk to a PM specialist <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+
+      <!-- Panel 02: CRM -->
+      <div class="offering-panel" id="tab-crm" role="tabpanel">
+        <div class="offering-panel__grid">
+          <div class="offering-panel__info">
+            <div class="offering-badge">
+              <span class="chip chip--accent">Customer Growth &amp; Intelligence</span>
+            </div>
+            <h2 class="display">CRM Solutions</h2>
+            <p class="lede">Transform how you acquire, retain, and grow your customer base. Our CRM implementations put your customer data, pipelines, and engagement workflows in one intelligent, connected system.</p>
+            <p class="offering-desc">We build and deploy CRM platforms that integrate seamlessly with your ERP, marketing automation, and support systems — giving every team a unified view of the customer. From sales pipeline management to automated follow-ups and customer lifecycle analytics, we make every interaction count.</p>
+            
+            <div class="module-matrix">
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+                <div><h4>Lead &amp; Pipeline Management</h4><p>Visual deal stages, lead scoring &amp; automated stage transitions.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+                <div><h4>Customer 360 View</h4><p>Unified contact timeline, cross-channel interaction history &amp; notes.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+                <div><h4>Sales Automation</h4><p>Automated task assignments, follow-up alerts &amp; quote generators.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+                <div><h4>Email &amp; Campaign Integration</h4><p>Drip campaigns, email tracking &amp; marketing platform sync.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
+                <div><h4>Customer Analytics</h4><p>Churn prediction, LTV forecasting &amp; rep performance metrics.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+                <div><h4>Support Ticketing</h4><p>SLA management, automated routing &amp; customer portal.</p></div>
+              </div>
+            </div>
+
+            <div class="offering-actions">
+              <a href="/contact" class="btn btn--dark">Explore CRM solutions <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </div>
+          </div>
+
+          <div class="offering-panel__preview">
+            <div class="preview-frame">
+              <img src="crm_solutions.png" alt="CRM Solutions" class="preview-img">
+              <div class="preview-tag"><span class="pulse-dot"></span> Connected Customer Intelligence</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 03: Project Management -->
+      <div class="offering-panel" id="tab-pm" role="tabpanel">
+        <div class="offering-panel__grid">
+          <div class="offering-panel__info">
+            <div class="offering-badge">
+              <span class="chip chip--accent">Delivery &amp; Execution Control</span>
+            </div>
+            <h2 class="display">Project Management Solutions</h2>
+            <p class="lede">Deliver every project on time, on budget, and on scope. We implement structured project management systems that give leadership real-time visibility and teams clear accountability.</p>
+            <p class="offering-desc">From construction and engineering to IT delivery and professional services, our project management platforms are tailored to sector-specific workflows. We combine software implementation with process design, so your teams adopt the system quickly and derive measurable value from day one.</p>
+            
+            <div class="module-matrix">
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+                <div><h4>Planning &amp; Scheduling</h4><p>Gantt charts, critical path analysis &amp; milestone dependency mapping.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                <div><h4>Resource Allocation</h4><p>Workload balancing, capacity planning &amp; team utilization.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+                <div><h4>Budget &amp; Cost Tracking</h4><p>Earned value management, cost variance alerts &amp; forecasting.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+                <div><h4>Risk Management</h4><p>Risk register, probability impact matrix &amp; mitigation planning.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></div>
+                <div><h4>Milestone Tracking</h4><p>Deliverable approvals, sign-off workflows &amp; gate reviews.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+                <div><h4>Reporting &amp; Dashboards</h4><p>Executive progress summaries, automated weekly status &amp; KPIs.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+                <div><h4>Document Management</h4><p>Version control, CAD drawing approval &amp; blueprint repository.</p></div>
+              </div>
+              <div class="module-card">
+                <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+                <div><h4>Stakeholder Portals</h4><p>Client approval view, subcontractor portals &amp; status sharing.</p></div>
+              </div>
+            </div>
+
+            <div class="offering-actions">
+              <a href="/contact" class="btn btn--dark">Talk to a PM specialist <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+            </div>
+          </div>
+
+          <div class="offering-panel__preview">
+            <div class="preview-frame">
+              <img src="project_management_solutions.jpg" alt="Project Management Solutions" class="preview-img">
+              <div class="preview-tag"><span class="pulse-dot"></span> Sector-Specific PM Control</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
-    <div style="display:flex; justify-content:center; align-items:center;"><img src="project_management_solutions.jpg" alt="Project Management Solutions" style="width:100%; max-width:520px; height:auto; border-radius:24px; box-shadow:0 16px 40px rgba(0,0,0,0.25); display:block;"></div>
   </div>
 </section>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function(){
+    var tabs = document.querySelectorAll('.offering-tab-btn');
+    var panels = document.querySelectorAll('.offering-panel');
+    
+    tabs.forEach(function(tab){
+      tab.addEventListener('click', function(){
+        var targetId = this.getAttribute('data-tab');
+        
+        tabs.forEach(function(t){
+          t.classList.remove('is-active');
+          t.setAttribute('aria-selected', 'false');
+        });
+        panels.forEach(function(p){
+          p.classList.remove('is-active');
+        });
+        
+        this.classList.add('is-active');
+        this.setAttribute('aria-selected', 'true');
+        
+        var activePanel = document.getElementById(targetId);
+        if(activePanel) {
+          activePanel.classList.add('is-active');
+        }
+      });
+    });
+  });
+</script>
 
 <section class="section--black">
   <div class="shead shead--center rv">
