@@ -36,6 +36,7 @@ class MuseumRepository:
 
         # Map duration string to column
         col_map = {
+            "3h": MuseumMasterpiece.included_3h,
             "5h": MuseumMasterpiece.included_5h,
             "1d": MuseumMasterpiece.included_1d,
             "2d": MuseumMasterpiece.included_2d,

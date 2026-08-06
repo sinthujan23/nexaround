@@ -75,6 +75,7 @@ class MuseumMasterpiece(Base):
         Text, nullable=True,
         comment="Why it's in the top 100",
     )
+    included_3h: Mapped[bool] = mapped_column(Boolean, default=False)
     included_5h: Mapped[bool] = mapped_column(Boolean, default=False)
     included_1d: Mapped[bool] = mapped_column(Boolean, default=False)
     included_2d: Mapped[bool] = mapped_column(Boolean, default=False)

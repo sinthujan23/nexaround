@@ -47,6 +47,7 @@ class Masterpiece {
   final String? artist;
   final String category;
   final String? description;
+  final bool included3h;
   final bool included5h;
   final bool included1d;
   final bool included2d;
@@ -60,6 +61,7 @@ class Masterpiece {
     this.artist,
     required this.category,
     this.description,
+    this.included3h = false,
     this.included5h = false,
     this.included1d = false,
     this.included2d = false,
@@ -74,6 +76,7 @@ class Masterpiece {
         artist: json['artist'] as String?,
         category: json['category'] as String,
         description: json['description'] as String?,
+        included3h: (json['included_3h'] as bool?) ?? false,
         included5h: (json['included_5h'] as bool?) ?? false,
         included1d: (json['included_1d'] as bool?) ?? false,
         included2d: (json['included_2d'] as bool?) ?? false,

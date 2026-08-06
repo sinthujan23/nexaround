@@ -22,8 +22,8 @@ class MuseumGuidePage extends StatefulWidget {
 class _MuseumGuidePageState extends State<MuseumGuidePage> {
   final _repo = MuseumRepository();
 
-  List<String> _durations = ['5h', '1d', '2d'];
-  static const _durationLabels = {'5h': '5 Hours', '1d': '1 Day', '2d': '2 Days'};
+  List<String> _durations = ['3h', '5h', '1d', '2d'];
+  static const _durationLabels = {'3h': '3 Hours', '5h': '5 Hours', '1d': '1 Day', '2d': '2 Days'};
 
   static const Map<String, _MuseumExtraInfo> _extraInfo = {
     'louvre': _MuseumExtraInfo(
@@ -302,11 +302,13 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
   }
 
   void _calculateAvailableDurations(List<Masterpiece> masterpieces) {
+    final has3h = masterpieces.any((m) => m.included3h);
     final has5h = masterpieces.any((m) => m.included5h);
     final has1d = masterpieces.any((m) => m.included1d);
     final has2d = masterpieces.any((m) => m.included2d);
     
     final list = <String>[];
+    if (has3h) list.add('3h');
     if (has5h) list.add('5h');
     if (has1d) list.add('1d');
     if (has2d) list.add('2d');

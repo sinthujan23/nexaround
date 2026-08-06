@@ -62,13 +62,13 @@ async def get_museum(slug: str, db: AsyncSession = Depends(get_db)):
 @router.get("/{slug}/itinerary", response_model=MuseumItinerary)
 async def get_museum_itinerary(
     slug: str,
-    duration: str = Query("1d", regex="^(5h|1d|2d)$"),
+    duration: str = Query("1d", regex="^(3h|5h|1d|2d)$"),
     db: AsyncSession = Depends(get_db),
 ):
     """Return a walking route filtered by available time.
 
     Query params:
-      - duration: one of ``5h``, ``1d``, ``2d``
+      - duration: one of ``3h``, ``5h``, ``1d``, ``2d``
     """
     museum, masterpieces = await MuseumRepository.get_itinerary(db, slug, duration)
     if museum is None:

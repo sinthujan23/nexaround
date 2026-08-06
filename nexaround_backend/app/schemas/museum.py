@@ -16,6 +16,7 @@ class MasterpieceOut(BaseModel):
     artist: Optional[str] = None
     category: str
     description: Optional[str] = None
+    included_3h: bool = False
     included_5h: bool = False
     included_1d: bool = False
     included_2d: bool = False
