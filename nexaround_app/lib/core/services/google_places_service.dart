@@ -442,8 +442,7 @@ class GooglePlacesService {
           queryParameters: {
             'input': cleanedInput,
             'location': '$latitude,$longitude',
-            'radius': 15000, // 15km strict bound
-            'strictbounds': true, // Only return results within the radius
+            'radius': 50000, // 50km radius bias
             'origin': '$latitude,$longitude',
             'language': 'en',
           },
@@ -495,8 +494,8 @@ class GooglePlacesService {
               );
             }
 
-            // Strictly filter out results further than 15km
-            if (distanceMeters != null && distanceMeters > 15000) {
+            // Filter out results further than 50km
+            if (distanceMeters != null && distanceMeters > 50000) {
               continue;
             }
 
@@ -547,6 +546,35 @@ class GooglePlacesService {
         if (distB != null) return 1;
         return 0;
       });
+
+      // 5. Tier-2 Global Fallback: If no nearby results found within 50km, search globally
+      if (mergedList.isEmpty) {
+        try {
+          final globalResp = await ApiClient.instance.get(
+            '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
+            queryParameters: {
+              'input': cleanedInput,
+              'language': 'en',
+            },
+          );
+          if (globalResp.statusCode == 200) {
+            final data = globalResp.data;
+            final List<dynamic> predictions = data['predictions'] as List? ?? [];
+            return predictions
+                .map(
+                  (p) => {
+                    'description': p['description'] as String? ?? '',
+                    'place_id': p['place_id'] as String? ?? '',
+                    'main_text': (p['structured_formatting']?['main_text'] as String?) ?? '',
+                    'distance_meters': null,
+                  },
+                )
+                .toList();
+          }
+        } catch (e) {
+          debugPrint('Global fallback autocomplete error: $e');
+        }
+      }
 
       return mergedList;
     } catch (e) {

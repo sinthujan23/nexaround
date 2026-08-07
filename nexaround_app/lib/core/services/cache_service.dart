@@ -98,21 +98,28 @@ class CacheService {
   static bool isPlaceSaved(String placeId) {
     final List<String> current = getSavedPlaceJsons();
     return current.any((jsonStr) {
-      final data = json.decode(jsonStr);
-      return data['id'] == placeId;
+      try {
+        final data = json.decode(jsonStr);
+        return data['id'] == placeId || data['name'] == placeId;
+      } catch (_) {
+        return false;
+      }
     });
   }
 
   static Future<void> toggleSavedPlace(Map<String, dynamic> placeData) async {
     final List<String> current = getSavedPlaceJsons();
-    final String placeId = placeData['id'];
+    final String placeId = placeData['id']?.toString() ?? placeData['name']?.toString() ?? '';
     
     int index = -1;
     for (int i = 0; i < current.length; i++) {
-      if (json.decode(current[i])['id'] == placeId) {
-        index = i;
-        break;
-      }
+      try {
+        final decoded = json.decode(current[i]);
+        if (decoded['id'] == placeId || decoded['name'] == placeId) {
+          index = i;
+          break;
+        }
+      } catch (_) {}
     }
 
     if (index != -1) {

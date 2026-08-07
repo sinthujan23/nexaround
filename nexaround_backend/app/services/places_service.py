@@ -787,80 +787,8 @@ async def search(
         if "formattedAddress" in p:
             place_dicts[i]["address"] = p["formattedAddress"]
 
-    # Save newly fetched places to PostgreSQL database
-    async with async_session() as session:
-        repo = AttractionRepository(session)
-        # Fetch existing database attractions near the search area (50km radius) to check for duplicates
-        nearby_db_attractions = await repo.get_nearby(
-            latitude=latitude,
-            longitude=longitude,
-            radius_m=50000.0,
-            limit=500
-        )
-
-        for p in place_dicts:
-            p_name = p.get("name")
-            plat = p.get("latitude")
-            plng = p.get("longitude")
-            resolved_category = p.get("category_name")
-
-            if not p_name or plat is None or plng is None:
-                continue
-
-            # Check if this place already exists in database (within 25 meters and name matches)
-            existing_attraction = None
-            for attraction, _ in nearby_db_attractions:
-                alat, alng = get_lat_lng(attraction.location)
-                dist = _haversine_m(plat, plng, alat, alng)
-                name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
-                if dist < 25.0 and name_similarity:
-                    existing_attraction = attraction
-                    break
-
-            if not existing_attraction:
-                cat_id = None
-                if resolved_category:
-                    stmt = select(Category).where(Category.name == resolved_category)
-                    res = await session.execute(stmt)
-                    cat_obj = res.scalar_one_or_none()
-                    if not cat_obj:
-                        cat_obj = Category(name=resolved_category, icon="place", color="#607D8B")
-                        session.add(cat_obj)
-                        await session.flush()
-                    cat_id = cat_obj.id
-
-                # Check duplicate coordinates
-                dup_coords = False
-                for attraction, _ in nearby_db_attractions:
-                    alat, alng = get_lat_lng(attraction.location)
-                    if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
-                        dup_coords = True
-                        break
-                if not dup_coords:
-                    dup = await repo.find_duplicate_by_coordinates(plat, plng)
-                    if dup:
-                        dup_coords = True
-                is_active = not dup_coords
-
-                new_attr = Attraction(
-                    name=p_name,
-                    description=p.get("description") or "",
-                    location=create_point(plat, plng),
-                    category_id=cat_id,
-                    address=p.get("address") or "",
-                    opening_hours=p.get("opening_hours") or {},
-                    entry_fee=p.get("entry_fee") or 0.0,
-                    currency=p.get("currency") or "USD",
-                    rating=p.get("rating") or 0.0,
-                    review_count=p.get("review_count") or 0,
-                    photo_urls=p.get("photo_urls") or [],
-                    tags=p.get("tags") or [],
-                    geofence_radius_m=100,
-                    is_active=is_active,
-                )
-                session.add(new_attr)
-
-        await session.commit()
+    import asyncio
+    asyncio.create_task(_save_search_results_bg(place_dicts, latitude, longitude))
 
     place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
 
@@ -871,6 +799,83 @@ async def search(
         cached=False,
         source="google",
     )
+
+
+async def _save_search_results_bg(place_dicts: list[dict], latitude: float, longitude: float):
+    """Save newly fetched search places to PostgreSQL database asynchronously in the background."""
+    try:
+        async with async_session() as session:
+            repo = AttractionRepository(session)
+            nearby_db_attractions = await repo.get_nearby(
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=50000.0,
+                limit=500
+            )
+
+            for p in place_dicts:
+                p_name = p.get("name")
+                plat = p.get("latitude")
+                plng = p.get("longitude")
+                resolved_category = p.get("category_name")
+
+                if not p_name or plat is None or plng is None:
+                    continue
+
+                existing_attraction = None
+                for attraction, _ in nearby_db_attractions:
+                    alat, alng = get_lat_lng(attraction.location)
+                    dist = _haversine_m(plat, plng, alat, alng)
+                    name_similarity = (attraction.name.lower() in p_name.lower()) or (p_name.lower() in attraction.name.lower())
+                    if dist < 25.0 and name_similarity:
+                        existing_attraction = attraction
+                        break
+
+                if not existing_attraction:
+                    cat_id = None
+                    if resolved_category:
+                        stmt = select(Category).where(Category.name == resolved_category)
+                        res = await session.execute(stmt)
+                        cat_obj = res.scalar_one_or_none()
+                        if not cat_obj:
+                            cat_obj = Category(name=resolved_category, icon="place", color="#607D8B")
+                            session.add(cat_obj)
+                            await session.flush()
+                        cat_id = cat_obj.id
+
+                    dup_coords = False
+                    for attraction, _ in nearby_db_attractions:
+                        alat, alng = get_lat_lng(attraction.location)
+                        if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
+                            dup_coords = True
+                            break
+                    if not dup_coords:
+                        dup = await repo.find_duplicate_by_coordinates(plat, plng)
+                        if dup:
+                            dup_coords = True
+                    is_active = not dup_coords
+
+                    new_attr = Attraction(
+                        name=p_name,
+                        description=p.get("description") or "",
+                        location=create_point(plat, plng),
+                        category_id=cat_id,
+                        address=p.get("address") or "",
+                        opening_hours=p.get("opening_hours") or {},
+                        entry_fee=p.get("entry_fee") or 0.0,
+                        currency=p.get("currency") or "USD",
+                        rating=p.get("rating") or 0.0,
+                        review_count=p.get("review_count") or 0,
+                        photo_urls=p.get("photo_urls") or [],
+                        tags=p.get("tags") or [],
+                        geofence_radius_m=100,
+                        is_active=is_active,
+                    )
+                    session.add(new_attr)
+
+            await session.commit()
+    except Exception as e:
+        print(f"⚠️ Error saving search results in background: {e}")
 
 
 async def get_trending(
