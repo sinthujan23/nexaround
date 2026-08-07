@@ -696,7 +696,39 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
             SliverToBoxAdapter(
               child: _buildDisclaimerCard(),
             ),
-            ..._buildTimeline(_itinerary!),
+            if (_itinerary!.buildings.isEmpty || _itinerary!.totalItems == 0)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.museum_outlined,
+                            size: 48, color: AppColors.textMuted),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'No stops found for this duration',
+                          style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Try selecting a different time option above (e.g. 5 Hours or 1 Day).',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              fontSize: 13, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              ..._buildTimeline(_itinerary!),
           ],
 
           // Bottom padding
@@ -1023,7 +1055,7 @@ class _DurationHeaderDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   bool shouldRebuild(covariant _DurationHeaderDelegate old) =>
-      old.selected != selected;
+      old.selected != selected || old.durations != durations;
 
   @override
   Widget build(
@@ -1040,31 +1072,39 @@ class _DurationHeaderDelegate extends SliverPersistentHeaderDelegate {
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
           const SizedBox(width: 10),
-          ...durations.map((d) {
-            final isActive = d == selected;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                child: ChoiceChip(
-                  label: Text(labels[d] ?? d),
-                  selected: isActive,
-                  onSelected: (_) => onChanged(d),
-                  selectedColor: Colors.black,
-                  backgroundColor: AppColors.surface,
-                  labelStyle: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: isActive ? Colors.white : AppColors.textPrimary,
-                  ),
-                  side: BorderSide.none,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                ),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: durations.map((d) {
+                  final isActive = d == selected;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      child: ChoiceChip(
+                        label: Text(labels[d] ?? d),
+                        selected: isActive,
+                        onSelected: (_) => onChanged(d),
+                        selectedColor: Colors.black,
+                        backgroundColor: AppColors.surface,
+                        labelStyle: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: isActive ? Colors.white : AppColors.textPrimary,
+                        ),
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-            );
-          }),
+            ),
+          ),
         ],
       ),
     );
