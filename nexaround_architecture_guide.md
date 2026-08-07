@@ -95,69 +95,369 @@ The backend is built with **FastAPI (Python)**. It acts as an API gateway, secur
 
 ---
 
-## 🗄️ 4. Database Schema (PostgreSQL + PostGIS)
 
-The PostgreSQL database uses PostGIS to perform spatial querying (such as checking if an attraction falls inside a traveler's geofence or finding spots within a 15km radius).
+## 🔄 5. End-to-End Operational Workflows
 
-### Primary Database Models
+To ensure a cohesive understanding of how the client and server interact for each core feature, the following sections outline the detailed operational workflows, the exact API endpoints used (along with HTTP methods, request payloads, and response structures), the **external API keys used**, and their respective sequence diagrams.
 
-#### User Model (`users`)
-Stores profile preferences and authentication hashes.
-*   `id`: `UUID` (Primary Key)
-*   `email`: `VARCHAR(255)` (Unique, Indexed)
-*   `password_hash`: `VARCHAR(255)` (Hashed via bcrypt)
-*   `display_name`: `VARCHAR(100)`
-*   `preferences`: `JSON` (Holds user preferences like `{"currency": "USD"}`)
-*   `language`: `VARCHAR(10)` (Default: `"en"`)
-*   `is_active`: `BOOLEAN`
-*   `created_at`: `TIMESTAMP(timezone=True)`
+### 1. User Onboarding & Authentication (`auth`)
+*   **Overview**: Manages traveler registration, secure credentials authentication (using bcrypt hashing server-side), profile retrieval, and updating user preferences (e.g., travel language, default currency).
+*   **API Endpoints**:
+    *   `POST /api/v1/auth/register`: Register a new user account.
+        *   *Request*: `UserRegister` JSON payload containing `email`, `password`, `display_name`.
+        *   *Response*: `TokenResponse` JSON containing `access_token`, `refresh_token`, `token_type` (Bearer).
+    *   `POST /api/v1/auth/login`: Authenticate existing user.
+        *   *Request*: `UserLogin` JSON payload containing `email`, `password`.
+        *   *Response*: `TokenResponse` JSON containing `access_token`, `refresh_token`, `token_type`.
+    *   `GET /api/v1/auth/me`: Retrieve current authenticated profile.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Response*: `UserResponse` JSON containing user's profile metadata and preferences.
+    *   `PUT /api/v1/auth/me/preferences`: Update preferences.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `UserPreferencesUpdate` JSON containing `preferences` dictionary (e.g., `{"currency": "USD"}`).
+        *   *Response*: `UserResponse` JSON with updated preferences.
+*   **API Keys & External Services Used**: None (strictly handled internally using the PostgreSQL database and JWT token generation). *Note: Optional Firebase configuration keys are supported for FCM push tokens.*
 
-#### Attraction Model (`attractions`)
-Stores physical discovery points mapped by PostGIS.
-*   `id`: `UUID` (Primary Key)
-*   `name`: `VARCHAR(255)` (Indexed)
-*   `description` / `history`: `TEXT`
-*   `location`: `Geometry(POINT, 4326)` (PostGIS spatial point mapping lat/lng coordinates)
-*   `category_id`: `UUID` (Foreign Key referencing `categories.id`)
-*   `address`: `VARCHAR(500)`
-*   `rating` / `review_count`: `FLOAT` / `INTEGER`
-*   `photo_urls` / `tags`: `ARRAY(VARCHAR)`
-*   `geofence_radius_m`: `INTEGER` (Default: `100`)
-*   `is_active`: `BOOLEAN`
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (auth)
+    participant Nginx as Nginx Proxy
+    participant Auth as FastAPI Auth Service
+    participant DB as PostgreSQL DB
 
-#### Budget Model (`budgets` & `expenses`)
-Tracks user budgets and daily travel expenses.
-*   **`budgets`**:
-    *   `id`: `UUID` (Primary Key)
-    *   `user_id`: `UUID` (Foreign Key referencing `users.id`)
-    *   `name`: `VARCHAR(100)`
-    *   `total_amount`: `FLOAT`
-    *   `currency`: `VARCHAR(10)`
-    *   `start_date` / `end_date`: `DATE`
-*   **`expenses`**:
-    *   `id`: `UUID` (Primary Key)
-    *   `budget_id`: `UUID` (Foreign Key referencing `budgets.id` with cascade delete)
-    *   `amount`: `FLOAT`
-    *   `category`: `VARCHAR(50)` (e.g., Food, Travel, Tickets)
-    *   `description`: `VARCHAR(255)`
-    *   `spent_at`: `TIMESTAMP`
+    User->>App: Enter Credentials / Sign Up or Log In
+    App->>Nginx: POST /api/v1/auth/register or /login
+    Nginx->>Auth: Forward HTTPS request
+    Auth->>DB: Query user records / Save new hash
+    DB-->>Auth: User record verified / saved
+    Auth->>Auth: Generate JWT Token (with Role & User ID)
+    Auth-->>Nginx: Return JWT Token + Preferences
+    Nginx-->>App: Return 200 OK / 201 Created (Token + Body)
+    App->>App: Store JWT securely in Secure Storage
+```
 
-#### Travel Story & Journal Model (`travel_stories`)
-Stores social travel check-ins and personal private journal notes.
-*   `id`: `UUID` (Primary Key)
-*   `user_id`: `UUID` (Foreign Key referencing `users.id`)
-*   `location_name`: `VARCHAR(255)`
-*   `description`: `VARCHAR(1000)`
-*   `image_urls`: `ARRAY(VARCHAR)`
-*   `latitude` / `longitude`: `FLOAT`
-*   `is_journal`: `BOOLEAN` (If `true`, hides the post from public feeds)
-*   `journal_date`: `TIMESTAMP`
-*   `total_spend`: `FLOAT`
-*   `spend_currency`: `VARCHAR(10)`
+### 2. AI Odyssey Itinerary Generation (`itinerary`)
+*   **Overview**: Enables travelers to request custom, multi-day, budget-aligned travel itineraries. The generation is handled asynchronously via backend background tasks to keep the mobile UI responsive.
+*   **API Endpoints**:
+    *   `POST /api/v1/itineraries/odyssey/generate`: Trigger itinerary generation.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `OdysseyGenerateRequest` JSON containing `destination`, `mood`, `budget`, `days`, `currency`, `travelers`, `include_flights`, `include_hotels`.
+        *   *Response*: Returns `202 Accepted` status with an itinerary placeholder object (`status: "generating"`).
+    *   `GET /api/v1/itineraries/{id}`: Poll status or retrieve completed itinerary.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Response*: `ItineraryResponse` JSON containing status (`generating`, `active`, `failed`), title, and a structured array of daily itinerary items (flights, hotels, activities).
+*   **API Keys & External Services Used**:
+    *   **Google Gemini API Key (`gemini_api_key`)**: Used by the backend background task via the Google GenAI SDK (models: `gemini-2.5-flash`, `gemini-1.5-pro` as fallback) to generate day-by-day structured itinerary JSON plans.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (itinerary)
+    participant API as FastAPI Router
+    participant DB as PostgreSQL DB
+    participant BG as Background Task Worker
+    participant Gemini as Google Gemini AI
+
+    User->>App: Request trip (Destination, Mood, Budget, Days)
+    App->>API: POST /api/v1/itineraries/odyssey/generate (JWT)
+    API->>DB: Save placeholder Itinerary (status: 'generating')
+    DB-->>API: Saved Itinerary ID
+    API->>BG: Spawn background task (_run_odyssey_generation)
+    API-->>App: Return HTTP 202 Accepted (Itinerary ID)
+    Note over App: Mobile App starts polling status & shows spinner
+
+    BG->>Gemini: Request AI generation (itinerary details)
+    Gemini-->>BG: Return structured JSON plan
+    BG->>DB: Update Itinerary status to 'active' + insert items
+    DB-->>BG: Update confirmed
+
+    loop Polling Status
+        App->>API: GET /api/v1/itineraries/{id}
+        API->>DB: Fetch itinerary status
+        DB-->>API: Return status (generating or active)
+        API-->>App: Return status payload
+    end
+    Note over App: Status changes to active; displays itinerary
+```
+
+### 3. Living Map & Nearby Discovery (`living_map`)
+*   **Overview**: Renders an interactive map centered on the user's coordinates, fetching and plotting nearby points of interest (attractions, restaurants, parks) from Google Places, cached via server-side Redis to minimize third-party API costs.
+*   **API Endpoints**:
+    *   `GET /api/v1/places/nearby`: Fetch location-based attractions.
+        *   *Request Params*: `lat` (float), `lng` (float), `category` (string, optional), `radius` (int, default 5000).
+        *   *Response*: `PlacesNearbyResponse` JSON containing a list of matching attraction nodes (name, coordinates, rating, address, photo references).
+    *   `GET /api/v1/places/search`: Search by text query.
+        *   *Request Params*: `query` (string), `lat` (float), `lng` (float).
+        *   *Response*: `PlacesNearbyResponse` JSON with matched location results.
+    *   `GET /api/v1/places/photo`: Stream attraction imagery.
+        *   *Request Params*: `ref` (string, Google photo reference), `maxwidth` (int, default 800).
+        *   *Response*: Returns the binary image payload (JPEG).
+*   **API Keys & External Services Used**:
+    *   **Google Maps API Key (`google_maps_api_key`)**: Attached at the server level by the proxy service to authorize Google Places API searches and photo reference streams.
+    *   **Mapbox Access Token (`mapbox_access_token`)**: Requested by the client map components via `/config/keys` to load Mapbox style layers and render coordinates on-screen.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (living_map)
+    participant API as FastAPI Discovery Service
+    participant Redis as Redis Cache
+    participant DB as PostgreSQL (PostGIS)
+    participant Google as Google Places API
+
+    User->>App: Open Map / Filter Nearby Attractions
+    App->>API: GET /api/v1/places/nearby?lat=...&lng=...&category=...
+    API->>API: Snap lat/lng coordinates to bounding grid
+    API->>Redis: Check cache for grid tile key
+    alt Cache Hit
+        Redis-->>API: Return cached attractions list
+    else Cache Miss
+        API->>DB: Spatial query (ST_DWithin/ST_Distance)
+        alt Database has data
+            DB-->>API: Return local attractions
+        else Database empty / missing details
+            API->>Google: Fetch via Google Places & Photos Proxy
+            Google-->>API: Return raw places JSON
+            API->>API: Run spam filter (remove homestays, bad reviews)
+            API->>DB: Insert new attractions into PostGIS
+            DB-->>API: Insert confirmed
+        end
+        API->>Redis: Save results to Cache with TTL
+        Redis-->>API: Cache updated
+    end
+    API-->>App: Return processed nearby attractions list
+```
+
+### 4. AR Mode & Live Landmark Identification (`ar_mode`)
+*   **Overview**: Uses the device camera viewport to capture image frames. Frames are uploaded to the backend to identify local landmarks and display augmented reality overlays in real-time.
+*   **API Endpoints**:
+    *   `POST /api/v1/ar/identify`: Send camera frames for live AI analysis.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: Multipart form-data containing the raw image frame `file`.
+        *   *Response*: JSON object containing identified landmarks, confidence ratings, and descriptive text/historical summaries.
+*   **API Keys & External Services Used**:
+    *   **Google Gemini API Key (`gemini_api_key`)**: Authorized on the backend to process raw image bytes via vision models (`gemini-2.5-flash`) for real-time landmark recognition.
+    *   **Google Lens / Custom Search API**: Used optionally within the backend `google_lens_service` to fall back on web visual searches when identification confidence is low.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (ar_mode)
+    participant API as FastAPI AR Service
+    participant Gemini as Google Gemini AI / Lens API
+
+    User->>App: Enable AR View & Align Camera on Landmark
+    App->>API: POST /api/v1/ar/identify (Form Data: Image Frame)
+    API->>Gemini: Analyze image bytes & resolve landmark details
+    Gemini-->>API: Return identified object details & info
+    API-->>App: Return identified landmark info
+    App->>App: Render interactive overlay marker on camera feed
+    App->>User: Display landmark overview & history cards
+```
+
+### 5. AR Museum Guide & Building Masterpieces (`mini_tour` / `museums`)
+*   **Overview**: Serves curated tour paths and masterpiece maps for world-class museums, including indoor floor mappings, audio guide feeds, and walking navigation paths.
+*   **API Endpoints**:
+    *   `GET /api/v1/museums/`: List all supported museums.
+        *   *Response*: List of `MuseumListItem` objects (ID, slug, name, city, annual visitors, masterpiece count).
+    *   `GET /api/v1/museums/{slug}`: Retrieve specific museum details.
+        *   *Response*: `MuseumDetail` JSON showing full masterpiece logs, floors, and location meta.
+    *   `GET /api/v1/museums/{slug}/itinerary`: Fetch walking itineraries.
+        *   *Request Params*: `duration` (string: 3h, 5h, 1d, 2d).
+        *   *Response*: `MuseumItinerary` JSON containing a list of buildings and masterpiece sections ordered for an optimal walking route.
+*   **API Keys & External Services Used**: None (all museum coordinates, floor definitions, itineraries, and media resource URLs are stored locally in the PostgreSQL database).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (mini_tour)
+    participant API as FastAPI Museum Service
+    participant DB as PostgreSQL DB
+
+    User->>App: Select Museum (e.g. Louvre) & Choose Duration (3h)
+    App->>API: GET /api/v1/museums/{slug}/itinerary?duration=3h
+    API->>DB: Query museum masterpieces & optimal walking routes
+    DB-->>API: Return ordered masterpiece structures & metadata
+    API-->>App: Return 200 OK (Itinerary buildings & locations)
+    App->>App: Map tour points onto indoor coordinate maps
+    App->>User: Render interactive tour path with audio streams
+```
+
+### 6. Community Travel Feed & Stories (`travel_stories` / public)
+*   **Overview**: Allows travelers to browse, search, like, and comment on public travel journals shared by other users globally, creating a social travel network.
+*   **API Endpoints**:
+    *   `GET /api/v1/travel-stories`: Retrieve public travel stories.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request Params*: `country` (string, optional).
+        *   *Response*: Array of `TravelStoryResponse` JSON (id, description, user info, likes count, comments list, image URLs).
+    *   `POST /api/v1/travel-stories/{story_id}/like`: Toggle like on a story.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Response*: Status code `200 OK`.
+    *   `POST /api/v1/travel-stories/{story_id}/comment`: Post a comment.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `TravelStoryCommentCreate` JSON containing `comment_text` and `image_index` (optional).
+        *   *Response*: `TravelStoryCommentResponse` detailing the created comment.
+*   **API Keys & External Services Used**: None (data is stored and processed locally within the PostgreSQL relational database).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (travel_stories)
+    participant API as FastAPI Stories Router
+    participant DB as PostgreSQL DB
+
+    User->>App: Open Community Tab & View Feed
+    App->>API: GET /api/v1/travel-stories (JWT)
+    API->>DB: Select public stories (is_journal=False, is_public=True)
+    DB-->>API: Return public stories, likes & comments metadata
+    API-->>App: Return public feed list
+    User->>App: Like a story / Add Comment
+    App->>API: POST /api/v1/travel-stories/{id}/like (or /comment)
+    API->>DB: Save interaction in DB
+    DB-->>API: Transaction Success
+    API-->>App: Return updated stats (Like count / Comments list)
+```
+
+### 7. Travel Journaling & Personal Log (`travel_stories` / private)
+*   **Overview**: A personal digital journal where travelers record their travel check-ins, upload trip memories, and log local coordinates. Users can toggle entries as private (which hides them from the public community feed).
+*   **API Endpoints**:
+    *   `POST /api/v1/travel-stories`: Save a new journal/story entry.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `TravelStoryCreate` JSON containing `location_name`, `description`, `image_urls`, `latitude`, `longitude`, `is_journal` (boolean), `is_public` (boolean), `journal_date`.
+        *   *Response*: `TravelStoryResponse` confirming details of the saved entry.
+    *   `GET /api/v1/travel-stories/journal`: Fetch user's private journals.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Response*: Array of private `TravelStoryResponse` items sorted chronologically by date.
+*   **API Keys & External Services Used**:
+    *   **Geoapify API Key (`geoapify_api_key`)**: Used by the backend proxy to reverse-geocode latitude and longitude parameters into human-readable locations (e.g. city name, country) during journal creation. If the Geoapify API key is unavailable, the backend falls back to Mapbox's geocoding engine using the `mapbox_access_token`.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (travel_stories)
+    participant API as FastAPI Stories Service
+    participant DB as PostgreSQL DB
+
+    User->>App: Save New Private Journal Entry
+    App->>API: POST /api/v1/travel-stories (is_journal=True, JWT)
+    API->>DB: Save entry in travel_stories table
+    DB-->>API: Confirm record creation
+    API-->>App: Return 201 Created (Journal Details)
+    Note over DB: Record is kept private, excluded from feed searches
+```
+
+### 8. Budget Tracker & Expense Logging (`budget`)
+*   **Overview**: Helps travelers keep track of their target budgets, log expenses in various categories (Food, Transit, Lodging), and handle real-time currency conversion back to the budget's base currency.
+*   **API Endpoints**:
+    *   `GET /api/v1/budget/`: Retrieve the traveler's active budget details and calculated expense breakdowns.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Response*: `Budget` schema containing total amount, base currency, list of logged expenses, and remaining budget metrics.
+    *   `POST /api/v1/budget/`: Initialize a new trip budget (automatically closes any active past budgets).
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `BudgetCreate` JSON with `name`, `total_amount`, `currency`, `start_date`, `end_date`.
+        *   *Response*: The created `Budget` instance.
+    *   `POST /api/v1/budget/expense`: Log a new cost against the active budget.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `ExpenseCreate` JSON containing `budget_id`, `amount`, `category`, `description`, `spent_at`, and `currency`.
+        *   *Response*: `Expense` confirmation, detailing standard conversion values.
+*   **API Keys & External Services Used**: None (conversion rates are resolved internally using cached static multipliers; no live external financial APIs are bound).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (budget)
+    participant API as FastAPI Budget Router
+    participant DB as PostgreSQL DB
+    participant Exch as Currency Conversion Service
+
+    User->>App: Logs expense (e.g., 20 EUR spent on food)
+    App->>API: POST /api/v1/budget/expense (JWT)
+    alt Expense currency is different than Budget base currency
+        API->>Exch: Fetch conversion rate (cached rate checked first)
+        Exch-->>API: Return conversion factor (EUR to USD)
+        API->>API: Calculate standard base currency amount
+    end
+    API->>DB: Insert expense record & update budget aggregate
+    DB-->>API: Confirm write
+    API-->>App: Return updated Budget status (recalculates progress)
+```
+
+### 9. Neva AI Chat Companion (`ai_companion`)
+*   **Overview**: Provides the user with "Neva", a witty, location-aware travel companion capable of answering questions about history, translation, and local secrets.
+*   **API Endpoints**:
+    *   `POST /api/v1/message`: Send prompt to Neva.
+        *   *Headers*: `Authorization: Bearer <JWT_ACCESS_TOKEN>`
+        *   *Request*: `ChatRequest` JSON containing `message` and `context` (such as active latitude/longitude coordinate bounds or current country).
+        *   *Response*: `ChatResponse` JSON containing Neva's formatted response.
+*   **API Keys & External Services Used**:
+    *   **Google Gemini API Key (`gemini_api_key`)**: Proxied by the backend through `/proxy/gemini/generate` to interact with Gemini generative models (`gemini-2.5-flash`), keeping the API key hidden from the client mobile binary.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (ai_companion)
+    participant API as FastAPI Chat Router
+    participant Service as AI Core Service
+    participant Gemini as Google Gemini AI (Proxy Endpoint)
+
+    User->>App: Ask Neva a question ("What is the history of this place?")
+    App->>API: POST /api/v1/message (JWT + prompt + geo-context)
+    API->>Service: Resolve user preferences (display name, currency)
+    Service->>Gemini: POST /proxy/gemini/generate (Secure key injected)
+    Gemini-->>Service: Return text response
+    Service-->>API: Format with matching Emojis and bullet points
+    API-->>App: Return 200 OK (ChatResponse)
+    App->>User: Display Neva's message bubble
+```
+
+### 10. Interactive Food Radar (`food_radar`)
+*   **Overview**: Pulls localized, context-aware trending experiences, attractions, and restaurant lists based on geographic coordinates, local weather, and popular demand.
+*   **API Endpoints**:
+    *   `GET /api/v1/places/trending`: Retrieve trending local events and dining recommendations.
+        *   *Request Params*: `district` (string), `lat` (float), `lng` (float).
+        *   *Response*: `TrendingExperiencesResponse` containing curated events, restaurants, and nature spots generated by Gemini and cross-referenced with Google Places coordinates.
+*   **API Keys & External Services Used**:
+    *   **Google Maps API Key (`google_maps_api_key`)**: Used by the backend proxy to fetch nearby Places coordinates and reviews.
+    *   **Google Gemini API Key (`gemini_api_key`)**: Used by the backend to filter, verify, and generate weather-tailored dining recommendation cards.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as Traveler
+    participant App as Flutter Mobile App (food_radar)
+    participant API as FastAPI Places Router
+    participant Redis as Redis Cache
+    participant DB as PostgreSQL DB
+    participant Gemini as Google Gemini AI
+
+    User->>App: View Trending Food & Experiences Tab
+    App->>API: GET /api/v1/places/trending?lat=...&lng=...&district=...
+    API->>Redis: Query trending cached grid key (24-hour TTL)
+    alt Cache Hit
+        Redis-->>API: Return cached trending list
+    else Cache Miss
+        API->>Gemini: Request context-aware recommended spots for district
+        Gemini-->>API: Return recommended list
+        API->>API: Cross-reference & verify coordinates with local PostGIS DB
+        API->>Redis: Cache parsed list to Redis
+        Redis-->>API: Cache updated
+    end
+    API-->>App: Return Trending Experience & Food list
+```
 
 ---
 
-## 📡 5. API Reference Summary
+## 📡 6. Legacy Endpoints & System Reference Summary
 
 The server communicates via standard JSON REST endpoints over HTTPS.
 
@@ -171,7 +471,7 @@ The server communicates via standard JSON REST endpoints over HTTPS.
 
 ---
 
-## 🛠️ 6. CI/CD & Build Pipeline (GitHub Actions)
+## 🛠️ 7. CI/CD & Build Pipeline (GitHub Actions)
 
 NexAround uses automated **GitHub Actions** workflows to build client releases:
 
@@ -186,10 +486,21 @@ Triggers on any commit to the `main` branch affecting the `nexaround_app/` folde
 
 ---
 
-## 🛡️ 7. Security, Cost Optimization, & Caching
+## 🛡️ 8. Security, Cost Optimization, & Caching
 
 Because external APIs (Google Places and Gemini GenAI) charge per query, the platform implements custom caching and protection layers:
 
+### 8.1 External API Key Management & Mapping Registry
+To protect intellectual property and manage system costs, all external API keys are secured server-side. The following registry outlines the configuration variables, provider systems, and features supported by each key:
+
+| Environment Variable / Config Key | External Provider | Scope & Purpose | Associated Feature Modules |
+| :--- | :--- | :--- | :--- |
+| `google_maps_api_key` | Google Cloud Console | Authorizes Places API, Place Photo API, and client Maps SDKs. | `living_map`, `food_radar` |
+| `mapbox_access_token` | Mapbox | Loads premium vector maps styling and routes directions. | `living_map` |
+| `gemini_api_key` | Google AI Studio | Generates trip itineraries, Neva companion chats, and processes AR frames. | `itinerary`, `ar_mode`, `ai_companion`, `food_radar` |
+| `geoapify_api_key` | Geoapify | Reverse-geocodes coordinate parameters to locate journal locations. | `travel_stories` (Journal Mode) |
+
+### 8.2 Security Protocols
 1.  **API Key Protection (Secure Proxying)**:
     The mobile app never interacts directly with Google Maps or Gemini endpoints, meaning API keys are never stored in the compiled binary. Instead, the mobile client calls the backend proxy, which attaches keys securely at the server-level before sending the request.
 2.  **Coordinates Snapped-Grid Cache (Redis)**:
@@ -201,7 +512,7 @@ Because external APIs (Google Places and Gemini GenAI) charge per query, the pla
 
 ---
 
-## 🏗️ 8. VPS Infrastructure & Deployment Specs
+## 🏗️ 9. VPS Infrastructure & Deployment Specs
 
 The backend architecture is deployed on a VPS running **Docker Compose** behind an **Nginx Reverse Proxy**.
 
@@ -241,7 +552,7 @@ The backend architecture is deployed on a VPS running **Docker Compose** behind 
 
 ---
 
-## 📸 9. Screen Tour & Visual Walkthrough
+## 📸 10. Screen Tour & Visual Walkthrough
 
 Here is a visual breakdown of the key user interfaces in NexAround, highlighting the latest design adjustments:
 

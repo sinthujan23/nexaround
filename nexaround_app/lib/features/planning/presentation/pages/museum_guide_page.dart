@@ -93,7 +93,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
     ),
     'national-museum-of-anthropology': _MuseumExtraInfo(
       website: 'https://mna.inah.gob.mx/',
-      hours: '9am–5pm (Closed Mon)',
+      hours: '9am–6pm (Closed Mon)',
     ),
     'state-russian-museum': _MuseumExtraInfo(
       website: 'http://www.rusmuseum.ru/en/',

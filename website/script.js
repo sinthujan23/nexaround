@@ -39,25 +39,28 @@
   }
 
   /* ---------- Mega menu ---------- */
-  var burger = document.getElementById('navBurger');
-  var mega = document.getElementById('mega');
-  var megaClose = document.getElementById('megaClose');
-
   function openMega(){
+    var mega = document.getElementById('mega') || document.getElementById('megaMenu');
+    var megaClose = document.getElementById('megaClose');
     if(!mega) return;
     mega.classList.add('is-open');
     document.body.style.overflow = 'hidden';
     if(megaClose) megaClose.focus();
   }
   function closeMega(){
+    var burger = document.getElementById('navBurger');
+    var mega = document.getElementById('mega') || document.getElementById('megaMenu');
     if(!mega) return;
     mega.classList.remove('is-open');
     document.body.style.overflow = '';
     if(burger) burger.focus();
   }
-  if(burger) burger.addEventListener('click', openMega);
-  if(megaClose) megaClose.addEventListener('click', closeMega);
+  document.addEventListener('click', function(e){
+    if(e.target.closest('#navBurger')) openMega();
+    if(e.target.closest('#megaClose')) closeMega();
+  });
   document.addEventListener('keydown', function(e){
+    var mega = document.getElementById('mega') || document.getElementById('megaMenu');
     if(e.key === 'Escape' && mega && mega.classList.contains('is-open')) closeMega();
   });
 

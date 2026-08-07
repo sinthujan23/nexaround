@@ -31,7 +31,7 @@ MUSEUMS_DATA = [
     {"rank": 13, "name": "Hubei Provincial Museum", "visitors": 4356943, "city": "Wuhan", "country": "China", "slug": "hubei-provincial-museum"},
     {"rank": 15, "name": "National Gallery of Art", "visitors": 3936543, "city": "Washington, D.C.", "country": "United States", "slug": "national-gallery-of-art"},
     {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay", "image_url": "/api/v1/places/photo?ref=places/ChIJ155XmZ5x5kcRq-yXvB0y3A0/photos/AUGUv4s61eZg3d3k1F03l8b4M3A"},
-    {"rank": 17, "name": "National Museum of Anthropology", "visitors": 3700000, "city": "Mexico City", "country": "Mexico", "slug": "national-museum-of-anthropology"},
+    {"rank": 17, "name": "National Museum of Anthropology", "visitors": 3700000, "city": "Mexico City", "country": "Mexico", "slug": "national-museum-of-anthropology", "website": "https://mna.inah.gob.mx/", "opening_hours": "Tuesday to Sunday: 9:00 to 18:00 hours", "closing_hours": "18:00"},
     {"rank": 18, "name": "State Russian Museum", "visitors": 5087276, "city": "Saint Petersburg", "country": "Russia", "slug": "state-russian-museum"},
     # Skip 19 (State Hermitage Museum) as it is already seeded with full details
     {"rank": 20, "name": "Victoria and Albert Museum", "visitors": 3332300, "city": "London", "country": "United Kingdom", "slug": "victoria-and-albert-museum"},
@@ -91,13 +91,23 @@ async def seed():
                     country=m_data["country"],
                     annual_visitors=m_data["visitors"],
                     rank=m_data["rank"],
-                    image_url=m_data.get("image_url")
+                    image_url=m_data.get("image_url"),
+                    website=m_data.get("website"),
+                    opening_hours=m_data.get("opening_hours"),
+                    closing_hours=m_data.get("closing_hours"),
                 )
                 session.add(museum)
                 count += 1
                 print(f"Added: {museum.name}")
-            elif m_data.get("image_url"):
-                museum.image_url = m_data["image_url"]
+            else:
+                if m_data.get("image_url"):
+                    museum.image_url = m_data["image_url"]
+                if m_data.get("website"):
+                    museum.website = m_data["website"]
+                if m_data.get("opening_hours"):
+                    museum.opening_hours = m_data["opening_hours"]
+                if m_data.get("closing_hours"):
+                    museum.closing_hours = m_data["closing_hours"]
         
         await session.commit()
         print(f"✅ Inserted {count} additional museums!")

@@ -17,36 +17,9 @@
 </head>
 <body>
 
-<header class="nav nav--onDark" id="siteNav">
-  <div class="nav__inner">
-    <button class="nav__burger" id="navBurger" aria-label="Open menu"><i></i><i></i><i></i></button>
-    <a href="/" class="nav__logo" aria-label="NexARound Technologies home"><span class="nav__logo-badge"><img src="tech_logo_v3.png" alt="nexARound Technologies" class="nav__logo-img"></span><span class="nav__logo-text"><span class="nav__logo-main">nex<b>AR</b>ound</span><span class="nav__logo-sub">Technologies</span></span></a>
-    <nav class="nav__pill" aria-label="Primary"><a href="/app">nexARound App</a><a href="/services">Services</a><a href="offerings.html" aria-current="page">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a><a href="/industries">Industries</a></nav>
-    <a href="/contact" class="nav__ai">
-      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.5 6.5L15 8L9.5 9.5L8 15L6.5 9.5L1 8L6.5 6.5L8 1Z"/></svg>
-      Let's Talk</a>
-  </div>
-</header>
+<header class="nav nav--onDark" id="siteNav"></header>
 
-<div class="mega" id="mega" role="dialog" aria-modal="true" aria-label="Site menu">
-  <div class="mega__left">
-    <button class="mega__close" id="megaClose" aria-label="Close menu">&#10005;</button>
-    <nav class="mega__nav" aria-label="All pages">
-      <a href="/">Home</a><a href="/app">nexARound App</a><a href="/services">Services</a><a href="offerings.html" class="is-active">Offerings</a><a href="/ai-data">AI &amp; Blockchain</a><a href="/about">About Us</a><a href="case-studies.html">Case Studies</a><a href="/industries">Industries</a>
-    </nav>
-    <div class="mega__sub">
-      <a href="/technology">Technology Expertise</a><a href="/about#process">Engagement Process</a><a href="/about#models">Engagement Models</a>
-    </div>
-    <div class="mega__social"><span>in</span><span>&#10005;</span><span>f</span><span>&#9654;</span></div>
-  </div>
-  <div class="mega__right">
-    <h2>Full-stack engineering to fast-track your growth</h2>
-    <div class="mega__cards">
-      <a href="/erp" class="mega__card art art--1"><h3>Enterprise Management Software</h3><a href="/erp" class="rm">Know More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></a>
-      <a href="/app" class="mega__card art art--4"><h3>The nexARound App</h3><a href="/app" class="rm">Know More <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 11L11 3M11 3H4.5M11 3V9.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></a></a>
-    </div>
-  </div>
-</div>
+<div class="mega" id="mega" role="dialog" aria-modal="true" aria-label="Site menu"></div>
 
 <div class="shell">
 <main>
@@ -129,59 +102,14 @@
     </div>
   </section>
 </main>
-<footer class="footer">
-  <div class="footer__cols">
-    <div class="footer__col">
-      <h4>Services</h4>
-      <a href="/services">Digital Transformation</a>
-      <a href="/services">Software Engineering</a>
-      <a href="/services">Cloud Implementation</a>
-      <a href="/ai-data">AI, ML &amp; Data</a>
-      <a href="/services">UI / UX Design</a>
-      <a href="/services">Quality &amp; Automation</a>
-    </div>
-    <div class="footer__col">
-      <h4>Products &amp; Solutions</h4>
-      <a href="/app">nexARound App</a>
-      <a href="/erp">ERP &amp; Business Solutions</a>
-      <a href="/ai-data">AI, ML &amp; Data Solutions</a>
-      <a href="/blockchain">Blockchain &amp; Web3</a>
-      <a href="/services">Cloud &amp; DevOps Engineering</a>
-      <a href="/technology">Technology Expertise</a>
-    </div>
-    <div class="footer__col">
-      <h4>Company</h4>
-      <a href="/about">About Us</a>
-      <a href="/industries">Industries We Serve</a>
-      <a href="/about#process">Engagement Process</a>
-      <a href="/about#models">Engagement Models</a>
-      <a href="/about#why">Why Partner With Us</a>
-    </div>
-    <div class="footer__col">
-      <h4>Support</h4>
-      
-      <a href="mailto:support@nexaround.com">support@nexaround.com</a>
-      
-      <a href="#">Privacy Statement</a>
-      <a href="#">Terms of Use</a>
-    </div>
-  </div>
-  <div class="footer__brand">
-    <p>&copy; <span data-year></span> NexARound Technologies. Full-stack engineering to fast-track your growth.</p>
-    <div class="footer__social">
-      <a href="#" aria-label="LinkedIn">in</a>
-      <a href="#" aria-label="X">&#10005;</a>
-      <a href="#" aria-label="Facebook">f</a>
-      <a href="#" aria-label="YouTube">&#9654;</a>
-    </div>
-  </div>
-</footer>
+<footer class="footer" id="siteFooter"></footer>
 
 <button class="totop" id="toTop" aria-label="Back to top">
   <svg width="17" height="17" viewBox="0 0 16 16" fill="none"><path d="M8 13V3M8 3L3 8M8 3L13 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
 </button>
 </div>
 
+<script src="components.js"></script>
 <script src="script.js"></script>
 </body>
 </html>
