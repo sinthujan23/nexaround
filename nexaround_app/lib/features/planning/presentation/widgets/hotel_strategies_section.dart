@@ -265,9 +265,8 @@ class HotelStrategiesSection extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
-            // Direct Booking Button
-            if (hs.bookingUrl.isNotEmpty)
-              Builder(
+            // Direct Booking Button (always active with deep pre-filled links)
+            Builder(
                 builder: (context) {
                   final deepUrl = BookingUrlHelper.buildHotelUrl(
                     rawUrl: hs.bookingUrl,

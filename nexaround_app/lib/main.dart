@@ -64,10 +64,15 @@ void main() async {
       final data = jsonDecode(response.body);
       final mapboxToken = data['mapbox_access_token'];
       final googleMapsKey = data['google_maps_api_key'];
+      final serpKey = data['serp_api_key'];
       
       if (mapboxToken != null && mapboxToken is String && mapboxToken.isNotEmpty) {
         ApiConstants.mapboxAccessToken = mapboxToken;
         MapboxOptions.setAccessToken(mapboxToken);
+      }
+
+      if (serpKey != null && serpKey is String && serpKey.isNotEmpty) {
+        ApiConstants.serpApiKey = serpKey;
       }
       
       if (googleMapsKey != null && googleMapsKey is String && googleMapsKey.isNotEmpty) {

@@ -131,6 +131,49 @@ class CacheService {
     savedPlacesNotifier.value++;
   }
 
+  // Favorite / Pinned Places (Heart)
+  static final ValueNotifier<int> favoritePlacesNotifier = ValueNotifier(0);
+
+  static List<String> getFavoritePlaceJsons() {
+    return _prefs.getStringList('favorite_places_data') ?? [];
+  }
+
+  static bool isPlaceFavorite(String placeId) {
+    final List<String> current = getFavoritePlaceJsons();
+    return current.any((jsonStr) {
+      try {
+        final data = json.decode(jsonStr);
+        return data['id'] == placeId || data['name'] == placeId;
+      } catch (_) {
+        return false;
+      }
+    });
+  }
+
+  static Future<void> toggleFavoritePlace(Map<String, dynamic> placeData) async {
+    final List<String> current = getFavoritePlaceJsons();
+    final String placeId = placeData['id']?.toString() ?? placeData['name']?.toString() ?? '';
+    
+    int index = -1;
+    for (int i = 0; i < current.length; i++) {
+      try {
+        final decoded = json.decode(current[i]);
+        if (decoded['id'] == placeId || decoded['name'] == placeId) {
+          index = i;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (index != -1) {
+      current.removeAt(index);
+    } else {
+      current.add(json.encode(placeData));
+    }
+    await _prefs.setStringList('favorite_places_data', current);
+    favoritePlacesNotifier.value++;
+  }
+
   // Attractions Caching
   static Future<void> cacheAttractions(List<Map<String, dynamic>> placesJson) async {
     final List<String> list = placesJson.map((p) => json.encode(p)).toList();

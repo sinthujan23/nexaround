@@ -3,6 +3,7 @@ class ApiConstants {
   static const String apiVersion = '/api/v1';
   static String googleMapsApiKey = '';
   static String geminiApiKey = '';
+  static String serpApiKey = '';
   
   // Custom Google Sign-In credentials (from Google Cloud Project with Google Drive API enabled)
   // Leave empty to use defaults from google-services.json / GoogleService-Info.plist

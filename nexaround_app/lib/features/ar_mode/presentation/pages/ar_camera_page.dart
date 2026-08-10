@@ -212,7 +212,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
     {
       'id': 'Historical',
-      'label': 'Historical',
+      'label': 'POI',
       'icon': Icons.account_balance_rounded,
     },
     {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
@@ -2514,7 +2514,13 @@ class _ArCameraPageState extends State<ArCameraPage>
         return 'Near ${nearest.name}';
       }
     }
-    return _currentPosition != null ? 'Current Location' : 'Locating…';
+    // Show coordinates when GPS is available but reverse geocode hasn't resolved
+    if (_currentPosition != null) {
+      final lat = _currentPosition!.latitude.toStringAsFixed(4);
+      final lng = _currentPosition!.longitude.toStringAsFixed(4);
+      return '$lat, $lng';
+    }
+    return 'Locating…';
   }
 
   /// Bottom sheet that lets the user confirm which nearby place they're
@@ -4742,66 +4748,97 @@ class _ArCameraPageState extends State<ArCameraPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── COMPACT NAME PILL (uniform style for all markers) ──
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.18),
-                      width: 0.8,
+                // ── COMPACT NAME PILL (outside box turns green for the active selected place) ──
+                Builder(builder: (_) {
+                  final pointed = _frozenLandmark ?? _getPointedLandmark();
+                  final bool isAligned = (pointed != null && landmark.name == pointed.name) ||
+                      (_showInfoCard && _selectedLandmark != null && _selectedLandmark! >= 0 && _selectedLandmark! < _landmarks.length && _landmarks[_selectedLandmark!].name == landmark.name);
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
                     ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (CacheService.isPlaceSaved(landmark.name)) ...[
-                        const Icon(
-                          Icons.bookmark_rounded,
-                          color: AppColors.ratingGold,
-                          size: 12,
-                        ),
-                        const SizedBox(width: 4),
-                      ],
-                      Flexible(
-                        child: Text(
-                          landmark.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isAligned
+                            ? const Color(0xFF00E676)
+                            : Colors.white.withOpacity(0.18),
+                        width: isAligned ? 1.8 : 0.8,
                       ),
-                    ],
-                  ),
-                ),
+                      boxShadow: isAligned
+                          ? [
+                              BoxShadow(
+                                color: const Color(0xFF00E676).withOpacity(0.5),
+                                blurRadius: 10,
+                                spreadRadius: 1,
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (CacheService.isPlaceSaved(landmark.name)) ...[
+                          const Icon(
+                            Icons.bookmark_rounded,
+                            color: AppColors.ratingGold,
+                            size: 12,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Flexible(
+                          child: Text(
+                            landmark.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
                 const SizedBox(height: 4),
 
                 // ── COMPACT DARK CARD ──
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(16),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
-                      width: cardW,
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.75),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.12),
-                          width: 0.8,
+                Builder(builder: (_) {
+                  final pointed = _frozenLandmark ?? _getPointedLandmark();
+                  final bool isAligned = (pointed != null && landmark.name == pointed.name) ||
+                      (_showInfoCard && _selectedLandmark != null && _selectedLandmark! >= 0 && _selectedLandmark! < _landmarks.length && _landmarks[_selectedLandmark!].name == landmark.name);
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        width: cardW,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isAligned
+                                ? const Color(0xFF00E676)
+                                : Colors.white.withOpacity(0.12),
+                            width: isAligned ? 1.8 : 0.8,
+                          ),
+                          boxShadow: isAligned
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF00E676).withOpacity(0.5),
+                                    blurRadius: 12,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
                         ),
-                      ),
-                      child: Row(
+                        child: Row(
                         children: [
                           // Rating + Distance
                           Expanded(
@@ -4843,7 +4880,8 @@ class _ArCameraPageState extends State<ArCameraPage>
                       ),
                     ),
                   ),
-                ),
+                );
+                }),
 
                 // ── DOTTED LINE TO GROUND ──
                 SizedBox(
@@ -4903,15 +4941,16 @@ class _ArCameraPageState extends State<ArCameraPage>
       return const SizedBox.shrink();
     }
 
-    // Get the landmark the camera is pointing at
-    final pointedLandmark = _frozenLandmark ?? _getPointedLandmark();
     final screenW = MediaQuery.of(context).size.width;
     final screenH = MediaQuery.of(context).size.height;
+
+    final dotsResult = _buildOtherPlaceDots(screenW, screenH, _frozenLandmark);
+    final pointedLandmark = dotsResult.activeLandmark ?? _getPointedLandmark();
 
     return Stack(
       children: [
         // ── PLACE DOTS (highlighted when locked/pointed) ─
-        ..._buildOtherPlaceDots(pointedLandmark, screenW, screenH),
+        ...dotsResult.markers,
 
         // ── PLACE INFO PANEL (when pointing at a place) ─
         // ── PLACE INFO PANEL (always show) ─
@@ -5014,7 +5053,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                               case 'shopping':
                                                 return 'SHOPPING';
                                               case 'historical':
-                                                return 'HISTORICAL';
+                                                return 'POINTS OF INTEREST';
                                               case 'beach':
                                                 return 'NATURE';
                                               case 'hotel':
@@ -5134,6 +5173,90 @@ class _ArCameraPageState extends State<ArCameraPage>
                                                     ),
                                                   ),
                                                 ],
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+
+                                      // Heart/Pinned pill button connected to CacheService.favoritePlacesNotifier
+                                      ValueListenableBuilder<int>(
+                                        valueListenable:
+                                            CacheService.favoritePlacesNotifier,
+                                        builder: (context, _, __) {
+                                          final isFav =
+                                              CacheService.isPlaceFavorite(
+                                                pointedLandmark.name,
+                                              );
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTap: () async {
+                                              HapticFeedback.mediumImpact();
+                                              final map = {
+                                                'id': pointedLandmark.name,
+                                                'name': pointedLandmark.name,
+                                                'category_name':
+                                                    pointedLandmark.category,
+                                                'rating':
+                                                    pointedLandmark.rating,
+                                                'photo_urls':
+                                                    pointedLandmark
+                                                            .imagePath
+                                                            .isNotEmpty
+                                                        ? [
+                                                          pointedLandmark
+                                                              .imagePath,
+                                                        ]
+                                                        : <String>[],
+                                                'latitude':
+                                                    pointedLandmark.lat ?? 0.0,
+                                                'longitude':
+                                                    pointedLandmark.lng ?? 0.0,
+                                                'description':
+                                                    pointedLandmark.description,
+                                                'created_at':
+                                                    DateTime.now()
+                                                        .toIso8601String(),
+                                              };
+                                              await CacheService.toggleFavoritePlace(
+                                                map,
+                                              );
+                                              if (mounted) setState(() {});
+                                            },
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color:
+                                                    isFav
+                                                        ? const Color(0xFFFF2D55)
+                                                            .withOpacity(0.2)
+                                                        : Colors.white
+                                                            .withOpacity(0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(6),
+                                                border: Border.all(
+                                                  color:
+                                                      isFav
+                                                          ? const Color(0xFFFF2D55)
+                                                          : Colors.white
+                                                              .withOpacity(0.3),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Icon(
+                                                isFav
+                                                    ? Icons.favorite_rounded
+                                                    : Icons
+                                                        .favorite_border_rounded,
+                                                color:
+                                                    isFav
+                                                        ? const Color(0xFFFF2D55)
+                                                        : Colors.white,
+                                                size: 15,
                                               ),
                                             ),
                                           );
@@ -5423,20 +5546,20 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// direction badge (NE/N/etc) + dotted line dropping toward its ground
   /// position. Highlights the one the camera is currently pointed at.
   /// Cards are placed with greedy collision avoidance so they don't stack.
-  List<Widget> _buildOtherPlaceDots(
-    _ArLandmark? pointedLandmark,
+  _ArPlaceDotsResult _buildOtherPlaceDots(
     double screenW,
     double screenH,
+    _ArLandmark? overridePointed,
   ) {
     final List<Widget> markers = [];
     final visible = _filteredLandmarks;
 
-    if (visible.isEmpty) return markers;
+    if (visible.isEmpty) return _ArPlaceDotsResult(markers, null);
 
     final double maxDist = visible
         .map((l) => l.distanceM)
         .reduce((a, b) => a > b ? a : b);
-    if (maxDist <= 1.0) return markers;
+    if (maxDist <= 1.0) return _ArPlaceDotsResult(markers, null);
 
     // Notch-relative top boundary so the farthest cards clear the filter
     // chips. The filter chips bottom is at topPadding + 56.
@@ -5491,6 +5614,7 @@ class _ArCameraPageState extends State<ArCameraPage>
         _ArLabelPlacement(
           landmark: lm,
           bearing: liveBearing,
+          angleDiff: diff.abs(),
           preferredX: centerX,
           preferredY: preferredY,
         ),
@@ -5503,6 +5627,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     // Greedy collision avoidance: bump down if a placed card overlaps.
     final placedRects = <Rect>[];
+    final placedPlacements = <_ArLabelPlacement>[];
     for (final p in placements) {
       double x = p.preferredX - cardW / 2;
       double y = p.preferredY;
@@ -5525,6 +5650,15 @@ class _ArCameraPageState extends State<ArCameraPage>
       placedRects.add(candidate);
       p.finalX = candidate.left;
       p.finalY = candidate.top;
+      placedPlacements.add(p);
+    }
+
+    // Determine active landmark:
+    // Use overridePointed if set, otherwise pick the card closest to camera center angle among RENDERED cards.
+    _ArLandmark? activeLandmark = overridePointed;
+    if (activeLandmark == null && placedPlacements.isNotEmpty) {
+      placedPlacements.sort((a, b) => a.angleDiff.compareTo(b.angleDiff));
+      activeLandmark = placedPlacements.first.landmark;
     }
 
     for (final p in placements) {
@@ -5533,9 +5667,13 @@ class _ArCameraPageState extends State<ArCameraPage>
 
       final cardinal = _cardinalFromHeading(p.bearing);
 
-      // All cards use the same neutral dark style — no blue lock highlight
+      // ONLY the active landmark currently displayed on the bottom banner turns green
+      final bool isAligned =
+          activeLandmark != null && lm.name == activeLandmark.name;
       const Color cardBg = Colors.black;
-      final Color borderColor = Colors.white.withOpacity(0.08);
+      final Color borderColor = isAligned
+          ? const Color(0xFF00E676)
+          : Colors.white.withOpacity(0.08);
 
       // Realistic short pointers (fixed 40px length) instead of floor cables
       const double lineHeight = 40.0;
@@ -5567,14 +5705,24 @@ class _ArCameraPageState extends State<ArCameraPage>
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                       decoration: BoxDecoration(
                         color: cardBg,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: borderColor, width: 1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: borderColor,
+                          width: isAligned ? 1.8 : 1.0,
+                        ),
                         boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.35),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
+                          if (isAligned)
+                            BoxShadow(
+                              color: const Color(0xFF00E676).withOpacity(0.6),
+                              blurRadius: 16,
+                              spreadRadius: 2,
+                            )
+                          else
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.35),
+                              blurRadius: 12,
+                              offset: const Offset(0, 4),
+                            ),
                         ],
                       ),
                       child: Row(
@@ -5633,7 +5781,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                       case 'shopping':
                                         return 'SHOPPING';
                                       case 'historical':
-                                        return 'HISTORICAL';
+                                        return 'POINTS OF INTEREST';
                                       case 'beach':
                                         return 'NATURE';
                                       case 'hotel':
@@ -5644,8 +5792,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                                         return lm.category.toUpperCase();
                                     }
                                   }(),
-                                  style: const TextStyle(
-                                    color: Color(0xFF00E5FF),
+                                  style: TextStyle(
+                                    color: isAligned
+                                        ? const Color(0xFF00E676)
+                                        : const Color(0xFF00E5FF),
                                     fontSize: 7.5,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 0.2,
@@ -5679,12 +5829,14 @@ class _ArCameraPageState extends State<ArCameraPage>
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                // Top: Black Circle with White Rotated Arrow
+                                // Top: Green / Black Circle with White Rotated Arrow
                                 Container(
                                   width: 15,
                                   height: 15,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black,
+                                  decoration: BoxDecoration(
+                                    color: isAligned
+                                        ? const Color(0xFF00E676)
+                                        : Colors.black,
                                     shape: BoxShape.circle,
                                   ),
                                   child: Center(
@@ -5737,7 +5889,9 @@ class _ArCameraPageState extends State<ArCameraPage>
                     height: lineHeight,
                     child: CustomPaint(
                       painter: _DottedDropLinePainter(
-                        color: Colors.white.withOpacity(0.55),
+                        color: isAligned
+                            ? const Color(0xFF00E676)
+                            : Colors.white.withOpacity(0.55),
                       ),
                     ),
                   ),
@@ -5746,12 +5900,14 @@ class _ArCameraPageState extends State<ArCameraPage>
                     height: 8,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: Colors.white,
+                      color: isAligned ? const Color(0xFF00E676) : Colors.white,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.white.withOpacity(0.5),
-                          blurRadius: 6,
-                          spreadRadius: 1,
+                          color: isAligned
+                              ? const Color(0xFF00E676).withOpacity(0.8)
+                              : Colors.white.withOpacity(0.5),
+                          blurRadius: isAligned ? 8 : 6,
+                          spreadRadius: isAligned ? 2 : 1,
                         ),
                       ],
                     ),
@@ -5764,7 +5920,7 @@ class _ArCameraPageState extends State<ArCameraPage>
       );
     }
 
-    return markers;
+    return _ArPlaceDotsResult(markers, activeLandmark);
   }
 
   /// Map a cardinal direction string to a matching arrow icon.
@@ -8209,7 +8365,7 @@ HOW TO FORMAT EVERY REPLY:
                                       label: 'HISTORY',
                                       color: Colors.blueAccent,
                                       categoryId: 'Attractions',
-                                      prettyLabel: 'Historical Sites',
+                                      prettyLabel: 'Points of Interest',
                                     ),
                                     _buildNearbyTile(
                                       landmark: landmark,
@@ -8446,47 +8602,115 @@ HOW TO FORMAT EVERY REPLY:
                         );
                       }(),
                     ] else ...[
-                      // ── START NAVIGATION button ──
-                      GestureDetector(
-                        onTap: () {
-                          _startRouteNavigation(landmark);
-                        },
-                        child: Container(
-                          height: 52,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF00E5FF).withOpacity(0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.navigation_rounded,
-                                color: Colors.black,
-                                size: 20,
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'START NAVIGATION',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 14,
-                                  letterSpacing: 1.5,
+                      // ── START NAVIGATION BUTTON + PIN / FAVORITE HEART BUTTON ──
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                _startRouteNavigation(landmark);
+                              },
+                              child: Container(
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF00E5FF).withOpacity(0.3),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.navigation_rounded,
+                                      color: Colors.black,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'START NAVIGATION',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                        letterSpacing: 1.5,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 10),
+                          ValueListenableBuilder<int>(
+                            valueListenable: CacheService.favoritePlacesNotifier,
+                            builder: (context, _, __) {
+                              final isFav = CacheService.isPlaceFavorite(landmark.name);
+                              return GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () async {
+                                  HapticFeedback.mediumImpact();
+                                  final map = {
+                                    'id': landmark.name,
+                                    'name': landmark.name,
+                                    'category_name': landmark.category,
+                                    'rating': landmark.rating,
+                                    'photo_urls': landmark.imagePath.isNotEmpty ? [landmark.imagePath] : <String>[],
+                                    'latitude': landmark.lat ?? 0.0,
+                                    'longitude': landmark.lng ?? 0.0,
+                                    'description': landmark.description,
+                                    'created_at': DateTime.now().toIso8601String(),
+                                  };
+                                  await CacheService.toggleFavoritePlace(map);
+                                  if (mounted) setState(() {});
+                                },
+                                child: Container(
+                                  width: 52,
+                                  height: 52,
+                                  decoration: BoxDecoration(
+                                    color: isFav
+                                        ? const Color(0xFFFF2D55)
+                                        : Colors.white.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: isFav
+                                          ? const Color(0xFFFF2D55)
+                                          : Colors.white.withOpacity(0.25),
+                                      width: 1.2,
+                                    ),
+                                    boxShadow: [
+                                      if (isFav)
+                                        BoxShadow(
+                                          color: const Color(0xFFFF2D55).withOpacity(0.45),
+                                          blurRadius: 16,
+                                          offset: const Offset(0, 4),
+                                        )
+                                      else
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.2),
+                                          blurRadius: 8,
+                                        ),
+                                    ],
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+                                      color: Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
                       ),
                     ],
                   ],
@@ -9949,9 +10173,16 @@ class _ParticlePainter extends CustomPainter {
 /// collisions between overlapping cards. preferredX/Y come from bearing +
 /// distance; final values are set once the greedy bumper finds an unoccupied
 /// slot. A null finalY means the placement was dropped (pushed off-screen).
+class _ArPlaceDotsResult {
+  final List<Widget> markers;
+  final _ArLandmark? activeLandmark;
+  _ArPlaceDotsResult(this.markers, this.activeLandmark);
+}
+
 class _ArLabelPlacement {
   final _ArLandmark landmark;
   final double bearing;
+  final double angleDiff;
   final double preferredX;
   final double preferredY;
   double? finalX;
@@ -9960,6 +10191,7 @@ class _ArLabelPlacement {
   _ArLabelPlacement({
     required this.landmark,
     required this.bearing,
+    required this.angleDiff,
     required this.preferredX,
     required this.preferredY,
   });
@@ -10667,8 +10899,65 @@ extension _ArCameraNavigation on _ArCameraPageState {
         ),
       );
     } else {
-      // selected place is NOT in camera view — show nothing, let user pan naturally
-      return const SizedBox.shrink();
+      // selected place is NOT in camera view — show running chevrons & TURN X° TO FIND pill
+      final bool turnRight = diff > 0;
+      final int degrees = diff.abs().round();
+      final String dirLabel = turnRight ? 'RIGHT' : 'LEFT';
+      const Color guideColor = Color(0xFF00E5FF);
+
+      return Stack(
+        children: [
+          // ── ANIMATED CHEVRONS (3 BOLD RUNNING ARROWS) ON SCREEN EDGE ──
+          Positioned(
+            left: turnRight ? null : 20,
+            right: turnRight ? 20 : null,
+            top: screenH * 0.37,
+            child: _RunningChevrons(
+              turnRight: turnRight,
+              color: guideColor,
+            ),
+          ),
+
+          // ── TURN DIRECTION PILL OVERLAY ──
+          Positioned(
+            left: turnRight ? null : 20,
+            right: turnRight ? 20 : null,
+            top: screenH * 0.44,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: guideColor.withOpacity(0.6),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: guideColor.withOpacity(0.2),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    'TURN $dirLabel ${degrees}° TO FIND',
+                    style: const TextStyle(
+                      color: guideColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
     }
   }
 
@@ -11228,6 +11517,101 @@ class _NevaFormattedText extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 3 Bold Running Arrows widget with a sequential disappearing wave animation.
+class _RunningChevrons extends StatefulWidget {
+  final bool turnRight;
+  final Color color;
+
+  const _RunningChevrons({
+    required this.turnRight,
+    required this.color,
+  });
+
+  @override
+  State<_RunningChevrons> createState() => _RunningChevronsState();
+}
+
+class _RunningChevronsState extends State<_RunningChevrons>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 550),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final double progress = _controller.value;
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            // Fast sequential wave calculation for 3 arrows
+            final double arrowOffset = widget.turnRight ? i * 0.28 : (2 - i) * 0.28;
+            final double wavePos = (progress - arrowOffset) % 1.0;
+
+            // Opacity: zero at start, peaks at 1.0, fades out smoothly
+            final double opacity = (sin(wavePos * pi)).clamp(0.0, 1.0);
+
+            // Fast shift translation along direction
+            final double shift = widget.turnRight
+                ? (wavePos * 16.0) - 8.0
+                : (-wavePos * 16.0) + 8.0;
+
+            return Transform.translate(
+              offset: Offset(shift, 0),
+              child: Opacity(
+                opacity: opacity,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 1.0),
+                  child: Stack(
+                    children: [
+                      // Base icon with glow
+                      Icon(
+                        widget.turnRight
+                            ? Icons.arrow_forward_ios_rounded
+                            : Icons.arrow_back_ios_rounded,
+                        color: widget.color,
+                        size: 42,
+                      ),
+                      // Layer 2 for extra bold thickness
+                      Positioned(
+                        left: 1.5,
+                        top: 0,
+                        child: Icon(
+                          widget.turnRight
+                              ? Icons.arrow_forward_ios_rounded
+                              : Icons.arrow_back_ios_rounded,
+                          color: widget.color,
+                          size: 42,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

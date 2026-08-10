@@ -15,12 +15,12 @@ class OdysseyService {
   final GeminiService _gemini;
 
   static const String _systemInstruction =
-      'You are NexAround\'s expert local travel designer for Sri Lanka and '
-      'beyond. You craft realistic, budget-aware, day-by-day trip blueprints. '
+      'You are NexAround\'s expert local travel designer. '
+      'You craft realistic, budget-aware, day-by-day trip blueprints. '
       'You always reply with a single JSON object that matches the requested '
       'schema exactly — no markdown, no commentary, no code fences. Costs must '
-      'be realistic for the destination and stay within the user\'s total '
-      'budget. Prefer genuine, well-known places over invented ones.';
+      'be realistic for the destination and stay within the user\'s total budget. '
+      'CRITICAL HOTEL REQUIREMENT: Recommend ONLY genuine, real, famous, and currently operating hotels that are bookable on major platforms like Booking.com and Agoda. DO NOT invent fictitious names or append company suffixes like "Pvt Ltd" or "City". Use the exact official hotel name as listed on Google Maps / Booking.com (e.g., "The Heritage Madurai", "Hotel Royal Court", "Courtyard by Marriott Madurai"). Exclude non-existent or unbookable properties.';
 
   Future<Odyssey> generate({
     required String destination,

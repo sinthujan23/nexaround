@@ -52,6 +52,53 @@ class _ProfilePageState extends State<ProfilePage> {
                     _buildJournalCard(context),
                     const SizedBox(height: 28),
 
+                    // Favorite / Pinned Places (Heart)
+                    ValueListenableBuilder<int>(
+                      valueListenable: CacheService.favoritePlacesNotifier,
+                      builder: (context, _, __) {
+                        return _buildSection('Favorite Places', Icons.favorite_rounded, [
+                          if (CacheService.getFavoritePlaceJsons().isEmpty)
+                            const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(child: Text('No favorite places yet', style: TextStyle(color: AppColors.textTertiary))),
+                            )
+                          else
+                            ...CacheService.getFavoritePlaceJsons().map((jsonStr) {
+                              final attraction = AttractionModel.fromJson(json.decode(jsonStr));
+                              return _buildSavedPlace(
+                                attraction.name, 
+                                attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛', 
+                                attraction.rating, 
+                                attraction.categoryName ?? 'Attraction',
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => AttractionDetailPage(
+                                        id: attraction.id,
+                                        name: attraction.name,
+                                        category: attraction.categoryName ?? 'Attraction',
+                                        rating: attraction.rating,
+                                        distance: attraction.distanceM != null 
+                                            ? '${(attraction.distanceM! / 1000).toStringAsFixed(1)} km' 
+                                            : '0.0 km',
+                                        emoji: attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛',
+                                        imageUrl: attraction.photoUrls.isNotEmpty 
+                                            ? attraction.photoUrls.first 
+                                            : null,
+                                        latitude: attraction.latitude,
+                                        longitude: attraction.longitude,
+                                      ),
+                                    ),
+                                  );
+                                },
+                              );
+                            }),
+                        ]);
+                      },
+                    ),
+                    const SizedBox(height: 24),
+
                     // Saved Places
                     ValueListenableBuilder<int>(
                       valueListenable: CacheService.savedPlacesNotifier,
