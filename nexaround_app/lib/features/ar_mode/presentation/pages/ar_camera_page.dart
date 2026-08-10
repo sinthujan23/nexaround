@@ -5455,8 +5455,9 @@ class _ArCameraPageState extends State<ArCameraPage>
           ),
         ),
 
-        // ── DIRECTION GUIDE (turn indicator when target is off-camera) ──────
-        if (!_isNevaSearching) _buildDirectionGuide(),
+        // ── DIRECTION GUIDE (no landmark in view) ──────────────────
+        if (pointedLandmark == null && !_isNevaSearching)
+          _buildDirectionGuide(),
       ],
     );
   }
@@ -6113,109 +6114,127 @@ class _ArCameraPageState extends State<ArCameraPage>
       return _buildArEmptyState(guideBottom, icon, title, subtitle);
     }
 
-    // Determine target landmark: selected landmark if active, otherwise nearest by angle
-    _ArLandmark? targetLandmark;
-    double bestDiff = double.infinity;
-    double bestRawDiff = 0.0;
+    // Places are already visible in front of the user — don't nag them with
+    // a "turn" instruction toward a place they can already see. The guide is
+    // only meant to point the way when the camera is aimed at empty space.
+    // This is what fixed the "navigation shows randomly" report: the guide
+    // now strictly appears only when no places sit in the forward view.
+    if (_hasLandmarkInForwardView) return const SizedBox.shrink();
 
-    if (_selectedLandmark >= 0 && _selectedLandmark < _landmarks.length) {
-      targetLandmark = _landmarks[_selectedLandmark];
+    // Find the nearest place by angle difference
+    final pool = _filteredLandmarks;
+    _ArLandmark? nearest;
+    double bestDiff = double.infinity;
+    double bestRawDiff = 0; // signed: negative = left, positive = right
+
+    for (final lm in pool) {
       final double liveBearing =
-          (_currentPosition != null && targetLandmark.lat != null && targetLandmark.lng != null)
-              ? _calculateBearing(
-                  _currentPosition!.latitude,
-                  _currentPosition!.longitude,
-                  targetLandmark.lat!,
-                  targetLandmark.lng!,
-                )
-              : targetLandmark.bearing;
+          (_currentPosition != null && lm.lat != null && lm.lng != null)
+          ? _calculateBearing(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              lm.lat!,
+              lm.lng!,
+            )
+          : lm.bearing;
       double diff = liveBearing - _heading;
       if (diff > 180) diff -= 360;
       if (diff < -180) diff += 360;
-      bestDiff = diff.abs();
-      bestRawDiff = diff;
-    } else {
-      final pool = _filteredLandmarks;
-      for (final lm in pool) {
-        final double liveBearing =
-            (_currentPosition != null && lm.lat != null && lm.lng != null)
-                ? _calculateBearing(
-                    _currentPosition!.latitude,
-                    _currentPosition!.longitude,
-                    lm.lat!,
-                    lm.lng!,
-                  )
-                : lm.bearing;
-        double diff = liveBearing - _heading;
-        if (diff > 180) diff -= 360;
-        if (diff < -180) diff += 360;
-        if (diff.abs() < bestDiff) {
-          bestDiff = diff.abs();
-          bestRawDiff = diff;
-          targetLandmark = lm;
-        }
+      if (diff.abs() < bestDiff) {
+        bestDiff = diff.abs();
+        bestRawDiff = diff;
+        nearest = lm;
       }
     }
 
-    if (targetLandmark == null) return const SizedBox.shrink();
-
-    // Hide direction guide when target landmark is already centered in camera view
-    if (bestDiff < 12.0) return const SizedBox.shrink();
+    if (nearest == null) return const SizedBox.shrink();
 
     final bool turnRight = bestRawDiff > 0;
     final int degrees = bestDiff.round();
     final String dirLabel = turnRight ? 'RIGHT' : 'LEFT';
+    final IconData arrow = turnRight
+        ? Icons.turn_right_rounded
+        : Icons.turn_left_rounded;
     const Color guideColor = Color(0xFF00E5FF);
+
+    // Truncate name
+    final name = nearest.name.length > 15
+        ? '${nearest.name.substring(0, 14)}…'
+        : nearest.name;
 
     return Positioned(
       left: 0,
       right: 0,
       bottom: guideBottom,
       child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // ── ANIMATED RUNNING CHEVRONS (< < < or > > >) ──
-            _ArRunningChevrons(turnRight: turnRight, color: guideColor),
-            const SizedBox(height: 4),
-
-            // ── DIRECTION PILL: "TURN LEFT 61° TO FIND" ──
-            ClipRRect(
-              borderRadius: BorderRadius.circular(30),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 10,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(30),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6),
+                borderRadius: BorderRadius.circular(30),
+                border: Border.all(
+                  color: guideColor.withOpacity(0.4),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: guideColor.withOpacity(0.15),
+                    blurRadius: 16,
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.75),
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(
-                      color: guideColor.withOpacity(0.5),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: guideColor.withOpacity(0.2),
-                        blurRadius: 16,
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(arrow, color: guideColor, size: 20)
+                      .animate(onPlay: (c) => c.repeat(reverse: true))
+                      .moveX(
+                        begin: turnRight ? 0 : -4,
+                        end: turnRight ? 4 : 0,
+                        duration: 800.ms,
+                      ),
+                  const SizedBox(width: 8),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'TURN $dirLabel ${degrees}°',
+                        style: const TextStyle(
+                          color: guideColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        name,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.6),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
-                  child: Text(
-                    'TURN $dirLabel ${degrees}° TO FIND',
-                    style: const TextStyle(
-                      color: guideColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1.2,
+                  const SizedBox(width: 10),
+                  Text(
+                    nearest.distance,
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.45),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
+                ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -11339,72 +11358,6 @@ class _NevaFormattedText extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ArRunningChevrons extends StatefulWidget {
-  final bool turnRight;
-  final Color color;
-  const _ArRunningChevrons({required this.turnRight, required this.color});
-
-  @override
-  State<_ArRunningChevrons> createState() => _ArRunningChevronsState();
-}
-
-class _ArRunningChevronsState extends State<_ArRunningChevrons>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final icon = widget.turnRight
-        ? Icons.keyboard_arrow_right_rounded
-        : Icons.keyboard_arrow_left_rounded;
-
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, _) {
-        final double val = _controller.value;
-        return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(3, (index) {
-            final int pos = widget.turnRight ? index : (2 - index);
-            final double phase = (val - (pos * 0.22)) % 1.0;
-            final double opacity = (1.0 - (phase * 1.4)).clamp(0.25, 1.0);
-            final double translateX = widget.turnRight
-                ? (phase * 10.0 - 5.0)
-                : (-phase * 10.0 + 5.0);
-
-            return Transform.translate(
-              offset: Offset(translateX, 0),
-              child: Opacity(
-                opacity: opacity,
-                child: Icon(
-                  icon,
-                  color: widget.color,
-                  size: 26,
-                ),
-              ),
-            );
-          }),
-        );
-      },
     );
   }
 }

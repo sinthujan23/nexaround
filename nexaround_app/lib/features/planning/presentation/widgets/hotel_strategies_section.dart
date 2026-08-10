@@ -265,45 +265,45 @@ class HotelStrategiesSection extends StatelessWidget {
               const SizedBox(height: 16),
             ],
 
-            // Direct Booking Button — always routes through Google Hotels
-            // which shows prices from ALL providers (Agoda, Booking, etc.)
-            Builder(
-              builder: (context) {
-                final deepUrl = BookingUrlHelper.buildHotelUrl(
-                  rawUrl: hs.bookingUrl,
-                  providerName: provider,
-                  hotelName: hs.name,
-                  destination: odyssey.destination,
-                  checkInDate: odyssey.startDate ?? '',
-                  checkOutDate: odyssey.endDate ?? '',
-                  travelers: odyssey.travelers,
-                );
-                return SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _launchUrl(context, deepUrl),
-                    icon: const Icon(Icons.travel_explore_rounded, size: 16, color: Colors.white),
-                    label: const Text(
-                      'View on Google Hotels',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
+            // Direct Booking Button
+            if (hs.bookingUrl.isNotEmpty)
+              Builder(
+                builder: (context) {
+                  final deepUrl = BookingUrlHelper.buildHotelUrl(
+                    rawUrl: hs.bookingUrl,
+                    providerName: provider,
+                    hotelName: hs.name,
+                    destination: odyssey.destination,
+                    checkInDate: odyssey.startDate ?? '',
+                    checkOutDate: odyssey.endDate ?? '',
+                    travelers: odyssey.travelers,
+                  );
+                  return SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _launchUrl(context, deepUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
+                      label: Text(
+                        'Book Hotel on $provider',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                       ),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.black,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
+                  );
+                },
+              ),
           ],
         ),
       ),
