@@ -76,23 +76,15 @@ def _build_deep_booking_url(
             search_q += f" on {start_date}"
         return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
-        # Google Hotels query: always destination-based so it never shows
-        # "No results" for AI-generated hotel names that may not exist.
-        google_hotel_q = f"hotels in {dest}" if dest else query
-        if "booking" in prov_lower:
-            url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
-            if start_date:
-                url += f"&checkin={start_date}"
-            if end_date:
-                url += f"&checkout={end_date}"
-            url += f"&group_adults={max(travelers, 1)}"
-            return url
-        else:
-            # Google Hotels as primary fallback
-            google_url = f"https://www.google.com/travel/hotels?q={urllib.parse.quote_plus(google_hotel_q)}"
-            if start_date and end_date:
-                google_url += f"&dates={start_date},{end_date}"
-            return google_url
+        # Always use Google Hotels — it reliably handles text-based hotel
+        # name searches, pre-fills dates, and shows prices from ALL
+        # providers (Agoda, Booking.com, Expedia, etc.) on one page.
+        # Individual providers (Agoda, Booking) need numeric property/city
+        # IDs which we don't have, causing broken links.
+        google_url = f"https://www.google.com/travel/hotels?q={encoded_query}"
+        if start_date and end_date:
+            google_url += f"&dates={start_date},{end_date}"
+        return google_url
 
 # Gemini Flash models rotate through transient 503 "high demand" — WHICH model
 # is overloaded changes minute to minute, so retrying one model isn't enough.

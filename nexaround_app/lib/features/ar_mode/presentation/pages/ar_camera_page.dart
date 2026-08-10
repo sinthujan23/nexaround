@@ -17,6 +17,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/ai_companion/presentation/pages/ai_chat_page.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/mapbox_geocoding_service.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
@@ -108,6 +109,7 @@ class _ArCameraPageState extends State<ArCameraPage>
   _ArLandmark? _arDiscoveryTarget;
   geo.Position? _currentPosition;
   String _currentLocationName = '';
+  bool _isResolvingLocationName = false;
   bool _isSilentCapturing =
       false; // Silent capture in progress (no UI feedback)
   bool _hasCapturedForCurrentTarget =
@@ -210,7 +212,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
     {
       'id': 'Historical',
-      'label': 'Historical',
+      'label': 'Points of Interest',
       'icon': Icons.account_balance_rounded,
     },
     {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
@@ -1082,6 +1084,14 @@ class _ArCameraPageState extends State<ArCameraPage>
           );
           setState(() {
             _currentPosition = pos;
+
+            // Trigger reverse geocode retry if current location name hasn't resolved yet
+            if (!_isResolvingLocationName &&
+                (_currentLocationName.isEmpty ||
+                    _currentLocationName == 'Locating...' ||
+                    _currentLocationName == 'Nearby')) {
+              _resolveCurrentLocationName(pos.latitude, pos.longitude);
+            }
 
             // Update distances for all landmarks dynamically as the user moves
             _landmarks = _landmarks.map((lm) {
@@ -2417,13 +2427,25 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   Future<void> _resolveCurrentLocationName(double lat, double lng) async {
+    if (_isResolvingLocationName) return;
+    _isResolvingLocationName = true;
     try {
-      final name = await GooglePlacesService.reverseGeocode(lat, lng);
-      if (mounted && name.isNotEmpty) {
+      String name = await GooglePlacesService.reverseGeocode(lat, lng);
+      // If primary reverse geocode is empty or generic 'Nearby', try Mapbox as fallback
+      if (name.isEmpty || name == 'Nearby' || name == 'Locating...') {
+        final mapboxName =
+            await MapboxGeocodingService.reverseGeocode(lat, lng);
+        if (mapboxName.isNotEmpty && mapboxName != 'Nearby') {
+          name = mapboxName;
+        }
+      }
+      if (mounted && name.isNotEmpty && name != 'Locating...') {
         setState(() => _currentLocationName = name);
       }
     } catch (e) {
       debugPrint('Reverse geocode error: $e');
+    } finally {
+      _isResolvingLocationName = false;
     }
   }
 
@@ -2462,8 +2484,12 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   /// Pick the most specific name we can show in the "Your Location" pill.
-  /// Honours a manual user pick first; otherwise uses the smart candidate
-  /// ranking; falls back to the reverse-geocoded locality.
+  /// Multi-tier hierarchy:
+  /// 1. Manual user choice
+  /// 2. Specific landmark within 150m (At/Near)
+  /// 3. Reverse-geocoded locality (Google/Mapbox)
+  /// 4. Area fallback from loaded landmarks (within 1.5km)
+  /// 5. Current Location (when GPS fixed) or Locating...
   String _resolveDisplayLocation() {
     if (_userPickedLocationName != null &&
         _userPickedLocationName!.isNotEmpty) {
@@ -2477,8 +2503,18 @@ class _ArCameraPageState extends State<ArCameraPage>
       if (d <= 40) return 'At ${pick.name}';
       if (d <= 150) return 'Near ${pick.name}';
     }
-    if (_currentLocationName.isNotEmpty) return _currentLocationName;
-    return 'Locating…';
+    if (_currentLocationName.isNotEmpty &&
+        _currentLocationName != 'Locating...') {
+      return _currentLocationName;
+    }
+    // Fallback: If reverse-geocoding API is slow/failed, but we have loaded landmarks nearby (< 1.5km)
+    if (_landmarks.isNotEmpty) {
+      final nearest = _landmarks.first;
+      if (nearest.distanceM <= 1500) {
+        return 'Near ${nearest.name}';
+      }
+    }
+    return _currentPosition != null ? 'Current Location' : 'Locating…';
   }
 
   /// Bottom sheet that lets the user confirm which nearby place they're
@@ -4690,6 +4726,14 @@ class _ArCameraPageState extends State<ArCameraPage>
     final cardinal = _cardinalFromHeading(landmark.bearing);
     final arrowIcon = _arrowIconForCardinal(cardinal);
 
+    // Alignment check: when camera points directly towards spot (angle within 12° or selected)
+    final bool isAligned = angle.abs() <= 12.0 ||
+        (_selectedLandmark >= 0 &&
+            _selectedLandmark < _landmarks.length &&
+            _landmarks[_selectedLandmark].name == landmark.name);
+    final Color greenAccent = const Color(0xFF10B981);
+    final Color greenGlow = const Color(0xFF00E676);
+
     return Positioned(
           left: leftPos,
           top: topPos,
@@ -4706,19 +4750,32 @@ class _ArCameraPageState extends State<ArCameraPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── COMPACT NAME PILL (uniform style for all markers) ──
+                // ── COMPACT NAME PILL (glowing green when aligned) ──
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
+                    color: isAligned
+                        ? const Color(0xFF064E3B).withOpacity(0.9)
+                        : Colors.black.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.18),
-                      width: 0.8,
+                      color: isAligned
+                          ? greenAccent
+                          : Colors.white.withOpacity(0.18),
+                      width: isAligned ? 1.5 : 0.8,
                     ),
+                    boxShadow: isAligned
+                        ? [
+                            BoxShadow(
+                              color: greenGlow.withOpacity(0.5),
+                              blurRadius: 10,
+                              spreadRadius: 1,
+                            )
+                          ]
+                        : null,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -4734,10 +4791,11 @@ class _ArCameraPageState extends State<ArCameraPage>
                       Flexible(
                         child: Text(
                           landmark.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                            fontWeight:
+                                isAligned ? FontWeight.w900 : FontWeight.w800,
                             letterSpacing: -0.3,
                           ),
                           maxLines: 1,
@@ -4749,7 +4807,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                 ),
                 const SizedBox(height: 4),
 
-                // ── COMPACT DARK CARD ──
+                // ── COMPACT DARK CARD (glowing green border when aligned) ──
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
@@ -4761,9 +4819,19 @@ class _ArCameraPageState extends State<ArCameraPage>
                         color: Colors.black.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: Colors.white.withOpacity(0.12),
-                          width: 0.8,
+                          color: isAligned
+                              ? greenAccent
+                              : Colors.white.withOpacity(0.12),
+                          width: isAligned ? 1.5 : 0.8,
                         ),
+                        boxShadow: isAligned
+                            ? [
+                                BoxShadow(
+                                  color: greenGlow.withOpacity(0.4),
+                                  blurRadius: 12,
+                                )
+                              ]
+                            : null,
                       ),
                       child: Row(
                         children: [
@@ -4795,9 +4863,13 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 Text(
                                   landmark.distance,
                                   style: TextStyle(
-                                    color: Colors.white.withOpacity(0.7),
+                                    color: isAligned
+                                        ? greenGlow
+                                        : Colors.white.withOpacity(0.7),
                                     fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                    fontWeight: isAligned
+                                        ? FontWeight.w800
+                                        : FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -4809,29 +4881,36 @@ class _ArCameraPageState extends State<ArCameraPage>
                   ),
                 ),
 
-                // ── DOTTED LINE TO GROUND ──
+                // ── DOTTED LINE TO GROUND (GREEN WHEN ALIGNED) ──
                 SizedBox(
                   height: 12,
                   child: CustomPaint(
                     size: const Size(2, double.infinity),
                     painter: _DottedLinePainter(
-                      color: Colors.white.withOpacity(0.4),
+                      color: isAligned
+                          ? greenAccent
+                          : Colors.white.withOpacity(0.4),
                       dashHeight: 3,
                       dashSpace: 3,
-                      dashWidth: 1.2,
+                      dashWidth: isAligned ? 2.0 : 1.2,
                     ),
                   ),
                 ),
                 Container(
-                  width: 6,
-                  height: 6,
+                  width: isAligned ? 10 : 6,
+                  height: isAligned ? 10 : 6,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withOpacity(0.7),
+                    color: isAligned
+                        ? greenGlow
+                        : Colors.white.withOpacity(0.7),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.white.withOpacity(0.3),
-                        blurRadius: 4,
+                        color: isAligned
+                            ? greenGlow
+                            : Colors.white.withOpacity(0.3),
+                        blurRadius: isAligned ? 10 : 4,
+                        spreadRadius: isAligned ? 2 : 0,
                       ),
                     ],
                   ),
@@ -5376,9 +5455,8 @@ class _ArCameraPageState extends State<ArCameraPage>
           ),
         ),
 
-        // ── DIRECTION GUIDE (no landmark in view) ──────────────────
-        if (pointedLandmark == null && !_isNevaSearching)
-          _buildDirectionGuide(),
+        // ── DIRECTION GUIDE (turn indicator when target is off-camera) ──────
+        if (!_isNevaSearching) _buildDirectionGuide(),
       ],
     );
   }
@@ -6035,127 +6113,109 @@ class _ArCameraPageState extends State<ArCameraPage>
       return _buildArEmptyState(guideBottom, icon, title, subtitle);
     }
 
-    // Places are already visible in front of the user — don't nag them with
-    // a "turn" instruction toward a place they can already see. The guide is
-    // only meant to point the way when the camera is aimed at empty space.
-    // This is what fixed the "navigation shows randomly" report: the guide
-    // now strictly appears only when no places sit in the forward view.
-    if (_hasLandmarkInForwardView) return const SizedBox.shrink();
-
-    // Find the nearest place by angle difference
-    final pool = _filteredLandmarks;
-    _ArLandmark? nearest;
+    // Determine target landmark: selected landmark if active, otherwise nearest by angle
+    _ArLandmark? targetLandmark;
     double bestDiff = double.infinity;
-    double bestRawDiff = 0; // signed: negative = left, positive = right
+    double bestRawDiff = 0.0;
 
-    for (final lm in pool) {
+    if (_selectedLandmark >= 0 && _selectedLandmark < _landmarks.length) {
+      targetLandmark = _landmarks[_selectedLandmark];
       final double liveBearing =
-          (_currentPosition != null && lm.lat != null && lm.lng != null)
-          ? _calculateBearing(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
-              lm.lat!,
-              lm.lng!,
-            )
-          : lm.bearing;
+          (_currentPosition != null && targetLandmark.lat != null && targetLandmark.lng != null)
+              ? _calculateBearing(
+                  _currentPosition!.latitude,
+                  _currentPosition!.longitude,
+                  targetLandmark.lat!,
+                  targetLandmark.lng!,
+                )
+              : targetLandmark.bearing;
       double diff = liveBearing - _heading;
       if (diff > 180) diff -= 360;
       if (diff < -180) diff += 360;
-      if (diff.abs() < bestDiff) {
-        bestDiff = diff.abs();
-        bestRawDiff = diff;
-        nearest = lm;
+      bestDiff = diff.abs();
+      bestRawDiff = diff;
+    } else {
+      final pool = _filteredLandmarks;
+      for (final lm in pool) {
+        final double liveBearing =
+            (_currentPosition != null && lm.lat != null && lm.lng != null)
+                ? _calculateBearing(
+                    _currentPosition!.latitude,
+                    _currentPosition!.longitude,
+                    lm.lat!,
+                    lm.lng!,
+                  )
+                : lm.bearing;
+        double diff = liveBearing - _heading;
+        if (diff > 180) diff -= 360;
+        if (diff < -180) diff += 360;
+        if (diff.abs() < bestDiff) {
+          bestDiff = diff.abs();
+          bestRawDiff = diff;
+          targetLandmark = lm;
+        }
       }
     }
 
-    if (nearest == null) return const SizedBox.shrink();
+    if (targetLandmark == null) return const SizedBox.shrink();
+
+    // Hide direction guide when target landmark is already centered in camera view
+    if (bestDiff < 12.0) return const SizedBox.shrink();
 
     final bool turnRight = bestRawDiff > 0;
     final int degrees = bestDiff.round();
     final String dirLabel = turnRight ? 'RIGHT' : 'LEFT';
-    final IconData arrow = turnRight
-        ? Icons.turn_right_rounded
-        : Icons.turn_left_rounded;
     const Color guideColor = Color(0xFF00E5FF);
-
-    // Truncate name
-    final name = nearest.name.length > 15
-        ? '${nearest.name.substring(0, 14)}…'
-        : nearest.name;
 
     return Positioned(
       left: 0,
       right: 0,
       bottom: guideBottom,
       child: Center(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(30),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: guideColor.withOpacity(0.4),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: guideColor.withOpacity(0.15),
-                    blurRadius: 16,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ── ANIMATED RUNNING CHEVRONS (< < < or > > >) ──
+            _ArRunningChevrons(turnRight: turnRight, color: guideColor),
+            const SizedBox(height: 4),
+
+            // ── DIRECTION PILL: "TURN LEFT 61° TO FIND" ──
+            ClipRRect(
+              borderRadius: BorderRadius.circular(30),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 10,
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(arrow, color: guideColor, size: 20)
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .moveX(
-                        begin: turnRight ? 0 : -4,
-                        end: turnRight ? 4 : 0,
-                        duration: 800.ms,
-                      ),
-                  const SizedBox(width: 8),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'TURN $dirLabel ${degrees}°',
-                        style: const TextStyle(
-                          color: guideColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        name,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.75),
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: guideColor.withOpacity(0.5),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: guideColor.withOpacity(0.2),
+                        blurRadius: 16,
                       ),
                     ],
                   ),
-                  const SizedBox(width: 10),
-                  Text(
-                    nearest.distance,
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.45),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                  child: Text(
+                    'TURN $dirLabel ${degrees}° TO FIND',
+                    style: const TextStyle(
+                      color: guideColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.2,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -8410,47 +8470,134 @@ HOW TO FORMAT EVERY REPLY:
                         );
                       }(),
                     ] else ...[
-                      // ── START NAVIGATION button ──
-                      GestureDetector(
-                        onTap: () {
-                          _startRouteNavigation(landmark);
-                        },
-                        child: Container(
-                          height: 52,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF00E5FF).withOpacity(0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
+                      // ── BOTTOM ACTION ROW: HEART PIN BUTTON + START NAVIGATION ──
+                      Row(
+                        children: [
+                          // Dedicated Heart Pin Button (Option 2 - Pinned Places List)
+                          ValueListenableBuilder<int>(
+                            valueListenable: CacheService.pinnedPlacesNotifier,
+                            builder: (context, _, __) {
+                              final isPinned = CacheService.isPlacePinned(
+                                landmark.name,
+                              );
+                              return GestureDetector(
+                                onTap: () async {
+                                  HapticFeedback.mediumImpact();
+                                  final map = {
+                                    'id': landmark.name,
+                                    'name': landmark.name,
+                                    'category_name': landmark.category,
+                                    'rating': landmark.rating,
+                                    'photo_urls':
+                                        landmark.imagePath.isNotEmpty
+                                            ? [landmark.imagePath]
+                                            : <String>[],
+                                    'latitude': landmark.lat ?? 0.0,
+                                    'longitude': landmark.lng ?? 0.0,
+                                    'description': landmark.description,
+                                    'created_at':
+                                        DateTime.now().toIso8601String(),
+                                  };
+                                  await CacheService.togglePinnedPlace(map);
+                                  if (mounted) setState(() {});
+                                },
+                                child: Container(
+                                  height: 52,
+                                  width: 52,
+                                  margin: const EdgeInsets.only(right: 10),
+                                  decoration: BoxDecoration(
+                                    color:
+                                        isPinned
+                                            ? const Color(
+                                              0xFFFF1744,
+                                            ).withOpacity(0.2)
+                                            : Colors.white.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color:
+                                          isPinned
+                                              ? const Color(0xFFFF1744)
+                                              : Colors.white.withOpacity(0.3),
+                                      width: 1.5,
+                                    ),
+                                    boxShadow:
+                                        isPinned
+                                            ? [
+                                              BoxShadow(
+                                                color: const Color(
+                                                  0xFFFF1744,
+                                                ).withOpacity(0.4),
+                                                blurRadius: 10,
+                                              ),
+                                            ]
+                                            : null,
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      isPinned
+                                          ? Icons.favorite_rounded
+                                          : Icons.favorite_border_rounded,
+                                      color:
+                                          isPinned
+                                              ? const Color(0xFFFF1744)
+                                              : Colors.white,
+                                      size: 24,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                           ),
-                          child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.navigation_rounded,
-                                color: Colors.black,
-                                size: 20,
-                              ),
-                              SizedBox(width: 10),
-                              Text(
-                                'START NAVIGATION',
-                                style: TextStyle(
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 14,
-                                  letterSpacing: 1.5,
+                          // ── START NAVIGATION button ──
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                _startRouteNavigation(landmark);
+                              },
+                              child: Container(
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFF00E5FF),
+                                      Color(0xFF00B0FF),
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(
+                                        0xFF00E5FF,
+                                      ).withOpacity(0.3),
+                                      blurRadius: 16,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.navigation_rounded,
+                                      color: Colors.black,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 8),
+                                    Text(
+                                      'START NAVIGATION',
+                                      style: TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13,
+                                        letterSpacing: 1.2,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ],
                   ],
@@ -11192,6 +11339,72 @@ class _NevaFormattedText extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ArRunningChevrons extends StatefulWidget {
+  final bool turnRight;
+  final Color color;
+  const _ArRunningChevrons({required this.turnRight, required this.color});
+
+  @override
+  State<_ArRunningChevrons> createState() => _ArRunningChevronsState();
+}
+
+class _ArRunningChevronsState extends State<_ArRunningChevrons>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = widget.turnRight
+        ? Icons.keyboard_arrow_right_rounded
+        : Icons.keyboard_arrow_left_rounded;
+
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        final double val = _controller.value;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (index) {
+            final int pos = widget.turnRight ? index : (2 - index);
+            final double phase = (val - (pos * 0.22)) % 1.0;
+            final double opacity = (1.0 - (phase * 1.4)).clamp(0.25, 1.0);
+            final double translateX = widget.turnRight
+                ? (phase * 10.0 - 5.0)
+                : (-phase * 10.0 + 5.0);
+
+            return Transform.translate(
+              offset: Offset(translateX, 0),
+              child: Opacity(
+                opacity: opacity,
+                child: Icon(
+                  icon,
+                  color: widget.color,
+                  size: 26,
+                ),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 }

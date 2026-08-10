@@ -16,6 +16,10 @@
     // 1. Render Header Nav
     var siteNav = document.getElementById('siteNav');
     if (siteNav) {
+      if (path === '/contact') {
+        siteNav.classList.remove('nav--onDark');
+      }
+
       function navAttr(target) {
         return (path === target) ? ' aria-current="page"' : '';
       }
@@ -37,7 +41,7 @@
             '<a href="/case-studies"' + navAttr('/case-studies') + '>Case Studies</a>' +
             '<a href="/industries"' + navAttr('/industries') + '>Industries</a>' +
           '</nav>' +
-          '<a href="/contact" class="nav__ai">' +
+          '<a href="/contact" class="nav__ai"' + navAttr('/contact') + '>' +
             '<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><path d="M8 1L9.5 6.5L15 8L9.5 9.5L8 15L6.5 9.5L1 8L6.5 6.5L8 1Z"/></svg>' +
             ' Let\'s Talk' +
           '</a>' +
