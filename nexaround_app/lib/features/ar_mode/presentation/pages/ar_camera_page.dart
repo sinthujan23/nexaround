@@ -212,7 +212,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     {'id': 'Shopping', 'label': 'Shopping', 'icon': Icons.shopping_bag_rounded},
     {
       'id': 'Historical',
-      'label': 'Points of Interest',
+      'label': 'Historical',
       'icon': Icons.account_balance_rounded,
     },
     {'id': 'Nature', 'label': 'Nature', 'icon': Icons.park_rounded},
@@ -4726,14 +4726,6 @@ class _ArCameraPageState extends State<ArCameraPage>
     final cardinal = _cardinalFromHeading(landmark.bearing);
     final arrowIcon = _arrowIconForCardinal(cardinal);
 
-    // Alignment check: when camera points directly towards spot (angle within 12° or selected)
-    final bool isAligned = angle.abs() <= 12.0 ||
-        (_selectedLandmark >= 0 &&
-            _selectedLandmark < _landmarks.length &&
-            _landmarks[_selectedLandmark].name == landmark.name);
-    final Color greenAccent = const Color(0xFF10B981);
-    final Color greenGlow = const Color(0xFF00E676);
-
     return Positioned(
           left: leftPos,
           top: topPos,
@@ -4750,32 +4742,19 @@ class _ArCameraPageState extends State<ArCameraPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // ── COMPACT NAME PILL (glowing green when aligned) ──
+                // ── COMPACT NAME PILL (uniform style for all markers) ──
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isAligned
-                        ? const Color(0xFF064E3B).withOpacity(0.9)
-                        : Colors.black.withOpacity(0.7),
+                    color: Colors.black.withOpacity(0.7),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: isAligned
-                          ? greenAccent
-                          : Colors.white.withOpacity(0.18),
-                      width: isAligned ? 1.5 : 0.8,
+                      color: Colors.white.withOpacity(0.18),
+                      width: 0.8,
                     ),
-                    boxShadow: isAligned
-                        ? [
-                            BoxShadow(
-                              color: greenGlow.withOpacity(0.5),
-                              blurRadius: 10,
-                              spreadRadius: 1,
-                            )
-                          ]
-                        : null,
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -4791,11 +4770,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                       Flexible(
                         child: Text(
                           landmark.name,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11,
-                            fontWeight:
-                                isAligned ? FontWeight.w900 : FontWeight.w800,
+                            fontWeight: FontWeight.w800,
                             letterSpacing: -0.3,
                           ),
                           maxLines: 1,
@@ -4807,7 +4785,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                 ),
                 const SizedBox(height: 4),
 
-                // ── COMPACT DARK CARD (glowing green border when aligned) ──
+                // ── COMPACT DARK CARD ──
                 ClipRRect(
                   borderRadius: BorderRadius.circular(16),
                   child: BackdropFilter(
@@ -4819,19 +4797,9 @@ class _ArCameraPageState extends State<ArCameraPage>
                         color: Colors.black.withOpacity(0.75),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: isAligned
-                              ? greenAccent
-                              : Colors.white.withOpacity(0.12),
-                          width: isAligned ? 1.5 : 0.8,
+                          color: Colors.white.withOpacity(0.12),
+                          width: 0.8,
                         ),
-                        boxShadow: isAligned
-                            ? [
-                                BoxShadow(
-                                  color: greenGlow.withOpacity(0.4),
-                                  blurRadius: 12,
-                                )
-                              ]
-                            : null,
                       ),
                       child: Row(
                         children: [
@@ -4863,13 +4831,9 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 Text(
                                   landmark.distance,
                                   style: TextStyle(
-                                    color: isAligned
-                                        ? greenGlow
-                                        : Colors.white.withOpacity(0.7),
+                                    color: Colors.white.withOpacity(0.7),
                                     fontSize: 11,
-                                    fontWeight: isAligned
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ],
@@ -4881,36 +4845,29 @@ class _ArCameraPageState extends State<ArCameraPage>
                   ),
                 ),
 
-                // ── DOTTED LINE TO GROUND (GREEN WHEN ALIGNED) ──
+                // ── DOTTED LINE TO GROUND ──
                 SizedBox(
                   height: 12,
                   child: CustomPaint(
                     size: const Size(2, double.infinity),
                     painter: _DottedLinePainter(
-                      color: isAligned
-                          ? greenAccent
-                          : Colors.white.withOpacity(0.4),
+                      color: Colors.white.withOpacity(0.4),
                       dashHeight: 3,
                       dashSpace: 3,
-                      dashWidth: isAligned ? 2.0 : 1.2,
+                      dashWidth: 1.2,
                     ),
                   ),
                 ),
                 Container(
-                  width: isAligned ? 10 : 6,
-                  height: isAligned ? 10 : 6,
+                  width: 6,
+                  height: 6,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: isAligned
-                        ? greenGlow
-                        : Colors.white.withOpacity(0.7),
+                    color: Colors.white.withOpacity(0.7),
                     boxShadow: [
                       BoxShadow(
-                        color: isAligned
-                            ? greenGlow
-                            : Colors.white.withOpacity(0.3),
-                        blurRadius: isAligned ? 10 : 4,
-                        spreadRadius: isAligned ? 2 : 0,
+                        color: Colors.white.withOpacity(0.3),
+                        blurRadius: 4,
                       ),
                     ],
                   ),
@@ -8489,134 +8446,47 @@ HOW TO FORMAT EVERY REPLY:
                         );
                       }(),
                     ] else ...[
-                      // ── BOTTOM ACTION ROW: HEART PIN BUTTON + START NAVIGATION ──
-                      Row(
-                        children: [
-                          // Dedicated Heart Pin Button (Option 2 - Pinned Places List)
-                          ValueListenableBuilder<int>(
-                            valueListenable: CacheService.pinnedPlacesNotifier,
-                            builder: (context, _, __) {
-                              final isPinned = CacheService.isPlacePinned(
-                                landmark.name,
-                              );
-                              return GestureDetector(
-                                onTap: () async {
-                                  HapticFeedback.mediumImpact();
-                                  final map = {
-                                    'id': landmark.name,
-                                    'name': landmark.name,
-                                    'category_name': landmark.category,
-                                    'rating': landmark.rating,
-                                    'photo_urls':
-                                        landmark.imagePath.isNotEmpty
-                                            ? [landmark.imagePath]
-                                            : <String>[],
-                                    'latitude': landmark.lat ?? 0.0,
-                                    'longitude': landmark.lng ?? 0.0,
-                                    'description': landmark.description,
-                                    'created_at':
-                                        DateTime.now().toIso8601String(),
-                                  };
-                                  await CacheService.togglePinnedPlace(map);
-                                  if (mounted) setState(() {});
-                                },
-                                child: Container(
-                                  height: 52,
-                                  width: 52,
-                                  margin: const EdgeInsets.only(right: 10),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        isPinned
-                                            ? const Color(
-                                              0xFFFF1744,
-                                            ).withOpacity(0.2)
-                                            : Colors.white.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(16),
-                                    border: Border.all(
-                                      color:
-                                          isPinned
-                                              ? const Color(0xFFFF1744)
-                                              : Colors.white.withOpacity(0.3),
-                                      width: 1.5,
-                                    ),
-                                    boxShadow:
-                                        isPinned
-                                            ? [
-                                              BoxShadow(
-                                                color: const Color(
-                                                  0xFFFF1744,
-                                                ).withOpacity(0.4),
-                                                blurRadius: 10,
-                                              ),
-                                            ]
-                                            : null,
-                                  ),
-                                  child: Center(
-                                    child: Icon(
-                                      isPinned
-                                          ? Icons.favorite_rounded
-                                          : Icons.favorite_border_rounded,
-                                      color:
-                                          isPinned
-                                              ? const Color(0xFFFF1744)
-                                              : Colors.white,
-                                      size: 24,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
+                      // ── START NAVIGATION button ──
+                      GestureDetector(
+                        onTap: () {
+                          _startRouteNavigation(landmark);
+                        },
+                        child: Container(
+                          height: 52,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF00E5FF), Color(0xFF00B0FF)],
+                            ),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF00E5FF).withOpacity(0.3),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                          // ── START NAVIGATION button ──
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () {
-                                _startRouteNavigation(landmark);
-                              },
-                              child: Container(
-                                height: 52,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF00E5FF),
-                                      Color(0xFF00B0FF),
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFF00E5FF,
-                                      ).withOpacity(0.3),
-                                      blurRadius: 16,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.navigation_rounded,
-                                      color: Colors.black,
-                                      size: 20,
-                                    ),
-                                    SizedBox(width: 8),
-                                    Text(
-                                      'START NAVIGATION',
-                                      style: TextStyle(
-                                        color: Colors.black,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: 13,
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                  ],
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.navigation_rounded,
+                                color: Colors.black,
+                                size: 20,
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'START NAVIGATION',
+                                style: TextStyle(
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 14,
+                                  letterSpacing: 1.5,
                                 ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ],
