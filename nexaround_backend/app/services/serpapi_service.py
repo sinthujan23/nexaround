@@ -235,33 +235,27 @@ def extract_hotel_strategies_from_serpapi(
         # Rating string
         rating_str = f"{rating} ★" if rating else "N/A"
 
-        # Provider: alternate between Booking.com and Agoda for variety
-        provider = "Booking.com" if rank % 2 == 1 else "Agoda"
+        # Provider: Google Travel aggregates rates across all platforms (Booking.com, Agoda, Direct)
+        provider = "Google Travel"
 
-        # Booking URL: use SerpAPI's direct link if available, otherwise build one
+        # Clean hotel name by stripping room specifications (e.g. - Family Room...)
+        import re
+        clean_name = re.sub(
+            r'\s*[-–—]\s*(Family|Standard|Deluxe|Executive|Superior|Suite|Villa|Room|Bed|King|Queen|Twin|Double|Single|Sea View|Garden View|Ocean View|Penthouse|Bungalow|Apartment|Studio|Cottage|Luxury|Chalet|Resort|One|Two|Three|Four|Five|\d+).*',
+            '',
+            name,
+            flags=re.IGNORECASE
+        ).strip(" -–—,")
+        if not clean_name:
+            clean_name = name
+
+        # Booking URL: use SerpAPI's direct property link if available, otherwise build Google Travel deep link with dates
         serpapi_link = p.get("link", "")
-
-        # Build provider-specific deep link with dates
-        if provider == "Booking.com":
-            import urllib.parse
-            encoded_query = urllib.parse.quote_plus(f"{name} {destination}")
-            booking_url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
-            if check_in_date:
-                booking_url += f"&checkin={check_in_date}"
-            if check_out_date:
-                booking_url += f"&checkout={check_out_date}"
-            booking_url += f"&group_adults={max(travelers, 1)}"
-        else:
-            # For Agoda and others, use Google Hotels link (which shows all providers)
-            # This is more reliable than building Agoda-specific URLs
-            if serpapi_link:
-                booking_url = serpapi_link
-            else:
-                import urllib.parse
-                google_q = urllib.parse.quote_plus(f"{name} {destination}")
-                booking_url = f"https://www.google.com/travel/hotels?q={google_q}"
-                if check_in_date and check_out_date:
-                    booking_url += f"&dates={check_in_date},{check_out_date}"
+        import urllib.parse
+        google_q = urllib.parse.quote_plus(f"{clean_name} {destination}")
+        booking_url = f"https://www.google.com/travel/hotels?q={google_q}"
+        if check_in_date and check_out_date:
+            booking_url += f"&dates={check_in_date},{check_out_date}"
 
         strategies.append({
             "rank": rank,

@@ -468,8 +468,7 @@ For each option, include a REAL, well-known hotel name that actually exists in {
 Categories: Luxury, Boutique, Budget, Resort, or Apartment.
 
 IMPORTANT RULES:
-- ONLY recommend hotels with a rating of 4.0 stars or higher.
-- provider_name MUST be either "Booking.com" or "Agoda" only. NEVER output "Google Hotels" or generic provider names.
+- provider_name MUST be either "Google Travel" or "Booking.com".
 - Use REAL hotel names that exist in {destination}.
 - Estimate REALISTIC per-night rates in {currency}.
 - booking_url: Leave empty, will be generated server-side.

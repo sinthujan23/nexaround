@@ -26,11 +26,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   final TextEditingController _budgetController = TextEditingController();
   final TextEditingController _travelersController = TextEditingController();
 
-  int _currentStep = 0; // 0 destination, 1 mood, 2 budget
+  int _currentStep = 0; // 0 destination, 1 flights & hotels, 2 budget
   int _days = 3;
   double _budget = 50000;
   int _travelers = 1;
-  String _selectedMood = 'Adventurous';
+  final String _selectedMood = 'Adventurous';
   bool _isSubmitting = false;
   DateTime? _startDate;
   DateTime? _endDate;
@@ -42,15 +42,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   DateTime? _hotelCheckOutDate;
   String _departureCity = '';
   String _departureCountry = '';
-
-  final List<int> _dayOptions = const [2, 3, 4, 5, 7];
-
-  final List<Map<String, dynamic>> _moods = const [
-    {'name': 'Affordable', 'icon': Icons.savings_rounded, 'desc': 'Focus on local gems'},
-    {'name': 'Luxury', 'icon': Icons.diamond_rounded, 'desc': 'Premium experiences'},
-    {'name': 'Adventurous', 'icon': Icons.terrain_rounded, 'desc': 'Unexplored trails'},
-    {'name': 'Cultural', 'icon': Icons.museum_rounded, 'desc': 'Deep heritage'},
-  ];
 
   @override
   void initState() {
@@ -149,7 +140,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       );
       return;
     }
-    if (_currentStep < 3) {
+    if (_currentStep < 2) {
       setState(() => _currentStep++);
     } else {
       _submit();
@@ -220,7 +211,15 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
-          onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+          onPressed: _isSubmitting
+              ? null
+              : () {
+                  if (_currentStep > 0) {
+                    setState(() => _currentStep--);
+                  } else {
+                    Navigator.pop(context);
+                  }
+                },
         ),
         title: const Text(
           'NEXUS ODYSSEY',
@@ -293,7 +292,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
       child: Row(
-        children: List.generate(4, (index) {
+        children: List.generate(3, (index) {
           final isActive = index <= _currentStep;
           return Expanded(
             child: AnimatedContainer(
@@ -318,8 +317,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       case 1:
         return _buildFlightsAndHotelsStep();
       case 2:
-        return _buildMoodStep();
-      case 3:
         return _buildBudgetStep();
       default:
         return const SizedBox();
@@ -777,69 +774,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
-  Widget _buildMoodStep() {
-    return SingleChildScrollView(
-      key: const ValueKey('mood'),
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'How do you want the\nexperience to be?',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
-          ).animate().fade().slideY(begin: 0.1, end: 0),
-          const SizedBox(height: 32),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: 0.85,
-            ),
-            itemCount: _moods.length,
-            itemBuilder: (context, index) {
-              final mood = _moods[index];
-              final isSelected = _selectedMood == mood['name'];
-              return GestureDetector(
-                onTap: () => setState(() => _selectedMood = mood['name'] as String),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.black : Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: isSelected ? Colors.black : Colors.black12),
-                    boxShadow: isSelected
-                        ? [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 15, offset: const Offset(0, 8))]
-                        : null,
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(mood['icon'] as IconData, color: isSelected ? Colors.white : Colors.black, size: 36),
-                      const SizedBox(height: 12),
-                      Text(
-                        mood['name'] as String,
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: isSelected ? Colors.white : Colors.black),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        mood['desc'] as String,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 10, color: isSelected ? Colors.white60 : Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ).animate().fade(delay: 200.ms),
-        ],
-      ),
-    );
-  }
+
 
   Widget _buildBudgetStep() {
     return LayoutBuilder(
@@ -944,7 +879,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Widget _buildBottomAction() {
-    final String label = _currentStep == 3 ? 'GENERATE ODYSSEY' : 'CONTINUE';
+    final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: BoxDecoration(

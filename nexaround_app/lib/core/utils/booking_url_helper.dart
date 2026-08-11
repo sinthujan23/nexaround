@@ -71,10 +71,31 @@ class BookingUrlHelper {
         .replaceAll(RegExp(r'\b(City|District|Area|Town|Province|State)\b', caseSensitive: false), '')
         .trim();
 
-    // Remove corporate / legal suffixes from hotel name (e.g. "Pvt Ltd", "Limited")
+    // 1. Strip room type / package descriptions after hyphens or dashes (e.g., "- Family Room with Sea View", "- Three-Bedroom Villa", "- Standard Double Room")
+    hName = hName.replaceAll(
+      RegExp(
+        r'\s*[-–—]\s*(Family|Standard|Deluxe|Executive|Superior|Suite|Villa|Room|Bed|King|Queen|Twin|Double|Single|Sea View|Garden View|Ocean View|Penthouse|Bungalow|Apartment|Studio|Cottage|Luxury|Chalet|Resort|One|Two|Three|Four|Five|\d+).*',
+        caseSensitive: false,
+      ),
+      '',
+    ).trim();
+
+    // 2. Strip standalone room type suffixes (e.g., "Family Room with Sea View", "Three-Bedroom Villa", "Standard Double Room")
+    hName = hName.replaceAll(
+      RegExp(
+        r'\b((One|Two|Three|Four|Five|\d+)[- ](Bedroom|Bed|Person)|Family|Standard|Deluxe|Executive|Superior)\s+(Villa|Room|Suite|Apartment|Cottage|Studio|Chalet)\b.*',
+        caseSensitive: false,
+      ),
+      '',
+    ).trim();
+
+    // 3. Remove corporate / legal suffixes from hotel name (e.g. "Pvt Ltd", "Limited")
     hName = hName
         .replaceAll(RegExp(r'\b(Pvt|Ltd|Limited|Private|Co|Inc|LLC|Corporation)\b\.?', caseSensitive: false), '')
         .trim();
+
+    // Clean up trailing dashes or commas left behind
+    hName = hName.replaceAll(RegExp(r'[-–—,\s]+$'), '').trim();
 
     if (hName.isEmpty && dest.isEmpty) return 'hotels';
     if (hName.isEmpty) return 'hotels in $dest';
@@ -123,31 +144,36 @@ class BookingUrlHelper {
       return url;
     }
 
-    // For Agoda: use Agoda's own search with dates pre-filled
-    if (provider.contains('agoda')) {
-      // Use the SerpAPI direct link if available (most reliable)
-      if (serpApiLink.isNotEmpty) {
+    // For Google Travel / Google Hotels
+    if (provider.contains('google')) {
+      // If serpApiLink is a direct official hotel link (not a google travel search URL), use it
+      if (serpApiLink.isNotEmpty && !serpApiLink.toLowerCase().contains('google.com/travel/hotels')) {
         return _sanitizeUrl(serpApiLink);
       }
-      // Fallback: Agoda's search page with hotel name + destination
-      var agodaUrl = 'https://www.agoda.com/search?city=${Uri.encodeComponent(destination)}&q=$encodedQuery';
-      if (checkInDate.isNotEmpty) agodaUrl += '&checkIn=$checkInDate';
-      if (checkOutDate.isNotEmpty) agodaUrl += '&checkOut=$checkOutDate';
-      agodaUrl += '&adults=$travelers';
-      return agodaUrl;
-    }
-
-    // For Google Hotels / unknown providers: use SerpAPI link or Google Hotels search
-    if (serpApiLink.isNotEmpty) {
-      return _sanitizeUrl(serpApiLink);
-    }
-
-    if (provider.contains('google')) {
       var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
       if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
         googleUrl += '&dates=$checkInDate,$checkOutDate';
       }
       return googleUrl;
+    }
+
+    // For Agoda: only use serpApiLink if it actually points to agoda.com
+    // Generic agoda.com/search query URLs redirect to Agoda homepage (dead end)
+    if (provider.contains('agoda')) {
+      if (serpApiLink.isNotEmpty && serpApiLink.toLowerCase().contains('agoda')) {
+        return _sanitizeUrl(serpApiLink);
+      }
+      // Fallback: Google Travel search (shows all rates including Agoda)
+      var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
+      if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
+        googleUrl += '&dates=$checkInDate,$checkOutDate';
+      }
+      return googleUrl;
+    }
+
+    // For other providers: use SerpAPI direct link if available
+    if (serpApiLink.isNotEmpty) {
+      return _sanitizeUrl(serpApiLink);
     }
 
     if (provider.contains('expedia')) {

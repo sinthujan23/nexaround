@@ -3,11 +3,11 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 
 void main() {
   group('BookingUrlHelper tests', () {
-    test('Google Hotels always uses destination-based search to avoid No Results', () {
+    test('Google Travel uses hotel name and destination search with pre-filled dates', () {
       final url = BookingUrlHelper.buildHotelUrl(
         rawUrl: '',
-        providerName: 'Google Hotels',
-        hotelName: 'Lilit Bang Lumphu Hotel - Bangkok',
+        providerName: 'Google Travel',
+        hotelName: 'Lilit Bang Lumphu Hotel',
         destination: 'Bangkok',
         checkInDate: '2026-08-10',
         checkOutDate: '2026-08-12',
@@ -15,16 +15,15 @@ void main() {
       );
 
       expect(url, contains('google.com/travel/hotels'));
-      // Should use destination-based query, NOT hotel name (which may not exist)
-      expect(url, contains('q=hotels%20in%20Bangkok'));
-      expect(url, isNot(contains('hotels.com')));
+      expect(url, contains('q=Lilit%20Bang%20Lumphu%20Hotel%20Bangkok'));
+      expect(url, contains('dates=2026-08-10,2026-08-12'));
     });
 
-    test('Booking.com provider resolves to booking.com with destination search query', () {
+    test('Booking.com provider resolves to booking.com deep search query with checkin/checkout dates', () {
       final url = BookingUrlHelper.buildHotelUrl(
         rawUrl: '',
         providerName: 'Booking.com',
-        hotelName: 'Lilit Bang Lumphu Hotel - Bangkok',
+        hotelName: 'Lilit Bang Lumphu Hotel',
         destination: 'Bangkok',
         checkInDate: '2026-08-10',
         checkOutDate: '2026-08-12',
@@ -32,7 +31,37 @@ void main() {
       );
 
       expect(url, contains('booking.com/searchresults.html'));
-      expect(url, contains('ss=Bangkok'));
+      expect(url, contains('ss=Lilit%20Bang%20Lumphu%20Hotel%20Bangkok'));
+      expect(url, contains('checkin=2026-08-10'));
+      expect(url, contains('checkout=2026-08-12'));
+    });
+
+    test('Agoda provider without direct agoda serpApiLink falls back to Google Travel search', () {
+      final url = BookingUrlHelper.buildHotelUrl(
+        rawUrl: '',
+        providerName: 'Agoda',
+        hotelName: 'Taj Fateh Prakash Palace',
+        destination: 'Udaipur',
+        checkInDate: '2026-08-11',
+        checkOutDate: '2026-08-13',
+        travelers: 1,
+        serpApiLink: 'https://www.tajhotels.com/en-in/taj-fateh-prakash-palace-udaipur/',
+      );
+
+      // Non-agoda serpApiLink must not be used under Agoda provider label; fallback to Google Travel
+      expect(url, contains('google.com/travel/hotels'));
+      expect(url, contains('q=Taj%20Fateh%20Prakash%20Palace%20Udaipur'));
+    });
+
+    test('cleanHotelQuery strips room type suffixes and noise', () {
+      expect(
+        BookingUrlHelper.cleanHotelQuery('De Lavender Luxury sea view Guest Houses - Family Room with Sea View', 'Karnataka'),
+        equals('De Lavender Luxury sea view Guest Houses Karnataka'),
+      );
+      expect(
+        BookingUrlHelper.cleanHotelQuery('Eco Village - No Alcohol Zone - Three-Bedroom Villa', 'Karnataka'),
+        equals('Eco Village - No Alcohol Zone Karnataka'),
+      );
     });
 
     test('cleanDestination removes duplicate location tokens', () {
@@ -44,7 +73,7 @@ void main() {
     test('buildHotelUrl cleans duplicate destination tokens like Germany, Germany', () {
       final url = BookingUrlHelper.buildHotelUrl(
         rawUrl: '',
-        providerName: 'Google Hotels',
+        providerName: 'Google Travel',
         hotelName: 'Grand Hotel Downtown',
         destination: 'Germany, Germany',
         checkInDate: '2026-08-10',
@@ -53,24 +82,8 @@ void main() {
       );
 
       expect(url, contains('google.com/travel/hotels'));
-      // Should use destination-based query with cleaned destination
-      expect(url, contains('q=hotels%20in%20Germany'));
+      expect(url, contains('q=Grand%20Hotel%20Downtown%20Germany'));
       expect(url, isNot(contains('Germany%2C%20Germany')));
-    });
-
-    test('Booking.com uses destination in query to guarantee valid results', () {
-      final url = BookingUrlHelper.buildHotelUrl(
-        rawUrl: '',
-        providerName: 'Booking.com',
-        hotelName: 'Grand Hotel Downtown',
-        destination: 'Germany',
-        checkInDate: '2026-08-10',
-        checkOutDate: '2026-08-12',
-        travelers: 1,
-      );
-
-      expect(url, contains('booking.com/searchresults.html'));
-      expect(url, contains('ss=Germany'));
     });
 
     test('Google Flights provider resolves to google.com/travel/flights with airlines', () {

@@ -77,9 +77,11 @@ class HotelStrategiesSection extends StatelessWidget {
 
   Widget _buildHotelCard(BuildContext context, HotelStrategy hs) {
     String provider = hs.providerName.trim();
-    if (provider.isEmpty || provider.toLowerCase() == 'hotel provider' || provider.toLowerCase().contains('google')) {
+    if (provider.isEmpty || provider.toLowerCase() == 'hotel provider') {
       final lowerUrl = hs.bookingUrl.toLowerCase();
-      if (lowerUrl.contains('agoda')) {
+      if (lowerUrl.contains('google')) {
+        provider = 'Google Travel';
+      } else if (lowerUrl.contains('agoda')) {
         provider = 'Agoda';
       } else if (lowerUrl.contains('expedia')) {
         provider = 'Expedia';
@@ -87,9 +89,13 @@ class HotelStrategiesSection extends StatelessWidget {
         provider = 'Hotels.com';
       } else if (lowerUrl.contains('airbnb')) {
         provider = 'Airbnb';
-      } else {
+      } else if (lowerUrl.contains('booking')) {
         provider = 'Booking.com';
+      } else {
+        provider = 'Google Travel';
       }
+    } else if (provider.toLowerCase() == 'google') {
+      provider = 'Google Travel';
     }
 
     return Container(
