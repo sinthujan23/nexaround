@@ -3875,6 +3875,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                         Expanded(
                           child: TextField(
                             controller: _searchController,
+                            textInputAction: TextInputAction.search,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 14,
@@ -11196,6 +11197,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: TextField(
               controller: _searchController,
+              textInputAction: TextInputAction.search,
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 13,

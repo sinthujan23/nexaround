@@ -61,9 +61,12 @@ class _PostStorySheetState extends State<PostStorySheet> {
 
   void _onLocationChanged(String query) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _fetchSuggestions(query);
-    });
+    if (query.trim().isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _isLoadingSuggestions = false;
+      });
+    }
   }
 
   Future<void> _fetchSuggestions(String input) async {
@@ -480,7 +483,9 @@ class _PostStorySheetState extends State<PostStorySheet> {
                       ),
                       child: TextField(
                         controller: _locationController,
+                        textInputAction: TextInputAction.search,
                         onChanged: _onLocationChanged,
+                        onSubmitted: (query) => _fetchSuggestions(query),
                         style: const TextStyle(
                           color: Colors.black87,
                           fontSize: 14,

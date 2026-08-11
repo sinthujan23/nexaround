@@ -37,21 +37,58 @@
     <div class="shead rv">
       <span class="chip">Technology Core</span>
       <h2 class="display" style="margin-top:20px;">How Blockchain Technology Works</h2>
-      <p class="lede" style="margin-top:10px;">Blockchain is a decentralized, cryptographically secured architecture designed to establish data integrity and trust across distributed systems.</p>
+      <p class="lede" style="margin-top:16px; max-width:860px;">
+        Blockchain is a decentralized, cryptographically secured architecture designed to establish immutable data integrity, automated trust, and transparent state consensus across distributed networks. By combining peer-to-peer validation nodes, cryptographic hashing, and Turing-complete smart contract runtimes, blockchain eliminates single points of failure while governing multi-party transactions and enterprise records end-to-end.
+      </p>
     </div>
-    <div class="wrap grid-3">
-      <article class="fcard rv"><span class="fcard__n">01</span><h3>Distributed Ledger Technology</h3>
-        <p>Transactions are cryptographically recorded across a peer-to-peer network of independent nodes, eliminating single points of failure.</p></article>
-      <article class="fcard rv" style="--d:.06s"><span class="fcard__n">02</span><h3>Immutable Record-Keeping</h3>
-        <p>Once verified and added to a block, transaction data is permanently linked and cannot be altered or retroactively deleted.</p></article>
-      <article class="fcard rv" style="--d:.12s"><span class="fcard__n">03</span><h3>Smart Contract Automation</h3>
-        <p>Self-executing code logic runs directly on-chain, automatically enforcing rules and agreements when predefined conditions are met.</p></article>
-      <article class="fcard rv" style="--d:.18s"><span class="fcard__n">04</span><h3>Consensus Mechanisms</h3>
-        <p>Distributed consensus protocols ensure total network state agreement across independent participants without central authorities.</p></article>
-      <article class="fcard rv" style="--d:.24s"><span class="fcard__n">05</span><h3>Cryptographic Security</h3>
-        <p>Asymmetric key pairs and cryptographic hashing secure identity, transaction validity, and data integrity end-to-end.</p></article>
-      <article class="fcard rv" style="--d:.3s"><span class="fcard__n">06</span><h3>Transparent Auditability</h3>
-        <p>Event logs provide a verifiable, tamper-evident audit trail accessible in real time across ecosystem participants.</p></article>
+    <div class="wrap grid-3" style="margin-top:40px;">
+      <article class="fcard rv" style="padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">01</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Distributed Ledger Technology</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          Transactions are cryptographically recorded across a global peer-to-peer network of independent validation nodes, eliminating single points of failure and ensuring continuous network uptime.
+        </p>
+      </article>
+
+      <article class="fcard rv" style="--d:.06s; padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">02</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Cryptographic Immutability</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          Once verified and appended to a block using cryptographic hashing algorithms (SHA-256 / Keccak-256), transaction data is permanently sealed and cannot be altered or retroactively deleted.
+        </p>
+      </article>
+
+      <article class="fcard rv" style="--d:.12s; padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">03</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Smart Contract Automation</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          Self-executing code logic runs directly on-chain within deterministic virtual machines (EVM / WASM), automatically enforcing business rules, escrow, and payments when conditions are met.
+        </p>
+      </article>
+
+      <article class="fcard rv" style="--d:.18s; padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">04</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Consensus Protocols</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          Distributed consensus mechanisms (Proof-of-Stake, Raft, PBFT) guarantee total network state agreement across independent participants without relying on a central authority.
+        </p>
+      </article>
+
+      <article class="fcard rv" style="--d:.24s; padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">05</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Cryptographic Security</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          Asymmetric public-private key pairs (secp256k1 / Ed25519) and digital signatures secure participant identity, transaction validity, and data integrity end-to-end.
+        </p>
+      </article>
+
+      <article class="fcard rv" style="--d:.3s; padding:28px; background:#ffffff; border:1px solid rgba(0,0,0,0.06); border-radius:18px;">
+        <span class="fcard__n">06</span>
+        <h3 style="font-size:19px; font-weight:700; margin:12px 0 10px;">Transparent Auditability</h3>
+        <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin:0;">
+          On-chain event logs and decentralized indexing subgraphs provide a verifiable, tamper-evident audit trail accessible in real time across ecosystem stakeholders.
+        </p>
+      </article>
     </div>
   </section>
 
@@ -60,9 +97,87 @@
       <div>
         <span class="chip">Architecture</span>
         <h2 class="display" style="margin:20px 0 18px;">Public, Private &amp; Permissioned Chains</h2>
-        <p class="lede">Blockchain architectures range from open public networks to permissioned enterprise ledgers. Distributed ledgers provide cryptographic verification where multi-party trust, provenance, and data immutability are paramount.</p>
+        <p class="lede">From open public protocols to permissioned enterprise ledgers, we design distributed architectures engineered for multi-party trust, data provenance, and cryptographic immutability.</p>
+        <div class="pills" style="margin:28px 0 0;">
+          <span><i></i>Public Ledgers</span>
+          <span><i></i>Private Enterprise</span>
+          <span><i></i>Permissioned Consortiums</span>
+          <span><i></i>Zero-Knowledge Privacy</span>
+        </div>
       </div>
-      <div><div class="video-block art art--drift" style="background: url('blockchain_web3.png') center/cover no-repeat;"><span class="video-block__tag">Architecture Diagram</span><button class="video-block__play" type="button" aria-label="Play: Blockchain Architecture Overview"><svg width="22" height="24" viewBox="0 0 22 24" fill="#fff"><path d="M21 12L0 24V0L21 12Z"/></svg></button><span class="video-block__cap">Blockchain Architecture Overview</span></div></div>
+      <div>
+        <div class="video-block art art--drift" style="background: url('blockchain_arch_new.png') center/cover no-repeat;">
+          <span class="video-block__tag">Architecture Overview</span>
+          <button class="video-block__play" type="button" aria-label="Play: Blockchain Architecture Overview">
+            <svg width="22" height="24" viewBox="0 0 22 24" fill="#fff"><path d="M21 12L0 24V0L21 12Z"/></svg>
+          </button>
+          <span class="video-block__cap">Blockchain Architecture &amp; Deployment Models</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Architectural Deep-Dive Grid -->
+    <div class="wrap" style="margin-top:56px;">
+      <div class="grid-3">
+        <article class="fcard rv" style="background:#ffffff; border:1px solid rgba(0,0,0,0.06); padding:28px; border-radius:18px;">
+          <span class="chip chip--accent" style="margin-bottom:12px; display:inline-block;">01 &bull; Open Protocol</span>
+          <h3 style="font-size:20px; margin:10px 0 12px; font-weight:700;">Public &amp; Decentralized Ledgers</h3>
+          <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin-bottom:16px;">
+            Permissionless networks accessible globally where consensus is maintained by distributed validators. Built for public immutability, decentralized finance (DeFi), and open token ecosystems.
+          </p>
+          <ul style="list-style:none; padding:0; margin:0; font-size:13px; color:var(--ink-2); display:flex; flex-direction:column; gap:8px;">
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Ethereum, Polygon &amp; EVM Rollups</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> ERC-20, ERC-721 Tokenization</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Transparent Global Auditability</li>
+          </ul>
+        </article>
+
+        <article class="fcard rv" style="--d:.08s; background:#ffffff; border:1px solid rgba(0,0,0,0.06); padding:28px; border-radius:18px;">
+          <span class="chip chip--accent" style="margin-bottom:12px; display:inline-block;">02 &bull; Managed Enterprise</span>
+          <h3 style="font-size:20px; margin:10px 0 12px; font-weight:700;">Private &amp; Internal Ledgers</h3>
+          <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin-bottom:16px;">
+            Single-tenant or departmental blockchains where node access is strictly governed. Built for confidential audit logs, inter-company reconciliation, and zero gas-fee operations.
+          </p>
+          <ul style="list-style:none; padding:0; margin:0; font-size:13px; color:var(--ink-2); display:flex; flex-direction:column; gap:8px;">
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Hyperledger Fabric &amp; Private EVM</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Sub-Second Finality &amp; High TPS</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Role-Based Access Control (RBAC)</li>
+          </ul>
+        </article>
+
+        <article class="fcard rv" style="--d:.16s; background:#ffffff; border:1px solid rgba(0,0,0,0.06); padding:28px; border-radius:18px;">
+          <span class="chip chip--accent" style="margin-bottom:12px; display:inline-block;">03 &bull; Consortium Ledger</span>
+          <h3 style="font-size:20px; margin:10px 0 12px; font-weight:700;">Permissioned Consortium Networks</h3>
+          <p style="font-size:14px; line-height:1.6; color:var(--ink-soft); margin-bottom:16px;">
+            Multi-party networks where validator nodes are operated by pre-approved industry partners. Enables instant cross-institution settlement, trade finance, and supply chain provenance.
+          </p>
+          <ul style="list-style:none; padding:0; margin:0; font-size:13px; color:var(--ink-2); display:flex; flex-direction:column; gap:8px;">
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Zero-Knowledge Proof (ZKP) Privacy</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Multi-Party Smart Contracts</li>
+            <li style="display:flex; align-items:center; gap:8px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Cross-Chain Relayer Bridges</li>
+          </ul>
+        </article>
+      </div>
+
+      <!-- Technical Capabilities Matrix -->
+      <div class="module-matrix" style="margin-top:36px; margin-bottom:0;">
+        <div class="module-card">
+          <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <div><h4>Zero-Knowledge Privacy (ZKP)</h4><p>Cryptographic verification that validates transaction rules without revealing sensitive pricing, volumes, or counterparty identities.</p></div>
+        </div>
+        <div class="module-card">
+          <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+          <div><h4>Smart Contract Security &amp; Audit</h4><p>Automated static analysis, gas optimization, and formal mathematical verification before mainnet smart contract deployment.</p></div>
+        </div>
+        <div class="module-card">
+          <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></div>
+          <div><h4>Cross-Chain Relayers &amp; Bridges</h4><p>Interoperability protocols linking permissioned enterprise ledgers to public liquidity pools and cross-network message queues.</p></div>
+        </div>
+        <div class="module-card">
+          <div class="module-card__icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+          <div><h4>Enterprise ERP &amp; API Integration</h4><p>Production-grade REST and gRPC webhooks connecting legacy backends (SAP, Oracle, custom ERPs) directly to on-chain event streams.</p></div>
+        </div>
+      </div>
     </div>
   </section>
 

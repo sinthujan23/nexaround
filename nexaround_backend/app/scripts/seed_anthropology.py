@@ -37,10 +37,11 @@ MUSEUM_META = {
 
 POSSIBLE_EXCEL_PATHS = [
     os.environ.get("ANTHROPOLOGY_XLSX", ""),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
 ]
 
 def find_excel_file():

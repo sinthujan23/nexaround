@@ -46,57 +46,61 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       return;
     }
 
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      _executeSearch(query);
+    });
+  }
+
+  Future<void> _executeSearch(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _suggestions = [];
+        _isLoading = false;
+      });
+      return;
+    }
+
     setState(() => _isLoading = true);
 
-    _debounce = Timer(const Duration(milliseconds: 500), () async {
-      try {
-        final response = await Dio().get(
-          'https://nominatim.openstreetmap.org/search',
-          queryParameters: {
-            'q': query,
-            'format': 'jsonv2',
-            'addressdetails': 1,
-            'limit': 5,
-            'featuretype': 'city', // Prefer cities/districts for global search
-            'accept-language': 'en',
+    try {
+      final response = await Dio().get(
+        'https://nominatim.openstreetmap.org/search',
+        queryParameters: {
+          'q': query,
+          'format': 'jsonv2',
+          'addressdetails': 1,
+          'limit': 5,
+          'featuretype': 'city', // Prefer cities/districts for global search
+          'accept-language': 'en',
+        },
+        options: Options(
+          headers: {
+            'User-Agent': 'NexAroundApp/1.0',
+            'Accept-Language': 'en',
           },
-          options: Options(
-            headers: {
-              'User-Agent': 'NexAroundApp/1.0',
-              'Accept-Language': 'en',
-            },
-          ),
-        );
+        ),
+      );
 
-        if (response.statusCode == 200) {
-          final List<dynamic> data = response.data;
-          final List<Map<String, dynamic>> results = data.map((item) {
-            final addr = item['address'] as Map<String, dynamic>?;
-            final city = addr?['city'] ?? addr?['town'] ?? addr?['village'] ?? item['name'] ?? item['display_name']?.split(',')[0] ?? 'Unknown';
-            final country = addr?['country'];
-            final displayName = country != null ? '$city, $country' : city;
+      if (response.statusCode == 200) {
+        final List<dynamic> data = response.data;
+        final List<Map<String, dynamic>> results = data.map((item) {
+          final addr = item['address'] as Map<String, dynamic>?;
+          final city = addr?['city'] ?? addr?['town'] ?? addr?['village'] ?? item['name'] ?? item['display_name']?.split(',')[0] ?? 'Unknown';
+          final country = addr?['country'];
+          final displayName = country != null ? '$city, $country' : city;
 
-            return {
-              'latitude': double.tryParse(item['lat'] ?? '0') ?? 0.0,
-              'longitude': double.tryParse(item['lon'] ?? '0') ?? 0.0,
-              'name': displayName,
-              'address': item['display_name'] ?? '',
-              'district': addr?['county'] ?? addr?['state_district'] ?? addr?['city'] ?? item['name'],
-            };
-          }).toList();
+          return {
+            'latitude': double.tryParse(item['lat'] ?? '0') ?? 0.0,
+            'longitude': double.tryParse(item['lon'] ?? '0') ?? 0.0,
+            'name': displayName,
+            'address': item['display_name'] ?? '',
+            'district': addr?['county'] ?? addr?['state_district'] ?? addr?['city'] ?? item['name'],
+          };
+        }).toList();
 
-          if (mounted) {
-            setState(() {
-              _suggestions = results;
-              _isLoading = false;
-            });
-          }
-        }
-      } catch (e) {
-        debugPrint('Nominatim search error: $e');
         if (mounted) {
           setState(() {
-            _suggestions = [];
+            _suggestions = results;
             _isLoading = false;
           });
         }
@@ -162,13 +166,18 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.search, color: AppColors.textSecondary),
+                  GestureDetector(
+                    onTap: () => _executeSearch(_searchController.text),
+                    child: const Icon(Icons.search, color: AppColors.textSecondary),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       controller: _searchController,
                       focusNode: _focusNode,
+                      textInputAction: TextInputAction.search,
                       onChanged: _onSearchChanged,
+                      onSubmitted: (query) => _executeSearch(query),
                       decoration: const InputDecoration(
                         border: InputBorder.none,
                         hintText: 'Search for a city, area, or country...',

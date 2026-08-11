@@ -25,7 +25,7 @@ MUSEE_DORSAY_DATA = {
     "country": "France",
     "annual_visitors": 3751000,
     "rank": 16,
-    "image_url": "/api/v1/places/photo?ref=places/ChIJ155XmZ5x5kcRq-yXvB0y3A0/photos/AUGUv4s61eZg3d3k1F03l8b4M3A",
+    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg/1280px-Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg",
     "ticket_url": "https://www.musee-orsay.fr/en/visit/tickets",
     "website": "https://www.musee-orsay.fr",
     "opening_hours": "Tue - Sun: 9:30 AM - 6:00 PM (Thu late opening until 9:45 PM). Closed Mondays.",

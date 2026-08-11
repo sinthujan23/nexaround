@@ -358,7 +358,7 @@ class _MuseumCard extends StatelessWidget {
       return raw.startsWith('/') ? '${ApiConstants.baseUrl}$raw' : raw;
     }
     if (museum.slug == 'musee-dorsay') {
-      return 'https://images.unsplash.com/photo-1597910037310-7e8eb7e7e600?auto=format&fit=crop&w=1200&q=80';
+      return 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg/1280px-Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg';
     }
     if (museum.slug == 'louvre') {
       return 'https://images.unsplash.com/photo-1565099824688-e93eb20fe622?auto=format&fit=crop&w=1200&q=80';

@@ -30,7 +30,7 @@ MUSEUMS_DATA = [
     {"rank": 12, "name": "Tate Modern", "visitors": 4514266, "city": "London", "country": "United Kingdom", "slug": "tate-modern"},
     {"rank": 13, "name": "Hubei Provincial Museum", "visitors": 4356943, "city": "Wuhan", "country": "China", "slug": "hubei-provincial-museum"},
     {"rank": 15, "name": "National Gallery of Art", "visitors": 3936543, "city": "Washington, D.C.", "country": "United States", "slug": "national-gallery-of-art"},
-    {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay", "image_url": "/api/v1/places/photo?ref=places/ChIJ155XmZ5x5kcRq-yXvB0y3A0/photos/AUGUv4s61eZg3d3k1F03l8b4M3A"},
+    {"rank": 16, "name": "Musée d'Orsay", "visitors": 3751000, "city": "Paris", "country": "France", "slug": "musee-dorsay", "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg/1280px-Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg"},
     {"rank": 17, "name": "National Museum of Anthropology", "visitors": 3700000, "city": "Mexico City", "country": "Mexico", "slug": "national-museum-of-anthropology", "website": "https://mna.inah.gob.mx/", "opening_hours": "Tuesday to Sunday: 9:00 to 18:00 hours", "closing_hours": "18:00"},
     {"rank": 18, "name": "State Russian Museum", "visitors": 5087276, "city": "Saint Petersburg", "country": "Russia", "slug": "state-russian-museum"},
     # Skip 19 (State Hermitage Museum) as it is already seeded with full details

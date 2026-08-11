@@ -34,7 +34,7 @@ FALLBACK_IMAGES = {
     "national-palace-museum": "https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/National_Palace_Museum_Main_Building_2019.jpg/1280px-National_Palace_Museum_Main_Building_2019.jpg",
     "national-museum-of-korea": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/National_Museum_of_Korea_1.jpg/1280px-National_Museum_of_Korea_1.jpg",
     "china-art-museum": "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f3/China_Art_Museum_Shanghai_2016.jpg/1280px-China_Art_Museum_Shanghai_2016.jpg",
-    "musee-dorsay": "/api/v1/places/photo?ref=places/ChIJ155XmZ5x5kcRq-yXvB0y3A0/photos/AUGUv4s61eZg3d3k1F03l8b4M3A"
+    "musee-dorsay": "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7c/Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg/1280px-Mus%C3%A9e_d%27Orsay%2C_North-West_view%2C_Paris_7e_140402.jpg"
 }
 
 
