@@ -37,6 +37,7 @@ class SerpHotelService {
     String checkOutDate = '',
     int adults = 2,
     String currency = 'USD',
+    double minRating = 4.0,
   }) async {
     final apiKey = ApiConstants.serpApiKey;
     if (apiKey.isEmpty) {
@@ -73,11 +74,14 @@ class SerpHotelService {
         final name = p['name']?.toString() ?? '';
         if (name.isEmpty) continue;
 
-        final rating = (p['overall_rating'] as num?)?.toDouble() ?? 4.2;
-        final reviews = (p['reviews'] as num?)?.toInt() ?? 120;
-        final pricePerNight = p['rate_per_night']?['extracted_lowest']?.toString() ??
-            p['rate_per_night']?['lowest']?.toString() ?? '';
-        final totalPrice = p['total_rate']?['extracted_lowest']?.toString() ?? '';
+        final rating = (p['overall_rating'] as num?)?.toDouble() ?? 0.0;
+        
+        // Filter out hotels below minimum rating
+        if (rating < minRating) continue;
+        
+        final reviews = (p['reviews'] as num?)?.toInt() ?? 0;
+        final pricePerNight = p['rate_per_night']?['lowest']?.toString() ?? '';
+        final totalPrice = p['total_rate']?['lowest']?.toString() ?? '';
         final description = p['description']?.toString() ?? 'Verified hotel offering great amenities and convenient access.';
         
         final images = p['images'] as List<dynamic>?;
@@ -91,8 +95,8 @@ class SerpHotelService {
             name: name,
             rating: rating,
             reviews: reviews,
-            pricePerNight: pricePerNight.isNotEmpty ? '$currency $pricePerNight' : '',
-            totalPrice: totalPrice.isNotEmpty ? '$currency $totalPrice' : '',
+            pricePerNight: pricePerNight,
+            totalPrice: totalPrice,
             description: description,
             photoUrl: photoUrl,
             bookingUrl: link,
@@ -100,7 +104,7 @@ class SerpHotelService {
           ),
         );
 
-        if (results.length >= 6) break;
+        if (results.length >= 4) break;
       }
 
       return results;

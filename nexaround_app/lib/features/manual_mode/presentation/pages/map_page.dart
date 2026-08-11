@@ -309,6 +309,11 @@ class _MapPageState extends State<MapPage> with TickerProviderStateMixin {
                 Expanded(
                   child: TextField(
                     onChanged: (val) {
+                      if (val.trim().isEmpty) {
+                        context.read<MapBloc>().add(const SearchAttractions(''));
+                      }
+                    },
+                    onSubmitted: (val) {
                       context.read<MapBloc>().add(SearchAttractions(val));
                     },
                     style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),

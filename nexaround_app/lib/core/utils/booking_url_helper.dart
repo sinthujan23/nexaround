@@ -92,6 +92,10 @@ class BookingUrlHelper {
   /// - Check-in Date (YYYY-MM-DD)
   /// - Check-out Date (YYYY-MM-DD)
   /// - Number of adult travelers
+  ///
+  /// If [serpApiLink] is provided (a direct Google Hotels property page URL),
+  /// it is used as the primary link for non-Booking.com providers, ensuring
+  /// the user always lands on the correct hotel page.
   static String buildHotelUrl({
     required String rawUrl,
     required String providerName,
@@ -100,6 +104,7 @@ class BookingUrlHelper {
     String checkInDate = '',
     String checkOutDate = '',
     int travelers = 1,
+    String serpApiLink = '',
   }) {
     final sanitizedRawUrl = _sanitizeUrl(rawUrl);
     final resolvedProvider = _deduceProvider(providerName, sanitizedRawUrl);
@@ -109,40 +114,59 @@ class BookingUrlHelper {
     final query = cleanHotelQuery(hotelName, destination);
     final encodedQuery = Uri.encodeComponent(query);
 
-    // Always build provider-specific URLs to guarantee exact hotel + destination + dates are pre-filled.
+    // For Booking.com: always build a deep pre-filled search URL
+    if (provider.contains('booking')) {
+      var url = 'https://www.booking.com/searchresults.html?ss=$encodedQuery';
+      if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
+      if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';
+      url += '&group_adults=$travelers';
+      return url;
+    }
+
+    // For Agoda: use Agoda's own search with dates pre-filled
+    if (provider.contains('agoda')) {
+      // Use the SerpAPI direct link if available (most reliable)
+      if (serpApiLink.isNotEmpty) {
+        return _sanitizeUrl(serpApiLink);
+      }
+      // Fallback: Agoda's search page with hotel name + destination
+      var agodaUrl = 'https://www.agoda.com/search?city=${Uri.encodeComponent(destination)}&q=$encodedQuery';
+      if (checkInDate.isNotEmpty) agodaUrl += '&checkIn=$checkInDate';
+      if (checkOutDate.isNotEmpty) agodaUrl += '&checkOut=$checkOutDate';
+      agodaUrl += '&adults=$travelers';
+      return agodaUrl;
+    }
+
+    // For Google Hotels / unknown providers: use SerpAPI link or Google Hotels search
+    if (serpApiLink.isNotEmpty) {
+      return _sanitizeUrl(serpApiLink);
+    }
+
     if (provider.contains('google')) {
       var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
       if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
         googleUrl += '&dates=$checkInDate,$checkOutDate';
       }
       return googleUrl;
-    } else if (provider.contains('booking')) {
-      var url = 'https://www.booking.com/searchresults.html?ss=$encodedQuery';
-      if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
-      if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';
-      url += '&group_adults=$travelers';
-      return url;
-    } else if (provider.contains('agoda')) {
-      // Use Google Travel Hotels direct target for Agoda so live price & exact hotel match
-      // is always displayed without Agoda web route resets.
-      var url = 'https://www.google.com/travel/hotels?q=${Uri.encodeComponent("$query agoda")}';
-      if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
-        url += '&dates=$checkInDate,$checkOutDate';
-      }
-      return url;
-    } else if (provider.contains('expedia')) {
+    }
+
+    if (provider.contains('expedia')) {
       var url = 'https://www.expedia.com/Hotel-Search?destination=$encodedQuery';
       if (checkInDate.isNotEmpty) url += '&d1=${_toExpediaDate(checkInDate)}';
       if (checkOutDate.isNotEmpty) url += '&d2=${_toExpediaDate(checkOutDate)}';
       url += '&adults=$travelers';
       return url;
-    } else if (provider.contains('hotels.com') || (provider.contains('hotels') && !provider.contains('google'))) {
+    }
+
+    if (provider.contains('hotels.com') || (provider.contains('hotels') && !provider.contains('google'))) {
       var url = 'https://www.hotels.com/Hotel-Search?destination=$encodedQuery';
       if (checkInDate.isNotEmpty) url += '&startDate=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&endDate=$checkOutDate';
       url += '&adults=$travelers';
       return url;
-    } else if (provider.contains('airbnb')) {
+    }
+
+    if (provider.contains('airbnb')) {
       var url = 'https://www.airbnb.com/s/$encodedQuery/homes';
       if (checkInDate.isNotEmpty) url += '&checkin=$checkInDate';
       if (checkOutDate.isNotEmpty) url += '&checkout=$checkOutDate';

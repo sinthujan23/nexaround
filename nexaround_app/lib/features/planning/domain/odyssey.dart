@@ -196,12 +196,14 @@ class HotelStrategy {
   final String providerName;
   final String category;
   final String rating;
+  final int reviews;
   final String pricePerNight;
   final String totalEstimatedCost;
   final String location;
   final List<String> amenities;
   final String description;
   final String bookingUrl;
+  final String serpApiLink;
 
   const HotelStrategy({
     required this.rank,
@@ -209,12 +211,14 @@ class HotelStrategy {
     required this.providerName,
     required this.category,
     required this.rating,
+    this.reviews = 0,
     required this.pricePerNight,
     required this.totalEstimatedCost,
     required this.location,
     required this.amenities,
     required this.description,
     required this.bookingUrl,
+    this.serpApiLink = '',
   });
 
   factory HotelStrategy.fromJson(Map<String, dynamic> json) => HotelStrategy(
@@ -223,6 +227,7 @@ class HotelStrategy {
         providerName: (json['provider_name'] ?? json['provider'] ?? 'Booking.com').toString(),
         category: (json['category'] ?? '').toString(),
         rating: (json['rating'] ?? '').toString(),
+        reviews: FlightStrategy._parseInt(json['reviews'], 0),
         pricePerNight: (json['price_per_night'] ?? '').toString(),
         totalEstimatedCost: (json['total_estimated_cost'] ?? json['total_cost'] ?? '').toString(),
         location: (json['location'] ?? '').toString(),
@@ -231,6 +236,7 @@ class HotelStrategy {
             : <String>[],
         description: (json['description'] ?? '').toString(),
         bookingUrl: (json['booking_url'] ?? '').toString(),
+        serpApiLink: (json['serpapi_link'] ?? '').toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -239,12 +245,14 @@ class HotelStrategy {
         'provider_name': providerName,
         'category': category,
         'rating': rating,
+        'reviews': reviews,
         'price_per_night': pricePerNight,
         'total_estimated_cost': totalEstimatedCost,
         'location': location,
         'amenities': amenities,
         'description': description,
         'booking_url': bookingUrl,
+        'serpapi_link': serpApiLink,
       };
 }
 

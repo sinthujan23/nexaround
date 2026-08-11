@@ -3449,13 +3449,9 @@ class _ArCameraPageState extends State<ArCameraPage>
     if (query.trim().isEmpty) {
       updateState(() {
         _searchResults = [];
+        _showSearchResults = false;
       });
-      return;
     }
-
-    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
-      _performGoogleSearch(query);
-    });
   }
 
   Future<void> _performGoogleSearch(String query) async {
@@ -3570,7 +3566,9 @@ class _ArCameraPageState extends State<ArCameraPage>
         _speechToText.listen(
           onResult: (result) {
             _searchController.text = result.recognizedWords;
-            _onSearchQueryChanged(result.recognizedWords);
+            if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
+              _performArSearchAndSelectFirst(result.recognizedWords);
+            }
           },
         );
       }
@@ -3854,17 +3852,25 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                         ),
                         const SizedBox(width: 10),
-                        Icon(
-                              _isListening
-                                  ? Icons.graphic_eq_rounded
-                                  : Icons.search_rounded,
-                              color: _isListening
-                                  ? const Color(0xFF00E5FF)
-                                  : AppColors.brandGreen,
-                              size: 18,
-                            )
-                            .animate(target: _isListening ? 1 : 0)
-                            .scaleXY(end: 1.1, duration: 200.ms),
+                        GestureDetector(
+                          onTap: () {
+                            final text = _searchController.text.trim();
+                            if (text.isNotEmpty) {
+                              _performArSearchAndSelectFirst(text);
+                            }
+                          },
+                          child: Icon(
+                                _isListening
+                                    ? Icons.graphic_eq_rounded
+                                    : Icons.search_rounded,
+                                color: _isListening
+                                    ? const Color(0xFF00E5FF)
+                                    : AppColors.brandGreen,
+                                size: 18,
+                              )
+                              .animate(target: _isListening ? 1 : 0)
+                              .scaleXY(end: 1.1, duration: 200.ms),
+                        ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
@@ -3889,7 +3895,13 @@ class _ArCameraPageState extends State<ArCameraPage>
                             onTap: () {
                               updateState(() => _isSearching = true);
                             },
-                            onChanged: _onSearchQueryChanged,
+                            onChanged: (val) {
+                              if (val.trim().isEmpty) {
+                                updateState(() {
+                                  _searchResults = [];
+                                });
+                              }
+                            },
                             onSubmitted: (val) {
                               _performArSearchAndSelectFirst(val);
                             },
@@ -3899,7 +3911,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                           GestureDetector(
                             onTap: () {
                               _searchController.clear();
-                              _onSearchQueryChanged('');
+                              updateState(() {
+                                _searchResults = [];
+                                _showSearchResults = false;
+                              });
                             },
                             child: const Padding(
                               padding: EdgeInsets.symmetric(horizontal: 8),
@@ -11193,10 +11208,18 @@ extension _ArCameraNavigation on _ArCameraPageState {
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  color: AppColors.brandGreen,
-                  size: 20,
+                prefixIcon: GestureDetector(
+                  onTap: () {
+                    final text = _searchController.text.trim();
+                    if (text.isNotEmpty) {
+                      _performArSearchAndSelectFirst(text);
+                    }
+                  },
+                  child: const Icon(
+                    Icons.search_rounded,
+                    color: AppColors.brandGreen,
+                    size: 20,
+                  ),
                 ),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -11222,7 +11245,12 @@ extension _ArCameraNavigation on _ArCameraPageState {
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
               onChanged: (val) {
-                _performArSearch(val);
+                if (val.trim().isEmpty) {
+                  updateState(() {
+                    _searchResults = [];
+                    _showSearchResults = false;
+                  });
+                }
               },
               onSubmitted: (val) {
                 _performArSearchAndSelectFirst(val);

@@ -35,10 +35,19 @@ MUSEUM_META = {
     "longitude": -99.186279,
 }
 
-EXCEL_PATH = os.environ.get(
-    "ANTHROPOLOGY_XLSX",
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "National_Museum_of_Anthropology_Itineraries_Full.xlsx"))
-)
+POSSIBLE_EXCEL_PATHS = [
+    os.environ.get("ANTHROPOLOGY_XLSX", ""),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+]
+
+def find_excel_file():
+    for p in POSSIBLE_EXCEL_PATHS:
+        if p and os.path.exists(p):
+            return p
+    return ""
 
 def get_building_and_category(room_name):
     room_lower = (room_name or "").lower()
@@ -201,8 +210,11 @@ async def seed():
         )
         print(f"Cleared previous masterpieces for {museum.name}")
 
+        excel_path = find_excel_file()
+        print(f"Using Excel file at: {excel_path}")
+
         # 3. Process excel and insert masterpieces
-        items = process_excel(EXCEL_PATH)
+        items = process_excel(excel_path)
         print(f"Found {len(items)} masterpieces across 5h, 1d, 2d itineraries.")
 
         added_count = 0

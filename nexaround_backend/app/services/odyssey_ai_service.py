@@ -16,6 +16,7 @@ from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
     format_hotel_results_for_gemini,
+    extract_hotel_strategies_from_serpapi,
 )
 
 logger = logging.getLogger(__name__)
@@ -380,12 +381,19 @@ async def generate_hotel_strategies(
     api_key: str,
     serpapi_key: str = "",
 ) -> dict:
-    """Generates hotel/accommodation strategies using SerpApi Google Hotels + Gemini."""
-    real_data_context = ""
+    """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
+    
+    Option A: Uses SerpAPI results directly with 4.0★ minimum rating filter.
+    Gemini is NOT used for hotel selection — prices, ratings, and hotel names
+    come straight from Google Hotels via SerpAPI for 100% accuracy.
+    
+    Falls back to Gemini-based generation only if SerpAPI returns no results.
+    """
 
+    # ── Primary path: SerpAPI direct extraction ──────────────────────────────
     if serpapi_key:
         try:
-            logger.info("Fetching live hotel data via SerpApi (Google Hotels)...")
+            logger.info("Fetching live hotel data via SerpApi (Google Hotels) with 4.0★ min rating...")
             serp = SerpApiService(serpapi_key)
             serp_result = await serp.search_hotels(
                 destination=destination,
@@ -393,25 +401,57 @@ async def generate_hotel_strategies(
                 check_out_date=hotel_check_out_date,
                 adults=travelers,
                 currency=currency,
+                min_rating=4.0,  # Only 4★+ hotels
             )
-            real_data_context = format_hotel_results_for_gemini(
-                serp_result, destination, currency
-            )
-        except Exception as e:
-            logger.warning(f"SerpApi hotel search failed, falling back to Gemini knowledge: {e}")
 
+            properties = serp_result.get("properties") or []
+            if properties:
+                logger.info(f"SerpAPI returned {len(properties)} hotels rated 4.0★+ for {destination}")
+                result = extract_hotel_strategies_from_serpapi(
+                    serp_result,
+                    destination=destination,
+                    currency=currency,
+                    check_in_date=hotel_check_in_date,
+                    check_out_date=hotel_check_out_date,
+                    travelers=travelers,
+                    max_hotels=4,
+                )
+                return result
+            else:
+                logger.warning(f"SerpAPI returned 0 hotels after 4.0★ filter for {destination}. "
+                              "Trying with 3.5★ minimum...")
+                # Retry with slightly lower threshold
+                serp_result = await serp.search_hotels(
+                    destination=destination,
+                    check_in_date=hotel_check_in_date,
+                    check_out_date=hotel_check_out_date,
+                    adults=travelers,
+                    currency=currency,
+                    min_rating=3.5,
+                )
+                properties = serp_result.get("properties") or []
+                if properties:
+                    logger.info(f"SerpAPI returned {len(properties)} hotels rated 3.5★+ for {destination}")
+                    result = extract_hotel_strategies_from_serpapi(
+                        serp_result,
+                        destination=destination,
+                        currency=currency,
+                        check_in_date=hotel_check_in_date,
+                        check_out_date=hotel_check_out_date,
+                        travelers=travelers,
+                        max_hotels=4,
+                    )
+                    return result
+
+        except Exception as e:
+            logger.warning(f"SerpApi hotel search failed, falling back to Gemini: {e}")
+
+    # ── Fallback: Gemini-based generation (only when SerpAPI unavailable) ────
+    logger.info("Using Gemini fallback for hotel strategies (no SerpAPI results)")
+    
     date_str = ""
     if hotel_check_in_date and hotel_check_out_date:
         date_str = f"- Check-in Date: {hotel_check_in_date}\n- Check-out Date: {hotel_check_out_date}"
-
-    real_data_prompt_section = ""
-    if real_data_context:
-        real_data_prompt_section = f"""
-LIVE GOOGLE HOTELS SEARCH RESULTS:
-{real_data_context}
-
-INSTRUCTION: Use the REAL hotel data above to select 2-4 actual hotel options in {destination}. Use their real names, real per-night rates, real ratings, and real amenities from the search results.
-"""
 
     prompt = f"""Analyze accommodation options for a trip to "{destination}".
 The travelers want recommended places to stay.
@@ -422,15 +462,16 @@ Trip Details:
 - Duration: {days} days
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency}
-{real_data_prompt_section}
+
 Your task is to act as an agentic hotel finder. Propose 2-4 distinct, realistic hotel/stay options.
 For each option, include a REAL, well-known hotel name that actually exists in {destination}.
 Categories: Luxury, Boutique, Budget, Resort, or Apartment.
 
 IMPORTANT RULES:
+- ONLY recommend hotels with a rating of 4.0 stars or higher.
 - provider_name MUST be either "Booking.com" or "Agoda" only. NEVER output "Google Hotels" or generic provider names.
 - Use REAL hotel names that exist in {destination}.
-- Estimate REALISTIC per-night rates in {currency} for the room/stay. Per-night prices MUST be realistic for the target destination and hotel class in {currency} (e.g. for luxury/boutique hotels, rates must reflect real local costs in {currency}, NEVER arbitrary small numbers like 30 or 12).
+- Estimate REALISTIC per-night rates in {currency}.
 - booking_url: Leave empty, will be generated server-side.
 
 Return ONLY a JSON object with this exact shape:

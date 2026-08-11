@@ -861,20 +861,9 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   void _onSearchTextChanged(String text) {
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
-    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
-      if (text.trim().isEmpty) {
-        setState(() => _suggestions = []);
-        return;
-      }
-      final suggestions = await GooglePlacesService.getAutocompleteSuggestions(
-        input: text,
-        latitude: _userLat ?? _destLat,
-        longitude: _userLng ?? _destLng,
-      );
-      if (mounted) {
-        setState(() => _suggestions = suggestions);
-      }
-    });
+    if (text.trim().isEmpty) {
+      setState(() => _suggestions = []);
+    }
   }
 
   Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {

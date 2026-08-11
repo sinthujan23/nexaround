@@ -159,6 +159,13 @@ class HotelStrategiesSection extends StatelessWidget {
                                     hs.rating,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
+                                  if (hs.reviews > 0) ...[
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '(${hs.reviews})',
+                                      style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -276,6 +283,7 @@ class HotelStrategiesSection extends StatelessWidget {
                     checkInDate: odyssey.startDate ?? '',
                     checkOutDate: odyssey.endDate ?? '',
                     travelers: odyssey.travelers,
+                    serpApiLink: hs.serpApiLink,
                   );
                   return SizedBox(
                     width: double.infinity,
