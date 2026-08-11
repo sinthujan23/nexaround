@@ -2064,7 +2064,23 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
     if (text.trim().isEmpty) {
       setState(() => _suggestions = []);
+      return;
     }
+    // Debounce: wait 500ms after user stops typing, then fetch autocomplete
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      try {
+        final results = await GooglePlacesService.getAutocompleteSuggestions(
+          input: text.trim(),
+          latitude: _userLat ?? _destLat,
+          longitude: _userLng ?? _destLng,
+        );
+        if (mounted) {
+          setState(() => _suggestions = results);
+        }
+      } catch (e) {
+        debugPrint('Autocomplete error: $e');
+      }
+    });
   }
 
   Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {

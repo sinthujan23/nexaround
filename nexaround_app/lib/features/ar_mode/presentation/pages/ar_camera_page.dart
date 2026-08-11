@@ -1263,6 +1263,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     _positionSubscription?.cancel();
     _rangeHintTimer?.cancel();
     _maxPlacesLimitNoticeTimer?.cancel();
+    _searchDebounceTimer?.cancel();
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
@@ -3451,7 +3452,12 @@ class _ArCameraPageState extends State<ArCameraPage>
         _searchResults = [];
         _showSearchResults = false;
       });
+      return;
     }
+    // Debounce: wait 500ms after user stops typing, then fetch autocomplete suggestions
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+      _performGoogleSearch(query.trim());
+    });
   }
 
   Future<void> _performGoogleSearch(String query) async {
@@ -3896,13 +3902,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                             onTap: () {
                               updateState(() => _isSearching = true);
                             },
-                            onChanged: (val) {
-                              if (val.trim().isEmpty) {
-                                updateState(() {
-                                  _searchResults = [];
-                                });
-                              }
-                            },
+                            onChanged: _onSearchQueryChanged,
                             onSubmitted: (val) {
                               _performArSearchAndSelectFirst(val);
                             },
@@ -11246,14 +11246,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
                 fillColor: Colors.transparent,
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onChanged: (val) {
-                if (val.trim().isEmpty) {
-                  updateState(() {
-                    _searchResults = [];
-                    _showSearchResults = false;
-                  });
-                }
-              },
+              onChanged: _onSearchQueryChanged,
               onSubmitted: (val) {
                 _performArSearchAndSelectFirst(val);
               },

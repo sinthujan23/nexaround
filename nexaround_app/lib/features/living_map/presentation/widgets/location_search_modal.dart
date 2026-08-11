@@ -105,7 +105,15 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
           });
         }
       }
-    });
+    } catch (e) {
+      debugPrint('Location search error: $e');
+      if (mounted) {
+        setState(() {
+          _suggestions = [];
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   void _onSuggestionTapped(Map<String, dynamic> suggestion) {
