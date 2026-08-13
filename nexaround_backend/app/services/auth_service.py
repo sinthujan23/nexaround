@@ -77,8 +77,8 @@ class AuthService:
         if redis:
             await redis.setex(f"otp:{data.email}", 600, otp_code)
 
-        # Dispatch email asynchronously in background task
-        asyncio.create_task(send_otp_email(data.email, otp_code))
+        # Dispatch email
+        await send_otp_email(data.email, otp_code)
 
         return RegisterPendingResponse(
             email=data.email,
@@ -130,8 +130,8 @@ class AuthService:
         if redis:
             await redis.setex(f"otp:{email}", 600, otp_code)
 
-        # Dispatch email asynchronously in background task
-        asyncio.create_task(send_otp_email(email, otp_code))
+        # Dispatch email
+        await send_otp_email(email, otp_code)
 
         return RegisterPendingResponse(
             email=email,

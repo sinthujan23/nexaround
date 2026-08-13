@@ -187,20 +187,35 @@ class AuthRepositoryImpl implements AuthRepository {
   Failure _handleDioError(DioException e) {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout) {
-      return const NetworkFailure('Connection timed out');
+      return const NetworkFailure('Connection timed out. Please try again.');
     }
     if (e.response != null) {
       final statusCode = e.response!.statusCode;
-      final detail =
-          e.response!.data is Map ? e.response!.data['detail'] : null;
+      String? detailStr;
+      if (e.response!.data is Map) {
+        final rawDetail = e.response!.data['detail'];
+        if (rawDetail is String) {
+          detailStr = rawDetail;
+        } else if (rawDetail is List && rawDetail.isNotEmpty) {
+          final firstErr = rawDetail.first;
+          if (firstErr is Map && firstErr.containsKey('msg')) {
+            detailStr = firstErr['msg'].toString();
+          } else {
+            detailStr = rawDetail.toString();
+          }
+        }
+      }
       if (statusCode == 401) {
-        return AuthFailure(detail ?? 'Invalid credentials');
+        return AuthFailure(detailStr ?? 'Invalid credentials');
       }
       if (statusCode == 409) {
-        return AuthFailure(detail ?? 'Email already registered');
+        return AuthFailure(detailStr ?? 'Email already registered');
       }
-      return ServerFailure(detail ?? 'Server error ($statusCode)');
+      if (statusCode == 422) {
+        return AuthFailure(detailStr ?? 'Invalid input data. Please check your details.');
+      }
+      return ServerFailure(detailStr ?? 'Server error ($statusCode)');
     }
-    return NetworkFailure('Could not reach server (${e.type.name}): ${e.message ?? 'No internet connection'}');
+    return NetworkFailure('Could not reach server: ${e.message ?? 'No internet connection'}');
   }
 }
