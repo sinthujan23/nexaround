@@ -17,33 +17,52 @@ from app.schemas.user import (
     UserPreferencesUpdate,
     FcmTokenRequest,
     MessageResponse,
+    VerifyOTPRequest,
+    ResendOTPRequest,
+    RegisterPendingResponse,
 )
+
+from app.core.rate_limiter import auth_rate_limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=TokenResponse, status_code=201)
+@router.post("/register", response_model=RegisterPendingResponse, status_code=201, dependencies=[Depends(auth_rate_limiter)])
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    """Register a new user account."""
+    """Register a new user account (dispatches OTP to email)."""
     service = AuthService(db)
     return await service.register(data)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/verify-otp", response_model=TokenResponse, dependencies=[Depends(auth_rate_limiter)])
+async def verify_otp(data: VerifyOTPRequest, db: AsyncSession = Depends(get_db)):
+    """Verify 6-digit OTP code and complete user registration."""
+    service = AuthService(db)
+    return await service.verify_otp(data.email, data.otp)
+
+
+@router.post("/resend-otp", response_model=RegisterPendingResponse, dependencies=[Depends(auth_rate_limiter)])
+async def resend_otp(data: ResendOTPRequest, db: AsyncSession = Depends(get_db)):
+    """Resend 6-digit verification OTP code to email."""
+    service = AuthService(db)
+    return await service.resend_otp(data.email)
+
+
+@router.post("/login", response_model=TokenResponse, dependencies=[Depends(auth_rate_limiter)])
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login with email and password."""
     service = AuthService(db)
     return await service.login(data.email, data.password)
 
 
-@router.post("/google", response_model=TokenResponse)
+@router.post("/google", response_model=TokenResponse, dependencies=[Depends(auth_rate_limiter)])
 async def google_login(data: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate with Google ID Token."""
     service = AuthService(db)
     return await service.google_login(data.id_token)
 
 
-@router.post("/apple", response_model=TokenResponse)
+@router.post("/apple", response_model=TokenResponse, dependencies=[Depends(auth_rate_limiter)])
 async def apple_login(data: AppleLoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate with Apple ID Token."""
     service = AuthService(db)
@@ -53,6 +72,7 @@ async def apple_login(data: AppleLoginRequest, db: AsyncSession = Depends(get_db
         data.given_name,
         data.familyName,
     )
+
 
 
 @router.post("/apple/callback")

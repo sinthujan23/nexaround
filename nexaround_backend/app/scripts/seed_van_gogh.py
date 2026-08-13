@@ -3,7 +3,7 @@ Seed script for Van Gogh Museum (Amsterdam) masterpieces and metadata.
 Includes 5-Hour and 1-Day itinerary stops and highlights from Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx.
 
 Usage (from backend root or docker/VPS):
-    python -m app.scripts.seed_van_gogh
+    docker exec nexaround_backend-api-1 python -m app.scripts.seed_van_gogh
 """
 
 import asyncio
@@ -37,10 +37,10 @@ MUSEUM_META = {
 
 POSSIBLE_EXCEL_PATHS = [
     os.environ.get("VAN_GOGH_XLSX", ""),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "nexaround_app", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_backend", "app", "scripts", "Van_Gogh_Museum_1-Day_and_5-Hour_Itineraries.xlsx")),
 ]
 
 def find_excel_file():
@@ -49,19 +49,15 @@ def find_excel_file():
             return p
     return ""
 
-def format_floor(raw_floor):
-    f_str = str(raw_floor or "").strip()
-    if not f_str or f_str in ["nan", "—", "-"]:
-        return "Main Gallery"
-    if f_str.upper() in ["GF", "0F", "0"]:
-        return "Ground Floor (GF)"
-    if f_str.upper() in ["1F", "1"]:
-        return "Floor 1 (1F)"
-    if f_str.upper() in ["2F", "2"]:
-        return "Floor 2 (2F)"
-    if f_str.upper() in ["3F", "3"]:
-        return "Floor 3 (3F)"
-    return f"Floor {f_str}"
+def get_building(period):
+    p_lower = (period or "").lower()
+    if any(x in p_lower for x in ["nuenen", "paris"]):
+        return "Floor 1 - Early Works & Paris"
+    elif any(x in p_lower for x in ["arles", "saint-rémy", "saint-remy", "auvers"]):
+        return "Floor 2 - Masterpieces (Arles, Saint-Rémy & Auvers)"
+    elif "portrait" in p_lower or "context" in p_lower:
+        return "Floor 3 - Portraits & Contemporaries"
+    return "Main Building"
 
 def guess_artist(artwork_name, period):
     art_lower = (artwork_name or "").lower()
@@ -96,22 +92,22 @@ def process_excel(file_path):
             if period.lower() in ["nan", "none"]:
                 period = "Van Gogh Masterpieces"
 
-            raw_floor = row.get("Floor (verified only)", "")
-            floor_val = format_floor(raw_floor)
+            must_see_val = str(row.get("Must See", "")).strip().lower() == "yes"
+            building_val = get_building(period)
 
             notes = str(row.get("Notes", "")).strip()
-            if notes.lower() in ["nan", "none"]:
+            if not notes or notes.lower() in ["nan", "none"]:
                 notes = f"Famous masterpiece '{artwork}' by Vincent van Gogh from the {period} period."
 
             key = artwork.lower()
 
             if key in merged:
                 merged[key][flag_name] = True
-                if floor_val != "Main Gallery" and merged[key]["building"] == "Main Gallery":
-                    merged[key]["building"] = floor_val
+                if must_see_val:
+                    merged[key]["included_5h"] = True
             else:
                 merged[key] = {
-                    "building": floor_val,
+                    "building": building_val,
                     "room_gallery": period,
                     "must_see_item": artwork,
                     "artist": guess_artist(artwork, period),
@@ -119,16 +115,18 @@ def process_excel(file_path):
                     "description": notes,
                     "included_3h": False,
                     "included_5h": False,
-                    "included_1d": False,
+                    "included_1d": True,  # Items in sheet are in 1-day itinerary
                     "included_2d": False,
                 }
                 merged[key][flag_name] = True
+                if must_see_val:
+                    merged[key]["included_5h"] = True
 
     extract_items("5-Hour Itinerary", "included_5h")
     extract_items("1-Day Itinerary", "included_1d")
 
     masterpieces = list(merged.values())
-    masterpieces.sort(key=lambda x: (not x["included_5h"], not x["included_1d"], x["must_see_item"]))
+    masterpieces.sort(key=lambda x: (not x["included_5h"], x["building"], x["must_see_item"]))
     for idx, item in enumerate(masterpieces, 1):
         item["rank"] = idx
 
@@ -207,7 +205,7 @@ async def seed():
             added_count += 1
 
         await session.commit()
-        print(f"[SUCCESS] Successfully seeded {added_count} masterpieces for {museum.name}!")
+        print(f"✅ Successfully seeded {added_count} masterpieces for {museum.name}!")
 
 if __name__ == "__main__":
     asyncio.run(seed())

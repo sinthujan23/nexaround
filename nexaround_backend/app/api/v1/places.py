@@ -23,6 +23,9 @@ async def get_nearby_places(
     category: Optional[str] = Query(None, description="App-side category name"),
     radius: int = Query(5000, ge=100, le=50000),
     use_legacy: bool = Query(False, description="Whether to use legacy Google Places API"),
+    max_photos: int = Query(1, ge=1, le=10, description="Max photos per place to return"),
+    limit: int = Query(20, ge=1, le=100, description="Max places to return (pagination)"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
     """Return Google Places near a coordinate. Cached server-side for 7 days."""
     return await places_service.get_nearby(
@@ -31,7 +34,11 @@ async def get_nearby_places(
         category=category,
         radius=radius,
         use_legacy=use_legacy,
+        max_photos=max_photos,
+        limit=limit,
+        offset=offset,
     )
+
 
 
 @router.get("/search", response_model=PlacesNearbyResponse)

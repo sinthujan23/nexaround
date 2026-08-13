@@ -407,6 +407,25 @@ def attraction_to_place_dict(attraction: Attraction, distance_m: float) -> dict:
     }
 
 
+def _format_response_places(
+    place_dicts: list[dict],
+    max_photos: int,
+    limit: int,
+    offset: int,
+) -> list[PlaceResponse]:
+    """Slice places list by offset/limit and trim photo_urls to max_photos for response payload efficiency.
+    Does not modify original dicts stored in DB/cache.
+    """
+    paginated = place_dicts[offset : offset + limit]
+    formatted = []
+    for p in paginated:
+        p_copy = dict(p)
+        if "photo_urls" in p_copy and p_copy["photo_urls"]:
+            p_copy["photo_urls"] = p_copy["photo_urls"][:max_photos]
+        formatted.append(PlaceResponse.model_validate(p_copy))
+    return formatted
+
+
 async def get_nearby(
     *,
     latitude: float,
@@ -414,6 +433,9 @@ async def get_nearby(
     category: Optional[str],
     radius: int,
     use_legacy: bool = False,
+    max_photos: int = 1,
+    limit: int = 20,
+    offset: int = 0,
 ) -> PlacesNearbyResponse:
     # Canonicalize once at the entry point so the cache key, the Google call,
     # and the filter_food decision below all agree on the same category value.
@@ -425,10 +447,11 @@ async def get_nearby(
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
         return PlacesNearbyResponse(
-            places=[PlaceResponse.model_validate(p) for p in cached],
+            places=_format_response_places(cached, max_photos, limit, offset),
             cached=True,
             source="cache",
         )
+
 
     # Redis missed. Query local PostgreSQL database first
     async with async_session() as session:
@@ -497,7 +520,7 @@ async def get_nearby(
             
             await place_cache_service.set_cached(key, place_dicts)
             return PlacesNearbyResponse(
-                places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                places=_format_response_places(place_dicts, max_photos, limit, offset),
                 cached=False,
                 source="database",
             )
@@ -746,7 +769,7 @@ async def get_nearby(
     await place_cache_service.set_cached(key, place_dicts)
 
     return PlacesNearbyResponse(
-        places=[PlaceResponse.model_validate(p) for p in place_dicts],
+        places=_format_response_places(place_dicts, max_photos, limit, offset),
         cached=False,
         source="google",
     )

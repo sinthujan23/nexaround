@@ -30,6 +30,16 @@ class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated();
 }
 
+class AuthOTPVerificationRequired extends AuthState {
+  final String email;
+  final String? message;
+
+  const AuthOTPVerificationRequired({required this.email, this.message});
+
+  @override
+  List<Object?> get props => [email, message];
+}
+
 class AuthError extends AuthState {
   final String message;
 

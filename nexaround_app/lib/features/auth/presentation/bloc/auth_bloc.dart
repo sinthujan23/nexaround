@@ -15,6 +15,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthCheckStatus>(_onCheckStatus);
     on<AuthLoginRequested>(_onLogin);
     on<AuthRegisterRequested>(_onRegister);
+    on<AuthVerifyOTPRequested>(_onVerifyOTP);
+    on<AuthResendOTPRequested>(_onResendOTP);
     on<AuthGoogleLoginRequested>(_onGoogleLogin);
     on<AuthAppleLoginRequested>(_onAppleLogin);
     on<AuthLogoutRequested>(_onLogout);
@@ -180,7 +182,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       password: event.password,
     );
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) {
+        if (failure.message.toLowerCase().contains('not verified')) {
+          emit(AuthOTPVerificationRequired(
+            email: event.email,
+            message: failure.message,
+          ));
+        } else {
+          emit(AuthError(failure.message));
+        }
+      },
       (tokens) => emit(AuthAuthenticated(
         user: _mergeWithLocalPrefs(tokens.user),
         accessToken: tokens.accessToken,
@@ -200,9 +211,41 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     );
     result.fold(
       (failure) => emit(AuthError(failure.message)),
+      (registeredEmail) => emit(AuthOTPVerificationRequired(
+        email: registeredEmail,
+        message: 'Verification OTP sent to your email address.',
+      )),
+    );
+  }
+
+  Future<void> _onVerifyOTP(
+    AuthVerifyOTPRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    final result = await _authRepository.verifyOtp(
+      email: event.email,
+      otp: event.otp,
+    );
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
       (tokens) => emit(AuthAuthenticated(
         user: _mergeWithLocalPrefs(tokens.user),
         accessToken: tokens.accessToken,
+      )),
+    );
+  }
+
+  Future<void> _onResendOTP(
+    AuthResendOTPRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    final result = await _authRepository.resendOtp(email: event.email);
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
+      (msg) => emit(AuthOTPVerificationRequired(
+        email: event.email,
+        message: msg,
       )),
     );
   }

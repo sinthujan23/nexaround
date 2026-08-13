@@ -13,7 +13,7 @@ class AuthRepositoryImpl implements AuthRepository {
   AuthRepositoryImpl(this._remoteDatasource);
 
   @override
-  Future<Either<Failure, AuthTokens>> register({
+  Future<Either<Failure, String>> register({
     required String email,
     required String password,
     required String displayName,
@@ -26,8 +26,42 @@ class AuthRepositoryImpl implements AuthRepository {
         displayName: displayName,
         language: language,
       );
+      final registeredEmail = result['email'] as String? ?? email;
+      return Right(registeredEmail);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, AuthTokens>> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final result = await _remoteDatasource.verifyOtp(
+        email: email,
+        otp: otp,
+      );
       await _saveTokens(result.accessToken, result.refreshToken);
       return Right(result);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, String>> resendOtp({
+    required String email,
+  }) async {
+    try {
+      final result = await _remoteDatasource.resendOtp(email: email);
+      final message = result['message'] as String? ?? 'OTP sent';
+      return Right(message);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {

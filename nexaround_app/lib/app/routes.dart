@@ -22,6 +22,7 @@ class AppRouter {
         // Define public routes that don't require authentication
         final bool isPublicRoute = state.matchedLocation == '/login' || 
                                   state.matchedLocation == '/register' || 
+                                  state.matchedLocation == '/otp-verify' || 
                                   state.matchedLocation == '/' || 
                                   state.matchedLocation == '/onboarding';
 

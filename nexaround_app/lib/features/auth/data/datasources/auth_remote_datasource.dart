@@ -6,7 +6,7 @@ import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 class AuthRemoteDatasource {
   final Dio _dio = ApiClient.instance;
 
-  Future<AuthTokensModel> register({
+  Future<Map<String, dynamic>> register({
     required String email,
     required String password,
     required String displayName,
@@ -21,7 +21,33 @@ class AuthRemoteDatasource {
         'language': language,
       },
     );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<AuthTokensModel> verifyOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.verifyOtp,
+      data: {
+        'email': email,
+        'otp': otp,
+      },
+    );
     return AuthTokensModel.fromJson(response.data);
+  }
+
+  Future<Map<String, dynamic>> resendOtp({
+    required String email,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.resendOtp,
+      data: {
+        'email': email,
+      },
+    );
+    return response.data as Map<String, dynamic>;
   }
 
   Future<AuthTokensModel> login({

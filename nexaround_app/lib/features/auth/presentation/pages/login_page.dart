@@ -12,6 +12,8 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 
 import 'package:nexaround_app/core/services/cache_service.dart';
 
+import 'package:nexaround_app/features/auth/presentation/pages/otp_verification_page.dart';
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -71,6 +73,16 @@ class _LoginPageState extends State<LoginPage> {
               transitionsBuilder: (_, animation, __, child) =>
                   FadeTransition(opacity: animation, child: child),
               transitionDuration: const Duration(milliseconds: 800),
+            ),
+          );
+        } else if (state is AuthOTPVerificationRequired) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => OTPVerificationPage(
+                email: state.email,
+                initialMessage: state.message,
+              ),
             ),
           );
         } else if (state is AuthError) {

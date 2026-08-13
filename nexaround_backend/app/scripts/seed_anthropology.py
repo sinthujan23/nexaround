@@ -1,6 +1,6 @@
 """
 Seed script for National Museum of Anthropology (Mexico City) masterpieces and metadata.
-Includes 5-Hour, 1-Day, and 2-Day itinerary stops and highlights from National_Museum_of_Anthropology_Itineraries_Full.xlsx.
+Includes 5-Hour (8 stops), 1-Day (13 stops), and 2-Day (23 stops) itinerary stops from National_Museum_of_Anthropology_Itineraries_Full.xlsx.
 
 Usage (from backend root or docker):
     docker exec nexaround_backend-api-1 python -m app.scripts.seed_anthropology
@@ -37,11 +37,11 @@ MUSEUM_META = {
 
 POSSIBLE_EXCEL_PATHS = [
     os.environ.get("ANTHROPOLOGY_XLSX", ""),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
-    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "National_Museum_of_Anthropology_Itineraries_Full (1).xlsx")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_app", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "nexaround_backend", "app", "scripts", "National_Museum_of_Anthropology_Itineraries_Full.xlsx")),
 ]
 
 def find_excel_file():
@@ -82,17 +82,14 @@ def get_building_and_category(room_name):
     elif "preclassic" in room_lower:
         building = "Ground Floor - Archaeology"
         category = "Preclassic Central Highlands"
-    elif any(x in room_lower for x in ["populating", "anthropology", "entrance"]):
-        building = "Ground Floor - Archaeology"
-        category = "Origins & Archaeology"
     else:
         building = "Ground Floor - Archaeology"
-        category = "Archaeology"
+        category = "Origins & Archaeology"
     return building, category
 
-def guess_artist(room_name, item_name):
+def guess_artist(room_name, highlights_raw):
     room_lower = (room_name or "").lower()
-    item_lower = (item_name or "").lower()
+    item_lower = (highlights_raw or "").lower()
 
     if "mexica" in room_lower or "aztec" in item_lower or "tenochtitlan" in item_lower:
         return "Mexica Artisans"
@@ -117,53 +114,71 @@ def process_excel(file_path):
 
     xl = pd.ExcelFile(file_path)
     merged = {}
+    stop_order = {}
 
-    def extract_items_from_sheet(sheet_name, flag_name):
+    def extract_items_from_sheet(sheet_name, flag_name, priority):
         if sheet_name not in xl.sheet_names:
             return
         df = pd.read_excel(xl, sheet_name)
         for _, row in df.iterrows():
-            room_name = str(row.get("Room", "")).strip()
+            stop_num = row.get("Stop")
+            
+            # Support 'Area' (from Excel) or 'Room'
+            area_name = row.get("Area") if pd.notna(row.get("Area")) else row.get("Room", "")
+            area_name = str(area_name or "").strip()
+            if not area_name or area_name.lower() in ["nan", "none"]:
+                continue
+
             overview = str(row.get("Overview", "")).strip()
+            if overview.lower() in ["nan", "none"]:
+                overview = ""
+
             highlights_raw = str(row.get("Key Highlights", "")).strip()
+            if highlights_raw.lower() in ["nan", "none"]:
+                highlights_raw = ""
 
-            building_val, cat_val = get_building_and_category(room_name)
-
-            # Split key highlights by semicolon
-            highlights = [h.strip() for h in highlights_raw.split(";") if h.strip()]
-            if not highlights:
-                highlights = [room_name]
-
-            for item_name in highlights:
-                # Key based on item_name and room_name to preserve context
-                key = f"{room_name.lower()}||{item_name.lower()}"
-                
-                if key in merged:
-                    merged[key][flag_name] = True
+            desc = overview
+            if highlights_raw:
+                if desc:
+                    desc += f"\n\nKey Highlights: {highlights_raw}"
                 else:
-                    merged[key] = {
-                        "building": building_val,
-                        "room_gallery": room_name,
-                        "must_see_item": item_name,
-                        "artist": guess_artist(room_name, item_name),
-                        "category": cat_val,
-                        "description": overview,
-                        "included_3h": False,
-                        "included_5h": False,
-                        "included_1d": False,
-                        "included_2d": False,
-                    }
-                    merged[key][flag_name] = True
+                    desc = f"Key Highlights: {highlights_raw}"
 
-    extract_items_from_sheet("5 Hour", "included_5h")
-    extract_items_from_sheet("1 Day", "included_1d")
-    extract_items_from_sheet("2 Day", "included_2d")
+            building_val, cat_val = get_building_and_category(area_name)
+            key = area_name.lower()
+
+            if key not in stop_order:
+                stop_order[key] = priority * 100 + (stop_num if pd.notna(stop_num) else 99)
+
+            if key in merged:
+                merged[key][flag_name] = True
+                if desc and len(desc) > len(merged[key]["description"]):
+                    merged[key]["description"] = desc
+            else:
+                merged[key] = {
+                    "building": building_val,
+                    "room_gallery": area_name,
+                    "must_see_item": area_name,
+                    "artist": guess_artist(area_name, highlights_raw),
+                    "category": cat_val,
+                    "description": desc,
+                    "included_3h": False,
+                    "included_5h": False,
+                    "included_1d": False,
+                    "included_2d": False,
+                    "_order": stop_order[key],
+                }
+                merged[key][flag_name] = True
+
+    extract_items_from_sheet("5 Hour", "included_5h", priority=1)
+    extract_items_from_sheet("1 Day", "included_1d", priority=2)
+    extract_items_from_sheet("2 Day", "included_2d", priority=3)
 
     masterpieces = list(merged.values())
-    # Sort by building, room, and inclusion (5h first, then 1d, then 2d)
-    masterpieces.sort(key=lambda x: (x["building"], not x["included_5h"], not x["included_1d"], not x["included_2d"], x["must_see_item"]))
+    masterpieces.sort(key=lambda x: x["_order"])
     for idx, item in enumerate(masterpieces, 1):
         item["rank"] = idx
+        del item["_order"]
 
     return masterpieces
 
@@ -216,7 +231,7 @@ async def seed():
 
         # 3. Process excel and insert masterpieces
         items = process_excel(excel_path)
-        print(f"Found {len(items)} masterpieces across 5h, 1d, 2d itineraries.")
+        print(f"Found {len(items)} stop items across 5h, 1d, 2d itineraries.")
 
         added_count = 0
         for item_data in items:
@@ -239,7 +254,7 @@ async def seed():
             added_count += 1
 
         await session.commit()
-        print(f"✅ Successfully seeded {added_count} masterpieces for {museum.name}!")
+        print(f"✅ Successfully seeded {added_count} stop items for {museum.name}!")
 
 if __name__ == "__main__":
     asyncio.run(seed())

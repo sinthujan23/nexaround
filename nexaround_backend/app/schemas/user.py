@@ -29,6 +29,22 @@ class AppleLoginRequest(BaseModel):
     familyName: Optional[str] = None
 
 
+class VerifyOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit numeric OTP code")
+
+
+class ResendOTPRequest(BaseModel):
+    email: EmailStr
+
+
+class RegisterPendingResponse(BaseModel):
+    status: str = "pending_verification"
+    email: str
+    message: str = "Verification OTP sent to your email address."
+
+
+
 
 class UserPreferencesUpdate(BaseModel):
     interests: Optional[list[str]] = None

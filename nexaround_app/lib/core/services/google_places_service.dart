@@ -122,6 +122,17 @@ class GooglePlacesService {
     });
   }
 
+  static final Map<String, List<AttractionEntity>> _clientCache = {};
+  static final Map<String, DateTime> _clientCacheExpiry = {};
+
+  static String _buildClientCacheKey(double lat, double lng, String? categoryName, int radius, bool useLegacy) {
+    // Snap coordinates to 3 decimal places (~100m grid) for client-side debouncing
+    final sLat = lat.toStringAsFixed(3);
+    final sLng = lng.toStringAsFixed(3);
+    final cat = (categoryName ?? 'all').toLowerCase();
+    return '$sLat:$sLng:$cat:$radius:$useLegacy';
+  }
+
   /// Fetch nearby places from backend cached Places API
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
@@ -130,6 +141,15 @@ class GooglePlacesService {
     int radius = 5000,
     bool useLegacy = false,
   }) async {
+    final cacheKey = _buildClientCacheKey(latitude, longitude, categoryName, radius, useLegacy);
+    final now = DateTime.now();
+    if (_clientCache.containsKey(cacheKey) && _clientCacheExpiry.containsKey(cacheKey)) {
+      if (now.isBefore(_clientCacheExpiry[cacheKey]!)) {
+        debugPrint('⚡ Returning client-cached places for $cacheKey (${_clientCache[cacheKey]!.length} items)');
+        return _clientCache[cacheKey]!;
+      }
+    }
+
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/nearby',
@@ -151,6 +171,8 @@ class GooglePlacesService {
         print(
           '✅ Places fetched from backend: ${models.length} items (Source: ${data['source']})',
         );
+        _clientCache[cacheKey] = models;
+        _clientCacheExpiry[cacheKey] = now.add(const Duration(minutes: 10));
         return models;
       }
       return [];

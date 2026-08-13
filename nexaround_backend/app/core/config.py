@@ -19,7 +19,7 @@ class Settings(BaseSettings):
         raise ValueError(v)
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://nexaround:nexaround@localhost:5432/nexaround"
+    DATABASE_URL: str = "postgresql+asyncpg://nexaround_app:NxAround_DB_2026_Secured_9a8b7c!@localhost:5432/nexaround_prod"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -28,6 +28,30 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
     GOOGLE_API_KEY: str = ""
     HUGGINGFACE_API_KEY: str = ""
+
+    # OAuth Client IDs for token verification
+    GOOGLE_CLIENT_IDS: Union[List[str], str] = []
+    APPLE_CLIENT_IDS: Union[List[str], str] = []
+
+    # SMTP Email Settings for OTP Verification
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    EMAILS_FROM_EMAIL: str = "noreply@nexaround.com"
+
+    @field_validator("GOOGLE_CLIENT_IDS", "APPLE_CLIENT_IDS", mode="before")
+    @classmethod
+    def assemble_client_ids(cls, v: Union[str, List[str]]) -> List[str]:
+        if isinstance(v, str):
+            if not v:
+                return []
+            if not v.startswith("["):
+                return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, list):
+            return [str(i).strip() for i in v if str(i).strip()]
+        return []
+
 
     # Firebase push notifications. Provide ONE of these (via .env / server env,
     # NOT committed to git). Most secure first:
