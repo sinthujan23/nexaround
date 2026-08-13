@@ -1,8 +1,24 @@
-"""Email service for dispatching verification OTPs and transactional notifications."""
+import asyncio
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
+
+
+def _send_smtp_sync(to_email: str, subject: str, html_body: str) -> bool:
+    """Synchronous SMTP worker executed in threadpool to prevent blocking async loop."""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = settings.EMAILS_FROM_EMAIL
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_body, "html"))
+
+    with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=5) as server:
+        server.starttls()
+        if settings.SMTP_USER and settings.SMTP_PASSWORD:
+            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+        server.sendmail(settings.EMAILS_FROM_EMAIL, [to_email], msg.as_string())
+    return True
 
 
 async def send_otp_email(to_email: str, otp_code: str) -> bool:
@@ -34,30 +50,20 @@ async def send_otp_email(to_email: str, otp_code: str) -> bool:
     </html>
     """
 
+    print("=" * 80)
+    print(f"📧 [OTP DISPATCH] To: {to_email} | OTP Code: {otp_code}")
+    print("=" * 80)
+
     if not settings.SMTP_HOST or not settings.SMTP_USER:
-        print("=" * 80)
-        print(f"📧 [DEV EMAIL SIMULATOR] To: {to_email}")
-        print(f"🔑 OTP Code: {otp_code}")
-        print(f"⏰ Valid for 10 minutes")
-        print("=" * 80)
+        print(f"ℹ️ [DEV SIMULATOR] SMTP credentials not set. Mobile OTP code for {to_email} is: {otp_code}")
         return True
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = settings.EMAILS_FROM_EMAIL
-        msg["To"] = to_email
-        msg.attach(MIMEText(html_body, "html"))
-
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as server:
-            server.starttls()
-            if settings.SMTP_USER and settings.SMTP_PASSWORD:
-                server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-            server.sendmail(settings.EMAILS_FROM_EMAIL, [to_email], msg.as_string())
-        print(f"✅ OTP email sent successfully to {to_email}")
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        print(f"✅ OTP email sent successfully via SMTP to {to_email}")
         return True
     except Exception as e:
         print(f"❌ Failed to send OTP email via SMTP to {to_email}: {e}")
-        # Always print fallback to console so testing is never blocked
-        print(f"📧 [DEV FALLBACK] OTP for {to_email}: {otp_code}")
+        print(f"🔑 [DEV FALLBACK] OTP code for {to_email} is: {otp_code}")
         return False
+

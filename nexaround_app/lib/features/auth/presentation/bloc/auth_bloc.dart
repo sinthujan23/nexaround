@@ -210,7 +210,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       displayName: event.displayName,
     );
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) {
+        final msg = failure.message.toLowerCase();
+        if (msg.contains('unverified') || msg.contains('already sent') || msg.contains('verify')) {
+          emit(AuthOTPVerificationRequired(
+            email: event.email,
+            message: failure.message,
+          ));
+        } else {
+          emit(AuthError(failure.message));
+        }
+      },
       (registeredEmail) => emit(AuthOTPVerificationRequired(
         email: registeredEmail,
         message: 'Verification OTP sent to your email address.',

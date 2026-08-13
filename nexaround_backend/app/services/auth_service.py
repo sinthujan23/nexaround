@@ -1,4 +1,5 @@
 import uuid
+import asyncio
 import httpx
 from typing import Optional, Dict, Any
 from google.oauth2 import id_token
@@ -41,7 +42,21 @@ class AuthService:
         if existing:
             if existing.is_verified:
                 raise ConflictException(detail="Email already registered and verified")
-            # If account exists but is unverified, re-issue OTP instead of failing
+            
+            # If account exists but is unverified, check if valid OTP already exists in Redis
+            redis = await get_redis_client()
+            existing_otp = None
+            if redis:
+                existing_otp = await redis.get(f"otp:{data.email}")
+            
+            if existing_otp:
+                # Valid OTP already sent; proceed straight to OTP page
+                return RegisterPendingResponse(
+                    email=data.email,
+                    message="Verification OTP code was already sent to your email. Please enter the OTP to complete registration."
+                )
+
+            # If OTP expired, re-issue OTP
             return await self.resend_otp(data.email)
 
         # Create unverified user
@@ -62,8 +77,8 @@ class AuthService:
         if redis:
             await redis.setex(f"otp:{data.email}", 600, otp_code)
 
-        # Dispatch email
-        await send_otp_email(data.email, otp_code)
+        # Dispatch email asynchronously in background task
+        asyncio.create_task(send_otp_email(data.email, otp_code))
 
         return RegisterPendingResponse(
             email=data.email,
@@ -115,8 +130,8 @@ class AuthService:
         if redis:
             await redis.setex(f"otp:{email}", 600, otp_code)
 
-        # Dispatch email
-        await send_otp_email(email, otp_code)
+        # Dispatch email asynchronously in background task
+        asyncio.create_task(send_otp_email(email, otp_code))
 
         return RegisterPendingResponse(
             email=email,
