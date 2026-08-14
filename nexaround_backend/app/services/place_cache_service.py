@@ -6,6 +6,7 @@ being highly concentrated, one cache entry serves many requests for 7 days.
 """
 import json
 import math
+import time
 from typing import Optional
 import redis.asyncio as aioredis
 from app.core.config import settings
@@ -15,11 +16,12 @@ from app.core.config import settings
 # longitudinal degree-to-meters factor stays close to that.
 _GRID_DEG = 0.005
 
-# 7 days. Popular places don't churn weekly.
-_TTL_SECONDS = 7 * 24 * 60 * 60
+# 14 days. Popular places don't churn weekly.
+_TTL_SECONDS = 14 * 24 * 60 * 60
 
 
 _redis: Optional[aioredis.Redis] = None
+_mem_cache: dict[str, tuple[float, str]] = {}
 
 
 def _get_client() -> aioredis.Redis:
@@ -41,28 +43,39 @@ def _snap(value: float) -> str:
 
 def build_key(lat: float, lng: float, category: Optional[str], radius: int) -> str:
     cat = (category or "all").replace(" ", "_").replace("&", "and").lower()
-    # The :v2 namespace invalidates pre-fix entries that were cached from
-    # unfiltered searches (e.g. banks stored under an unrecognized 'food'/
-    # 'shopping' label). Old keys simply expire on their own TTL.
     return f"places:nearby:v4:{_snap(lat)}:{_snap(lng)}:{cat}:r{radius}"
 
 
 async def get_cached(key: str) -> Optional[list[dict]]:
     """Return the cached place list or None on miss."""
+    # 1. Try Redis
     try:
         raw = await _get_client().get(key)
-        if raw is None:
-            return None
-        return json.loads(raw)
+        if raw is not None:
+            return json.loads(raw)
     except Exception as e:
         print(f"⚠️ Redis GET error: {e}")
-        # Cache is best-effort. A bad redis state must never fail a user request.
-        return None
+
+    # 2. Fallback to memory cache
+    now = time.time()
+    if key in _mem_cache:
+        expiry, val = _mem_cache[key]
+        if now < expiry:
+            return json.loads(val)
+        else:
+            _mem_cache.pop(key, None)
+
+    return None
 
 
 async def set_cached(key: str, places: list[dict]) -> None:
+    serialized = json.dumps(places)
+    # 1. Write to memory cache
+    _mem_cache[key] = (time.time() + _TTL_SECONDS, serialized)
+    
+    # 2. Write to Redis
     try:
-        await _get_client().set(key, json.dumps(places), ex=_TTL_SECONDS)
+        await _get_client().set(key, serialized, ex=_TTL_SECONDS)
     except Exception as e:
         print(f"⚠️ Redis SET error: {e}")
         pass
@@ -74,14 +87,24 @@ async def get_raw(key: str) -> Optional[str]:
         return await _get_client().get(key)
     except Exception as e:
         print(f"⚠️ Redis GET error: {e}")
-        return None
+
+    now = time.time()
+    if key in _mem_cache:
+        expiry, val = _mem_cache[key]
+        if now < expiry:
+            return val
+        else:
+            _mem_cache.pop(key, None)
+    return None
 
 
-async def set_raw(key: str, value: str, ttl: int = 86400) -> None:
+async def set_raw(key: str, value: str, ttl: int = _TTL_SECONDS) -> None:
     """Set a raw string value in Redis with a custom TTL."""
+    _mem_cache[key] = (time.time() + ttl, value)
     try:
         await _get_client().set(key, value, ex=ttl)
     except Exception as e:
         print(f"⚠️ Redis SET error: {e}")
         pass
+
 

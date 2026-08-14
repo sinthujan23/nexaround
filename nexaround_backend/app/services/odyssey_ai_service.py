@@ -100,8 +100,8 @@ def _build_deep_booking_url(
 # Try a chain: a 503 on one model falls through to another that's healthy now.
 _MODELS = [
     "gemini-2.5-flash",
-    "gemini-flash-latest",
-    "gemini-1.5-pro",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 

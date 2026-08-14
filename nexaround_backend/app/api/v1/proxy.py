@@ -40,12 +40,12 @@ async def proxy_gemini_generate(
         raise HTTPException(status_code=500, detail="Gemini API Key not configured")
 
     # Gemini Flash models rotate through transient 503 "high demand" — which one
-    # is overloaded changes minute to minute. Try a chain so a 503 on one model
-    # falls through to another that's currently healthy, keeping Neva responsive.
+    # is overloaded changes minute to minute. Try a chain of Flash models so a 503
+    # on one model falls through to another that's currently healthy without incurring Pro costs.
     models = [
         "gemini-2.5-flash",
-        "gemini-flash-latest",
-        "gemini-1.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
     ]
     await settings.log_api_request("gemini", "/v1beta/models/gemini-2.5-flash:generateContent", current_user.id)
 

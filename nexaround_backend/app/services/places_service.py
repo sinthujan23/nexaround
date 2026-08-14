@@ -170,6 +170,9 @@ async def _query_nearby_three_zones(
     return near_db + mid_db + far_db
 
 
+_active_seed_tasks: set[str] = set()
+
+
 async def seed_places_from_google_bg(
     latitude: float,
     longitude: float,
@@ -180,6 +183,9 @@ async def seed_places_from_google_bg(
     key: str,
 ):
     """Seed places from Google API in the background to avoid blocking the user request."""
+    if key in _active_seed_tasks:
+        return
+    _active_seed_tasks.add(key)
     try:
         # 1. Check database first to see if revalidation is actually needed (close session immediately after)
         async with async_session() as session:
@@ -378,6 +384,8 @@ async def seed_places_from_google_bg(
             print(f"✅ Background seeding complete: cached {len(place_dicts)} places for radius {radius}m.")
     except Exception as e:
         print(f"⚠️ Error in seed_places_from_google_bg: {e}")
+    finally:
+        _active_seed_tasks.discard(key)
 
 
 
@@ -1164,8 +1172,8 @@ Always provide a meaningful discovery opportunity.
 
     models = [
         "gemini-2.5-flash",
-        "gemini-flash-latest",
-        "gemini-1.5-pro",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
     ]
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     
