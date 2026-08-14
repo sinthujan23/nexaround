@@ -29,6 +29,9 @@ class OdysseyPlanView extends StatelessWidget {
   /// Name of the partner currently being swapped, so it can show a spinner.
   final String? swappingPartnerName;
 
+  /// Called when the user enters/updates the actual cost for a completed activity.
+  final void Function(int dayIndex, int activityIndex, String actualCost)? onActualCostChanged;
+
   const OdysseyPlanView({
     super.key,
     required this.odyssey,
@@ -38,7 +41,9 @@ class OdysseyPlanView extends StatelessWidget {
     this.onToggleVisited,
     this.onSwapPartner,
     this.swappingPartnerName,
+    this.onActualCostChanged,
   });
+
 
   @override
   Widget build(BuildContext context) {
@@ -475,127 +480,441 @@ class OdysseyPlanView extends StatelessWidget {
     final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (checkable) ...[
-            GestureDetector(
-              onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 1, right: 8),
-                child: Icon(
-                  act.visited
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 22,
-                  color:
-                      act.visited ? AppColors.neonGreen : Colors.black26,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (checkable) ...[
+                GestureDetector(
+                  onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 1, right: 8),
+                    child: Icon(
+                      act.visited
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 22,
+                      color:
+                          act.visited ? AppColors.neonGreen : Colors.black26,
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
-          SizedBox(
-            width: 56,
-            child: Text(
-              act.time,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: act.visited
-                    ? Colors.black26
-                    : AppColors.actionTeal,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Name, tip, and cost stacked vertically inside Expanded
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Name row with cost on the right
-                Row(
+              ],
+              SizedBox(
+                width: 56,
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      flex: 3,
-                      child: Text(
-                        act.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: act.visited ? Colors.black38 : Colors.black,
-                          decoration:
-                              act.visited ? TextDecoration.lineThrough : null,
-                        ),
+                    Text(
+                      act.time,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: act.visited
+                            ? Colors.black26
+                            : AppColors.actionTeal,
                       ),
                     ),
-                    if (act.cost.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Flexible(
-                        flex: 2,
-                        child: ConvertedCurrencyText(
-                          rawText: act.cost,
-                          originalCurrency: odyssey.currency,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                          ),
+                    // Show ACTUAL COST label when visited
+                    if (act.visited && onActualCostChanged != null) ...[
+                      const SizedBox(height: 4),
+                      const Text(
+                        'ACTUAL COST',
+                        style: TextStyle(
+                          fontSize: 7,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black38,
+                          letterSpacing: 0.5,
                         ),
                       ),
                     ],
                   ],
                 ),
-                if (act.tip.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    act.tip,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      height: 1.35,
-                      color: Colors.black54,
+              ),
+              const SizedBox(width: 8),
+              // Name, tip, cost, and action buttons stacked vertically
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Name row with cost + type-specific buttons on the right
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Text(
+                            act.name,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: act.visited ? Colors.black38 : Colors.black,
+                              decoration:
+                                  act.visited ? TextDecoration.lineThrough : null,
+                            ),
+                          ),
+                        ),
+                        if (act.cost.isNotEmpty) ...[
+                          const SizedBox(width: 8),
+                          Flexible(
+                            flex: 2,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                ConvertedCurrencyText(
+                                  rawText: act.cost,
+                                  originalCurrency: odyssey.currency,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                                // Type-specific action button beside cost
+                                const SizedBox(height: 4),
+                                _buildActionButton(act, dayIndex, activityIndex),
+                              ],
+                            ),
+                          ),
+                        ] else ...[
+                          // No cost → still show action button (e.g. Self-Guided)
+                          _buildActionButton(act, dayIndex, activityIndex),
+                        ],
+                      ],
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (editable) ...[
-            const SizedBox(width: 4),
-            if (isSwapping)
-              const SizedBox(
-                width: 32,
-                height: 32,
-                child: Padding(
-                  padding: EdgeInsets.all(8),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.actionTeal,
-                  ),
-                ),
-              )
-            else
-              SizedBox(
-                width: 32,
-                height: 32,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  tooltip: 'Swap this place',
-                  icon: const Icon(
-                    Icons.autorenew_rounded,
-                    size: 18,
-                    color: Colors.black45,
-                  ),
-                  onPressed: swappingKey != null
-                      ? null
-                      : () => onSwapActivity!(dayIndex, activityIndex),
+                    if (act.tip.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        act.tip,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: Colors.black54,
+                        ),
+                      ),
+                    ],
+                    // Actual cost input when activity is visited
+                    if (act.visited && onActualCostChanged != null) ...[
+                      const SizedBox(height: 6),
+                      _buildActualCostInput(dayIndex, activityIndex, act),
+                    ],
+                  ],
                 ),
               ),
-          ],
+              if (editable) ...[
+                const SizedBox(width: 4),
+                if (isSwapping)
+                  const SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: Padding(
+                      padding: EdgeInsets.all(8),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.actionTeal,
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    width: 32,
+                    height: 32,
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'Swap this place',
+                      icon: const Icon(
+                        Icons.autorenew_rounded,
+                        size: 18,
+                        color: Colors.black45,
+                      ),
+                      onPressed: swappingKey != null
+                          ? null
+                          : () => onSwapActivity!(dayIndex, activityIndex),
+                    ),
+                  ),
+              ],
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  /// Builds the type-specific action button for an activity.
+  Widget _buildActionButton(OdysseyActivity act, int dayIndex, int activityIndex) {
+    switch (act.type) {
+      case ActivityType.transport:
+        return _buildTransportButton(act);
+      case ActivityType.attraction:
+        return _buildAttractionButton(act);
+      case ActivityType.dining:
+        return _buildDiningButton(act, dayIndex, activityIndex);
+      case ActivityType.exploration:
+        return _buildExplorationButton(act);
+      case ActivityType.accommodation:
+      case ActivityType.other:
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// Red UBER chip button for transport activities.
+  Widget _buildTransportButton(OdysseyActivity act) {
+    return GestureDetector(
+      onTap: () async {
+        // Try Uber deep link first, fall back to web
+        final destination = Uri.encodeComponent(act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim());
+        final uberUri = Uri.parse('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
+        if (await canLaunchUrl(uberUri)) {
+          await launchUrl(uberUri, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.black,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: const Text(
+          'uber',
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Teal HEADOUT chip button for ticketed attraction activities.
+  Widget _buildAttractionButton(OdysseyActivity act) {
+    return GestureDetector(
+      onTap: () async {
+        final query = Uri.encodeComponent('${act.name} tickets');
+        final url = Uri.parse('https://www.headout.com/search/?q=$query');
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFF00BFA5),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.confirmation_number_outlined, size: 10, color: Colors.white),
+            SizedBox(width: 3),
+            Text(
+              'headout',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// LIST chip button for dining activities. Tapping opens a restaurant sheet.
+  Widget _buildDiningButton(OdysseyActivity act, int dayIndex, int activityIndex) {
+    return Builder(
+      builder: (context) => GestureDetector(
+        onTap: () => _showRestaurantSheet(context, act),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: Colors.black26),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.restaurant_menu_rounded, size: 10, color: Colors.black54),
+              SizedBox(width: 3),
+              Text(
+                'LIST',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.black87,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Self-Guided label + GET A GUIDE button for exploration activities.
+  Widget _buildExplorationButton(OdysseyActivity act) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const Text(
+          'SELF-GUIDED',
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w800,
+            color: Colors.black45,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        GestureDetector(
+          onTap: () async {
+            final destination = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
+            final query = Uri.encodeComponent('$destination guided tour');
+            final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
+            if (await canLaunchUrl(url)) {
+              await launchUrl(url, mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4CAF50),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'GET A GUIDE',
+              style: TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+                letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Actual cost input field shown when an activity is marked visited.
+  Widget _buildActualCostInput(int dayIndex, int activityIndex, OdysseyActivity act) {
+    return _ActualCostInputField(
+      initialValue: act.actualCost,
+      currency: odyssey.currency,
+      onSaved: (val) => onActualCostChanged?.call(dayIndex, activityIndex, val),
+    );
+  }
+
+
+  /// Bottom sheet showing restaurant options for a dining activity.
+  void _showRestaurantSheet(BuildContext context, OdysseyActivity act) {
+    if (act.restaurants.isEmpty) {
+      // Fallback: open Google Maps restaurant search
+      final location = act.name.replaceAll(RegExp(r'^(Lunch|Dinner|Breakfast|Brunch)\s+(at|in)\s+', caseSensitive: false), '').trim();
+      final query = Uri.encodeComponent('restaurants in $location');
+      final url = Uri.parse('https://www.google.com/maps/search/$query');
+      launchUrl(url, mode: LaunchMode.externalApplication);
+      return;
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Restaurant Options',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              act.name,
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            ...act.restaurants.map((r) => Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F8F8),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          r.name,
+                          style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      if (r.rating.isNotEmpty) ...[
+                        const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                        const SizedBox(width: 2),
+                        Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                      ],
+                    ],
+                  ),
+                  if (r.cuisine.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                  ],
+                  if (r.priceRange.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    ConvertedCurrencyText(
+                      rawText: r.priceRange,
+                      originalCurrency: odyssey.currency,
+                      style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w800,
+                        color: AppColors.actionTeal,
+                      ),
+                    ),
+                  ],
+                  if (r.tip.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                  ],
+                ],
+              ),
+            )),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -914,6 +1233,107 @@ class OdysseyPlanView extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ActualCostInputField extends StatefulWidget {
+  final String initialValue;
+  final String currency;
+  final ValueChanged<String> onSaved;
+
+  const _ActualCostInputField({
+    required this.initialValue,
+    required this.currency,
+    required this.onSaved,
+  });
+
+  @override
+  State<_ActualCostInputField> createState() => _ActualCostInputFieldState();
+}
+
+class _ActualCostInputFieldState extends State<_ActualCostInputField> {
+  late final TextEditingController _controller;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ActualCostInputField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialValue != widget.initialValue &&
+        _controller.text != widget.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  void _onFocusChange() {
+    if (!_focusNode.hasFocus) {
+      _save();
+    }
+  }
+
+  void _save() {
+    final text = _controller.text.trim();
+    if (text != widget.initialValue) {
+      widget.onSaved(text);
+    }
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 32,
+      child: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.done,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: Colors.black87,
+        ),
+        decoration: InputDecoration(
+          hintText: 'Enter actual cost (e.g. ${widget.currency} 850)',
+          hintStyle: const TextStyle(fontSize: 11, color: Colors.black26),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          isDense: true,
+          filled: true,
+          fillColor: const Color(0xFFF5F5F5),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Colors.black12),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Colors.black12),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.actionTeal, width: 1.5),
+          ),
+          prefixIcon: const Padding(
+            padding: EdgeInsets.only(left: 8, right: 4),
+            child: Icon(Icons.receipt_long_rounded, size: 14, color: Colors.black38),
+          ),
+          prefixIconConstraints: const BoxConstraints(minWidth: 28, minHeight: 0),
+        ),
+        onSubmitted: (_) => _save(),
       ),
     );
   }

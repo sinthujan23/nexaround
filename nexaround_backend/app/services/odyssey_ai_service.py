@@ -698,12 +698,29 @@ async def generate_odyssey(
         for a in (d.get("activities") or []):
             if not isinstance(a, dict):
                 continue
-            activities.append({
+            act_type = str(a.get("type") or "").strip().lower()
+            restaurants = []
+            if isinstance(a.get("restaurants"), list):
+                for r in a.get("restaurants"):
+                    if isinstance(r, dict):
+                        restaurants.append({
+                            "name": str(r.get("name") or ""),
+                            "cuisine": str(r.get("cuisine") or ""),
+                            "price_range": str(r.get("price_range") or ""),
+                            "rating": str(r.get("rating") or ""),
+                            "tip": str(r.get("tip") or ""),
+                        })
+            act_dict = {
                 "time": str(a.get("time") or ""),
                 "name": str(a.get("name") or a.get("attraction_name") or ""),
                 "tip": str(a.get("tip") or a.get("note") or ""),
                 "cost": str(a.get("cost") or ""),
-            })
+            }
+            if act_type:
+                act_dict["type"] = act_type
+            if restaurants:
+                act_dict["restaurants"] = restaurants
+            activities.append(act_dict)
         day_items.append({
             "kind": "day",
             "day": _as_int(d.get("day"), len(day_items) + 1),
@@ -733,7 +750,7 @@ async def generate_replacement_activity(
 ) -> dict:
     """Generate ONE replacement stop for a single activity the user wants
     swapped out (e.g. already visited / not interested). Returns a dict shaped
-    like an activity: {time, name, tip, cost}. The original `time_slot` is
+    like an activity: {time, name, tip, cost, type, restaurants}. The original `time_slot` is
     preserved so the day's ordering stays stable.
 
     Raises on any failure so the caller can surface an error to the user.
@@ -760,12 +777,30 @@ async def generate_replacement_activity(
     if not name:
         raise ValueError("Replacement had no place name")
 
-    return {
+    act_type = str(data.get("type") or "").strip().lower()
+    restaurants = []
+    if isinstance(data.get("restaurants"), list):
+        for r in data.get("restaurants"):
+            if isinstance(r, dict):
+                restaurants.append({
+                    "name": str(r.get("name") or ""),
+                    "cuisine": str(r.get("cuisine") or ""),
+                    "price_range": str(r.get("price_range") or ""),
+                    "rating": str(r.get("rating") or ""),
+                    "tip": str(r.get("tip") or ""),
+                })
+
+    res = {
         "time": time_slot or str(data.get("time") or ""),
         "name": name,
         "tip": str(data.get("tip") or data.get("note") or ""),
         "cost": str(data.get("cost") or ""),
     }
+    if act_type:
+        res["type"] = act_type
+    if restaurants:
+        res["restaurants"] = restaurants
+    return res
 
 
 def _build_swap_prompt(
@@ -800,8 +835,9 @@ Suggest exactly ONE different, real, well-known place or activity near "{destina
 - is NOT in the avoid-list above.
 
 Return ONLY a JSON object with this exact shape (no markdown, no commentary):
-{{ "time": "{slot}", "name": "Place or activity name", "tip": "Short practical tip under ~12 words", "cost": "{currency} amount or 'Free'" }}
+{{ "time": "{slot}", "name": "Place or activity name", "tip": "Short practical tip under ~12 words", "cost": "{currency} amount or 'Free'", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
 """
+
 
 
 def _build_prompt(destination: str, mood: str, budget: float, days: int, currency: str, travelers: int = 1) -> str:
@@ -854,11 +890,25 @@ Return ONLY a JSON object with EXACTLY this shape:
       "day": 1,
       "theme": "Short day theme",
       "activities": [
-        {{ "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "{currency} amount or 'Free'" }}
+        {{ "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "{currency} amount or 'Free'", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
       ]
     }}
   ]
 }}
+
+Rules for "type" field in each activity:
+- "transport": Travel/transit between locations (e.g. "Travel to X", "Taxi to Y", "Ferry to Z"). Cost = estimated ride/fare.
+- "attraction": Ticketed landmarks, museums, temples, cathedrals, galleries, parks with entry fees. Cost = ticket price.
+- "dining": Meals — lunch, dinner, breakfast, brunch, street food, food tours. Cost = cheapest restaurant option available. Include "restaurants" array with 3-5 nearby restaurant suggestions.
+- "exploration": Free self-guided walking, wandering, exploring streets/markets. Cost = "Free".
+- "accommodation": Hotel check-in/check-out. Cost = "Free" (hotel cost is in budget_breakdown).
+- "other": Any activity that doesn't fit above categories.
+
+Rules for "restaurants" in dining activities:
+- Only include "restaurants" array for activities with type "dining".
+- Each restaurant: {{ "name": "Restaurant Name", "cuisine": "Italian / Local / etc", "price_range": "{currency} X - Y per person", "rating": "4.5", "tip": "Known for X" }}
+- List 3-5 real, popular restaurants near the dining location.
+- The activity "cost" should match the cheapest restaurant's lower price range.
 
 Rules for "booking_partners":
 - List 3 real, popular travel websites, booking platforms, or local apps commonly used by travelers for this specific destination country/region.

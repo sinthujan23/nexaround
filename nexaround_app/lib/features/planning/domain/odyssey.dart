@@ -8,8 +8,50 @@
 /// This needs no DB migration — the backend stores/returns the JSON verbatim.
 library;
 
-import 'package:flutter/foundation.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
+
+/// Activity type classification for rendering type-specific action buttons.
+enum ActivityType {
+  transport,   // "Travel to X" → Uber/taxi button
+  attraction,  // Museums, temples, landmarks → Headout ticket button
+  dining,      // Lunch, Dinner → Restaurant LIST button
+  exploration, // "Explore X" (free/self-guided) → GET A GUIDE button
+  accommodation, // Check into hotel
+  other,       // Fallback
+}
+
+/// A single restaurant suggestion within a dining activity.
+class RestaurantOption {
+  final String name;
+  final String cuisine;
+  final String priceRange; // e.g. "INR 1,500 – 3,000"
+  final String rating;     // e.g. "4.5"
+  final String tip;
+
+  const RestaurantOption({
+    required this.name,
+    this.cuisine = '',
+    this.priceRange = '',
+    this.rating = '',
+    this.tip = '',
+  });
+
+  factory RestaurantOption.fromJson(Map<String, dynamic> json) => RestaurantOption(
+        name: (json['name'] ?? '').toString(),
+        cuisine: (json['cuisine'] ?? '').toString(),
+        priceRange: (json['price_range'] ?? '').toString(),
+        rating: (json['rating'] ?? '').toString(),
+        tip: (json['tip'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'cuisine': cuisine,
+        'price_range': priceRange,
+        'rating': rating,
+        'tip': tip,
+      };
+}
 
 /// A single scheduled stop within a day.
 class OdysseyActivity {
@@ -18,6 +60,10 @@ class OdysseyActivity {
   final String tip; // short practical note
   final String cost; // optional human-readable cost, e.g. "LKR 1,500"
   final bool visited; // ticked off as the traveler completes the trip
+  final ActivityType type; // classified activity type
+  final String actualCost; // user-entered actual cost after completing
+  final String bookingUrl; // optional deep link for booking
+  final List<RestaurantOption> restaurants; // dining activity restaurant list
 
   const OdysseyActivity({
     required this.time,
@@ -25,23 +71,52 @@ class OdysseyActivity {
     this.tip = '',
     this.cost = '',
     this.visited = false,
+    this.type = ActivityType.other,
+    this.actualCost = '',
+    this.bookingUrl = '',
+    this.restaurants = const [],
   });
 
-  OdysseyActivity copyWith({bool? visited}) => OdysseyActivity(
+  OdysseyActivity copyWith({
+    bool? visited,
+    String? actualCost,
+    ActivityType? type,
+  }) =>
+      OdysseyActivity(
         time: time,
         name: name,
         tip: tip,
         cost: cost,
         visited: visited ?? this.visited,
+        type: type ?? this.type,
+        actualCost: actualCost ?? this.actualCost,
+        bookingUrl: bookingUrl,
+        restaurants: restaurants,
       );
 
-  factory OdysseyActivity.fromJson(Map<String, dynamic> json) => OdysseyActivity(
-        time: (json['time'] ?? '').toString(),
-        name: (json['name'] ?? json['attraction_name'] ?? '').toString(),
-        tip: (json['tip'] ?? json['note'] ?? '').toString(),
-        cost: (json['cost'] ?? '').toString(),
-        visited: json['visited'] == true,
-      );
+  factory OdysseyActivity.fromJson(Map<String, dynamic> json) {
+    final name = (json['name'] ?? json['attraction_name'] ?? '').toString();
+    final cost = (json['cost'] ?? '').toString();
+    final rawType = (json['type'] ?? '').toString().toLowerCase().trim();
+
+    // Parse type from JSON or infer from name/cost heuristics
+    final type = _parseType(rawType, name, cost);
+
+    return OdysseyActivity(
+      time: (json['time'] ?? '').toString(),
+      name: name,
+      tip: (json['tip'] ?? json['note'] ?? '').toString(),
+      cost: cost,
+      visited: json['visited'] == true,
+      type: type,
+      actualCost: (json['actual_cost'] ?? '').toString(),
+      bookingUrl: (json['booking_url'] ?? '').toString(),
+      restaurants: ((json['restaurants'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((r) => RestaurantOption.fromJson(r.cast<String, dynamic>()))
+          .toList(),
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'time': time,
@@ -49,7 +124,127 @@ class OdysseyActivity {
         'tip': tip,
         'cost': cost,
         'visited': visited,
+        'type': type.name,
+        'actual_cost': actualCost,
+        'booking_url': bookingUrl,
+        if (restaurants.isNotEmpty)
+          'restaurants': restaurants.map((r) => r.toJson()).toList(),
       };
+
+  /// Infer activity type from explicit JSON value or name/cost heuristics.
+  /// Provides backward compatibility for odysseys generated before type field existed.
+  static ActivityType _parseType(String rawType, String name, String cost) {
+    // 1. Try explicit type from AI
+    if (rawType.isNotEmpty) {
+      switch (rawType) {
+        case 'transport':
+        case 'transit':
+        case 'travel':
+          return ActivityType.transport;
+        case 'attraction':
+        case 'museum':
+        case 'landmark':
+        case 'ticket':
+          return ActivityType.attraction;
+        case 'dining':
+        case 'restaurant':
+        case 'food':
+        case 'meal':
+          return ActivityType.dining;
+        case 'exploration':
+        case 'explore':
+        case 'walk':
+        case 'wander':
+          return ActivityType.exploration;
+        case 'accommodation':
+        case 'hotel':
+        case 'check-in':
+        case 'checkin':
+          return ActivityType.accommodation;
+      }
+    }
+
+    // 2. Heuristic fallback: infer from activity name
+    final lower = name.toLowerCase();
+
+    // Transport
+    if (lower.startsWith('travel to') ||
+        lower.startsWith('drive to') ||
+        lower.startsWith('taxi to') ||
+        lower.startsWith('uber to') ||
+        lower.startsWith('transfer to') ||
+        lower.startsWith('ride to') ||
+        lower.contains('airport transfer') ||
+        lower.contains('ferry to') ||
+        lower.contains('bus to') ||
+        lower.contains('train to')) {
+      return ActivityType.transport;
+    }
+
+    // Accommodation
+    if (lower.startsWith('check into') ||
+        lower.startsWith('check in') ||
+        lower.contains('hotel') && lower.contains('check')) {
+      return ActivityType.accommodation;
+    }
+
+    // Dining
+    if (lower.startsWith('lunch') ||
+        lower.startsWith('dinner') ||
+        lower.startsWith('breakfast') ||
+        lower.startsWith('brunch') ||
+        lower.contains('lunch at') ||
+        lower.contains('lunch in') ||
+        lower.contains('dinner at') ||
+        lower.contains('dinner in') ||
+        lower.contains('breakfast at') ||
+        lower.contains('street food') ||
+        lower.contains('food tour') ||
+        lower.contains('dining') ||
+        lower.contains('restaurant')) {
+      return ActivityType.dining;
+    }
+
+    // Exploration (free/self-guided)
+    if (lower.startsWith('explore') ||
+        lower.startsWith('wander') ||
+        lower.startsWith('walk through') ||
+        lower.startsWith('stroll') ||
+        lower.contains('free walking') ||
+        lower.contains('self-guided')) {
+      return ActivityType.exploration;
+    }
+
+    // Attraction (ticketed places)
+    final costLower = cost.toLowerCase();
+    final hasCost = cost.isNotEmpty &&
+        costLower != 'free' &&
+        costLower != '0' &&
+        !costLower.contains('free');
+    if (hasCost &&
+        (lower.contains('museum') ||
+            lower.contains('cathedral') ||
+            lower.contains('temple') ||
+            lower.contains('palace') ||
+            lower.contains('castle') ||
+            lower.contains('fort') ||
+            lower.contains('gallery') ||
+            lower.contains('monument') ||
+            lower.contains('basilica') ||
+            lower.contains('church') ||
+            lower.contains('mosque') ||
+            lower.contains('catacomb') ||
+            lower.contains('aquarium') ||
+            lower.contains('zoo') ||
+            lower.contains('tower') ||
+            lower.contains('gardens') ||
+            lower.contains('park') ||
+            lower.contains('ruins'))) {
+      return ActivityType.attraction;
+    }
+
+    return ActivityType.other;
+  }
 }
 
 /// A themed day made up of ordered activities.

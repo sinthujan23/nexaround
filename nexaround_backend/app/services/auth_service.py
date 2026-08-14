@@ -183,10 +183,17 @@ class AuthService:
                     detail="Google login is not configured. GOOGLE_CLIENT_IDS must be set."
                 )
             aud = id_info.get("aud")
-            if aud not in allowed_ids:
-                raise UnauthorizedException(
-                    detail="Invalid Google token: audience not allowed for this app"
-                )
+            azp = id_info.get("azp")
+            aud_valid = (aud in allowed_ids) or (azp in allowed_ids)
+            if not aud_valid:
+                # Also check project number prefix for authorized clients under same project
+                allowed_prefixes = {cid.split("-")[0] for cid in allowed_ids if "-" in cid}
+                aud_prefix = aud.split("-")[0] if (aud and "-" in aud) else ""
+                azp_prefix = azp.split("-")[0] if (azp and "-" in azp) else ""
+                if not (aud_prefix in allowed_prefixes or azp_prefix in allowed_prefixes):
+                    raise UnauthorizedException(
+                        detail="Invalid Google token: audience not allowed for this app"
+                    )
 
             email = id_info.get("email")
             if not email:

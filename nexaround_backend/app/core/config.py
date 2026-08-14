@@ -61,8 +61,20 @@ class Settings(BaseSettings):
     HUGGINGFACE_API_KEY: str = ""
 
     # OAuth Client IDs for token verification
-    GOOGLE_CLIENT_IDS: Union[List[str], str] = []
-    APPLE_CLIENT_IDS: Union[List[str], str] = []
+    GOOGLE_CLIENT_IDS: Union[List[str], str] = [
+        "501648798743-s475las96nn5m01l105dikmm74ghuhf9.apps.googleusercontent.com",
+        "501648798743-fpj6ua4dqdgov8hffm7504aekvjne4kh.apps.googleusercontent.com",
+        "501648798743-vjrfvouhnk2o0p6qm7ob595hfm68th48.apps.googleusercontent.com",
+        "501648798743-fghkh72pqh34u787m2aq2hn8dmnmcuiq.apps.googleusercontent.com",
+        "501648798743-kqev2d391necv2mvlqeoitmch9i05rv5.apps.googleusercontent.com",
+        "501648798743-0omovnor0thg338btth5n0b7r0oq1r9h.apps.googleusercontent.com",
+    ]
+    APPLE_CLIENT_IDS: Union[List[str], str] = [
+        "com.nexaround.nexaround_app.service",
+        "com.nexaround.nexaroundApp.5X9A8V7S49",
+        "com.nexaround.nexaround_app",
+        "com.nexaround.nexaroundApp",
+    ]
 
     # SMTP Email Settings for OTP Verification
     SMTP_HOST: str = ""

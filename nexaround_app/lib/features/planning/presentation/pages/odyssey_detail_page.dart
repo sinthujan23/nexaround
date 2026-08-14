@@ -237,6 +237,27 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     }
   }
 
+  /// Update the actual cost for a completed activity and persist.
+  Future<void> _updateActualCost(int dayIndex, int activityIndex, String actualCost) async {
+    final before = _odyssey;
+    final day = before.dayPlans[dayIndex];
+    final acts = List<OdysseyActivity>.from(day.activities);
+    acts[activityIndex] = acts[activityIndex].copyWith(actualCost: actualCost);
+    final newDays = List<OdysseyDay>.from(before.dayPlans);
+    newDays[dayIndex] = day.copyWith(activities: acts);
+
+    final updated = before.copyWith(dayPlans: newDays);
+    setState(() => _odyssey = updated); // optimistic
+    try {
+      final saved = await _repo.updateOdyssey(updated);
+      if (!mounted) return;
+      setState(() => _odyssey = saved);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _odyssey = before); // revert on failure
+    }
+  }
+
   void _celebrate() {
     showDialog(
       context: context,
@@ -346,6 +367,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
         onToggleVisited: _toggleVisited,
         onSwapPartner: _swapPartner,
         swappingPartnerName: _swappingPartnerName,
+        onActualCostChanged: _updateActualCost,
       ),
     );
   }
