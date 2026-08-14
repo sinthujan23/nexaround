@@ -9,7 +9,10 @@ services:
     ports:
       - "8010:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://nexaround_app:NxAround_DB_2026_Secured_9a8b7c!@db:5432/nexaround_prod
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY}
@@ -32,11 +35,13 @@ services:
     image: postgis/postgis:16-3.4
     restart: unless-stopped
     environment:
-      POSTGRES_DB: nexaround_prod
-      POSTGRES_USER: nexaround_app
-      POSTGRES_PASSWORD: NxAround_DB_2026_Secured_9a8b7c!
-    ports:
-      - "5432:5432"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # No host port published: the api reaches db over the compose network.
+    # Exposing port 5432 on 0.0.0.0 is prohibited to prevent public database access.
+    expose:
+      - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
 

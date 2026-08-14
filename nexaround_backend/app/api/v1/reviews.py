@@ -9,6 +9,9 @@ from app.repositories.review_repository import ReviewRepository
 from app.schemas.review import ReviewCreate, ReviewResponse, AttractionRatingSummary
 import uuid
 
+from app.models.attraction import Attraction
+from sqlalchemy import select
+
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
 @router.get("/attraction/{attraction_id}", response_model=List[ReviewResponse])
@@ -42,7 +45,31 @@ async def create_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # 1. Validate rating bounds
+    if data.rating < 1.0 or data.rating > 5.0:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+    # 2. Verify attraction exists
+    stmt_attr = select(Attraction).where(Attraction.id == data.attraction_id)
+    res_attr = await db.execute(stmt_attr)
+    attraction = res_attr.scalar_one_or_none()
+    if not attraction:
+        raise HTTPException(status_code=404, detail="Attraction not found")
+
+    # 3. Check for existing review from this user (prevent duplicate spam)
+    stmt_existing = select(Review).where(
+        Review.attraction_id == data.attraction_id,
+        Review.user_id == current_user.id
+    )
+    res_existing = await db.execute(stmt_existing)
+    existing_review = res_existing.scalar_one_or_none()
+
     repo = ReviewRepository(db)
+    if existing_review:
+        existing_review.rating = data.rating
+        existing_review.comment = data.comment
+        return await repo.update(existing_review)
+
     review = Review(
         user_id=current_user.id,
         attraction_id=data.attraction_id,

@@ -5,7 +5,38 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     PROJECT_NAME: str = "NexAround"
     API_V1_STR: str = "/api/v1"
+    ENABLE_DOCS: bool = False
     
+    # JWT Security Configuration
+    SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60  # 1 hour
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
+
+    # Admin Portal Credentials
+    ADMIN_USERNAME: str = "admin"
+    ADMIN_PASSWORD: str = ""
+
+    @field_validator("ADMIN_PASSWORD", mode="before")
+    @classmethod
+    def validate_admin_password(cls, v: Union[str, None]) -> str:
+        if not v or v == "password123":
+            import secrets
+            import logging
+            logging.warning("ADMIN_PASSWORD not set or insecure default used. Generating dynamic admin password.")
+            return secrets.token_hex(32)
+        return v
+
+    @field_validator("SECRET_KEY", mode="before")
+    @classmethod
+    def validate_secret_key(cls, v: Union[str, None]) -> str:
+        if not v or v == "nexaround-super-secret-key-change-in-production":
+            import secrets
+            import logging
+            logging.warning("SECRET_KEY not found or insecure default used. Generating ephemeral secret key.")
+            return secrets.token_hex(32)
+        return v
+
     # CORS
     BACKEND_CORS_ORIGINS: List[AnyHttpUrl] = []
 
@@ -19,7 +50,7 @@ class Settings(BaseSettings):
         raise ValueError(v)
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://nexaround_app:NxAround_DB_2026_Secured_9a8b7c!@localhost:5432/nexaround_prod"
+    DATABASE_URL: str = "postgresql+asyncpg://nexaround_app:placeholder@localhost:5432/nexaround_prod"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

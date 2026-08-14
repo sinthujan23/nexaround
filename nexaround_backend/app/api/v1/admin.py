@@ -1,4 +1,5 @@
 import uuid
+import secrets
 from typing import List, Optional
 from datetime import datetime, timezone, date, timedelta
 from fastapi import APIRouter, Depends, Header, HTTPException, status, Query, BackgroundTasks
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 
 from app.core.database import get_db
+from app.core.config import settings
+from app.core.security import create_access_token, decode_token
 from app.services.user_service import UserService
 from app.services.attraction_service import AttractionService
 from app.services.settings_service import SettingsService
@@ -18,10 +21,6 @@ from app.models.system_setting import ApiRequestLog
 
 router = APIRouter(prefix="/admin", tags=["Admin REST API"])
 
-# Admin credentials
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "password123"
-ADMIN_TOKEN = "mission_control_access_granted"
 
 # --- Request/Response Schemas ---
 
@@ -93,10 +92,11 @@ async def verify_admin_token(authorization: str = Header(...)):
             detail="Invalid authorization header. Must be Bearer <token>"
         )
     token = authorization.split(" ")[1]
-    if token != ADMIN_TOKEN:
+    payload = decode_token(token)
+    if not payload or payload.get("role") != "admin":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Access Denied: Invalid admin credentials."
+            detail="Access Denied: Invalid or expired admin credentials."
         )
     return token
 
@@ -105,10 +105,14 @@ async def verify_admin_token(authorization: str = Header(...)):
 
 @router.post("/login", response_model=AdminLoginResponse)
 async def admin_login(data: AdminLoginRequest):
-    """Log in as admin and return a JSON token."""
-    print(f"[ADMIN LOGIN REQUEST] username='{data.username}' password='{data.password}'")
-    if data.username == ADMIN_USERNAME and data.password == ADMIN_PASSWORD:
-        return AdminLoginResponse(token=ADMIN_TOKEN)
+    """Log in as admin and return a signed JWT token."""
+    username_valid = secrets.compare_digest(data.username, settings.ADMIN_USERNAME)
+    password_valid = secrets.compare_digest(data.password, settings.ADMIN_PASSWORD)
+
+    if username_valid and password_valid:
+        token = create_access_token({"sub": data.username, "role": "admin"})
+        return AdminLoginResponse(token=token)
+
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Access Denied: Invalid credentials."

@@ -30,4 +30,6 @@ async def send_message(
         )
         return ChatResponse(response=response_text)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logging.error(f"Chat error: {e}")
+        raise HTTPException(status_code=500, detail="Chat service temporarily unavailable. Please try again.")

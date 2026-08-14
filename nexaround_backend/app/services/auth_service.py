@@ -176,14 +176,17 @@ class AuthService:
             if iss not in ["accounts.google.com", "https://accounts.google.com"]:
                 raise UnauthorizedException(detail="Invalid Google token: untrusted issuer")
 
-            # Check audience if GOOGLE_CLIENT_IDS is configured
+            # Enforce audience validation — GOOGLE_CLIENT_IDS must be configured
             allowed_ids = settings.GOOGLE_CLIENT_IDS
-            if allowed_ids:
-                aud = id_info.get("aud")
-                if aud not in allowed_ids:
-                    raise UnauthorizedException(
-                        detail=f"Invalid Google token: audience '{aud}' not allowed for this app"
-                    )
+            if not allowed_ids:
+                raise UnauthorizedException(
+                    detail="Google login is not configured. GOOGLE_CLIENT_IDS must be set."
+                )
+            aud = id_info.get("aud")
+            if aud not in allowed_ids:
+                raise UnauthorizedException(
+                    detail="Invalid Google token: audience not allowed for this app"
+                )
 
             email = id_info.get("email")
             if not email:

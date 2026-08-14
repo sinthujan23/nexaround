@@ -1,7 +1,12 @@
 import os
+import io
 import uuid
 from typing import List, Optional
+from PIL import Image
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
@@ -186,6 +191,9 @@ async def toggle_like(
     if not story:
         raise HTTPException(status_code=404, detail="Travel story not found")
 
+    if not story.is_public and story.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: this travel story is private")
+
     # Check if like exists
     stmt_like = select(TravelStoryLike).where(
         TravelStoryLike.story_id == story_id,
@@ -227,6 +235,9 @@ async def create_comment(
     if not story:
         raise HTTPException(status_code=404, detail="Travel story not found")
 
+    if not story.is_public and story.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied: this travel story is private")
+
     comment = TravelStoryComment(
         story_id=story_id,
         user_id=current_user.id,
@@ -251,19 +262,50 @@ async def create_comment(
 
 @router.post("/upload")
 async def upload_story_images(
-    files: List[UploadFile] = File(...)
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user)
 ):
-    """Upload multiple images for a travel story."""
+    """Upload multiple images for a travel story (requires authentication & image validation)."""
     upload_dir = "app/static/uploads"
     os.makedirs(upload_dir, exist_ok=True)
     
     urls = []
     for file in files:
-        file_ext = os.path.splitext(file.filename)[1] if file.filename else ".jpg"
+        filename = file.filename or ""
+        file_ext = os.path.splitext(filename)[1].lower()
+        if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"File extension '{file_ext}' is not allowed. Only JPG, PNG, WEBP, and GIF images are permitted."
+            )
+
+        content = await file.read()
+
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File size exceeds maximum allowed limit (10MB)"
+            )
+
+        try:
+            img = Image.open(io.BytesIO(content))
+            img.verify()
+            if img.format not in ["JPEG", "PNG", "WEBP", "GIF"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid image format"
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid image"
+            )
+
         unique_filename = f"{uuid.uuid4()}{file_ext}"
         file_path = os.path.join(upload_dir, unique_filename)
         
-        content = await file.read()
         with open(file_path, "wb") as buffer:
             buffer.write(content)
             

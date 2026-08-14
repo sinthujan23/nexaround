@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -13,9 +14,10 @@ router = APIRouter(tags=["Proxy API"])
 
 @router.get("/config/keys")
 async def get_config_keys(
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Retrieve public configuration keys (e.g., Mapbox token)."""
+    """Retrieve public configuration keys (e.g., Mapbox token). Requires authentication."""
     settings = SettingsService(db)
     mapbox_token = await settings.get_setting("mapbox_access_token")
     google_maps_key = await settings.get_setting("google_maps_api_key")
@@ -62,12 +64,12 @@ async def proxy_gemini_generate(
                     # Do not retry on key invalidity (400/401/403) or quota exhaustion (429)
                     if resp.status_code in [400, 401, 403, 429]:
                         break
-                    print(f"⚠️ Model {model} returned status {resp.status_code}. Retrying next model...")
+                    logging.warning(f"Model {model} returned status {resp.status_code}. Retrying next model...")
                     continue
                 break
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+            raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
 @router.get("/proxy/mapbox/directions/{path:path}")
 async def proxy_mapbox_directions(
@@ -99,7 +101,7 @@ async def proxy_mapbox_directions(
             resp = await client.get(url, params=params, timeout=30.0)
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+            raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
 @router.get("/proxy/google-maps/{path:path}")
 async def proxy_google_maps(
@@ -139,7 +141,7 @@ async def proxy_google_maps(
                 resp = await client.get(url, params=params, timeout=30.0)
                 return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Proxy error: {str(e)}")
+            raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
 
 @router.get("/proxy/geoapify/reverse")

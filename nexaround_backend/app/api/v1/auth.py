@@ -112,8 +112,12 @@ async def apple_callback(
     Callback endpoint for Apple Sign-In on Android.
     Redirects back to the app using a custom intent scheme.
     """
-    # The intent scheme used by the sign_in_with_apple package
-    redirect_url = f"intent://callback?code={code}&id_token={id_token}#Intent;package=com.nexaround.nexaround_app;scheme=signinwithapple;end"
+    import urllib.parse
+    params = {"code": code, "id_token": id_token}
+    if state:
+        params["state"] = state
+    query_str = urllib.parse.urlencode(params)
+    redirect_url = f"intent://callback?{query_str}#Intent;package=com.nexaround.nexaround_app;scheme=signinwithapple;end"
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
@@ -122,6 +126,16 @@ async def refresh_token(data: TokenRefreshRequest, db: AsyncSession = Depends(ge
     """Refresh access token using refresh token."""
     service = AuthService(db)
     return await service.refresh_tokens(data.refresh_token)
+
+
+@router.post("/logout", response_model=MessageResponse)
+async def logout(authorization: str = Header(...)):
+    """Log out by blacklisting the current access token. The token will be
+    rejected on subsequent requests until it naturally expires."""
+    from app.core.security import blacklist_token
+    token = authorization.replace("Bearer ", "")
+    await blacklist_token(token)
+    return MessageResponse(message="Logged out successfully")
 
 
 @router.get("/me", response_model=UserResponse)

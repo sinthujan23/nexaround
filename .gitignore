@@ -6,7 +6,16 @@
 **/.pytest_cache/
 **/.venv/
 **/venv/
+# Secrets and Environment Configuration
 **/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
+**/*.log
+**/firebase-sa.json
+**/jwt_secret.txt
+**/secrets/
 
 # Databases
 **/*.db

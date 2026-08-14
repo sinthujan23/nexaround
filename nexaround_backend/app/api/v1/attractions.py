@@ -3,6 +3,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
+from app.api.deps import get_current_user
+from app.models.user import User
 from app.services.attraction_service import AttractionService
 from app.schemas.attraction import (
     AttractionCreate, 
@@ -74,8 +76,9 @@ async def get_attraction(
 @router.post("/", response_model=AttractionResponse, status_code=status.HTTP_201_CREATED)
 async def create_attraction(
     data: AttractionCreate,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Create a new attraction."""
+    """Create a new attraction (requires authentication). New attractions are always inactive pending admin approval."""
     service = AttractionService(db)
     return await service.create_attraction(data)
