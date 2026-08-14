@@ -40,6 +40,19 @@ abstract class AuthRepository {
   Future<Either<Failure, UserEntity>> updatePreferences(
       Map<String, dynamic> preferences);
 
+  Future<Either<Failure, String>> forgotPassword({required String email});
+
+  Future<Either<Failure, String>> verifyResetOtp({
+    required String email,
+    required String otp,
+  });
+
+  Future<Either<Failure, String>> resetPassword({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+  });
+
   Future<void> logout();
 
   Future<bool> isLoggedIn();

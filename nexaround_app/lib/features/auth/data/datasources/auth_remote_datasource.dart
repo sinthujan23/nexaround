@@ -110,4 +110,39 @@ class AuthRemoteDatasource {
     );
     return UserModel.fromJson(response.data);
   }
+
+  Future<Map<String, dynamic>> forgotPassword({required String email}) async {
+    final response = await _dio.post(
+      ApiConstants.forgotPassword,
+      data: {'email': email},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.verifyResetOtp,
+      data: {'email': email, 'otp': otp},
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    final response = await _dio.post(
+      ApiConstants.resetPassword,
+      data: {
+        'email': email,
+        'reset_token': resetToken,
+        'new_password': newPassword,
+      },
+    );
+    return response.data as Map<String, dynamic>;
+  }
 }

@@ -1,10 +1,60 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nexaround_app/features/auth/domain/entities/user.dart';
 
 class CacheService {
   static SharedPreferences? _prefsOrNull;
   static SharedPreferences get _prefs => _prefsOrNull!;
+
+  /// Clear all user-specific cached data upon user logout or switching accounts
+  static Future<void> clearUserData() async {
+    if (_prefsOrNull == null) return;
+    await _prefs.remove('saved_places_data');
+    await _prefs.remove('favorite_places_data');
+    await _prefs.remove('user_preferences_json');
+    await _prefs.remove('explorer_xp');
+    await _prefs.remove('places_visited');
+    await _prefs.remove('mini_tour_history');
+    await _prefs.remove('notifications');
+    await _prefs.remove('odysseys_cache');
+
+    savedPlacesNotifier.value++;
+    favoritePlacesNotifier.value++;
+    statsNotifier.value++;
+    historyNotifier.value++;
+    notificationsNotifier.value++;
+  }
+
+  /// Hydrate local CacheService state from authenticated User Entity
+  static Future<void> loadUserPreferences(UserEntity user) async {
+    await clearUserData();
+
+    final prefsMap = Map<String, dynamic>.from(user.preferences);
+    await saveUserPreferences(prefsMap);
+
+    if (prefsMap.containsKey('saved_places') && prefsMap['saved_places'] is List) {
+      final List rawSaved = prefsMap['saved_places'] as List;
+      final List<String> stringList = rawSaved.map((item) => json.encode(item)).toList();
+      await _prefs.setStringList('saved_places_data', stringList);
+      savedPlacesNotifier.value++;
+    }
+
+    if (prefsMap.containsKey('favorite_places') && prefsMap['favorite_places'] is List) {
+      final List rawFav = prefsMap['favorite_places'] as List;
+      final List<String> stringList = rawFav.map((item) => json.encode(item)).toList();
+      await _prefs.setStringList('favorite_places_data', stringList);
+      favoritePlacesNotifier.value++;
+    }
+
+    if (prefsMap.containsKey('explorer_xp')) {
+      await _prefs.setInt('explorer_xp', prefsMap['explorer_xp'] as int? ?? 0);
+    }
+    if (prefsMap.containsKey('places_visited')) {
+      await _prefs.setInt('places_visited', prefsMap['places_visited'] as int? ?? 0);
+    }
+    statsNotifier.value++;
+  }
 
   /// Idempotent — safe to call again from the FCM background isolate, which has
   /// its own memory and must initialise SharedPreferences separately.
@@ -95,6 +145,16 @@ class CacheService {
     return _prefs.getStringList('saved_places_data') ?? [];
   }
 
+  static List<Map<String, dynamic>> getSavedPlaceMaps() {
+    return getSavedPlaceJsons().map((s) {
+      try {
+        return json.decode(s) as Map<String, dynamic>;
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }).where((m) => m.isNotEmpty).toList();
+  }
+
   static bool isPlaceSaved(String placeId) {
     final List<String> current = getSavedPlaceJsons();
     return current.any((jsonStr) {
@@ -129,6 +189,10 @@ class CacheService {
     }
     await _prefs.setStringList('saved_places_data', current);
     savedPlacesNotifier.value++;
+
+    final currentPrefs = getUserPreferences();
+    currentPrefs['saved_places'] = getSavedPlaceMaps();
+    await saveUserPreferences(currentPrefs);
   }
 
   // Favorite / Pinned Places (Heart)
@@ -136,6 +200,16 @@ class CacheService {
 
   static List<String> getFavoritePlaceJsons() {
     return _prefs.getStringList('favorite_places_data') ?? [];
+  }
+
+  static List<Map<String, dynamic>> getFavoritePlaceMaps() {
+    return getFavoritePlaceJsons().map((s) {
+      try {
+        return json.decode(s) as Map<String, dynamic>;
+      } catch (_) {
+        return <String, dynamic>{};
+      }
+    }).where((m) => m.isNotEmpty).toList();
   }
 
   static bool isPlaceFavorite(String placeId) {
@@ -172,6 +246,10 @@ class CacheService {
     }
     await _prefs.setStringList('favorite_places_data', current);
     favoritePlacesNotifier.value++;
+
+    final currentPrefs = getUserPreferences();
+    currentPrefs['favorite_places'] = getFavoritePlaceMaps();
+    await saveUserPreferences(currentPrefs);
   }
 
   // Attractions Caching

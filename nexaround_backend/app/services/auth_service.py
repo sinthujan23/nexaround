@@ -10,8 +10,15 @@ from app.models.user import User
 from app.repositories.user_repository import UserRepository
 import secrets
 import redis.asyncio as aioredis
-from app.schemas.user import UserRegister, UserResponse, TokenResponse, RegisterPendingResponse
-from app.services.email_service import send_otp_email
+from app.schemas.user import (
+    UserRegister,
+    UserResponse,
+    TokenResponse,
+    RegisterPendingResponse,
+    ForgotPasswordResponse,
+    VerifyResetOTPResponse,
+)
+from app.services.email_service import send_otp_email, send_password_reset_email
 from app.core.security import (
     get_password_hash,
     verify_password,
@@ -347,3 +354,83 @@ class AuthService:
         user.preferences = {**user.preferences, **preferences}
         user = await self.repo.update(user)
         return UserResponse.model_validate(user)
+
+    async def forgot_password(self, email: str) -> ForgotPasswordResponse:
+        """Validate user existence and send a 6-digit password reset OTP."""
+        user = await self.repo.get_by_email(email)
+        if not user:
+            raise NotFoundException(detail="No account registered with this email address")
+
+        if not user.is_active:
+            raise UnauthorizedException(detail="Account is deactivated")
+
+        redis = await get_redis_client()
+        if redis:
+            cooldown_key = f"reset_otp_cooldown:{email}"
+            if await redis.get(cooldown_key):
+                raise ConflictException(detail="Please wait 60 seconds before requesting a new reset code")
+            await redis.setex(cooldown_key, 60, "1")
+
+        # Generate 6-digit OTP code
+        otp_code = "".join(secrets.choice("0123456789") for _ in range(6))
+        if redis:
+            await redis.setex(f"reset_otp:{email}", 600, otp_code)
+
+        # Send email
+        await send_password_reset_email(email, otp_code)
+
+        return ForgotPasswordResponse(
+            email=email,
+            message="Password reset code sent to your email address."
+        )
+
+    async def verify_reset_otp(self, email: str, otp: str) -> VerifyResetOTPResponse:
+        """Verify password reset OTP and generate a short-lived reset token."""
+        redis = await get_redis_client()
+        stored_otp = None
+        if redis:
+            stored_otp = await redis.get(f"reset_otp:{email}")
+
+        if not stored_otp or stored_otp != otp:
+            raise BadRequestException(detail="Invalid or expired verification code")
+
+        user = await self.repo.get_by_email(email)
+        if not user:
+            raise NotFoundException(detail="User account not found")
+
+        # Generate single-use reset token
+        reset_token = uuid.uuid4().hex
+        if redis:
+            await redis.setex(f"reset_token:{reset_token}", 300, email)  # 5 min TTL
+            await redis.delete(f"reset_otp:{email}")
+
+        return VerifyResetOTPResponse(
+            email=email,
+            reset_token=reset_token,
+            message="Code verified. Please set a new password."
+        )
+
+    async def reset_password(self, email: str, reset_token: str, new_password: str) -> dict:
+        """Verify reset token and update user's password."""
+        redis = await get_redis_client()
+        stored_email = None
+        if redis:
+            stored_email = await redis.get(f"reset_token:{reset_token}")
+
+        if not stored_email or stored_email != email:
+            raise BadRequestException(detail="Invalid or expired reset session. Please request a new code.")
+
+        user = await self.repo.get_by_email(email)
+        if not user:
+            raise NotFoundException(detail="User account not found")
+
+        # Update password
+        user.password_hash = get_password_hash(new_password)
+        user.is_verified = True
+        await self.repo.update(user)
+
+        # Invalidate reset token
+        if redis:
+            await redis.delete(f"reset_token:{reset_token}")
+
+        return {"message": "Password reset successfully. Please log in with your new password."}

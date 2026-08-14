@@ -48,3 +48,37 @@ class AuthError extends AuthState {
   @override
   List<Object?> get props => [message];
 }
+
+class AuthForgotPasswordOTPRequired extends AuthState {
+  final String email;
+  final String message;
+
+  const AuthForgotPasswordOTPRequired({required this.email, required this.message});
+
+  @override
+  List<Object?> get props => [email, message];
+}
+
+class AuthResetOTPVerified extends AuthState {
+  final String email;
+  final String resetToken;
+  final String message;
+
+  const AuthResetOTPVerified({
+    required this.email,
+    required this.resetToken,
+    required this.message,
+  });
+
+  @override
+  List<Object?> get props => [email, resetToken, message];
+}
+
+class AuthPasswordResetSuccess extends AuthState {
+  final String message;
+
+  const AuthPasswordResetSuccess(this.message);
+
+  @override
+  List<Object?> get props => [message];
+}

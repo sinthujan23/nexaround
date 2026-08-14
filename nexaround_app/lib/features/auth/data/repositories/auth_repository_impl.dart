@@ -163,11 +163,62 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
+  Future<Either<Failure, String>> forgotPassword({required String email}) async {
+    try {
+      final result = await _remoteDatasource.forgotPassword(email: email);
+      final message = result['message'] as String? ?? 'Password reset code sent to email.';
+      return Right(message);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, String>> verifyResetOtp({
+    required String email,
+    required String otp,
+  }) async {
+    try {
+      final result = await _remoteDatasource.verifyResetOtp(email: email, otp: otp);
+      final resetToken = result['reset_token'] as String? ?? '';
+      return Right(resetToken);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
+  Future<Either<Failure, String>> resetPassword({
+    required String email,
+    required String resetToken,
+    required String newPassword,
+  }) async {
+    try {
+      final result = await _remoteDatasource.resetPassword(
+        email: email,
+        resetToken: resetToken,
+        newPassword: newPassword,
+      );
+      final message = result['message'] as String? ?? 'Password reset successfully.';
+      return Right(message);
+    } on DioException catch (e) {
+      return Left(_handleDioError(e));
+    } catch (e) {
+      return Left(ServerFailure(e.toString()));
+    }
+  }
+
+  @override
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
     await CacheService.setLoggedIn(false);
+    await CacheService.clearUserData();
   }
 
   @override

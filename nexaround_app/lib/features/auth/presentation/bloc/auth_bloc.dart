@@ -21,18 +21,20 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthAppleLoginRequested>(_onAppleLogin);
     on<AuthLogoutRequested>(_onLogout);
     on<UpdateUserPreferences>(_onUpdatePreferences);
+    on<AuthForgotPasswordRequested>(_onForgotPassword);
+    on<AuthVerifyResetOTPRequested>(_onVerifyResetOTP);
+    on<AuthResetPasswordRequested>(_onResetPassword);
   }
 
-  UserEntity _mergeWithLocalPrefs(UserEntity user) {
-    final localPrefs = CacheService.getUserPreferences();
-    final Map<String, dynamic> mergedPrefs = {...user.preferences, ...localPrefs};
-    CacheService.saveUserPreferences(mergedPrefs);
+  Future<UserEntity> _loadAndSyncUserPrefs(UserEntity user) async {
+    await CacheService.loadUserPreferences(user);
+    final userPrefs = CacheService.getUserPreferences();
     return UserModel(
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
-      preferences: mergedPrefs,
+      preferences: userPrefs,
       language: user.language,
       isActive: user.isActive,
       isVerified: user.isVerified,
@@ -61,13 +63,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
 
       final result = await _authRepository.googleLogin(idToken);
-      result.fold(
-        (failure) => emit(AuthError(failure.message)),
-        (tokens) => emit(AuthAuthenticated(
-          user: _mergeWithLocalPrefs(tokens.user),
+      if (result.isRight()) {
+        final tokens = result.getOrElse(() => throw Exception());
+        final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
+        emit(AuthAuthenticated(
+          user: syncedUser,
           accessToken: tokens.accessToken,
-        )),
-      );
+        ));
+      } else {
+        final failure = result.fold((l) => l, (r) => throw Exception());
+        emit(AuthError(failure.message));
+      }
     } catch (e) {
       emit(AuthError('Google Sign-In failed: ${e.toString()}'));
     }
@@ -88,13 +94,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         familyName: credential.familyName,
       );
 
-      result.fold(
-        (failure) => emit(AuthError(failure.message)),
-        (tokens) => emit(AuthAuthenticated(
-          user: _mergeWithLocalPrefs(tokens.user),
+      if (result.isRight()) {
+        final tokens = result.getOrElse(() => throw Exception());
+        final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
+        emit(AuthAuthenticated(
+          user: syncedUser,
           accessToken: tokens.accessToken,
-        )),
-      );
+        ));
+      } else {
+        final failure = result.fold((l) => l, (r) => throw Exception());
+        emit(AuthError(failure.message));
+      }
     } catch (e) {
       emit(AuthError('Apple Sign-In failed: ${e.toString()}'));
     }
@@ -160,13 +170,16 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final loggedIn = await _authRepository.isLoggedIn();
     if (loggedIn) {
       final result = await _authRepository.getCurrentUser();
-      result.fold(
-        (failure) => emit(const AuthUnauthenticated()),
-        (user) => emit(AuthAuthenticated(
-          user: _mergeWithLocalPrefs(user),
+      if (result.isRight()) {
+        final user = result.getOrElse(() => throw Exception());
+        final syncedUser = await _loadAndSyncUserPrefs(user);
+        emit(AuthAuthenticated(
+          user: syncedUser,
           accessToken: '',
-        )),
-      );
+        ));
+      } else {
+        emit(const AuthUnauthenticated());
+      }
     } else {
       emit(const AuthUnauthenticated());
     }
@@ -181,22 +194,24 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       email: event.email,
       password: event.password,
     );
-    result.fold(
-      (failure) {
-        if (failure.message.toLowerCase().contains('not verified')) {
-          emit(AuthOTPVerificationRequired(
-            email: event.email,
-            message: failure.message,
-          ));
-        } else {
-          emit(AuthError(failure.message));
-        }
-      },
-      (tokens) => emit(AuthAuthenticated(
-        user: _mergeWithLocalPrefs(tokens.user),
+    if (result.isRight()) {
+      final tokens = result.getOrElse(() => throw Exception());
+      final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
+      emit(AuthAuthenticated(
+        user: syncedUser,
         accessToken: tokens.accessToken,
-      )),
-    );
+      ));
+    } else {
+      final failure = result.fold((l) => l, (r) => throw Exception());
+      if (failure.message.toLowerCase().contains('not verified')) {
+        emit(AuthOTPVerificationRequired(
+          email: event.email,
+          message: failure.message,
+        ));
+      } else {
+        emit(AuthError(failure.message));
+      }
+    }
   }
 
   Future<void> _onRegister(
@@ -237,13 +252,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       email: event.email,
       otp: event.otp,
     );
-    result.fold(
-      (failure) => emit(AuthError(failure.message)),
-      (tokens) => emit(AuthAuthenticated(
-        user: _mergeWithLocalPrefs(tokens.user),
+    if (result.isRight()) {
+      final tokens = result.getOrElse(() => throw Exception());
+      final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
+      emit(AuthAuthenticated(
+        user: syncedUser,
         accessToken: tokens.accessToken,
-      )),
-    );
+      ));
+    } else {
+      final failure = result.fold((l) => l, (r) => throw Exception());
+      emit(AuthError(failure.message));
+    }
   }
 
   Future<void> _onResendOTP(
@@ -265,6 +284,57 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     await _authRepository.logout();
+    await CacheService.clearUserData();
     emit(const AuthUnauthenticated());
+  }
+
+  Future<void> _onForgotPassword(
+    AuthForgotPasswordRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    final result = await _authRepository.forgotPassword(email: event.email);
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
+      (msg) => emit(AuthForgotPasswordOTPRequired(
+        email: event.email,
+        message: msg,
+      )),
+    );
+  }
+
+  Future<void> _onVerifyResetOTP(
+    AuthVerifyResetOTPRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    final result = await _authRepository.verifyResetOtp(
+      email: event.email,
+      otp: event.otp,
+    );
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
+      (resetToken) => emit(AuthResetOTPVerified(
+        email: event.email,
+        resetToken: resetToken,
+        message: 'Code verified successfully. Please enter a new password.',
+      )),
+    );
+  }
+
+  Future<void> _onResetPassword(
+    AuthResetPasswordRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    final result = await _authRepository.resetPassword(
+      email: event.email,
+      resetToken: event.resetToken,
+      newPassword: event.newPassword,
+    );
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
+      (msg) => emit(AuthPasswordResetSuccess(msg)),
+    );
   }
 }

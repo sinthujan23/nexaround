@@ -1,7 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -55,10 +55,12 @@ class _RegisterPageState extends State<RegisterPage> {
         ));
   }
 
-  void _handleGoogleVerify() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Google verification coming soon')),
-    );
+  void _handleSocialLogin(String provider) {
+    if (provider == 'google') {
+      context.read<AuthBloc>().add(const AuthGoogleLoginRequested());
+    } else if (provider == 'apple') {
+      context.read<AuthBloc>().add(const AuthAppleLoginRequested());
+    }
   }
 
   @override
@@ -100,10 +102,27 @@ class _RegisterPageState extends State<RegisterPage> {
             backgroundColor: AppColors.background,
             body: Stack(
               children: [
-                // Background glows
+                // Background glows (Matching Login & OTP pages)
                 Positioned(
-                  top: -50,
-                  left: -50,
+                  top: -100,
+                  right: -80,
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primary.withOpacity(0.08),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: -80,
+                  left: -60,
                   child: Container(
                     width: 250,
                     height: 250,
@@ -111,7 +130,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       shape: BoxShape.circle,
                       gradient: RadialGradient(
                         colors: [
-                          AppColors.actionTeal.withOpacity(0.08),
+                          AppColors.secondary.withOpacity(0.06),
                           Colors.transparent,
                         ],
                       ),
@@ -137,9 +156,9 @@ class _RegisterPageState extends State<RegisterPage> {
                             'Create Account',
                             style: TextStyle(
                               fontSize: 26,
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                               color: AppColors.textPrimary,
-                              letterSpacing: -1,
+                              letterSpacing: -0.5,
                             ),
                           ).animate().fade().slideY(begin: 0.2, end: 0),
 
@@ -154,32 +173,39 @@ class _RegisterPageState extends State<RegisterPage> {
 
                           const SizedBox(height: 20),
 
-                          // Gmail Verification Button
-                          _buildSocialVerifyButton(
-                            label: 'Verify with Gmail',
-                            iconPath: 'assets/icons/google.png',
-                            onTap: _handleGoogleVerify,
-                            delay: 250,
+                          // Social login buttons
+                          _buildSocialButton(
+                            icon: Icons.g_mobiledata_rounded,
+                            label: 'Continue with Google',
+                            onTap: () => _handleSocialLogin('google'),
+                            delay: 300,
+                          ),
+                          const SizedBox(height: 10),
+                          _buildSocialButton(
+                            icon: Icons.apple_rounded,
+                            label: 'Continue with Apple',
+                            onTap: () => _handleSocialLogin('apple'),
+                            delay: 400,
                           ),
 
                           const SizedBox(height: 16),
 
                           Row(
                             children: [
-                              Expanded(child: Divider(color: AppColors.textMuted.withOpacity(0.1))),
+                              Expanded(child: Container(height: 1, color: AppColors.border)),
                               Padding(
                                 padding: const EdgeInsets.symmetric(horizontal: 16),
                                 child: Text(
-                                  'OR USE EMAIL',
+                                  'OR',
                                   style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.textMuted.withOpacity(0.5),
-                                    letterSpacing: 1.5,
+                                    color: AppColors.textTertiary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 1,
                                   ),
                                 ),
                               ),
-                              Expanded(child: Divider(color: AppColors.textMuted.withOpacity(0.1))),
+                              Expanded(child: Container(height: 1, color: AppColors.border)),
                             ],
                           ).animate().fade(delay: 300.ms),
 
@@ -190,18 +216,16 @@ class _RegisterPageState extends State<RegisterPage> {
                               Expanded(
                                 child: _buildTextField(
                                   controller: _firstNameController,
-                                  label: 'FIRST NAME',
-                                  hint: 'First',
+                                  hint: 'First name',
                                   icon: Icons.person_outline_rounded,
                                   delay: 400,
                                 ),
                               ),
-                              const SizedBox(width: 16),
+                              const SizedBox(width: 12),
                               Expanded(
                                 child: _buildTextField(
                                   controller: _lastNameController,
-                                  label: 'LAST NAME',
-                                  hint: 'Last',
+                                  hint: 'Last name',
                                   icon: Icons.person_outline_rounded,
                                   delay: 450,
                                 ),
@@ -211,8 +235,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           const SizedBox(height: 10),
                           _buildTextField(
                             controller: _emailController,
-                            label: 'EMAIL ADDRESS',
-                            hint: 'Enter your email',
+                            hint: 'Email address',
                             icon: Icons.email_outlined,
                             keyboardType: TextInputType.emailAddress,
                             delay: 500,
@@ -220,8 +243,7 @@ class _RegisterPageState extends State<RegisterPage> {
                           const SizedBox(height: 10),
                           _buildTextField(
                             controller: _passwordController,
-                            label: 'PASSWORD',
-                            hint: 'Create a password',
+                            hint: 'Password',
                             icon: Icons.lock_outline_rounded,
                             isPassword: true,
                             obscureText: _obscurePassword,
@@ -234,7 +256,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
                           _buildRegisterButton(isLoading),
 
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 20),
 
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
@@ -248,12 +270,18 @@ class _RegisterPageState extends State<RegisterPage> {
                               ),
                               GestureDetector(
                                 onTap: () => Navigator.pop(context),
-                                child: const Text(
-                                  'Sign In',
-                                  style: TextStyle(
-                                    color: Colors.black,
-                                    fontWeight: FontWeight.w800,
-                                    fontSize: 14,
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      AppColors.primaryGradient.createShader(
+                                    Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                                  ),
+                                  child: const Text(
+                                    'Sign In',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 14,
+                                    ),
                                   ),
                                 ),
                               ),
@@ -274,44 +302,35 @@ class _RegisterPageState extends State<RegisterPage> {
     );
   }
 
-  Widget _buildSocialVerifyButton({
+  Widget _buildSocialButton({
+    required IconData icon,
     required String label,
-    required String iconPath,
     required VoidCallback onTap,
-    int delay = 0,
+    required int delay,
   }) {
-    return InkWell(
+    return GlassCard(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.black.withOpacity(0.08)),
-          color: Colors.white,
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.g_mobiledata_rounded, color: Colors.red, size: 24),
-            SizedBox(width: 10),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: AppColors.textPrimary,
-              ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, color: AppColors.textPrimary, size: 22),
+          const SizedBox(width: 10),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
-    ).animate().fade(delay: delay.ms).slideY(begin: 0.1, end: 0);
+    ).animate().fade(delay: Duration(milliseconds: delay)).slideY(begin: 0.1, end: 0);
   }
 
   Widget _buildTextField({
     required TextEditingController controller,
-    required String label,
     required String hint,
     required IconData icon,
     bool isPassword = false,
@@ -320,76 +339,54 @@ class _RegisterPageState extends State<RegisterPage> {
     TextInputType? keyboardType,
     int delay = 0,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-            color: AppColors.textTertiary,
-            letterSpacing: 1.5,
-          ),
+    return TextFormField(
+      controller: controller,
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: AppColors.textTertiary),
+        prefixIcon: Icon(icon, color: AppColors.textTertiary, size: 20),
+        suffixIcon: isPassword
+            ? IconButton(
+                icon: Icon(
+                  obscureText ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                  color: AppColors.textTertiary,
+                  size: 20,
+                ),
+                onPressed: onToggleVisibility,
+              )
+            : null,
+        filled: true,
+        fillColor: AppColors.surfaceVariant,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppColors.border),
         ),
-        const SizedBox(height: 10),
-        TextField(
-          controller: controller,
-          obscureText: obscureText,
-          keyboardType: keyboardType,
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(
-              color: AppColors.textMuted.withOpacity(0.5),
-              fontWeight: FontWeight.w500,
-            ),
-            prefixIcon: Icon(icon, size: 20, color: AppColors.textTertiary),
-            suffixIcon: isPassword
-                ? IconButton(
-                    icon: Icon(
-                      obscureText ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                      size: 20,
-                      color: AppColors.textTertiary,
-                    ),
-                    onPressed: onToggleVisibility,
-                  )
-                : null,
-            filled: true,
-            fillColor: AppColors.surfaceVariant.withOpacity(0.5),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Colors.transparent),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Colors.black12, width: 1.5),
-            ),
-          ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppColors.border),
         ),
-      ],
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: AppColors.primary.withOpacity(0.6), width: 1.5),
+        ),
+      ),
     ).animate().fade(delay: delay.ms).slideY(begin: 0.05, end: 0);
   }
 
   Widget _buildRegisterButton(bool isLoading) {
     return SizedBox(
       width: double.infinity,
-      height: 58,
+      height: 50,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
-          color: Colors.black,
+          gradient: AppColors.primaryGradient,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.15),
+              color: AppColors.primary.withOpacity(0.3),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -408,9 +405,9 @@ class _RegisterPageState extends State<RegisterPage> {
             'CREATE ACCOUNT',
             style: TextStyle(
               color: Colors.white,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               letterSpacing: 2,
-              fontSize: 14,
+              fontSize: 15,
             ),
           ),
         ),
@@ -422,8 +419,30 @@ class _RegisterPageState extends State<RegisterPage> {
     return Positioned.fill(
       child: Container(
         color: AppColors.background.withOpacity(0.8),
-        child: const Center(
-          child: CircularProgressIndicator(color: Colors.black),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: const AlwaysStoppedAnimation(AppColors.primary),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'CREATING ACCOUNT...',
+                style: TextStyle(
+                  color: AppColors.textTertiary,
+                  fontSize: 11,
+                  letterSpacing: 3,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

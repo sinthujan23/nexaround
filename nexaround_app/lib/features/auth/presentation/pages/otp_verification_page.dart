@@ -1,18 +1,25 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:nexaround_app/features/auth/presentation/pages/reset_password_page.dart';
 
 class OTPVerificationPage extends StatefulWidget {
   final String email;
   final String? initialMessage;
+  final bool isPasswordReset;
 
   const OTPVerificationPage({
     super.key,
     required this.email,
     this.initialMessage,
+    this.isPasswordReset = false,
   });
 
   @override
@@ -37,7 +44,9 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(widget.initialMessage!),
-            backgroundColor: const Color(0xFF00897B),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       });
@@ -96,175 +105,376 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
   void _submitOtp() {
     final code = _otpCode;
     if (code.length == 6) {
-      context.read<AuthBloc>().add(
-            AuthVerifyOTPRequested(
-              email: widget.email,
-              otp: code,
-            ),
-          );
+      if (widget.isPasswordReset) {
+        context.read<AuthBloc>().add(
+              AuthVerifyResetOTPRequested(
+                email: widget.email,
+                otp: code,
+              ),
+            );
+      } else {
+        context.read<AuthBloc>().add(
+              AuthVerifyOTPRequested(
+                email: widget.email,
+                otp: code,
+              ),
+            );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Please enter all 6 digits of the verification code'),
+          backgroundColor: AppColors.error,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
   void _resendOtp() {
     if (_canResend) {
       _startTimer();
-      context.read<AuthBloc>().add(
-            AuthResendOTPRequested(email: widget.email),
-          );
+      if (widget.isPasswordReset) {
+        context.read<AuthBloc>().add(
+              AuthForgotPasswordRequested(email: widget.email),
+            );
+      } else {
+        context.read<AuthBloc>().add(
+              AuthResendOTPRequested(email: widget.email),
+            );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: BlocListener<AuthBloc, AuthState>(
-        listener: (context, state) {
-          if (state is AuthError) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: Colors.redAccent,
+    return BlocListener<AuthBloc, AuthState>(
+      listener: (context, state) async {
+        if (state is AuthAuthenticated) {
+          await CacheService.setLoggedIn(true);
+          if (!mounted) return;
+
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (_, animation, __) => HomePage(),
+              transitionsBuilder: (_, animation, __, child) =>
+                  FadeTransition(opacity: animation, child: child),
+              transitionDuration: const Duration(milliseconds: 800),
+            ),
+          );
+        } else if (state is AuthResetOTPVerified) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ResetPasswordPage(
+                email: state.email,
+                resetToken: state.resetToken,
               ),
-            );
-          }
-        },
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const SizedBox(height: 20),
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00897B).withOpacity(0.15),
-                  shape: BoxShape.circle,
+            ),
+          );
+        } else if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
+      },
+      child: BlocBuilder<AuthBloc, AuthState>(
+        builder: (context, state) {
+          final isLoading = state is AuthLoading;
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            appBar: AppBar(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              leading: IconButton(
+                icon: const Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  color: AppColors.textPrimary,
+                  size: 20,
                 ),
-                child: const Icon(
-                  Icons.mark_email_read_outlined,
-                  color: Color(0xFF2DD4BF),
-                  size: 40,
-                ),
+                onPressed: () => Navigator.of(context).pop(),
               ),
-              const SizedBox(height: 24),
-              const Text(
-                'Verification Code',
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'We sent a 6-digit OTP verification code to\n${widget.email}',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF94A3B8),
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 40),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: List.generate(6, (index) {
-                  return SizedBox(
-                    width: 46,
-                    height: 56,
-                    child: TextField(
-                      controller: _controllers[index],
-                      focusNode: _focusNodes[index],
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      maxLength: 1,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+            ),
+            body: Stack(
+              children: [
+                // Background glow (Matching Login & Register pages)
+                Positioned(
+                  top: -100,
+                  right: -80,
+                  child: Container(
+                    width: 300,
+                    height: 300,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.primary.withOpacity(0.08),
+                          Colors.transparent,
+                        ],
                       ),
-                      decoration: InputDecoration(
-                        counterText: '',
-                        filled: true,
-                        fillColor: const Color(0xFF1E293B),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFF334155)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(color: Color(0xFF2DD4BF), width: 2),
-                        ),
-                      ),
-                      onChanged: (val) => _onDigitChanged(index, val),
                     ),
-                  );
-                }),
-              ),
-              const SizedBox(height: 40),
-              BlocBuilder<AuthBloc, AuthState>(
-                builder: (context, state) {
-                  final isLoading = state is AuthLoading;
-                  return SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : _submitOtp,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF00897B),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
-                        ),
+                  ),
+                ),
+                Positioned(
+                  bottom: -80,
+                  left: -60,
+                  child: Container(
+                    width: 250,
+                    height: 250,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          AppColors.secondary.withOpacity(0.06),
+                          Colors.transparent,
+                        ],
                       ),
-                      child: isLoading
-                          ? const CircularProgressIndicator(color: Colors.white)
-                          : const Text(
-                              'Verify & Proceed',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
+                    ),
+                  ),
+                ),
+
+                // Main Content
+                SafeArea(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.symmetric(horizontal: 28),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          // App Logo
+                          _buildLogo(),
+                          const SizedBox(height: 16),
+
+                          // Title
+                          const Text(
+                            'Verification Code',
+                            style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                              letterSpacing: -0.5,
+                            ),
+                          ).animate().fade().slideY(begin: 0.2, end: 0),
+
+                          const SizedBox(height: 4),
+
+                          // Subtitle with Email display
+                          Column(
+                            children: [
+                              Text(
+                                'We sent a 6-digit OTP verification code to',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                widget.email,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                            ],
+                          ).animate().fade(delay: 200.ms),
+
+                          const SizedBox(height: 32),
+
+                          // 6-Digit PIN Fields
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: List.generate(6, (index) {
+                              return SizedBox(
+                                width: 44,
+                                height: 56,
+                                child: TextField(
+                                  controller: _controllers[index],
+                                  focusNode: _focusNodes[index],
+                                  keyboardType: TextInputType.number,
+                                  textAlign: TextAlign.center,
+                                  textAlignVertical: TextAlignVertical.center,
+                                  maxLength: 1,
+                                  cursorColor: Colors.black,
+                                  style: const TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black,
+                                  ),
+                                  decoration: InputDecoration(
+                                    counterText: '',
+                                    filled: true,
+                                    fillColor: AppColors.surfaceVariant,
+                                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide(color: AppColors.border),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide(color: AppColors.border),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(16),
+                                      borderSide: BorderSide(
+                                        color: AppColors.primary.withOpacity(0.6),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                  ),
+                                  onChanged: (val) => _onDigitChanged(index, val),
+                                ),
+                              );
+                            }),
+                          ).animate().fade(delay: 350.ms).slideY(begin: 0.05, end: 0),
+
+                          const SizedBox(height: 28),
+
+                          // Verify Button
+                          _buildVerifyButton(isLoading),
+
+                          const SizedBox(height: 20),
+
+                          // Resend Code Section
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                "Didn't receive code? ",
+                                style: TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: _canResend ? _resendOtp : null,
+                                child: _canResend
+                                    ? ShaderMask(
+                                        shaderCallback: (bounds) =>
+                                            AppColors.primaryGradient.createShader(
+                                          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                                        ),
+                                        child: const Text(
+                                          'Resend Code',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      )
+                                    : Text(
+                                        'Resend in ${_start}s',
+                                        style: TextStyle(
+                                          color: AppColors.textTertiary,
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                              ),
+                            ],
+                          ).animate().fade(delay: 600.ms),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Fullscreen Loading Overlay (Matching Login & Register)
+                if (isLoading)
+                  Positioned.fill(
+                    child: Container(
+                      color: AppColors.background.withOpacity(0.8),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 48,
+                              height: 48,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
                               ),
                             ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text(
-                    "Didn't receive code? ",
-                    style: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                  ),
-                  TextButton(
-                    onPressed: _canResend ? _resendOtp : null,
-                    child: Text(
-                      _canResend ? 'Resend Code' : 'Resend in ${_start}s',
-                      style: TextStyle(
-                        color: _canResend ? const Color(0xFF2DD4BF) : const Color(0xFF64748B),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                            const SizedBox(height: 20),
+                            Text(
+                              'VERIFYING CODE...',
+                              style: TextStyle(
+                                color: AppColors.textTertiary,
+                                fontSize: 11,
+                                letterSpacing: 3,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
+
+  Widget _buildLogo() {
+    return Image.asset(
+      'assets/images/logo_2.png',
+      width: 90,
+      fit: BoxFit.contain,
+    ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack);
+  }
+
+  Widget _buildVerifyButton(bool isLoading) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: AppColors.primaryGradient,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: ElevatedButton(
+          onPressed: isLoading ? null : _submitOtp,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.transparent,
+            shadowColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+          child: const Text(
+            'VERIFY & PROCEED',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 2,
+              fontSize: 15,
+            ),
+          ),
+        ),
+      ),
+    ).animate().fade(delay: 500.ms).scale(begin: const Offset(0.95, 0.95));
+  }
 }
+
+

@@ -20,6 +20,11 @@ from app.schemas.user import (
     VerifyOTPRequest,
     ResendOTPRequest,
     RegisterPendingResponse,
+    ForgotPasswordRequest,
+    VerifyResetOTPRequest,
+    ResetPasswordRequest,
+    ForgotPasswordResponse,
+    VerifyResetOTPResponse,
 )
 
 from app.core.rate_limiter import auth_rate_limiter
@@ -53,6 +58,27 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     """Login with email and password."""
     service = AuthService(db)
     return await service.login(data.email, data.password)
+
+
+@router.post("/forgot-password", response_model=ForgotPasswordResponse, dependencies=[Depends(auth_rate_limiter)])
+async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Validate user existence and send a 6-digit password reset OTP code to email."""
+    service = AuthService(db)
+    return await service.forgot_password(data.email)
+
+
+@router.post("/verify-reset-otp", response_model=VerifyResetOTPResponse, dependencies=[Depends(auth_rate_limiter)])
+async def verify_reset_otp(data: VerifyResetOTPRequest, db: AsyncSession = Depends(get_db)):
+    """Verify password reset OTP and return a single-use reset token."""
+    service = AuthService(db)
+    return await service.verify_reset_otp(data.email, data.otp)
+
+
+@router.post("/reset-password", response_model=MessageResponse, dependencies=[Depends(auth_rate_limiter)])
+async def reset_password(data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Reset user password using reset_token issued after OTP verification."""
+    service = AuthService(db)
+    return await service.reset_password(data.email, data.reset_token, data.new_password)
 
 
 @router.post("/google", response_model=TokenResponse, dependencies=[Depends(auth_rate_limiter)])

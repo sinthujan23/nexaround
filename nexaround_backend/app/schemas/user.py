@@ -44,6 +44,34 @@ class RegisterPendingResponse(BaseModel):
     message: str = "Verification OTP sent to your email address."
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyResetOTPRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, description="6-digit numeric OTP code")
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    reset_token: str = Field(..., description="Single-use reset token issued upon OTP verification")
+    new_password: str = Field(..., min_length=6, max_length=100)
+
+
+class ForgotPasswordResponse(BaseModel):
+    status: str = "reset_otp_sent"
+    email: str
+    message: str = "Password reset code sent to your email address."
+
+
+class VerifyResetOTPResponse(BaseModel):
+    status: str = "otp_verified"
+    email: str
+    reset_token: str
+    message: str = "Code verified. Please set a new password."
+
+
 
 
 class UserPreferencesUpdate(BaseModel):

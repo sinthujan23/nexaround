@@ -67,3 +67,50 @@ async def send_otp_email(to_email: str, otp_code: str) -> bool:
         print(f"🔑 [DEV FALLBACK] OTP code for {to_email} is: {otp_code}")
         return False
 
+
+async def send_password_reset_email(to_email: str, otp_code: str) -> bool:
+    """Send 6-digit password reset OTP code via SMTP or log to console in dev mode."""
+    subject = f"Your NexAround Password Reset Code: {otp_code}"
+    
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }}
+        .card {{ max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+        .logo {{ color: #00897B; font-size: 24px; font-weight: bold; text-align: center; margin-bottom: 20px; }}
+        .otp-box {{ background: #FFF3E0; border-radius: 8px; font-size: 32px; font-weight: bold; color: #E65100; text-align: center; letter-spacing: 6px; padding: 16px; margin: 24px 0; }}
+        .footer {{ font-size: 12px; color: #78909C; text-align: center; margin-top: 20px; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">nexaround</div>
+        <h2>Reset Your Password</h2>
+        <p>You requested to reset your password. Use the 6-digit verification code below to set a new password:</p>
+        <div class="otp-box">{otp_code}</div>
+        <p>This code will expire in <strong>10 minutes</strong>. If you did not request a password reset, please secure your account immediately.</p>
+        <div class="footer">&copy; NexAround POI & Discovery Platform</div>
+      </div>
+    </body>
+    </html>
+    """
+
+    print("=" * 80)
+    print(f"📧 [PASSWORD RESET DISPATCH] To: {to_email} | Reset OTP Code: {otp_code}")
+    print("=" * 80)
+
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        print(f"ℹ️ [DEV SIMULATOR] SMTP credentials not set. Password Reset OTP code for {to_email} is: {otp_code}")
+        return True
+
+    try:
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        print(f"✅ Password reset OTP email sent successfully via SMTP to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send Password Reset OTP email via SMTP to {to_email}: {e}")
+        print(f"🔑 [DEV FALLBACK] Reset OTP code for {to_email} is: {otp_code}")
+        return False
+

@@ -20,6 +20,9 @@ class ApiConstants {
   static const String verifyOtp = '$apiVersion/auth/verify-otp';
   static const String resendOtp = '$apiVersion/auth/resend-otp';
   static const String login = '$apiVersion/auth/login';
+  static const String forgotPassword = '$apiVersion/auth/forgot-password';
+  static const String verifyResetOtp = '$apiVersion/auth/verify-reset-otp';
+  static const String resetPassword = '$apiVersion/auth/reset-password';
   static const String googleLogin = '$apiVersion/auth/google';
   static const String appleLogin = '$apiVersion/auth/apple';
   static const String refreshToken = '$apiVersion/auth/refresh';
