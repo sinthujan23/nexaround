@@ -322,53 +322,53 @@ class OdysseyPlanView extends StatelessWidget {
               ),
             ],
           ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Icon(Icons.account_balance_wallet_rounded, size: 20, color: Colors.black),
-                  SizedBox(width: 8),
-                  Text(
-                    'BUDGET ALLOCATION',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 1.5,
-                      color: AppColors.textSecondary,
+                  const Row(
+                    children: [
+                      Icon(Icons.account_balance_wallet_rounded, size: 20, color: Colors.black),
+                      SizedBox(width: 8),
+                      Text(
+                        'BUDGET ALLOCATION',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 1.5,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'Total: $currency ${total.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.brandGreen,
+                      ),
                     ),
                   ),
                 ],
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.brandGreen.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'Total: $currency ${total.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.brandGreen,
-                  ),
-                ),
-              ),
+              const SizedBox(height: 16),
+              categoryBar('Stay / Accommodation', '🏨', stay, const Color(0xFF2563EB)),
+              categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),
+              categoryBar('Food & Dining', '🍔', food, const Color(0xFFD97706)),
+              categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
             ],
           ),
-          const SizedBox(height: 16),
-          categoryBar('Stay / Accommodation', '🏨', stay, const Color(0xFF2563EB)),
-          categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),
-          categoryBar('Food & Dining', '🍔', food, const Color(0xFFD97706)),
-          categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
-        ],
-      ),
-    ),
-    ],
+        ),
+      ],
     );
   }
 
@@ -480,149 +480,131 @@ class OdysseyPlanView extends StatelessWidget {
     final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (checkable) ...[
-                GestureDetector(
-                  onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 1, right: 8),
-                    child: Icon(
-                      act.visited
-                          ? Icons.check_circle_rounded
-                          : Icons.radio_button_unchecked_rounded,
-                      size: 22,
-                      color:
-                          act.visited ? AppColors.neonGreen : Colors.black26,
-                    ),
+          // Checkbox column (fixed width for alignment)
+          if (checkable)
+            GestureDetector(
+              onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 1, right: 8),
+                child: Icon(
+                  act.visited
+                      ? Icons.check_circle_rounded
+                      : Icons.radio_button_unchecked_rounded,
+                  size: 22,
+                  color: act.visited ? AppColors.neonGreen : Colors.black26,
+                ),
+              ),
+            ),
+          // Time column (fixed width for consistent alignment)
+          SizedBox(
+            width: 56,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  act.time,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: act.visited ? Colors.black26 : AppColors.actionTeal,
                   ),
                 ),
+                if (act.visited && onActualCostChanged != null) ...[
+                  const SizedBox(height: 4),
+                  const Text(
+                    'ACTUAL COST',
+                    style: TextStyle(
+                      fontSize: 7,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black38,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ],
               ],
-              SizedBox(
-                width: 56,
-                child: Column(
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Main content column
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Name + cost row
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      act.time,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: act.visited
-                            ? Colors.black26
-                            : AppColors.actionTeal,
-                      ),
-                    ),
-                    // Show ACTUAL COST label when visited
-                    if (act.visited && onActualCostChanged != null) ...[
-                      const SizedBox(height: 4),
-                      const Text(
-                        'ACTUAL COST',
+                    Expanded(
+                      child: Text(
+                        act.name,
                         style: TextStyle(
-                          fontSize: 7,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black38,
-                          letterSpacing: 0.5,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: act.visited ? Colors.black38 : Colors.black,
+                          decoration: act.visited ? TextDecoration.lineThrough : null,
                         ),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Name, tip, cost, and action buttons stacked vertically
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Name row with cost + type-specific buttons on the right
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            act.name,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: act.visited ? Colors.black38 : Colors.black,
-                              decoration:
-                                  act.visited ? TextDecoration.lineThrough : null,
-                            ),
-                          ),
-                        ),
-                        if (act.cost.isNotEmpty) ...[
-                          const SizedBox(width: 8),
-                          Flexible(
-                            flex: 2,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                ConvertedCurrencyText(
-                                  rawText: act.cost,
-                                  originalCurrency: odyssey.currency,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                  ),
-                                ),
-                                // Type-specific action button beside cost
-                                const SizedBox(height: 4),
-                                _buildActionButton(act, dayIndex, activityIndex),
-                              ],
-                            ),
-                          ),
-                        ] else ...[
-                          // No cost → still show action button (e.g. Self-Guided)
-                          _buildActionButton(act, dayIndex, activityIndex),
-                        ],
-                      ],
                     ),
-                    if (act.tip.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        act.tip,
+                    if (act.cost.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      ConvertedCurrencyText(
+                        rawText: act.cost,
+                        originalCurrency: odyssey.currency,
                         style: const TextStyle(
-                          fontSize: 12.5,
-                          height: 1.35,
-                          color: Colors.black54,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.black,
                         ),
                       ),
                     ],
-                    // Actual cost input when activity is visited
-                    if (act.visited && onActualCostChanged != null) ...[
-                      const SizedBox(height: 6),
-                      _buildActualCostInput(dayIndex, activityIndex, act),
-                    ],
                   ],
                 ),
-              ),
-              if (editable) ...[
-                const SizedBox(width: 4),
-                if (isSwapping)
-                  const SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: Padding(
+                // Action button always on its own line for consistent alignment
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: _buildActionButton(act, dayIndex, activityIndex),
+                  ),
+                ),
+                if (act.tip.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    act.tip,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      height: 1.35,
+                      color: Colors.black54,
+                    ),
+                  ),
+                ],
+                // Actual cost input when activity is visited
+                if (act.visited && onActualCostChanged != null) ...[
+                  const SizedBox(height: 6),
+                  _buildActualCostInput(dayIndex, activityIndex, act),
+                ],
+              ],
+            ),
+          ),
+          // Swap button column (fixed width for alignment)
+          if (editable) ...[
+            const SizedBox(width: 4),
+            SizedBox(
+              width: 32,
+              height: 32,
+              child: isSwapping
+                  ? const Padding(
                       padding: EdgeInsets.all(8),
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
                         color: AppColors.actionTeal,
                       ),
-                    ),
-                  )
-                else
-                  SizedBox(
-                    width: 32,
-                    height: 32,
-                    child: IconButton(
+                    )
+                  : IconButton(
                       padding: EdgeInsets.zero,
                       visualDensity: VisualDensity.compact,
                       tooltip: 'Swap this place',
@@ -635,10 +617,8 @@ class OdysseyPlanView extends StatelessWidget {
                           ? null
                           : () => onSwapActivity!(dayIndex, activityIndex),
                     ),
-                  ),
-              ],
-            ],
-          ),
+            ),
+          ],
         ],
       ),
     );
@@ -651,77 +631,82 @@ class OdysseyPlanView extends StatelessWidget {
         return _buildTransportButton(act);
       case ActivityType.attraction:
         return _buildAttractionButton(act);
+      case ActivityType.accommodation:
+        return _buildAccommodationButton(act);
       case ActivityType.dining:
         return _buildDiningButton(act, dayIndex, activityIndex);
       case ActivityType.exploration:
         return _buildExplorationButton(act);
-      case ActivityType.accommodation:
       case ActivityType.other:
         return const SizedBox.shrink();
     }
   }
 
-  /// Red UBER chip button for transport activities.
+  /// Uber button for transport activities (shows clean logo only, no box/container).
   Widget _buildTransportButton(OdysseyActivity act) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () async {
-        // Try Uber deep link first, fall back to web
-        final destination = Uri.encodeComponent(act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim());
+        // Strip directional prefix and append destination for accurate geocoding
+        final placeName = act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim();
+        final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+        final fullAddress = dest.isNotEmpty ? '$placeName, $dest' : placeName;
+        final destination = Uri.encodeComponent(fullAddress);
         final uberUri = Uri.parse('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
         if (await canLaunchUrl(uberUri)) {
           await launchUrl(uberUri, mode: LaunchMode.externalApplication);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: Colors.black,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Text(
-          'uber',
-          style: TextStyle(
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            color: Colors.white,
-            letterSpacing: 0.5,
-          ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(4),
+        child: Image.asset(
+          'assets/images/uber_logo.png',
+          height: 20,
+          fit: BoxFit.contain,
         ),
       ),
     );
   }
 
-  /// Teal HEADOUT chip button for ticketed attraction activities.
+  /// Headout button for ticketed attraction activities (shows clean logo only, no box/container).
   Widget _buildAttractionButton(OdysseyActivity act) {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: () async {
-        final query = Uri.encodeComponent('${act.name} tickets');
+        final dest = odyssey.destination.isNotEmpty ? ' ${odyssey.destination}' : '';
+        final query = Uri.encodeComponent('${act.name} tickets$dest');
         final url = Uri.parse('https://www.headout.com/search/?q=$query');
         if (await canLaunchUrl(url)) {
           await launchUrl(url, mode: LaunchMode.externalApplication);
         }
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: const Color(0xFF00BFA5),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.confirmation_number_outlined, size: 10, color: Colors.white),
-            SizedBox(width: 3),
-            Text(
-              'headout',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 0.3,
-              ),
-            ),
-          ],
+      child: Image.asset(
+        'assets/images/headout.png',
+        height: 20,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+
+  /// Booking.com logo button for accommodation activities (shows clean logo only).
+  Widget _buildAccommodationButton(OdysseyActivity act) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final hotelName = act.name.replaceAll(RegExp(r'^(Check into|Check in|Hotel Check-out & Transfer to|Hotel Check-out)\s+', caseSensitive: false), '').trim();
+        final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+        final query = hotelName.isNotEmpty ? (dest.isNotEmpty ? '$hotelName, $dest' : hotelName) : dest;
+        final url = Uri.parse('https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(query)}');
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: Image.asset(
+          'assets/images/booking_logo.jpg',
+          height: 18,
+          fit: BoxFit.contain,
         ),
       ),
     );
@@ -731,6 +716,7 @@ class OdysseyPlanView extends StatelessWidget {
   Widget _buildDiningButton(OdysseyActivity act, int dayIndex, int activityIndex) {
     return Builder(
       builder: (context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => _showRestaurantSheet(context, act),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -760,48 +746,24 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  /// Self-Guided label + GET A GUIDE button for exploration activities.
+  /// GetYourGuide logo button for exploration activities (shows clean logo only).
   Widget _buildExplorationButton(OdysseyActivity act) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
-      children: [
-        const Text(
-          'SELF-GUIDED',
-          style: TextStyle(
-            fontSize: 9,
-            fontWeight: FontWeight.w800,
-            color: Colors.black45,
-            letterSpacing: 0.5,
-          ),
-        ),
-        const SizedBox(height: 4),
-        GestureDetector(
-          onTap: () async {
-            final destination = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
-            final query = Uri.encodeComponent('$destination guided tour');
-            final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
-            if (await canLaunchUrl(url)) {
-              await launchUrl(url, mode: LaunchMode.externalApplication);
-            }
-          },
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF4CAF50),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'GET A GUIDE',
-              style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: 0.5,
-              ),
-            ),
-          ),
-        ),
-      ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final placeName = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
+        final dest = odyssey.destination.isNotEmpty ? ' ${odyssey.destination}' : '';
+        final query = Uri.encodeComponent('$placeName guided tour$dest');
+        final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+        }
+      },
+      child: Image.asset(
+        'assets/images/getyourguide.png',
+        height: 22,
+        fit: BoxFit.contain,
+      ),
     );
   }
 
@@ -965,6 +927,30 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
+  /// Returns the asset image path for a known provider, or null if no logo exists yet.
+  static String? _getPartnerLogoPath(String providerName) {
+    final name = providerName.toLowerCase().trim();
+    if (name.contains('booking')) return 'assets/images/booking_logo.jpg';
+    if (name.contains('uber')) return 'assets/images/uber_logo.png';
+    if (name.contains('headout')) return 'assets/images/headout.png';
+    if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
+    if (name.contains('viator')) return 'assets/images/viator.png';
+    if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
+    // Future logos — return null until assets are added:
+    // if (name.contains('agoda')) return 'assets/images/agoda_logo.png';
+    // if (name.contains('klook')) return 'assets/images/klook_logo.png';
+    // if (name.contains('grab')) return 'assets/images/grab_logo.png';
+    // if (name.contains('expedia')) return 'assets/images/expedia_logo.png';
+    // if (name.contains('airbnb')) return 'assets/images/airbnb_logo.png';
+    // if (name.contains('kayak')) return 'assets/images/kayak_logo.png';
+    // if (name.contains('google')) return 'assets/images/google_travel_logo.png';
+    // if (name.contains('ostrovok')) return 'assets/images/ostrovok_logo.png';
+    // if (name.contains('pickme')) return 'assets/images/pickme_logo.png';
+    // if (name.contains('yandex')) return 'assets/images/yandex_logo.png';
+    // if (name.contains('hotels.com')) return 'assets/images/hotelscom_logo.png';
+    return null;
+  }
+
   Widget _buildBookingSection(BuildContext context) {
     final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
 
@@ -973,17 +959,19 @@ class OdysseyPlanView extends StatelessWidget {
         children: odyssey.bookingPartners.map((bp) {
           final title = bp.name;
           final type = bp.type.toLowerCase();
+          final nameLower = bp.name.toLowerCase();
+          final String? logoPath = _getPartnerLogoPath(bp.name);
           
-          // Deduce Icon
+          // Deduce Icon (fallback when no logo asset exists)
           IconData icon = Icons.bookmark_rounded;
           if (type == 'hotels') {
             icon = Icons.hotel_rounded;
           } else if (type == 'tours') {
             icon = Icons.local_activity_rounded;
           } else if (type == 'transit') {
-            if (bp.name.toLowerCase().contains('flight') || 
-                bp.name.toLowerCase().contains('aviasales') ||
-                bp.name.toLowerCase().contains('skyscanner')) {
+            if (nameLower.contains('flight') || 
+                nameLower.contains('aviasales') ||
+                nameLower.contains('skyscanner')) {
               icon = Icons.flight_takeoff_rounded;
             } else {
               icon = Icons.directions_car_rounded;
@@ -992,7 +980,6 @@ class OdysseyPlanView extends StatelessWidget {
 
           // Deduce Brand Color
           Color color = const Color(0xFF007A7C); // Default Theme Teal
-          final nameLower = bp.name.toLowerCase();
           if (nameLower.contains('agoda')) {
             color = const Color(0xFF8E24AA); // Purple
           } else if (nameLower.contains('ostrovok')) {
@@ -1080,6 +1067,7 @@ class OdysseyPlanView extends StatelessWidget {
               color: color,
               url: resolvedUrl,
               isAiGenerated: true,
+              logoPath: logoPath,
             ),
           );
         }).toList(),
@@ -1097,6 +1085,7 @@ class OdysseyPlanView extends StatelessWidget {
           icon: Icons.hotel_rounded,
           color: const Color(0xFF003580), // Booking.com Brand Blue
           url: 'https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(dest)}',
+          logoPath: 'assets/images/booking_logo.jpg',
         ),
         const SizedBox(height: 12),
         _bookingCard(
@@ -1106,6 +1095,7 @@ class OdysseyPlanView extends StatelessWidget {
           icon: Icons.local_activity_rounded,
           color: const Color(0xFFFF595D), // GetYourGuide Orange/Red
           url: 'https://www.getyourguide.com/s?q=${Uri.encodeComponent(dest)}',
+          logoPath: 'assets/images/getyourguide.png',
         ),
         const SizedBox(height: 12),
         _bookingCard(
@@ -1115,6 +1105,7 @@ class OdysseyPlanView extends StatelessWidget {
           icon: Icons.flight_takeoff_rounded,
           color: const Color(0xFF077078), // Skyscanner Teal
           url: correctedSkyscannerUrl,
+          logoPath: 'assets/images/skyscanner.png',
         ),
       ],
     );
@@ -1128,8 +1119,12 @@ class OdysseyPlanView extends StatelessWidget {
     required Color color,
     required String url,
     bool isAiGenerated = false,
+    String? logoPath,
   }) {
     final isSwapping = isAiGenerated && swappingPartnerName == title;
+    final bool isBookingLogo = logoPath != null && logoPath.contains('booking_logo');
+    final bool isHeadoutLogo = logoPath != null && logoPath.contains('headout');
+    final bool isGYGLogo = logoPath != null && logoPath.contains('getyourguide');
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -1171,14 +1166,37 @@ class OdysseyPlanView extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
+                // Logo avatar: use real brand logo when available, fall back to icon
                 Container(
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.1),
+                    color: logoPath != null
+                        ? (isHeadoutLogo || isGYGLogo ? Colors.transparent : Colors.white)
+                        : color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
+                    border: logoPath != null && !isHeadoutLogo && !isGYGLogo
+                        ? Border.all(color: Colors.black.withValues(alpha: 0.08))
+                        : null,
                   ),
-                  child: Icon(icon, color: color, size: 24),
+                  child: logoPath != null
+                      ? ClipOval(
+                          child: (isHeadoutLogo || isGYGLogo)
+                              ? Image.asset(
+                                  logoPath,
+                                  width: 48,
+                                  height: 48,
+                                  fit: BoxFit.cover,
+                                )
+                              : Padding(
+                                  padding: EdgeInsets.all(isBookingLogo ? 4 : 8),
+                                  child: Image.asset(
+                                    logoPath,
+                                    fit: BoxFit.contain,
+                                  ),
+                                ),
+                        )
+                      : Icon(icon, color: color, size: 24),
                 ),
                 const SizedBox(width: 16),
                 Expanded(

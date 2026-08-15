@@ -291,20 +291,12 @@ class HotelStrategiesSection extends StatelessWidget {
                     travelers: odyssey.travelers,
                     serpApiLink: hs.serpApiLink,
                   );
+                  final logoPath = _getProviderLogoPath(provider);
                   return SizedBox(
                     width: double.infinity,
                     height: 48,
-                    child: ElevatedButton.icon(
+                    child: ElevatedButton(
                       onPressed: () => _launchUrl(context, deepUrl),
-                      icon: const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
-                      label: Text(
-                        'Book Hotel on $provider',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black,
                         foregroundColor: Colors.white,
@@ -312,6 +304,38 @@ class HotelStrategiesSection extends StatelessWidget {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(16),
                         ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (logoPath != null) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.asset(
+                                logoPath,
+                                width: 20,
+                                height: 20,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ] else ...[
+                            const Icon(Icons.open_in_new_rounded, size: 16, color: Colors.white),
+                            const SizedBox(width: 8),
+                          ],
+                          Flexible(
+                            child: Text(
+                              'Book Hotel on $provider',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -321,6 +345,23 @@ class HotelStrategiesSection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Returns the asset path for a provider logo, or null if none exists yet.
+  static String? _getProviderLogoPath(String providerName) {
+    final name = providerName.toLowerCase().trim();
+    if (name.contains('booking')) return 'assets/images/booking_logo.jpg';
+    if (name.contains('uber')) return 'assets/images/uber_logo.png';
+    if (name.contains('headout')) return 'assets/images/headout.png';
+    if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
+    if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
+    if (name.contains('viator')) return 'assets/images/viator.png';
+    // Future logos — uncomment when assets are added:
+    // if (name.contains('agoda')) return 'assets/images/agoda_logo.png';
+    // if (name.contains('expedia')) return 'assets/images/expedia_logo.png';
+    // if (name.contains('airbnb')) return 'assets/images/airbnb_logo.png';
+    // if (name.contains('google')) return 'assets/images/google_travel_logo.png';
+    return null;
   }
 
   Widget _buildTipsCard(BuildContext context) {
