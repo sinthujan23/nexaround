@@ -911,12 +911,11 @@ Rules for "restaurants" in dining activities:
 - The activity "cost" should match the cheapest restaurant's lower price range.
 
 Rules for "booking_partners":
-- List 3 real, popular travel websites, booking platforms, or local apps commonly used by travelers for this specific destination country/region.
-- For Russia: Use Yandex Travel (transit/hotels), Ostrovok (hotels), or Aviasales (flights). Do not use Booking.com or Skyscanner for Russia.
-- For Sri Lanka: Use Booking.com (hotels), PickMe (transit/cabs), Klook (tours), or similar.
-- For general South-East Asia: Use Agoda (hotels), Grab (transit), or Klook (tours).
-- For Western Europe / Americas / Africa / Global: Use Booking.com (hotels), Viator (tours), Skyscanner (flights/transit).
-- The "url" field MUST be the official search URL of that exact provider (e.g. https://www.viator.com for Viator, https://www.skyscanner.com for Skyscanner, https://www.booking.com for Booking.com). Never use generic google.com links for non-Google providers.
+- List ONLY 2-4 real, popular travel websites, ride-hailing apps, booking platforms, or local apps that directly match the transit/hotel/tour recommendations in this plan.
+- If ride-hailing or transit is recommended, include the exact app used in that region (e.g. Uber for US/Europe/India, PickMe for Sri Lanka, Grab for SE Asia, Yandex for Russia).
+- For stays & hotels: Include the recommended hotel booking site (e.g. Booking.com, Agoda, Ostrovok).
+- For tours & tickets: Include the recommended activity platform (e.g. Headout, GetYourGuide, Klook, Viator).
+- The "url" field MUST be the official search URL of that exact provider (e.g. https://www.uber.com, https://www.viator.com, https://www.booking.com).
 - The "type" field must be one of: "hotels", "tours", "transit".
 
 Rules:

@@ -1,16 +1,13 @@
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:nexaround_app/app/app.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
-import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Handles FCM messages while the app is backgrounded/terminated. Must be a
@@ -57,39 +54,9 @@ void main() async {
     debugPrint('Firebase init failed: $e');
   }
 
-  // Initialize Mapbox with dynamic config fetch from backend
-  try {
-    final response = await http.get(Uri.parse('${ApiConstants.baseUrl}${ApiConstants.apiVersion}/config/keys'));
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final mapboxToken = data['mapbox_access_token'];
-      final googleMapsKey = data['google_maps_api_key'];
-      final serpKey = data['serp_api_key'];
-      
-      if (mapboxToken != null && mapboxToken is String && mapboxToken.isNotEmpty) {
-        ApiConstants.mapboxAccessToken = mapboxToken;
-        MapboxOptions.setAccessToken(mapboxToken);
-      }
-
-      if (serpKey != null && serpKey is String && serpKey.isNotEmpty) {
-        ApiConstants.serpApiKey = serpKey;
-      }
-      
-      if (googleMapsKey != null && googleMapsKey is String && googleMapsKey.isNotEmpty) {
-        ApiConstants.googleMapsApiKey = googleMapsKey;
-        // Pass Google Maps API Key to iOS native side dynamically
-        try {
-          const platform = MethodChannel('com.nexaround.app/keys');
-          await platform.invokeMethod('setGoogleMapsKey', {'key': googleMapsKey});
-          debugPrint('Successfully set Google Maps API Key on iOS native side');
-        } catch (e) {
-          debugPrint('Failed to set Google Maps API Key on native side: $e');
-        }
-      }
-    }
-  } catch (e) {
-    debugPrint("Failed to fetch keys from backend: $e");
-  }
+  // Fetch public client SDK keys (Mapbox token, Google Maps key) from the
+  // backend. This no longer requires authentication so it works at startup.
+  await ConfigKeyService.fetchAndApplyKeys();
 
   // Start session tracking for real engagement metrics (DAU + avg session).
   SessionTracker.instance.start();

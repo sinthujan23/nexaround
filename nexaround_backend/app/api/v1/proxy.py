@@ -15,9 +15,13 @@ router = APIRouter(tags=["Proxy API"])
 @router.get("/config/keys")
 async def get_config_keys(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
 ):
-    """Retrieve public configuration keys (e.g., Mapbox token). Requires authentication."""
+    """Retrieve public client SDK keys (Mapbox token, Google Maps key).
+
+    These are public-facing SDK keys that the mobile app needs at startup
+    before the user has authenticated (e.g. to render map tiles). They are
+    NOT secret server-side keys, so no Bearer token is required.
+    """
     settings = SettingsService(db)
     mapbox_token = await settings.get_setting("mapbox_access_token")
     google_maps_key = await settings.get_setting("google_maps_api_key")

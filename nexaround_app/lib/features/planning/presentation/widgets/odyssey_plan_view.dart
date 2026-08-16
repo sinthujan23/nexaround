@@ -48,6 +48,55 @@ class OdysseyPlanView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 4,
+      child: Column(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(
+                bottom: BorderSide(color: Colors.black12, width: 1),
+              ),
+            ),
+            child: const TabBar(
+              isScrollable: false,
+              indicatorColor: Colors.black,
+              indicatorWeight: 3,
+              labelColor: Colors.black,
+              unselectedLabelColor: AppColors.textSecondary,
+              labelStyle: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+              unselectedLabelStyle: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+              tabs: [
+                Tab(icon: Icon(Icons.dashboard_outlined, size: 18), text: 'Overview'),
+                Tab(icon: Icon(Icons.map_outlined, size: 18), text: 'Itinerary'),
+                Tab(icon: Icon(Icons.flight_outlined, size: 18), text: 'Flights'),
+                Tab(icon: Icon(Icons.hotel_outlined, size: 18), text: 'Stays'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildOverviewTab(context),
+                _buildItineraryTab(context),
+                _buildFlightsTab(context),
+                _buildStaysTab(context),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewTab(BuildContext context) {
     return SingleChildScrollView(
       padding: padding,
       child: Column(
@@ -102,22 +151,97 @@ class OdysseyPlanView extends StatelessWidget {
             _budgetBreakdownCard(context),
           if (odyssey.budgetAdvisory.isNotEmpty)
             _budgetAdvisoryCard(context),
-          const SizedBox(height: 16),
-          const Text(
-            'ODYSSEY BOOKING PARTNERS',
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2,
-              color: AppColors.textSecondary,
-            ),
-          ),
-          const SizedBox(height: 12),
-          _buildBookingSection(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFlightsTab(BuildContext context) {
+    return SingleChildScrollView(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           FlightStrategiesSection(odyssey: odyssey),
+        ],
+      ),
+    );
+  }
+
+  List<OdysseyBookingPartner> get _dynamicPartners {
+    final List<OdysseyBookingPartner> partners = List.from(odyssey.bookingPartners);
+    final existingNames = partners.map((p) => p.name.toLowerCase()).toSet();
+    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
+
+    // Extract dynamic transit app partners mentioned in activities/tips if not already included
+    for (final day in odyssey.dayPlans) {
+      for (final act in day.activities) {
+        final text = '${act.name} ${act.tip}'.toLowerCase();
+
+        if (text.contains('uber') && !existingNames.any((n) => n.contains('uber'))) {
+          existingNames.add('uber');
+          partners.add(OdysseyBookingPartner(
+            name: 'Uber',
+            type: 'transit',
+            url: 'https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=${Uri.encodeComponent(dest)}',
+          ));
+        }
+        if (text.contains('pickme') && !existingNames.any((n) => n.contains('pickme'))) {
+          existingNames.add('pickme');
+          partners.add(const OdysseyBookingPartner(
+            name: 'PickMe',
+            type: 'transit',
+            url: 'https://pickme.lk',
+          ));
+        }
+        if (text.contains('grab') && !existingNames.any((n) => n.contains('grab'))) {
+          existingNames.add('grab');
+          partners.add(const OdysseyBookingPartner(
+            name: 'Grab',
+            type: 'transit',
+            url: 'https://www.grab.com',
+          ));
+        }
+      }
+    }
+
+    return partners;
+  }
+
+  Widget _buildStaysTab(BuildContext context) {
+    final partners = _dynamicPartners;
+    return SingleChildScrollView(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           HotelStrategiesSection(odyssey: odyssey),
+          if (partners.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text(
+              'ODYSSEY BOOKING PARTNERS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _buildBookingSection(context, partners),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItineraryTab(BuildContext context) {
+    return SingleChildScrollView(
+      padding: padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           if (odyssey.dayPlans.isNotEmpty) ...[
-            const SizedBox(height: 24),
             const Text(
               'DAY-BY-DAY ITINERARY',
               style: TextStyle(
@@ -136,7 +260,7 @@ class OdysseyPlanView extends StatelessWidget {
                 ),
           ],
           if (odyssey.logistics.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             const Text(
               'LOGISTICS BLUEPRINT',
               style: TextStyle(
@@ -941,163 +1065,131 @@ class OdysseyPlanView extends StatelessWidget {
     return null;
   }
 
-  Widget _buildBookingSection(BuildContext context) {
-    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
-
-    if (odyssey.bookingPartners.isNotEmpty) {
-      return Column(
-        children: odyssey.bookingPartners.map((bp) {
-          final title = bp.name;
-          final type = bp.type.toLowerCase();
-          final nameLower = bp.name.toLowerCase();
-          final String? logoPath = _getPartnerLogoPath(bp.name);
-          
-          // Deduce Icon (fallback when no logo asset exists)
-          IconData icon = Icons.bookmark_rounded;
-          if (type == 'hotels') {
-            icon = Icons.hotel_rounded;
-          } else if (type == 'tours') {
-            icon = Icons.local_activity_rounded;
-          } else if (type == 'transit') {
-            if (nameLower.contains('flight') || 
-                nameLower.contains('aviasales') ||
-                nameLower.contains('skyscanner')) {
-              icon = Icons.flight_takeoff_rounded;
-            } else {
-              icon = Icons.directions_car_rounded;
-            }
-          }
-
-          // Deduce Brand Color
-          Color color = const Color(0xFF007A7C); // Default Theme Teal
-          if (nameLower.contains('agoda')) {
-            color = const Color(0xFF8E24AA); // Purple
-          } else if (nameLower.contains('ostrovok')) {
-            color = const Color(0xFFFF5722); // Orange-Red
-          } else if (nameLower.contains('booking')) {
-            color = const Color(0xFF003580); // Blue
-          } else if (nameLower.contains('getyourguide')) {
-            color = const Color(0xFFFF595D); // GYG Red-Orange
-          } else if (nameLower.contains('klook')) {
-            color = const Color(0xFFFF5B00); // Klook Orange
-          } else if (nameLower.contains('viator')) {
-            color = const Color(0xFF00A680); // Viator Green
-          } else if (nameLower.contains('pickme')) {
-            color = const Color(0xFFFBC02D); // Yellow
-          } else if (nameLower.contains('grab')) {
-            color = const Color(0xFF00B14F); // Grab Green
-          } else if (nameLower.contains('yandex')) {
-            color = const Color(0xFFFFCC00); // Yandex Yellow
-          } else if (nameLower.contains('skyscanner')) {
-            color = const Color(0xFF077078); // Skyscanner Teal
-          }
-
-          final bool isHotelCategory = type.contains('hotel') || type.contains('stay') || type.contains('accommodation') || nameLower.contains('booking') || nameLower.contains('agoda') || nameLower.contains('expedia') || nameLower.contains('ostrovok');
-          final bool isFlightCategory = type.contains('transit') || type.contains('flight') || type.contains('transport') || nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak');
-          final bool isTourCategory = type.contains('tour') || type.contains('activity') || type.contains('experience') || nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook');
-
-          // Deduce Subtitle
-          String subtitle = 'Find services for $dest via ${bp.name}';
-          if (isHotelCategory) {
-            subtitle = 'Book top-rated stays in $dest via ${bp.name}';
-          } else if (isTourCategory) {
-            subtitle = 'Explore local experiences in $dest via ${bp.name}';
-          } else if (isFlightCategory) {
-            subtitle = 'Get rides or check transit in $dest via ${bp.name}';
-          }
-
-          // Build a destination-aware URL through the helper instead of
-          // using the raw AI URL which often has empty search fields.
-          String resolvedUrl = bp.url;
-          if (isHotelCategory) {
-            resolvedUrl = BookingUrlHelper.buildHotelUrl(
-              rawUrl: bp.url,
-              providerName: bp.name,
-              hotelName: '',
-              destination: dest,
-              checkInDate: odyssey.startDate ?? '',
-              checkOutDate: odyssey.endDate ?? '',
-              travelers: odyssey.travelers,
-            );
-          } else if (isFlightCategory) {
-            resolvedUrl = BookingUrlHelper.buildFlightUrl(
-              rawUrl: bp.url,
-              providerName: bp.name,
-              strategyTitle: '',
-              destination: dest,
-              departureCity: odyssey.departureCity,
-              startDate: odyssey.startDate ?? '',
-              endDate: odyssey.endDate ?? '',
-              travelers: odyssey.travelers,
-            );
-          } else if (isTourCategory) {
-            resolvedUrl = BookingUrlHelper.buildToursUrl(
-              rawUrl: bp.url,
-              providerName: bp.name,
-              destination: dest,
-            );
-          } else {
-            // Additional fallback by provider name
-            if (nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook')) {
-              resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: bp.name, destination: dest);
-            } else if (nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak')) {
-              resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: odyssey.departureCity, startDate: odyssey.startDate ?? '', endDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
-            } else if (nameLower.contains('booking') || nameLower.contains('agoda')) {
-              resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: odyssey.startDate ?? '', checkOutDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
-            }
-          }
-
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _bookingCard(
-              context,
-              title: title,
-              subtitle: subtitle,
-              icon: icon,
-              color: color,
-              url: resolvedUrl,
-              isAiGenerated: true,
-              logoPath: logoPath,
-            ),
-          );
-        }).toList(),
-      );
+  Widget _buildBookingSection(BuildContext context, List<OdysseyBookingPartner> partners) {
+    if (partners.isEmpty) {
+      return const SizedBox.shrink();
     }
 
-    final correctedSkyscannerUrl = 'https://www.skyscanner.com/flights?q=${Uri.encodeComponent(dest)}';
+    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
 
     return Column(
-      children: [
-        _bookingCard(
-          context,
-          title: 'Book Hotels & Stays',
-          subtitle: 'Find top-rated properties in $dest',
-          icon: Icons.hotel_rounded,
-          color: const Color(0xFF003580), // Booking.com Brand Blue
-          url: 'https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(dest)}',
-          logoPath: 'assets/images/booking_logo.jpg',
-        ),
-        const SizedBox(height: 12),
-        _bookingCard(
-          context,
-          title: 'Find Tours & Activities',
-          subtitle: 'Uncover curated local experiences',
-          icon: Icons.local_activity_rounded,
-          color: const Color(0xFFFF595D), // GetYourGuide Orange/Red
-          url: 'https://www.getyourguide.com/s?q=${Uri.encodeComponent(dest)}',
-          logoPath: 'assets/images/getyourguide.png',
-        ),
-        const SizedBox(height: 12),
-        _bookingCard(
-          context,
-          title: 'Flights & Car Rental',
-          subtitle: 'Compare transit options to $dest',
-          icon: Icons.flight_takeoff_rounded,
-          color: const Color(0xFF077078), // Skyscanner Teal
-          url: correctedSkyscannerUrl,
-          logoPath: 'assets/images/skyscanner.png',
-        ),
-      ],
+      children: partners.map((bp) {
+        final title = bp.name;
+        final type = bp.type.toLowerCase();
+        final nameLower = bp.name.toLowerCase();
+        final String? logoPath = _getPartnerLogoPath(bp.name);
+        
+        // Deduce Icon (fallback when no logo asset exists)
+        IconData icon = Icons.bookmark_rounded;
+        if (type == 'hotels') {
+          icon = Icons.hotel_rounded;
+        } else if (type == 'tours') {
+          icon = Icons.local_activity_rounded;
+        } else if (type == 'transit') {
+          if (nameLower.contains('flight') || 
+              nameLower.contains('aviasales') ||
+              nameLower.contains('skyscanner')) {
+            icon = Icons.flight_takeoff_rounded;
+          } else {
+            icon = Icons.directions_car_rounded;
+          }
+        }
+
+        // Deduce Brand Color
+        Color color = const Color(0xFF007A7C); // Default Theme Teal
+        if (nameLower.contains('agoda')) {
+          color = const Color(0xFF8E24AA); // Purple
+        } else if (nameLower.contains('ostrovok')) {
+          color = const Color(0xFFFF5722); // Orange-Red
+        } else if (nameLower.contains('booking')) {
+          color = const Color(0xFF003580); // Blue
+        } else if (nameLower.contains('getyourguide')) {
+          color = const Color(0xFFFF595D); // GYG Red-Orange
+        } else if (nameLower.contains('klook')) {
+          color = const Color(0xFFFF5B00); // Klook Orange
+        } else if (nameLower.contains('viator')) {
+          color = const Color(0xFF00A680); // Viator Green
+        } else if (nameLower.contains('pickme')) {
+          color = const Color(0xFFFBC02D); // Yellow
+        } else if (nameLower.contains('grab')) {
+          color = const Color(0xFF00B14F); // Grab Green
+        } else if (nameLower.contains('yandex')) {
+          color = const Color(0xFFFFCC00); // Yandex Yellow
+        } else if (nameLower.contains('skyscanner')) {
+          color = const Color(0xFF077078); // Skyscanner Teal
+        } else if (nameLower.contains('uber')) {
+          color = Colors.black; // Uber Black
+        }
+
+        final bool isHotelCategory = type.contains('hotel') || type.contains('stay') || type.contains('accommodation') || nameLower.contains('booking') || nameLower.contains('agoda') || nameLower.contains('expedia') || nameLower.contains('ostrovok');
+        final bool isFlightCategory = type.contains('transit') || type.contains('flight') || type.contains('transport') || nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak');
+        final bool isTourCategory = type.contains('tour') || type.contains('activity') || type.contains('experience') || nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook');
+
+        // Deduce Subtitle
+        String subtitle = 'Find services for $dest via ${bp.name}';
+        if (isHotelCategory) {
+          subtitle = 'Book top-rated stays in $dest via ${bp.name}';
+        } else if (isTourCategory) {
+          subtitle = 'Explore local experiences in $dest via ${bp.name}';
+        } else if (isFlightCategory) {
+          subtitle = 'Get rides or check transit in $dest via ${bp.name}';
+        }
+
+        // Build a destination-aware URL through the helper instead of
+        // using the raw AI URL which often has empty search fields.
+        String resolvedUrl = bp.url;
+        if (isHotelCategory) {
+          resolvedUrl = BookingUrlHelper.buildHotelUrl(
+            rawUrl: bp.url,
+            providerName: bp.name,
+            hotelName: '',
+            destination: dest,
+            checkInDate: odyssey.startDate ?? '',
+            checkOutDate: odyssey.endDate ?? '',
+            travelers: odyssey.travelers,
+          );
+        } else if (isFlightCategory) {
+          resolvedUrl = BookingUrlHelper.buildFlightUrl(
+            rawUrl: bp.url,
+            providerName: bp.name,
+            strategyTitle: '',
+            destination: dest,
+            departureCity: odyssey.departureCity,
+            startDate: odyssey.startDate ?? '',
+            endDate: odyssey.endDate ?? '',
+            travelers: odyssey.travelers,
+          );
+        } else if (isTourCategory) {
+          resolvedUrl = BookingUrlHelper.buildToursUrl(
+            rawUrl: bp.url,
+            providerName: bp.name,
+            destination: dest,
+          );
+        } else {
+          // Additional fallback by provider name
+          if (nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook')) {
+            resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: bp.name, destination: dest);
+          } else if (nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak')) {
+            resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: odyssey.departureCity, startDate: odyssey.startDate ?? '', endDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+          } else if (nameLower.contains('booking') || nameLower.contains('agoda')) {
+            resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: odyssey.startDate ?? '', checkOutDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+          }
+        }
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _bookingCard(
+            context,
+            title: title,
+            subtitle: subtitle,
+            icon: icon,
+            color: color,
+            url: resolvedUrl,
+            isAiGenerated: true,
+            logoPath: logoPath,
+          ),
+        );
+      }).toList(),
     );
   }
 

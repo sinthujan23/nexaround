@@ -5,6 +5,7 @@ import 'auth_event.dart';
 import 'auth_state.dart';
 import 'package:nexaround_app/core/services/social_auth_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
@@ -28,6 +29,13 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<UserEntity> _loadAndSyncUserPrefs(UserEntity user) async {
     await CacheService.loadUserPreferences(user);
+
+    // Retry fetching public SDK keys (Mapbox, Google Maps) if they weren't
+    // applied during startup (e.g. backend was cold-starting or network was
+    // briefly offline). Fire-and-forget so it doesn't block the auth flow.
+    if (!ConfigKeyService.isMapboxReady) {
+      ConfigKeyService.fetchAndApplyKeys();
+    }
     final userPrefs = CacheService.getUserPreferences();
     return UserModel(
       id: user.id,
