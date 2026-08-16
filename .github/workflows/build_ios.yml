@@ -168,3 +168,4 @@ jobs:
             nexaround_app/build/ios/ipa/*.ipa
             nexaround_app/build/ios/iphoneos/Runner.ipa
           if-no-files-found: error
+          retention-days: 1
