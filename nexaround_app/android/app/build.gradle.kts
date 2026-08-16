@@ -58,11 +58,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
-        freeCompilerArgs = freeCompilerArgs + "-Xskip-metadata-version-check"
-    }
-
     defaultConfig {
         applicationId = "com.nexaround.nexaround_app"
         minSdk = 24 // Floor required by Mapbox/Firebase/ML Kit plugins

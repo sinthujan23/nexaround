@@ -17,7 +17,7 @@ allprojects {
     configurations.all {
         resolutionStrategy.eachDependency {
             if (requested.group == "org.jetbrains.kotlin") {
-                useVersion("2.1.21")
+                useVersion("2.2.20")
             }
             if (requested.group == "com.google.firebase" && requested.name == "firebase-iid") {
                 useVersion("21.1.0")
@@ -37,9 +37,9 @@ subprojects {
         }
     }
     tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "17"
-            freeCompilerArgs = freeCompilerArgs + "-Xskip-metadata-version-check"
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+            freeCompilerArgs.add("-Xskip-metadata-version-check")
         }
     }
 }
