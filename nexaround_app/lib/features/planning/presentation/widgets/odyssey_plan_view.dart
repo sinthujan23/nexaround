@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -52,18 +53,6 @@ class OdysseyPlanView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.ratingGold,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'AI GENERATED ODYSSEY',
-              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
-            ),
-          ),
-          const SizedBox(height: 16),
           Text(
             odyssey.title,
             style: const TextStyle(
@@ -253,7 +242,7 @@ class OdysseyPlanView extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$currency ${val.toStringAsFixed(0)} ($p%)',
+                  '$currency ${formatAmount(val)} ($p%)',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
@@ -350,7 +339,7 @@ class OdysseyPlanView extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      'Total: $currency ${total.toStringAsFixed(0)}',
+                      'Total: $currency ${formatAmount(total)}',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -502,30 +491,13 @@ class OdysseyPlanView extends StatelessWidget {
           // Time column (fixed width for consistent alignment)
           SizedBox(
             width: 56,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  act.time,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: act.visited ? Colors.black26 : AppColors.actionTeal,
-                  ),
-                ),
-                if (act.visited && onActualCostChanged != null) ...[
-                  const SizedBox(height: 4),
-                  const Text(
-                    'ACTUAL COST',
-                    style: TextStyle(
-                      fontSize: 7,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.black38,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              act.time,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: act.visited ? Colors.black26 : AppColors.actionTeal,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -769,10 +741,28 @@ class OdysseyPlanView extends StatelessWidget {
 
   /// Actual cost input field shown when an activity is marked visited.
   Widget _buildActualCostInput(int dayIndex, int activityIndex, OdysseyActivity act) {
-    return _ActualCostInputField(
-      initialValue: act.actualCost,
-      currency: odyssey.currency,
-      onSaved: (val) => onActualCostChanged?.call(dayIndex, activityIndex, val),
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        children: [
+          const Text(
+            'Actual Cost:',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _ActualCostInputField(
+              initialValue: act.actualCost,
+              currency: odyssey.currency,
+              onSaved: (val) => onActualCostChanged?.call(dayIndex, activityIndex, val),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1327,7 +1317,7 @@ class _ActualCostInputFieldState extends State<_ActualCostInputField> {
           color: Colors.black87,
         ),
         decoration: InputDecoration(
-          hintText: 'Enter actual cost (e.g. ${widget.currency} 850)',
+          hintText: 'e.g. ${widget.currency} 850',
           hintStyle: const TextStyle(fontSize: 11, color: Colors.black26),
           contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           isDense: true,

@@ -70,7 +70,13 @@ class ConvertedCurrencyText extends StatelessWidget {
 
   String _getOriginalText() {
     if (rawText != null) {
-      return rawText!;
+      return rawText!.replaceAllMapped(
+        RegExp(r'\b\d{4,}\b'),
+        (m) {
+          final n = num.tryParse(m.group(0)!);
+          return n != null ? formatAmount(n) : m.group(0)!;
+        },
+      );
     }
     if (amount != null && originalCurrency != null) {
       return '$originalCurrency ${formatAmount(amount!)}';
