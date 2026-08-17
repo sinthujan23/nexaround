@@ -10,7 +10,8 @@ import Attractions from './pages/Attractions';
 import Categories from './pages/Categories';
 import Media from './pages/Media';
 import Settings from './pages/Settings';
-import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, CheckIcon, ClipboardCheckIcon } from './components/Icons';
+import ApiUsage from './pages/ApiUsage';
+import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon } from './components/Icons';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('admin_token'));
@@ -104,6 +105,8 @@ function App() {
         return <Payments />;
       case 'engagement':
         return <Engagement />;
+      case 'apiusage':
+        return <ApiUsage />;
       case 'settings':
         return <Settings />;
       default:
@@ -129,6 +132,8 @@ function App() {
         return 'Payments & Plans';
       case 'engagement':
         return 'Engagement & Broadcasting';
+      case 'apiusage':
+        return 'API Usage & Cost';
       case 'settings':
         return 'General Settings';
       default:
@@ -173,6 +178,9 @@ function App() {
           </div>
           <div className={`nav-item ${activePage === 'engagement' ? 'active' : ''}`} onClick={() => setActivePage('engagement')}>
             <MegaphoneIcon className="icon" /> Engagement
+          </div>
+          <div className={`nav-item ${activePage === 'apiusage' ? 'active' : ''}`} onClick={() => setActivePage('apiusage')}>
+            <TrendingUpIcon className="icon" /> API Usage
           </div>
           <div className={`nav-item ${activePage === 'settings' ? 'active' : ''}`} onClick={() => setActivePage('settings')}>
             <SettingsIcon className="icon" /> Settings

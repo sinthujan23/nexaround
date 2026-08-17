@@ -1,0 +1,593 @@
+import { useState, useEffect, useCallback } from 'react';
+import { apiGet, API_BASE } from '../api';
+import {
+  CompassIcon, DollarIcon, TrendingUpIcon, TrendingDownIcon,
+  RefreshIcon, ClockIcon, SearchIcon,
+} from '../components/Icons';
+
+/**
+ * API Usage — where every third-party call went, and what it cost.
+ *
+ * The organising idea is `served_from`: a request answered by Redis, PostGIS or
+ * the photo disk cache costs nothing, and one that reached a provider does. The
+ * ratio between them is the number that matters, so it leads the page.
+ *
+ * All costs here are estimates derived from the editable SKU rate table. They
+ * are for spotting which operation is expensive and which cache is failing —
+ * use the CSV export to reconcile against a real invoice.
+ */
+
+const RANGES = [
+  { key: '24h', label: 'Last 24 hours', hours: 24 },
+  { key: '7d', label: 'Last 7 days', hours: 24 * 7 },
+  { key: '30d', label: 'Last 30 days', hours: 24 * 30 },
+  { key: '90d', label: 'Last 90 days', hours: 24 * 90 },
+];
+
+// Cached tiers read as positive, upstream as spend. Keeping the hues stable
+// across every panel is what lets you scan the page rather than read it.
+const SOURCE_COLOR = {
+  redis: '#007a7c',
+  database: '#2a9d8f',
+  disk: '#57b8a9',
+  memory: '#7fcbbf',
+  negative: '#a0a6b5',
+  upstream: '#e53935',
+};
+const SOURCE_LABEL = {
+  redis: 'Redis cache', database: 'Local database', disk: 'Photo disk cache',
+  memory: 'In-process cache', negative: 'Known-empty cache', upstream: 'Paid provider call',
+};
+
+const usd = (n) => `$${Number(n || 0).toFixed(2)}`;
+const num = (n) => Number(n || 0).toLocaleString();
+
+function pctDelta(now, prev) {
+  if (!prev) return null;
+  return ((now - prev) / prev) * 100;
+}
+
+/** Small inline sparkline. No chart library — these are a dozen lines of SVG
+ *  and adding a dependency for them would be the more expensive choice. */
+function StackedBars({ points, height = 180 }) {
+  if (!points || points.length === 0) {
+    return <div className="empty-state" style={{ padding: '32px 0' }}>No activity in this window.</div>;
+  }
+  const buckets = [...new Set(points.map((p) => p.t))].sort();
+  const keys = [...new Set(points.map((p) => p.key))];
+  const byBucket = {};
+  buckets.forEach((b) => { byBucket[b] = {}; });
+  points.forEach((p) => { byBucket[p.t][p.key] = (byBucket[p.t][p.key] || 0) + p.calls; });
+  const totals = buckets.map((b) => keys.reduce((s, k) => s + (byBucket[b][k] || 0), 0));
+  const max = Math.max(...totals, 1);
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height }}>
+        {buckets.map((b, i) => (
+          <div
+            key={b}
+            title={`${new Date(b).toLocaleString()} — ${num(totals[i])} requests`}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column-reverse', height: '100%', justifyContent: 'flex-start' }}
+          >
+            {keys.map((k) => {
+              const v = byBucket[b][k] || 0;
+              if (!v) return null;
+              return (
+                <div
+                  key={k}
+                  style={{
+                    height: `${(v / max) * 100}%`,
+                    background: SOURCE_COLOR[k] || '#c9d4dd',
+                    minHeight: '1px',
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '14px' }}>
+        {keys.map((k) => (
+          <span key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+            <i style={{ width: '10px', height: '10px', borderRadius: '3px', background: SOURCE_COLOR[k] || '#c9d4dd' }} />
+            {SOURCE_LABEL[k] || k}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Horizontal proportion bar used by the funnel, SKU and duplicate panels. */
+function Bar({ pct, color, height = 8 }) {
+  return (
+    <div style={{ height, background: '#f0f2f5', borderRadius: '4px', overflow: 'hidden' }}>
+      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: '100%', background: color, borderRadius: '4px' }} />
+    </div>
+  );
+}
+
+export default function ApiUsage() {
+  const [range, setRange] = useState('7d');
+  const [provider, setProvider] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+
+  const [summary, setSummary] = useState(null);
+  const [series, setSeries] = useState(null);
+  const [funnel, setFunnel] = useState([]);
+  const [breakdown, setBreakdown] = useState({ operations: [], free_tier: [] });
+  const [dupes, setDupes] = useState({ keys: [], total_recoverable_usd: 0 });
+  const [users, setUsers] = useState([]);
+  const [health, setHealth] = useState({ by_status: [], recent_failures: [] });
+  const [events, setEvents] = useState([]);
+  const [pipeline, setPipeline] = useState(null);
+  const [tailFilter, setTailFilter] = useState('');
+
+  const activeRange = RANGES.find((r) => r.key === range) || RANGES[1];
+
+  // Bumped by the Refresh button and by the 24h auto-poll to re-trigger a load.
+  const [reloadToken, setReloadToken] = useState(0);
+  const refresh = useCallback(() => setReloadToken((n) => n + 1), []);
+
+  // Fetching lives inside the effect with a cancellation flag rather than in a
+  // callback the effect invokes. Two reasons: switching range quickly would
+  // otherwise let a slow earlier response land after a newer one and overwrite
+  // it, and calling setState synchronously from an effect body causes a
+  // cascading render.
+  useEffect(() => {
+    let cancelled = false;
+    const hours = activeRange.hours;
+
+    (async () => {
+      setLoading(true);
+      setErr('');
+      const to = new Date();
+      const from = new Date(to.getTime() - hours * 3600 * 1000);
+      const q = `from=${from.toISOString()}&to=${to.toISOString()}${provider ? `&provider=${provider}` : ''}`;
+      try {
+        const [s, ts, f, b, d, u, h, ev, pl] = await Promise.all([
+          apiGet(`/admin/telemetry/summary?${q}`),
+          apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
+          apiGet(`/admin/telemetry/funnel?${q}`),
+          apiGet(`/admin/telemetry/breakdown?${q}`),
+          apiGet(`/admin/telemetry/duplicates?${q}&limit=15`),
+          apiGet(`/admin/telemetry/users?${q}&limit=10`),
+          apiGet(`/admin/telemetry/errors?${q}`),
+          apiGet(`/admin/telemetry/events?${q}&page_size=40${tailFilter ? `&operation=${encodeURIComponent(tailFilter)}` : ''}`),
+          apiGet('/admin/telemetry/pipeline'),
+        ]);
+        if (cancelled) return;
+        setSummary(s); setSeries(ts); setFunnel(f.operations || []);
+        setBreakdown(b); setDupes(d); setUsers(u.users || []);
+        setHealth(h); setEvents(ev.events || []); setPipeline(pl);
+      } catch (e) {
+        if (!cancelled) setErr(e.message || 'Could not load telemetry.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [activeRange.hours, provider, tailFilter, reloadToken]);
+
+  // Only the 24-hour view is worth polling; re-running the 90-day rollup
+  // queries every half minute would be churn for no new information.
+  useEffect(() => {
+    if (range !== '24h') return undefined;
+    const id = setInterval(refresh, 30000);
+    return () => clearInterval(id);
+  }, [range, refresh]);
+
+  // A plain <a href> cannot carry the admin Bearer token, so the endpoint would
+  // reject it. Fetch with auth, then hand the browser a blob to save.
+  const [exporting, setExporting] = useState(false);
+  const downloadCsv = async () => {
+    setExporting(true);
+    try {
+      const to = new Date();
+      const from = new Date(to.getTime() - activeRange.hours * 3600 * 1000);
+      const qs = `from=${from.toISOString()}&to=${to.toISOString()}${provider ? `&provider=${provider}` : ''}`;
+      const res = await fetch(
+        `${API_BASE}/admin/telemetry/export.csv?${qs}`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } },
+      );
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `api_events_${from.toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setErr(e.message || 'Export failed.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const reqDelta = summary ? pctDelta(summary.requests, summary.prev_requests) : null;
+  const costDelta = summary ? pctDelta(summary.est_cost_usd, summary.prev_est_cost_usd) : null;
+
+  // An operation with real volume that never hits a cache is the actionable
+  // case — it is the shape the Find Place spend had.
+  const uncached = funnel.filter((o) => o.served_free_pct === 0 && o.est_cost_usd > 0);
+
+  return (
+    <div>
+      {/* ── Controls ─────────────────────────────────────────────── */}
+      <div className="card" style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {RANGES.map((r) => (
+              <button
+                key={r.key}
+                className={`btn ${range === r.key ? 'btn-primary' : 'btn-ghost'}`}
+                style={{ padding: '8px 14px', fontSize: '13px' }}
+                onClick={() => setRange(r.key)}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <select
+            className="form-input"
+            style={{ width: 'auto', minWidth: '160px' }}
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+          >
+            <option value="">All providers</option>
+            <option value="google_maps">Google Maps</option>
+            <option value="gemini">Gemini</option>
+            <option value="geoapify">Geoapify</option>
+            <option value="mapbox">Mapbox</option>
+            <option value="serpapi">SerpAPI</option>
+            <option value="internal">Internal (cache/DB)</option>
+          </select>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {summary && (
+              <span className="badge badge-ghost" title="Wide ranges read the hourly rollup rather than raw events">
+                {summary.source === 'rollup' ? 'rollup' : 'live rows'}
+              </span>
+            )}
+            <button className="btn btn-ghost" style={{ padding: '8px 14px' }} onClick={refresh}>
+              <RefreshIcon size={14} /> Refresh
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {err && (
+        <div className="card" style={{ marginBottom: '20px', borderColor: 'rgba(229,57,53,0.3)' }}>
+          <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{err}</span>
+        </div>
+      )}
+
+      {/* ── Tiles ────────────────────────────────────────────────── */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon"><CompassIcon size={24} style={{ color: 'var(--accent)' }} /></div>
+          <div className="stat-value">{num(summary?.requests)}</div>
+          <div className="stat-label">Requests</div>
+          {reqDelta !== null && (
+            <span className={`stat-change ${reqDelta >= 0 ? 'up' : 'down'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              {reqDelta >= 0 ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
+              {Math.abs(reqDelta).toFixed(1)}% vs previous
+            </span>
+          )}
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon"><DollarIcon size={24} style={{ color: 'var(--danger)' }} /></div>
+          <div className="stat-value">{num(summary?.billable_calls)}</div>
+          <div className="stat-label">Billable calls</div>
+          <span className="stat-change" style={{ background: 'rgba(229,57,53,0.06)', color: 'var(--danger)' }}>
+            {summary && summary.requests
+              ? `${((summary.billable_calls / summary.requests) * 100).toFixed(1)}% of requests`
+              : '—'}
+          </span>
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon"><DollarIcon size={24} style={{ color: 'var(--warning)' }} /></div>
+          <div className="stat-value">{usd(summary?.est_cost_usd)}</div>
+          <div className="stat-label">Estimated cost</div>
+          {costDelta !== null && (
+            <span className={`stat-change ${costDelta >= 0 ? 'down' : 'up'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              {costDelta >= 0 ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
+              {Math.abs(costDelta).toFixed(1)}% vs previous
+            </span>
+          )}
+        </div>
+
+        <div className="stat-card">
+          <div className="stat-icon"><TrendingUpIcon size={24} style={{ color: 'var(--success)' }} /></div>
+          <div className="stat-value">{summary ? `${summary.served_free_pct}%` : '—'}</div>
+          <div className="stat-label">Served without paying</div>
+          <span className="stat-change up">
+            {summary ? `${summary.error_pct}% errors` : '—'}
+          </span>
+        </div>
+      </div>
+
+      {/* ── Uncached spend callout ───────────────────────────────── */}
+      {uncached.length > 0 && (
+        <div className="card" style={{ marginTop: '20px', borderLeft: '4px solid var(--danger)' }}>
+          <div className="card-header"><div className="card-title">Paid operations with no cache</div></div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '12px' }}>
+            Every one of these requests reached a provider. Putting a cache in front of the
+            busiest is the highest-value change available.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {uncached.map((o) => (
+              <span key={o.operation} className="badge badge-red">
+                {o.operation} — {num(o.total)} calls, {usd(o.est_cost_usd)}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Timeseries ───────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: '20px' }}>
+        <div className="card-header">
+          <div className="card-title">Requests over time</div>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            stacked by source · per {series?.bucket || 'hour'}
+          </span>
+        </div>
+        <StackedBars points={series?.points} />
+      </div>
+
+      {/* ── Funnel + SKU cost ────────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
+        <div className="card">
+          <div className="card-header"><div className="card-title">Where requests were served from</div></div>
+          <div style={{ display: 'grid', gap: '16px' }}>
+            {funnel.length === 0 && <div className="empty-state">No data in this window.</div>}
+            {funnel.map((o) => (
+              <div key={o.operation}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '13px' }}>
+                  <strong>{o.operation}</strong>
+                  <span style={{ color: o.served_free_pct === 0 ? 'var(--danger)' : 'var(--success)', fontWeight: 700 }}>
+                    {o.served_free_pct}% free
+                  </span>
+                </div>
+                <div style={{ display: 'flex', height: '10px', borderRadius: '4px', overflow: 'hidden', background: '#f0f2f5' }}>
+                  {Object.entries(o.sources).map(([src, n]) => (
+                    <div
+                      key={src}
+                      title={`${SOURCE_LABEL[src] || src}: ${num(n)}`}
+                      style={{ width: `${(n / o.total) * 100}%`, background: SOURCE_COLOR[src] || '#c9d4dd' }}
+                    />
+                  ))}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                  <span>{num(o.total)} requests</span>
+                  <span>{usd(o.est_cost_usd)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div className="card-title">Free tier consumed this month</div>
+          </div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '14px' }}>
+            Spend stays low while these bars are short. An operation crossing 100% starts
+            billing every further call.
+          </p>
+          <div style={{ display: 'grid', gap: '14px' }}>
+            {breakdown.free_tier.filter((t) => t.used_this_month > 0).length === 0 && (
+              <div className="empty-state">Nothing billable yet this month.</div>
+            )}
+            {breakdown.free_tier
+              .filter((t) => t.used_this_month > 0)
+              .slice(0, 8)
+              .map((t) => (
+                <div key={t.sku}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '12.5px' }}>
+                    <strong>{t.sku}</strong>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {num(t.used_this_month)} / {t.free_tier_monthly ? num(t.free_tier_monthly) : '∞'}
+                    </span>
+                  </div>
+                  <Bar
+                    pct={t.pct_consumed || 0}
+                    color={(t.pct_consumed || 0) > 90 ? 'var(--danger)' : (t.pct_consumed || 0) > 60 ? 'var(--warning)' : 'var(--accent)'}
+                  />
+                </div>
+              ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Duplicates ───────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: '20px' }}>
+        <div className="card-header">
+          <div className="card-title">Paid for more than once</div>
+          <span className="badge badge-yellow">{usd(dupes.total_recoverable_usd)} recoverable</span>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
+          These lookups were bought from a provider repeatedly. A working cache on the
+          operation would have served every call after the first.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Cache key</th><th>Operation</th><th>Times paid</th><th>Spent</th><th>Recoverable</th></tr>
+            </thead>
+            <tbody>
+              {dupes.keys.length === 0 && (
+                <tr><td colSpan={5}><div className="empty-state">No repeat purchases — caching is holding.</div></td></tr>
+              )}
+              {dupes.keys.map((k) => (
+                <tr key={`${k.operation}:${k.cache_key}`}>
+                  <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '12px' }}>{k.cache_key}</td>
+                  <td>{k.operation}</td>
+                  <td><span className="badge badge-red">{k.paid_times}×</span></td>
+                  <td>{usd(k.spent_usd)}</td>
+                  <td style={{ fontWeight: 700 }}>{usd(k.recoverable_usd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Top consumers + provider health ──────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: '20px', marginTop: '20px' }}>
+        <div className="card">
+          <div className="card-header"><div className="card-title">Top consumers</div></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>User</th><th>Calls</th><th>Billable</th><th>Cost</th></tr></thead>
+              <tbody>
+                {users.length === 0 && (
+                  <tr><td colSpan={4}><div className="empty-state">No attributed usage yet.</div></td></tr>
+                )}
+                {users.map((u) => (
+                  <tr key={u.user_id}>
+                    <td>
+                      <div className="user-name">{u.display_name || '—'}</div>
+                      <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u.email || u.user_id}</div>
+                    </td>
+                    <td>{num(u.calls)}</td>
+                    <td>{num(u.billable_calls)}</td>
+                    <td style={{ fontWeight: 700 }}>{usd(u.est_cost_usd)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><div className="card-title">Provider health</div></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Provider</th><th>Status</th><th>Calls</th></tr></thead>
+              <tbody>
+                {health.by_status.slice(0, 10).map((s, i) => {
+                  const bad = ['REQUEST_DENIED', 'OVER_QUERY_LIMIT', 'INVALID_REQUEST', 'INVALID_ARGUMENT'].includes(s.status);
+                  return (
+                    <tr key={i}>
+                      <td>{s.provider}</td>
+                      <td><span className={`badge ${bad ? 'badge-red' : 'badge-green'}`}>{s.status}</span></td>
+                      <td>{num(s.calls)}</td>
+                    </tr>
+                  );
+                })}
+                {health.by_status.length === 0 && (
+                  <tr><td colSpan={3}><div className="empty-state">No provider calls in this window.</div></td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {health.by_status.some((s) => s.status === 'REQUEST_DENIED') && (
+            <p style={{ marginTop: '12px', fontSize: '13px', color: 'var(--danger)', fontWeight: 600 }}>
+              REQUEST_DENIED present — an API key is invalid, restricted, or over quota.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ── Live tail ────────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: '20px' }}>
+        <div className="card-header">
+          <div className="card-title">Recent events</div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <SearchIcon size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+              <input
+                className="form-input"
+                style={{ paddingLeft: '30px', width: '200px' }}
+                placeholder="Filter by operation"
+                value={tailFilter}
+                onChange={(e) => setTailFilter(e.target.value)}
+              />
+            </div>
+            <button className="btn btn-ghost" style={{ padding: '8px 14px' }} onClick={downloadCsv} disabled={exporting}>
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </button>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Time</th><th>Provider</th><th>Operation</th><th>Source</th><th>Status</th><th>Latency</th><th>Cost</th><th>App</th></tr>
+            </thead>
+            <tbody>
+              {events.length === 0 && (
+                <tr><td colSpan={8}><div className="empty-state">No events recorded.</div></td></tr>
+              )}
+              {events.map((e, i) => (
+                <tr key={i}>
+                  <td style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>{new Date(e.ts).toLocaleTimeString()}</td>
+                  <td style={{ fontSize: '12.5px' }}>{e.provider}</td>
+                  <td style={{ fontSize: '12.5px' }}>{e.operation}</td>
+                  <td>
+                    <span
+                      className="badge"
+                      style={{
+                        background: `${SOURCE_COLOR[e.served_from]}14`,
+                        color: SOURCE_COLOR[e.served_from] || 'var(--text-secondary)',
+                      }}
+                    >
+                      {e.served_from}
+                    </span>
+                  </td>
+                  <td style={{ fontSize: '12px' }}>{e.provider_status || e.http_status || '—'}</td>
+                  <td style={{ fontSize: '12px' }}>
+                    <ClockIcon size={11} style={{ verticalAlign: '-1px', marginRight: '3px', color: 'var(--text-muted)' }} />
+                    {e.latency_ms ?? '—'} ms
+                  </td>
+                  <td style={{ fontSize: '12px', fontWeight: e.billable ? 700 : 400, color: e.billable ? 'var(--danger)' : 'var(--text-muted)' }}>
+                    {e.billable ? usd(e.est_cost_usd) : 'free'}
+                  </td>
+                  <td style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>
+                    {e.platform || '—'} {e.app_version || ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Pipeline health ──────────────────────────────────────── */}
+      {pipeline && (
+        <div className="card" style={{ marginTop: '20px' }}>
+          <div className="card-header"><div className="card-title">Telemetry pipeline</div></div>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '12px' }}>
+            Counters for the recorder itself. Non-zero drops mean this page is under-reporting,
+            which is worse than it showing nothing.
+          </p>
+          <div style={{ display: 'flex', gap: '22px', flexWrap: 'wrap', fontSize: '13px' }}>
+            {Object.entries(pipeline).map(([k, v]) => (
+              <span key={k}>
+                <strong style={{ color: k.startsWith('dropped') && v > 0 ? 'var(--danger)' : 'var(--text-primary)' }}>
+                  {num(v)}
+                </strong>
+                <span style={{ color: 'var(--text-muted)', marginLeft: '5px' }}>{k.replace(/_/g, ' ')}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <p style={{ marginTop: '18px', fontSize: '12px', color: 'var(--text-muted)' }}>
+        Costs are estimates from the editable SKU rate table, not billing data. Use the CSV
+        export to reconcile against your provider invoice.
+      </p>
+
+      {loading && <div style={{ marginTop: '16px', color: 'var(--text-muted)', fontSize: '13px' }}>Loading…</div>}
+    </div>
+  );
+}
