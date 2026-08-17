@@ -12,7 +12,7 @@ import hashlib
 import os
 from pathlib import Path
 from typing import Optional
-from app.services import google_places_client
+from app.services import google_places_client, telemetry
 
 
 _CACHE_DIR = Path("app/static/photo_cache")
@@ -44,13 +44,20 @@ def _lock_for(name: str) -> asyncio.Lock:
 async def get_or_fetch(photo_reference: str, maxwidth: int = 800) -> Optional[Path]:
     """Return the local cached file path. Downloads from Google on first hit."""
     path = cached_path(photo_reference, maxwidth)
+    cache_key = f"photo:{photo_reference[:180]}:{maxwidth}"
     if path.exists() and path.stat().st_size > 0:
+        # ~99% of photo requests land here. Recording them is what turns the
+        # disk cache from invisible into the strongest number on the dashboard.
+        async with telemetry.track("internal", "place_photo", cache_key=cache_key) as t:
+            t.hit("disk")
         return path
 
     name = path.name
     async with _lock_for(name):
         # Re-check inside the lock — another coroutine may have just written it.
         if path.exists() and path.stat().st_size > 0:
+            async with telemetry.track("internal", "place_photo", cache_key=cache_key) as t:
+                t.hit("disk")
             return path
         try:
             data, _ctype = await google_places_client.fetch_photo_bytes(

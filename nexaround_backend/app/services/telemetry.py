@@ -25,7 +25,7 @@ import logging
 import time
 import uuid
 from collections import deque
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Optional
@@ -299,6 +299,66 @@ async def track(
         except Exception as e:  # never propagate out of telemetry
             _stats["dropped_redis_down"] += 1
             logger.debug("telemetry emit failed: %s", e)
+
+
+@contextmanager
+def track_sync(
+    provider: str,
+    operation: str,
+    *,
+    sku: Optional[str] = None,
+    cache_key: Optional[str] = None,
+):
+    """Synchronous counterpart to `track()`, for blocking call sites.
+
+    `google_lens_service` uses a sync `httpx.Client` inside plain `def`
+    methods, so it cannot enter an async context manager. Rather than leave a
+    whole service uninstrumented, this variant writes straight to the
+    in-process buffer that the async flusher already drains first on every
+    cycle — no sync Redis client, no reaching for a running event loop.
+
+    Cost is not resolved here: `_load_rates()` needs a database round trip.
+    Sync call sites are currently unbilled scraping endpoints, so the row
+    carries volume and outcome with `est_cost_usd = 0`. Give a sync call site a
+    real SKU and the cost would need resolving in the flusher instead.
+    """
+    rec = _Recorder(provider, operation, sku, cache_key, None,
+                    request_context.snapshot())
+    try:
+        yield rec
+    except BaseException as exc:
+        rec.failed(exc)
+        raise
+    finally:
+        try:
+            billable = rec._is_billable()
+            ctx = rec._ctx
+            row = {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "request_id": str(ctx["request_id"]) if ctx.get("request_id") else None,
+                "provider": rec.provider,
+                "operation": rec.operation,
+                "sku": rec.sku,
+                "served_from": rec.served_from or "upstream",
+                "billable": billable,
+                "est_cost_usd": "0",
+                "http_status": rec.http_status,
+                "provider_status": rec.provider_status,
+                "latency_ms": rec.latency_ms,
+                "user_id": str(ctx["user_id"]) if ctx.get("user_id") else None,
+                "client_ip": ctx.get("client_ip"),
+                "app_version": ctx.get("app_version"),
+                "platform": ctx.get("platform"),
+                "cache_key": (rec.cache_key or None) and rec.cache_key[:255],
+                "params_digest": None,
+                "error": rec.error,
+            }
+            if len(_fallback) == _fallback.maxlen:
+                _stats["dropped_queue_full"] += 1
+            _fallback.append(json.dumps(row, default=str))
+            _stats["emitted"] += 1
+        except Exception as e:
+            logger.debug("telemetry sync emit failed: %s", e)
 
 
 def _digest(params: dict) -> str:

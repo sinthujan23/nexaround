@@ -12,6 +12,7 @@ import logging
 import re
 import urllib.parse
 import httpx
+from app.services import telemetry
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -204,7 +205,12 @@ async def fetch_unsplash_cover_photo(destination: str, api_key: str) -> str:
             "client_id": api_key,
         }
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(url, params=params)
+            async with telemetry.track(
+                "unsplash", "cover_photo_search",
+                sku="unsplash_photo", cache_key=f"unsplash:{destination.strip().lower()}",
+            ) as t:
+                response = await client.get(url, params=params)
+                t.upstream(response)
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, dict):
@@ -955,7 +961,12 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
                 "generationConfig": generation_config,
             }
             try:
-                resp = await client.post(_model_url(model), json=body, headers=headers)
+                async with telemetry.track(
+                    "gemini", f"odyssey_generate:{model}",
+                    sku="gemini_flash_generate",
+                ) as t:
+                    resp = await client.post(_model_url(model), json=body, headers=headers)
+                    t.upstream(resp)
                 if resp.status_code != 200 and i < len(attempts) - 1:
                     logger.warning(
                         "Gemini status %s for %s — falling through to next model (details: %s)",

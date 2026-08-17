@@ -4,6 +4,7 @@ import logging
 import httpx
 from typing import Optional
 from app.services import google_places_client
+from app.services import telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +233,14 @@ async def generate_discovery_itinerary(
     data = None
     async with httpx.AsyncClient(timeout=90.0) as client:
         for i, model in enumerate(attempts):
-            resp = await client.post(_model_url(model), json=body, headers=headers)
+            # One row per model attempted — the fallback chain can fire several
+            # requests for a single itinerary, each billing full input tokens.
+            async with telemetry.track(
+                "gemini", f"discovery_itinerary:{model}",
+                sku="gemini_flash_generate",
+            ) as t:
+                resp = await client.post(_model_url(model), json=body, headers=headers)
+                t.upstream(resp)
             if resp.status_code in (429, 500, 503) and i < len(attempts) - 1:
                 logger.warning(
                     "Gemini %s for %s — falling through to next model",

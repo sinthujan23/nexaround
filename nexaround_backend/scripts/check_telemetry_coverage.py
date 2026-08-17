@@ -72,11 +72,14 @@ def _target_name(node: ast.AST) -> str | None:
     return None
 
 
+TRACK_NAMES = {"track", "track_sync"}
+
+
 def _is_track_call(node: ast.Call) -> bool:
     func = node.func
-    if isinstance(func, ast.Attribute) and func.attr == "track":
+    if isinstance(func, ast.Attribute) and func.attr in TRACK_NAMES:
         return True
-    return isinstance(func, ast.Name) and func.id == "track"
+    return isinstance(func, ast.Name) and func.id in TRACK_NAMES
 
 
 class Visitor(ast.NodeVisitor):
@@ -149,12 +152,18 @@ class Visitor(ast.NodeVisitor):
         self._track_depth -= opened
 
     def visit_With(self, node: ast.With) -> None:
+        opened = 0
         for item in node.items:
-            if _ctor_module(item.context_expr) and item.optional_vars is not None:
+            expr = item.context_expr
+            if isinstance(expr, ast.Call) and _is_track_call(expr):
+                opened += 1
+            elif _ctor_module(expr) and item.optional_vars is not None:
                 name = _target_name(item.optional_vars)
                 if name:
                     self._clients.add(name)
+        self._track_depth += opened
         self.generic_visit(node)
+        self._track_depth -= opened
 
     # -- the check -----------------------------------------------------------
 

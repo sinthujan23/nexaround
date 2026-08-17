@@ -8,6 +8,7 @@ from typing import Optional
 import httpx
 from app.core.database import async_session
 from app.services.settings_service import SettingsService
+from app.services import telemetry
 
 
 _BASE = "https://maps.googleapis.com/maps/api"
@@ -217,11 +218,20 @@ async def nearby_search(
         # return results instead of the category coming back empty.
         resp = None
         for _attempt in range(len(included_types) + 1):
-            resp = await client.post(
-                "https://places.googleapis.com/v1/places:searchNearby",
-                json=body,
-                headers=headers,
-            )
+            # Tracked per attempt, not per call: the self-heal retry issues a
+            # fresh request each time, and each successful one is billed.
+            async with telemetry.track(
+                "google_maps", "nearby_search",
+                sku="nearby_search_new",
+                cache_key=f"nb:{latitude:.4f}:{longitude:.4f}:{category}:{radius}",
+                params=body,
+            ) as t:
+                resp = await client.post(
+                    "https://places.googleapis.com/v1/places:searchNearby",
+                    json=body,
+                    headers=headers,
+                )
+                t.upstream(resp)
             if resp.status_code == 200:
                 break
 
@@ -285,7 +295,14 @@ async def text_search(
     }
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post("https://places.googleapis.com/v1/places:searchText", json=body, headers=headers)
+        async with telemetry.track(
+            "google_maps", "text_search",
+            sku="text_search_new",
+            cache_key=f"ts:{query.strip().lower()}",
+            params=body,
+        ) as t:
+            resp = await client.post("https://places.googleapis.com/v1/places:searchText", json=body, headers=headers)
+            t.upstream(resp)
         if resp.status_code != 200:
             print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
             resp.raise_for_status()
@@ -438,7 +455,14 @@ async def nearby_search_legacy(
         params["type"] = legacy_type
 
     async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json", params=params)
+        async with telemetry.track(
+            "google_maps", "nearby_search_legacy",
+            sku="nearby_search_legacy",
+            cache_key=f"nbl:{latitude:.4f}:{longitude:.4f}:{legacy_type or 'all'}:{eff_radius}",
+            params=params,
+        ) as t:
+            resp = await client.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json", params=params)
+            t.upstream(resp)
         if resp.status_code != 200:
             print(f"❌ Google nearbysearch legacy HTTP {resp.status_code}: {resp.text[:600]}")
             resp.raise_for_status()
@@ -532,7 +556,6 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
                 "key": google_maps_key,
                 "maxWidthPx": maxwidth,
             }
-            resp = await client.get(url, params=params)
         else:
             # Legacy Places API Photo endpoint
             url = f"{_BASE}/place/photo"
@@ -541,8 +564,17 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
                 "photo_reference": photo_reference,
                 "key": google_maps_key,
             }
+
+        # Reaching here always means a disk-cache miss — photo_cache_service
+        # only calls this when it has nothing to serve.
+        async with telemetry.track(
+            "google_maps", "place_photo",
+            sku="place_photo",
+            cache_key=f"photo:{photo_reference[:180]}:{maxwidth}",
+        ) as t:
             resp = await client.get(url, params=params)
-            
+            t.upstream(resp)
+
         resp.raise_for_status()
         ctype = resp.headers.get("content-type", "image/jpeg")
         photo_bytes = resp.content
@@ -589,7 +621,16 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get(url, headers=headers)
+            # This field mask includes reviews and opening hours, which is the
+            # Enterprise tier rather than Essentials — the priciest way to read
+            # a place. Worth watching in the SKU breakdown.
+            async with telemetry.track(
+                "google_maps", "place_details",
+                sku="place_details",
+                cache_key=f"pd:{raw_id}",
+            ) as t:
+                resp = await client.get(url, headers=headers)
+                t.upstream(resp)
             resp.raise_for_status()
             data = resp.json()
 

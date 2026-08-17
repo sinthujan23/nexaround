@@ -1,7 +1,7 @@
 """Top-level Places service: cache-first, Google as fallback."""
 import math
 from typing import Optional
-from app.services import google_places_client, place_cache_service
+from app.services import google_places_client, place_cache_service, telemetry
 from app.schemas.place import PlaceResponse, PlacesNearbyResponse
 from app.core.database import async_session
 from app.repositories.attraction_repository import AttractionRepository
@@ -454,6 +454,13 @@ async def get_nearby(
 
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
+        # Recorded so the dashboard can show what share of demand never
+        # reached Google. Without these rows served_from only ever says
+        # 'upstream' and the cache looks like it does nothing.
+        async with telemetry.track(
+            "internal", "nearby_search", cache_key=key
+        ) as t:
+            t.hit("redis")
         return PlacesNearbyResponse(
             places=_format_response_places(cached, max_photos, limit, offset),
             cached=True,
@@ -527,6 +534,10 @@ async def get_nearby(
                 ))
             
             await place_cache_service.set_cached(key, place_dicts)
+            async with telemetry.track(
+                "internal", "nearby_search", cache_key=key
+            ) as t:
+                t.hit("database")
             return PlacesNearbyResponse(
                 places=_format_response_places(place_dicts, max_photos, limit, offset),
                 cached=False,
@@ -797,6 +808,10 @@ async def search(
     # 1. Check Redis Cache
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
+        async with telemetry.track(
+            "internal", "place_search", cache_key=key
+        ) as t:
+            t.hit("redis")
         return PlacesNearbyResponse(
             places=[PlaceResponse.model_validate(p) for p in cached],
             cached=True,
@@ -826,6 +841,10 @@ async def search(
                 ]
                 place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
                 await place_cache_service.set_cached(key, place_dicts)
+                async with telemetry.track(
+                    "internal", "place_search", cache_key=key
+                ) as t:
+                    t.hit("database")
                 return PlacesNearbyResponse(
                     places=[PlaceResponse.model_validate(p) for p in place_dicts],
                     cached=False,
@@ -1062,7 +1081,12 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
         for i, model in enumerate(models):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
             try:
-                resp = await client.post(url, json=body, headers=headers)
+                async with telemetry.track(
+                    "gemini", f"trending:{model}",
+                    sku="gemini_flash_generate",
+                ) as t:
+                    resp = await client.post(url, json=body, headers=headers)
+                    t.upstream(resp)
                 if resp.status_code in (429, 500, 503) and i < len(models) - 1:
                     continue
                 resp.raise_for_status()

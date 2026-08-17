@@ -76,19 +76,25 @@ async def proxy_gemini_generate(
         "gemini-2.0-flash",
         "gemini-1.5-flash",
     ]
-    await settings.log_api_request("gemini", "/v1beta/models/gemini-2.5-flash:generateContent", current_user.id)
-
     async with httpx.AsyncClient() as client:
         try:
             resp = None
             for i, model in enumerate(models):
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-                resp = await client.post(
-                    url,
-                    json=payload,
-                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-                    timeout=120.0
-                )
+                # One row per model attempted, so the fallback chain is visible:
+                # a 2.5-flash overload that silently lands on 1.5-flash is a
+                # quality change worth being able to see.
+                async with telemetry.track(
+                    "gemini", f"generate_content:{model}",
+                    sku="gemini_flash_generate",
+                ) as t:
+                    resp = await client.post(
+                        url,
+                        json=payload,
+                        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+                        timeout=120.0
+                    )
+                    t.upstream(resp)
                 if resp.status_code != 200 and i < len(models) - 1:
                     # Do not retry on key invalidity (400/401/403) or quota exhaustion (429)
                     if resp.status_code in [400, 401, 403, 429]:
@@ -120,15 +126,19 @@ async def proxy_mapbox_directions(
     params["access_token"] = token
 
     url = f"https://api.mapbox.com/directions/v5/mapbox/{profile}/{path}"
-    
-    # Extract only the first coordinate part of the path for logging summary
-    log_endpoint = f"/directions/v5/mapbox/{profile}/{path.split('/')[0]}"
-    await settings.log_api_request("mapbox", log_endpoint, current_user.id)
 
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(url, params=params, timeout=30.0)
+            async with telemetry.track(
+                "mapbox", f"directions:{profile}",
+                sku="mapbox_directions",
+                cache_key=f"mbdir:{profile}:{path}",
+            ) as t:
+                resp = await client.get(url, params=params, timeout=30.0)
+                t.upstream(resp)
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
@@ -194,14 +204,22 @@ async def proxy_geoapify_reverse(
     settings = SettingsService(db)
     api_key = await settings.get_setting("geoapify_api_key")
 
+    # Snapped to the same ~500m grid the place cache uses, so the dashboard can
+    # tell repeated reverse-geocodes of one neighbourhood from genuine movement.
+    geo_key = f"rev:{lat:.3f}:{lng:.3f}"
+
     if api_key:
-        await settings.log_api_request("geoapify", "/v1/geocode/reverse", current_user.id)
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                resp = await client.get(
-                    "https://api.geoapify.com/v1/geocode/reverse",
-                    params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json", "lang": "en"}
-                )
+                async with telemetry.track(
+                    "geoapify", "geocode_reverse",
+                    sku="geoapify_reverse", cache_key=geo_key,
+                ) as t:
+                    resp = await client.get(
+                        "https://api.geoapify.com/v1/geocode/reverse",
+                        params={"lat": lat, "lon": lng, "apiKey": api_key, "format": "json", "lang": "en"}
+                    )
+                    t.upstream(resp)
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -236,17 +254,23 @@ async def proxy_geoapify_reverse(
     # Fallback 1: Mapbox Geocoding
     mapbox_token = await settings.get_setting("mapbox_access_token")
     if mapbox_token:
-        await settings.log_api_request("mapbox", "/geocoding/v5/mapbox.places", current_user.id)
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                resp = await client.get(
-                    f"https://api.mapbox.com/geocoding/v5/mapbox.places/{lng},{lat}.json",
-                    params={
-                        "access_token": mapbox_token,
-                        "types": "neighborhood,locality,place,address",
-                        "limit": 1
-                    }
-                )
+                # Fallback tier 1 — reached only when Geoapify failed. A rising
+                # count here means the primary provider is degrading.
+                async with telemetry.track(
+                    "mapbox", "geocode_reverse_fallback",
+                    sku="mapbox_geocoding", cache_key=geo_key,
+                ) as t:
+                    resp = await client.get(
+                        f"https://api.mapbox.com/geocoding/v5/mapbox.places/{lng},{lat}.json",
+                        params={
+                            "access_token": mapbox_token,
+                            "types": "neighborhood,locality,place,address",
+                            "limit": 1
+                        }
+                    )
+                    t.upstream(resp)
                 resp.raise_for_status()
                 data = resp.json()
                 features = data.get("features", [])
@@ -271,16 +295,22 @@ async def proxy_geoapify_reverse(
     # Fallback 2: Google Geocoding
     google_maps_key = await settings.get_setting("google_maps_api_key")
     if google_maps_key:
-        await settings.log_api_request("google_maps", "/maps/api/geocode", current_user.id)
         async with httpx.AsyncClient(timeout=10.0) as client:
             try:
-                resp = await client.get(
-                    "https://maps.googleapis.com/maps/api/geocode/json",
-                    params={
-                        "latlng": f"{lat},{lng}",
-                        "key": google_maps_key
-                    }
-                )
+                # Fallback tier 2 — the only paid step in this chain, so it is
+                # the one that matters if the chain starts falling through.
+                async with telemetry.track(
+                    "google_maps", "geocode_reverse_fallback",
+                    sku="geocoding", cache_key=geo_key,
+                ) as t:
+                    resp = await client.get(
+                        "https://maps.googleapis.com/maps/api/geocode/json",
+                        params={
+                            "latlng": f"{lat},{lng}",
+                            "key": google_maps_key
+                        }
+                    )
+                    t.upstream(resp)
                 resp.raise_for_status()
                 data = resp.json()
                 results = data.get("results", [])

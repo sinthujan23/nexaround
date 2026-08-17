@@ -8,6 +8,7 @@ Sign up at https://serpapi.com for a free API key (250 searches/month).
 """
 import logging
 import httpx
+from app.services import telemetry
 from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,12 @@ class SerpApiService:
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(SERPAPI_BASE, params=params)
+                async with telemetry.track(
+                    "serpapi", "search_flights",
+                    sku="serpapi_search", params=params,
+                ) as t:
+                    resp = await client.get(SERPAPI_BASE, params=params)
+                    t.upstream(resp)
                 if resp.status_code != 200:
                     logger.warning(f"[SerpApi] Flights search returned {resp.status_code}: {resp.text[:200]}")
                     return {}
@@ -119,7 +125,12 @@ class SerpApiService:
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(SERPAPI_BASE, params=params)
+                async with telemetry.track(
+                    "serpapi", "search_hotels",
+                    sku="serpapi_search", params=params,
+                ) as t:
+                    resp = await client.get(SERPAPI_BASE, params=params)
+                    t.upstream(resp)
                 if resp.status_code != 200:
                     logger.warning(f"[SerpApi] Hotels search returned {resp.status_code}: {resp.text[:200]}")
                     return {}

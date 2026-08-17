@@ -3,6 +3,7 @@ import traceback
 import re
 import json
 import httpx
+from app.services import telemetry
 from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
@@ -38,12 +39,15 @@ class GoogleLensService:
                 'encoded_image': ('image.jpg', image_bytes, 'image/jpeg')
             }
             
-            # Upload to Google Lens
-            response = self._client.post(
-                'https://lens.google.com/v3/upload',
-                files=files,
-                params={'hl': 'en'},
-            )
+            # Upload to Google Lens. Scraped web endpoint, not a billed
+            # API — tracked for volume and failure rate, not cost.
+            with telemetry.track_sync("google", "lens_upload") as t:
+                response = self._client.post(
+                    'https://lens.google.com/v3/upload',
+                    files=files,
+                    params={'hl': 'en'},
+                )
+                t.upstream(response)
             
             logger.info(f"   Upload status: {response.status_code}")
             
@@ -69,7 +73,9 @@ class GoogleLensService:
                 # If we got a redirect URL, follow it
                 if 'google.com' in final_url or 'lens.google.com' in final_url:
                     logger.info("   Following to results page...")
-                    results_response = self._client.get(final_url)
+                    with telemetry.track_sync("google", "lens_results_page") as t:
+                        results_response = self._client.get(final_url)
+                        t.upstream(results_response)
                     ai_overview = self._extract_ai_overview(results_response.text)
                     
                     if ai_overview:
@@ -98,11 +104,13 @@ class GoogleLensService:
                 'encoded_image': ('image.jpg', image_bytes, 'image/jpeg')
             }
             
-            response = self._client.post(
-                'https://www.google.com/searchbyimage/upload',
-                files=files,
-                params={'hl': 'en'},
-            )
+            with telemetry.track_sync("google", "search_by_image") as t:
+                response = self._client.post(
+                    'https://www.google.com/searchbyimage/upload',
+                    files=files,
+                    params={'hl': 'en'},
+                )
+                t.upstream(response)
             
             logger.info(f"   Search by image status: {response.status_code}")
             
