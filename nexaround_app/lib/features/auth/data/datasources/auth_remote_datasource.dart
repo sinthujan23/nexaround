@@ -21,7 +21,10 @@ class AuthRemoteDatasource {
         'language': language,
       },
     );
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    return {};
   }
 
   Future<AuthTokensModel> verifyOtp({
@@ -47,7 +50,10 @@ class AuthRemoteDatasource {
         'email': email,
       },
     );
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    return {};
   }
 
   Future<AuthTokensModel> login({
@@ -116,7 +122,10 @@ class AuthRemoteDatasource {
       ApiConstants.forgotPassword,
       data: {'email': email},
     );
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    return {};
   }
 
   Future<Map<String, dynamic>> verifyResetOtp({
@@ -127,7 +136,10 @@ class AuthRemoteDatasource {
       ApiConstants.verifyResetOtp,
       data: {'email': email, 'otp': otp},
     );
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    return {};
   }
 
   Future<Map<String, dynamic>> resetPassword({
@@ -143,6 +155,9 @@ class AuthRemoteDatasource {
         'new_password': newPassword,
       },
     );
-    return response.data as Map<String, dynamic>;
+    if (response.data is Map) {
+      return Map<String, dynamic>.from(response.data as Map);
+    }
+    return {};
   }
 }

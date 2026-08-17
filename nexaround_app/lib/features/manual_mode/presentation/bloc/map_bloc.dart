@@ -226,6 +226,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             }
 
             var mergedList = repoList;
+            final Map<String, AttractionEntity> mergedMap = {
+              for (final p in repoList) p.id: p,
+              for (final p in repoList) p.name.trim().toLowerCase(): p,
+            };
 
             // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
             if (mergedList.length < 15) {

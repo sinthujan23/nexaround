@@ -253,6 +253,15 @@ class CacheService {
   }
 
   // Attractions Caching
+  static Future<void> clearHybridPlacesCache() async {
+    final keys = _prefs.getKeys();
+    for (final key in keys) {
+      if (key.startsWith('hybrid_places_v2_') || key == 'cached_attractions_list') {
+        await _prefs.remove(key);
+      }
+    }
+  }
+
   static Future<void> cacheAttractions(List<Map<String, dynamic>> placesJson) async {
     final List<String> list = placesJson.map((p) => json.encode(p)).toList();
     await _prefs.setStringList('cached_attractions_list', list);
