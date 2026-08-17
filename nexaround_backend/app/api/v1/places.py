@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.schemas.place import PlacesNearbyResponse, TrendingExperiencesResponse
-from app.services import places_service, photo_cache_service
+from app.services import places_service, photo_cache_service, telemetry
 
 router = APIRouter(prefix="/places", tags=["places"])
 
@@ -78,7 +78,17 @@ async def get_place_photo(
     """
     if current_user is None:
         path = photo_cache_service.cached_path(ref, maxwidth)
-        if not (path.exists() and path.stat().st_size > 0):
+        cached = path.exists() and path.stat().st_size > 0
+        # Recorded here rather than left to get_or_fetch, which this branch
+        # deliberately skips. Anonymous image loads are the bulk of photo
+        # traffic, so omitting them would make the cache look far less
+        # effective than it is.
+        async with telemetry.track(
+            "internal", "place_photo",
+            cache_key=f"photo:{ref[:180]}:{maxwidth}",
+        ) as t:
+            t.hit("disk" if cached else "negative")
+        if not cached:
             # Not cached and no credentials to justify buying it.
             raise HTTPException(status_code=404, detail="Photo not cached")
     else:

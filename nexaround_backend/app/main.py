@@ -22,6 +22,12 @@ app = FastAPI(
     openapi_url="/openapi.json" if settings.ENABLE_DOCS else None,
 )
 
+# Strong references to the telemetry background loops. asyncio keeps only a
+# weak reference to a running task, so without this they can be collected
+# mid-flight and the pipeline stops silently.
+_background_tasks: list = []
+
+
 @app.on_event("startup")
 async def startup():
     # Import every model module so all tables (incl. broadcasts/notifications/
@@ -31,18 +37,34 @@ async def startup():
     # api_events is excluded deliberately: it is RANGE-partitioned, and
     # create_all would emit a plain CREATE TABLE that then collides with the
     # migration. It is owned by alembic alone.
+    # Every telemetry table is owned by alembic, not by create_all. api_events
+    # is partitioned and create_all has no DDL for that, and the rest carry
+    # seed data (SKU rates, guard settings) and CHECK constraints that only the
+    # migration knows about. Letting create_all win the race just means the
+    # migration then fails on DuplicateTable with a half-built schema.
     async with engine.begin() as conn:
-        managed = [t for t in Base.metadata.sorted_tables if t.name != "api_events"]
+        managed = [
+            t for t in Base.metadata.sorted_tables
+            if not t.name.startswith("api_") or t.name == "api_request_logs"
+        ]
         await conn.run_sync(Base.metadata.create_all, tables=managed)
 
     # Telemetry: make sure this month's partition exists before anything tries
-    # to write, then start the background flusher.
+    # to write, then start the background loops.
+    #
+    # Task handles go in a module-level list, NOT on app.state: the
+    # `import app.models` above binds the name `app` in this function's scope to
+    # the *package*, shadowing the FastAPI instance, so `app.state` raises here.
+    # Keeping a reference matters regardless — asyncio only holds a weak one and
+    # will happily garbage-collect a running task.
     from app.services import telemetry, telemetry_rollup, telemetry_alerts
     await telemetry.ensure_partitions()
-    app.state.telemetry_flusher = asyncio.create_task(telemetry.flusher_loop())
-    app.state.telemetry_rollup = asyncio.create_task(telemetry_rollup.rollup_loop())
-    app.state.telemetry_maint = asyncio.create_task(telemetry_rollup.maintenance_loop())
-    app.state.telemetry_alerts = asyncio.create_task(telemetry_alerts.alert_loop())
+    _background_tasks.extend([
+        asyncio.create_task(telemetry.flusher_loop()),
+        asyncio.create_task(telemetry_rollup.rollup_loop()),
+        asyncio.create_task(telemetry_rollup.maintenance_loop()),
+        asyncio.create_task(telemetry_alerts.alert_loop()),
+    ])
 
     # Seed default system settings
     from app.core.database import async_session
