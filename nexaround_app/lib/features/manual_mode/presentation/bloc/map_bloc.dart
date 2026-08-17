@@ -215,7 +215,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             var repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
 
             if (repoList.isEmpty && !event.useLegacy) {
-              print('⚠️ Repo list empty for $cat. Retrying with useLegacy=true');
               repoRes = await _repository.getNearbyAttractions(
                 latitude: event.latitude,
                 longitude: event.longitude,
@@ -226,38 +225,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
             }
 
-            List<AttractionEntity> hybridList = [];
-            // Only call Gemini + Find Place (hybrid) if backend DB/cache returned fewer than 10 places
-            if (repoList.length < 10) {
-              // Retrieve geocoded location name bias
-              String locationName = 'Nearby';
-              try {
-                locationName = await GooglePlacesService.reverseGeocode(event.latitude, event.longitude);
-              } catch (_) {}
-              if (locationName == 'Nearby' || locationName.trim().isEmpty) {
-                locationName = 'current location';
-              }
-
-              hybridList = await GooglePlacesService.fetchHybridPlaces(
-                latitude: event.latitude,
-                longitude: event.longitude,
-                categoryName: cat,
-                locationName: locationName,
-              );
-            }
-
-            // Merge repo results and hybrid lists
-            final Map<String, AttractionEntity> mergedMap = {};
-            for (final p in repoList) {
-              mergedMap[p.id] = p;
-              mergedMap[p.name.trim().toLowerCase()] = p;
-            }
-            for (final p in hybridList) {
-              mergedMap[p.id] = p;
-              mergedMap[p.name.trim().toLowerCase()] = p;
-            }
-
-            var mergedList = mergedMap.values.toSet().toList();
+            var mergedList = repoList;
 
             // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
             if (mergedList.length < 15) {

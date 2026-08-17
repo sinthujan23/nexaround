@@ -666,6 +666,26 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   Future<void> _fetchMiniTourPlaces(double lat, double lng) async {
     if (_loadingMiniTour) return;
+    
+    // Check MapBloc state first — if attractions are already loaded, use them (0 network calls)
+    try {
+      final stateAttractions = context.read<MapBloc>().state.attractions;
+      if (stateAttractions.isNotEmpty) {
+        final existing = stateAttractions.where((p) {
+          final cat = (p.categoryName ?? '').toLowerCase();
+          final name = p.name.toLowerCase();
+          return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || name.contains('park') || name.contains('temple');
+        }).take(5).toList();
+        if (existing.isNotEmpty) {
+          setState(() {
+            _miniTourPlaces = existing;
+            _loadingMiniTour = false;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+
     setState(() => _loadingMiniTour = true);
     try {
       final places = await GooglePlacesService.fetchNearbyPlaces(
@@ -708,100 +728,9 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Future<void> _preFetchArPlaces(double lat, double lng) async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
-      return;
-    }
-    if (_isPreFetching) {
-      debugPrint(
-        '🚀 AR: Background pre-fetching already in progress, skipping duplicate call.',
-      );
-      return;
-    }
-    _isPreFetching = true;
-    debugPrint(
-      '🚀 Starting background AR pre-fetching (ranges sequential, categories parallel)...',
-    );
-
-    final ranges = [2000, 50000];
-    final categories = [
-      null,
-      'Food & Drink',
-      'Attractions',
-      'Shopping',
-      'Experiences',
-      'Medical',
-      'Nature',
-    ];
-
-    Future.microtask(() async {
-      try {
-        debugPrint('🚀 Starting sequential background AR pre-fetching...');
-
-        for (final radius in ranges) {
-          if (!mounted) return;
-          debugPrint(
-            '📥 Pre-fetching ALL categories for radius $radius m in parallel...',
-          );
-
-          // Fetch all categories for this range simultaneously
-          final results = await Future.wait(
-            categories.map((cat) async {
-              try {
-                final places = await GooglePlacesService.fetchNearbyPlaces(
-                  latitude: lat,
-                  longitude: lng,
-                  radius: radius,
-                  categoryName: cat,
-                );
-                return places;
-              } catch (e) {
-                debugPrint('Error pre-fetching $cat at radius $radius: $e');
-                return <dynamic>[];
-              }
-            }),
-          );
-
-          // Merge all category results and cache them immediately
-          final allPlaces = results.expand((x) => x).toList();
-          if (allPlaces.isNotEmpty) {
-            final attractionJsons = allPlaces
-                .map(
-                  (p) => {
-                    'id': p.id,
-                    'name': p.name,
-                    'description': p.description,
-                    'history': p.history,
-                    'latitude': p.latitude,
-                    'longitude': p.longitude,
-                    'category_id': p.categoryId,
-                    'category_name': p.categoryName,
-                    'address': p.address,
-                    'opening_hours': p.openingHours,
-                    'entry_fee': p.entryFee,
-                    'currency': p.currency,
-                    'rating': p.rating,
-                    'review_count': p.reviewCount,
-                    'photo_urls': p.photoUrls,
-                    'tags': p.tags,
-                    'geofence_radius_m': p.geofenceRadiusM,
-                    'distance_m': p.distanceM,
-                    'is_active': p.isActive,
-                    'created_at': p.createdAt.toIso8601String(),
-                  },
-                )
-                .toList();
-
-            await CacheService.mergeAndCacheAttractions(attractionJsons);
-            debugPrint(
-              '✅ Cached ${allPlaces.length} places for radius $radius m',
-            );
-          }
-        }
-        debugPrint('✅ Background AR pre-fetching complete.');
-      } finally {
-        _isPreFetching = false;
-      }
-    });
+    // Disabled background prefetching to save unnecessary Google/backend calls.
+    // AR mode fetches its required places on-demand when the user opens AR view.
+    return;
   }
 
   int _getDiscoverTabIndex(String category) {
