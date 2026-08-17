@@ -45,6 +45,14 @@ def include_object(object, name, type_, reflected, compare_to):
         return False
     if type_ == "table" and reflected and target_metadata.tables.get(name) is None:
         return False
+    # api_events is RANGE-partitioned and its partitions are managed by
+    # ensure_api_events_partition(). Autogenerate has no DDL for either, so it
+    # would emit a plain CREATE TABLE and try to drop every child partition.
+    if name == "api_events" or (name or "").startswith("api_events_"):
+        return False
+    if type_ == "table" and object is not None and \
+            object.info.get("skip_autogenerate"):
+        return False
     return True
 
 def run_migrations_offline() -> None:

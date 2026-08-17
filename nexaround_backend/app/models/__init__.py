@@ -11,11 +11,15 @@ from app.models.analytics import PlaceVisit, UserSession
 from app.models.travel_story import TravelStory, TravelStoryLike, TravelStoryComment
 from app.models.discovery_history import DiscoveryHistory
 from app.models.museum import Museum, MuseumMasterpiece
+from app.models.telemetry import (
+    ApiEvent, ApiUsageHourly, ApiUsageUserDaily, ApiSkuRate,
+)
 
 __all__ = [
-    "User", "Attraction", "Category", "Review", "Itinerary", "Media", 
-    "Budget", "Expense", "SystemSetting", "ApiRequestLog", "Broadcast", 
-    "Notification", "PlaceVisit", "UserSession", "TravelStory", 
+    "User", "Attraction", "Category", "Review", "Itinerary", "Media",
+    "Budget", "Expense", "SystemSetting", "ApiRequestLog", "Broadcast",
+    "Notification", "PlaceVisit", "UserSession", "TravelStory",
     "TravelStoryLike", "TravelStoryComment", "DiscoveryHistory",
     "Museum", "MuseumMasterpiece",
+    "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate",
 ]
