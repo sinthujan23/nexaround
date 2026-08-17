@@ -814,7 +814,12 @@ async def search(
                 radius_m=50000.0,
                 limit=20,
             )
-            if len(db_results) >= 2:
+            # One match is enough. This used to require two, which meant an
+            # exact hit on a single known place — the case the local table is
+            # best at — fell through to Google Text Search at $32/1000. Named
+            # lookups like "Kinniya Base Hospital" exist in attractions and were
+            # being re-bought on every request.
+            if len(db_results) >= 1:
                 place_dicts = [
                     attraction_to_place_dict(attr, dist)
                     for attr, dist in db_results

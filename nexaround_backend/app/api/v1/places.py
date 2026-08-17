@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User
 from app.schemas.place import PlacesNearbyResponse, TrendingExperiencesResponse
 from app.services import places_service, photo_cache_service
@@ -63,14 +63,29 @@ async def search_places(
 async def get_place_photo(
     ref: str = Query(..., min_length=10, description="Google photo_reference"),
     maxwidth: int = Query(800, ge=100, le=1600),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Stream a Place Photo via our cache. First hit fetches from Google; the
-    rest are served from local disk. The Google API key never leaves the
-    server. Requires authentication."""
-    path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth)
-    if path is None:
-        raise HTTPException(status_code=502, detail="Photo unavailable")
+    """Stream a Place Photo via our cache.
+
+    Auth is optional, because this URL is consumed as an image source and image
+    loaders do not send an Authorization header — requiring one made every
+    photo request 401 and put the client into a retry loop (~20k failures/day).
+
+    Anonymous callers are served from the local cache only. That keeps the
+    endpoint from being used as a free photo proxy: without a token nothing here
+    can reach Google, so an unauthenticated request can never cost money. A
+    signed-in caller may trigger the first fetch for a photo we do not hold yet.
+    """
+    if current_user is None:
+        path = photo_cache_service.cached_path(ref, maxwidth)
+        if not (path.exists() and path.stat().st_size > 0):
+            # Not cached and no credentials to justify buying it.
+            raise HTTPException(status_code=404, detail="Photo not cached")
+    else:
+        path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth)
+        if path is None:
+            raise HTTPException(status_code=502, detail="Photo unavailable")
+
     return FileResponse(
         path,
         media_type="image/jpeg",
