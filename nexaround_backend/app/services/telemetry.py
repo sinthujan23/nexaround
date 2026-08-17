@@ -374,6 +374,24 @@ def _digest(params: dict) -> str:
 
 # ── Write path ──────────────────────────────────────────────────────────────
 
+def _spend_keys(row: dict) -> list[tuple[str, int]]:
+    """Redis counter keys to bump for a billable row, with their TTLs.
+
+    Spend has to be readable *now* to enforce a budget — the hourly rollup lags
+    by up to five minutes, and a runaway client can spend a lot in five minutes.
+    These counters are the real-time view; the rollups remain the reportable one.
+    """
+    day = row["ts"][:10]                 # YYYY-MM-DD
+    month = row["ts"][:7]                # YYYY-MM
+    keys = [
+        (f"spend:day:{day}", 3 * 86400),
+        (f"spend:month:{month}", 40 * 86400),
+    ]
+    if row.get("user_id"):
+        keys.append((f"spend:user:{row['user_id']}:{day}", 2 * 86400))
+    return keys
+
+
 async def _emit(row: dict) -> None:
     """Queue a row. Redis first, in-process deque as a grace buffer."""
     payload = json.dumps(row, default=str)
@@ -381,6 +399,15 @@ async def _emit(row: dict) -> None:
         client = _get_redis()
         depth = await client.lpush(QUEUE_KEY, payload)
         _stats["emitted"] += 1
+
+        # Bump the live spend counters in the same round trip as the enqueue.
+        if row.get("billable") and float(row.get("est_cost_usd") or 0) > 0:
+            cost = float(row["est_cost_usd"])
+            pipe = client.pipeline()
+            for key, ttl in _spend_keys(row):
+                pipe.incrbyfloat(key, cost)
+                pipe.expire(key, ttl)
+            await pipe.execute()
         if depth > MAX_QUEUE_LEN:
             # Trim from the tail: keep the newest, drop the oldest. A backed-up
             # queue means the flusher is stuck, and recent data is worth more.

@@ -21,7 +21,7 @@ from sqlalchemy import (
     BigInteger, Boolean, CHAR, Date, DateTime, Integer, Numeric,
     SmallInteger, String, Text,
 )
-from sqlalchemy.dialects.postgresql import INET, UUID
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -151,4 +151,31 @@ class ApiSkuRate(Base):
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ApiAlert(Base):
+    """An anomaly raised over api_events.
+
+    (rule, subject) is the dedup key: the same rule will not re-fire for the
+    same provider or operation while it is inside its cooldown. An alert stream
+    that repeats itself is one people learn to ignore.
+    """
+
+    __tablename__ = "api_alerts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+    rule: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject: Mapped[str] = mapped_column(String(128), nullable=False)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    notified_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )

@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.settings_service import SettingsService
-from app.services import telemetry
+from app.services import telemetry, spend_guard
 
 router = APIRouter(tags=["Proxy API"])
 
@@ -161,6 +161,18 @@ async def proxy_google_maps(
     url = f"https://maps.googleapis.com/maps/api/{path}"
 
     operation, sku = _classify_google_maps_path(path)
+
+    # Degrade rather than spend. Past the budget or the caller's daily cap we
+    # return 429 with an explanation instead of buying another call — the app
+    # already treats a non-200 here as "show what you have".
+    try:
+        await spend_guard.check(current_user.id)
+    except spend_guard.SpendBlocked as blocked:
+        raise HTTPException(
+            status_code=429,
+            detail=blocked.detail,
+            headers={"X-Spend-Blocked": blocked.reason},
+        )
 
     async with httpx.AsyncClient() as client:
         try:

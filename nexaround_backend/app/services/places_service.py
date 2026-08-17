@@ -1,7 +1,7 @@
 """Top-level Places service: cache-first, Google as fallback."""
 import math
 from typing import Optional
-from app.services import google_places_client, place_cache_service, telemetry
+from app.services import google_places_client, place_cache_service, telemetry, spend_guard
 from app.schemas.place import PlaceResponse, PlacesNearbyResponse
 from app.core.database import async_session
 from app.repositories.attraction_repository import AttractionRepository
@@ -184,6 +184,12 @@ async def seed_places_from_google_bg(
 ):
     """Seed places from Google API in the background to avoid blocking the user request."""
     if key in _active_seed_tasks:
+        return
+    # Seeding is the only path here that spends money, and it is already a
+    # background task — skipping it degrades freshness, nothing else.
+    ok, reason = await spend_guard.allowed(None)
+    if not ok:
+        print(f"skipping Google seed: {reason}")
         return
     _active_seed_tasks.add(key)
     try:

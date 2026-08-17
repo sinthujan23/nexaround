@@ -12,7 +12,7 @@ from app.models.travel_story import TravelStory, TravelStoryLike, TravelStoryCom
 from app.models.discovery_history import DiscoveryHistory
 from app.models.museum import Museum, MuseumMasterpiece
 from app.models.telemetry import (
-    ApiEvent, ApiUsageHourly, ApiUsageUserDaily, ApiSkuRate,
+    ApiEvent, ApiUsageHourly, ApiUsageUserDaily, ApiSkuRate, ApiAlert,
 )
 
 __all__ = [
@@ -21,5 +21,5 @@ __all__ = [
     "Notification", "PlaceVisit", "UserSession", "TravelStory",
     "TravelStoryLike", "TravelStoryComment", "DiscoveryHistory",
     "Museum", "MuseumMasterpiece",
-    "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate",
+    "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate", "ApiAlert",
 ]

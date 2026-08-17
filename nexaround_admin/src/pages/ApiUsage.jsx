@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { apiGet, API_BASE } from '../api';
+import { apiGet, apiPost, API_BASE } from '../api';
 import {
   CompassIcon, DollarIcon, TrendingUpIcon, TrendingDownIcon,
   RefreshIcon, ClockIcon, SearchIcon,
@@ -124,6 +124,8 @@ export default function ApiUsage() {
   const [events, setEvents] = useState([]);
   const [pipeline, setPipeline] = useState(null);
   const [tailFilter, setTailFilter] = useState('');
+  const [alerts, setAlerts] = useState({ alerts: [], open_counts: {} });
+  const [spend, setSpend] = useState(null);
 
   const activeRange = RANGES.find((r) => r.key === range) || RANGES[1];
 
@@ -147,7 +149,7 @@ export default function ApiUsage() {
       const from = new Date(to.getTime() - hours * 3600 * 1000);
       const q = `from=${from.toISOString()}&to=${to.toISOString()}${provider ? `&provider=${provider}` : ''}`;
       try {
-        const [s, ts, f, b, d, u, h, ev, pl] = await Promise.all([
+        const [s, ts, f, b, d, u, h, ev, pl, al, sp] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
           apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
           apiGet(`/admin/telemetry/funnel?${q}`),
@@ -157,11 +159,14 @@ export default function ApiUsage() {
           apiGet(`/admin/telemetry/errors?${q}`),
           apiGet(`/admin/telemetry/events?${q}&page_size=40${tailFilter ? `&operation=${encodeURIComponent(tailFilter)}` : ''}`),
           apiGet('/admin/telemetry/pipeline'),
+          apiGet('/admin/telemetry/alerts?only_open=true&limit=10'),
+          apiGet('/admin/telemetry/spend'),
         ]);
         if (cancelled) return;
         setSummary(s); setSeries(ts); setFunnel(f.operations || []);
         setBreakdown(b); setDupes(d); setUsers(u.users || []);
         setHealth(h); setEvents(ev.events || []); setPipeline(pl);
+        setAlerts(al); setSpend(sp);
       } catch (e) {
         if (!cancelled) setErr(e.message || 'Could not load telemetry.');
       } finally {
@@ -179,6 +184,15 @@ export default function ApiUsage() {
     const id = setInterval(refresh, 30000);
     return () => clearInterval(id);
   }, [range, refresh]);
+
+  const ackAlert = async (id) => {
+    try {
+      await apiPost(`/admin/telemetry/alerts/${id}/ack`);
+      refresh();
+    } catch (e) {
+      setErr(e.message || 'Could not acknowledge alert.');
+    }
+  };
 
   // A plain <a href> cannot carry the admin Bearer token, so the endpoint would
   // reject it. Fetch with auth, then hand the browser a blob to save.
@@ -217,8 +231,69 @@ export default function ApiUsage() {
   // case — it is the shape the Find Place spend had.
   const uncached = funnel.filter((o) => o.served_free_pct === 0 && o.est_cost_usd > 0);
 
+  const openAlerts = alerts.alerts || [];
+
   return (
     <div>
+      {/* ── Alerts ───────────────────────────────────────────────── */}
+      {openAlerts.length > 0 && (
+        <div style={{ display: 'grid', gap: '10px', marginBottom: '20px' }}>
+          {openAlerts.map((a) => (
+            <div
+              key={a.id}
+              className="card"
+              style={{
+                borderLeft: `4px solid ${a.severity === 'critical' ? 'var(--danger)' : 'var(--warning)'}`,
+                display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 20px',
+              }}
+            >
+              <span className={`badge ${a.severity === 'critical' ? 'badge-red' : 'badge-yellow'}`}>
+                {a.severity}
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13.5px', fontWeight: 600 }}>{a.message}</div>
+                <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  {a.rule} · {a.subject} · {new Date(a.created_at).toLocaleString()}
+                </div>
+              </div>
+              <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => ackAlert(a.id)}>
+                Dismiss
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Budget ───────────────────────────────────────────────── */}
+      {spend && spend.monthly_budget_usd > 0 && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div className="card-header">
+            <div className="card-title">Monthly budget</div>
+            <span className={`badge ${spend.enforcing ? 'badge-green' : 'badge-yellow'}`}>
+              {spend.enforcing ? 'enforcing' : 'alerts only'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '8px' }}>
+            <span>{usd(spend.month_to_date_usd)} of {usd(spend.monthly_budget_usd)}</span>
+            <span style={{ color: spend.over_budget ? 'var(--danger)' : 'var(--text-secondary)', fontWeight: 700 }}>
+              {spend.pct_consumed}%
+            </span>
+          </div>
+          <Bar
+            pct={spend.pct_consumed || 0}
+            color={spend.over_budget ? 'var(--danger)' : (spend.pct_consumed || 0) > 80 ? 'var(--warning)' : 'var(--accent)'}
+            height={10}
+          />
+          {spend.over_budget && (
+            <p style={{ marginTop: '10px', fontSize: '13px', color: 'var(--danger)', fontWeight: 600 }}>
+              {spend.enforcing
+                ? 'Budget reached — paid calls are being refused and cached results served instead.'
+                : 'Budget reached, but enforcement is off — calls are still being paid for.'}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* ── Controls ─────────────────────────────────────────────── */}
       <div className="card" style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>

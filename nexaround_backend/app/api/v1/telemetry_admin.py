@@ -22,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.v1.admin import verify_admin_token
-from app.services import telemetry, telemetry_rollup
+from app.services import telemetry, telemetry_rollup, telemetry_alerts, spend_guard
 
 router = APIRouter(prefix="/admin/telemetry", tags=["Admin Telemetry"])
 
@@ -592,3 +592,87 @@ async def pipeline_health(_=Depends(verify_admin_token)):
 async def force_rollup(_=Depends(verify_admin_token)):
     """Recompute recent buckets now, rather than waiting for the 5-minute tick."""
     return await telemetry_rollup.rollup_once()
+
+
+# ── Alerts and spend control ────────────────────────────────────────────────
+
+@router.get("/alerts")
+async def list_alerts(
+    only_open: bool = True,
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Anomalies raised over api_events, newest first."""
+    where = "WHERE acknowledged_at IS NULL" if only_open else ""
+    rows = (await db.execute(text(f"""
+        SELECT id, created_at, rule, subject, severity, message, detail,
+               acknowledged_at, notified_at
+        FROM api_alerts {where}
+        ORDER BY created_at DESC LIMIT :limit
+    """), {"limit": limit})).mappings().all()
+    counts = (await db.execute(text("""
+        SELECT severity, count(*) c FROM api_alerts
+        WHERE acknowledged_at IS NULL GROUP BY 1
+    """))).mappings().all()
+    return {
+        "alerts": [dict(r) for r in rows],
+        "open_counts": {c["severity"]: c["c"] for c in counts},
+    }
+
+
+@router.post("/alerts/{alert_id}/ack")
+async def acknowledge_alert(
+    alert_id: int,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    res = await db.execute(text("""
+        UPDATE api_alerts SET acknowledged_at = now()
+        WHERE id = :id AND acknowledged_at IS NULL
+    """), {"id": alert_id})
+    await db.commit()
+    if not res.rowcount:
+        raise HTTPException(404, "Alert not found or already acknowledged")
+    return {"id": alert_id, "acknowledged": True}
+
+
+@router.post("/alerts/run")
+async def run_alert_checks(_=Depends(verify_admin_token)):
+    """Evaluate every rule now rather than waiting for the timer."""
+    return await telemetry_alerts.run_checks()
+
+
+@router.get("/spend")
+async def spend_status(_=Depends(verify_admin_token)):
+    """Live spend against the configured limits, from the real-time counters."""
+    return await spend_guard.status()
+
+
+class SpendLimits(BaseModel):
+    monthly_budget_usd: float
+    user_daily_cap_usd: float
+    enforce: bool
+
+
+@router.put("/spend")
+async def set_spend_limits(
+    body: SpendLimits,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Update the ceilings.
+
+    `enforce` is the switch that makes them real: with it off the limits only
+    raise alerts, with it on paid calls are refused past the ceiling and callers
+    fall back to cached results.
+    """
+    if body.monthly_budget_usd < 0 or body.user_daily_cap_usd < 0:
+        raise HTTPException(400, "Limits must not be negative")
+    from app.services.settings_service import SettingsService
+    svc = SettingsService(db)
+    await svc.set_setting(spend_guard.K_MONTHLY_BUDGET, str(body.monthly_budget_usd))
+    await svc.set_setting(spend_guard.K_USER_DAILY_CAP, str(body.user_daily_cap_usd))
+    await svc.set_setting(spend_guard.K_ENFORCE, "true" if body.enforce else "false")
+    await spend_guard.refresh_config()
+    return await spend_guard.status()
