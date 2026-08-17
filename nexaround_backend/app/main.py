@@ -37,9 +37,11 @@ async def startup():
 
     # Telemetry: make sure this month's partition exists before anything tries
     # to write, then start the background flusher.
-    from app.services import telemetry
+    from app.services import telemetry, telemetry_rollup
     await telemetry.ensure_partitions()
     app.state.telemetry_flusher = asyncio.create_task(telemetry.flusher_loop())
+    app.state.telemetry_rollup = asyncio.create_task(telemetry_rollup.rollup_loop())
+    app.state.telemetry_maint = asyncio.create_task(telemetry_rollup.maintenance_loop())
 
     # Seed default system settings
     from app.core.database import async_session

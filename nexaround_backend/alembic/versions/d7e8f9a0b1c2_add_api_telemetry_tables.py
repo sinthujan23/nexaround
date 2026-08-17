@@ -185,7 +185,14 @@ def upgrade() -> None:
     # Indexes. On PG 11+ these propagate to every existing and future partition.
     # BRIN on ts: the table is append-ordered by time, so BRIN gives range-scan
     # performance at a fraction of a btree's size.
+    # Two indexes on ts, because the access patterns genuinely differ. BRIN is
+    # near-free and wins on the wide aggregate scans the rollup does. It cannot
+    # serve ORDER BY though, so the live tail's `ORDER BY ts DESC LIMIT n` needs
+    # a btree — without it the planner falls back to a full partition scan plus
+    # a sort. Write cost is low: ts is monotonic, so inserts always land on the
+    # right edge of the btree.
     op.execute("CREATE INDEX ix_api_events_ts_brin ON api_events USING BRIN (ts)")
+    op.execute("CREATE INDEX ix_api_events_ts_btree ON api_events (ts DESC)")
     op.execute("CREATE INDEX ix_api_events_provider_ts ON api_events (provider, ts DESC)")
     op.execute("CREATE INDEX ix_api_events_served_from_ts ON api_events (served_from, ts DESC)")
     op.execute(
