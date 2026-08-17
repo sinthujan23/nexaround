@@ -341,7 +341,7 @@ def to_place_dict(
     photos = place.get("photos") or []
     photo_urls = []
     if photos and photo_url_builder:
-        for ph in photos:
+        for ph in photos[:2]:
             ref = ph.get("name")
             if ref:
                 photo_urls.append(photo_url_builder(ref))
@@ -469,7 +469,7 @@ def to_place_dict_legacy(
     photos = place.get("photos") or []
     photo_urls = []
     if photos and photo_url_builder:
-        for ph in photos:
+        for ph in photos[:2]:
             ref = ph.get("photo_reference")
             if ref:
                 photo_urls.append(photo_url_builder(ref))
@@ -498,7 +498,28 @@ def to_place_dict_legacy(
 
 
 async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[bytes, str]:
-    """Download a Place Photo. Returns (bytes, content_type)."""
+    """Download a Place Photo. Returns (bytes, content_type).
+
+    Photo bytes are cached in Redis (7-day TTL) keyed by reference + width,
+    since place photos are static and rarely change. This avoids repeated
+    Google Places Photo API calls for the same image.
+    """
+    import base64
+    from app.services import place_cache_service
+
+    cache_key = f"photo:v1:{photo_reference}:w{maxwidth}"
+
+    # 1. Try cache first
+    try:
+        cached_raw = await place_cache_service.get_raw(cache_key)
+        if cached_raw is not None:
+            import json
+            cached = json.loads(cached_raw)
+            return base64.b64decode(cached["data"]), cached["ctype"]
+    except Exception as e:
+        print(f"⚠️ Photo cache GET error: {e}")
+
+    # 2. Cache miss — fetch from Google
     async with async_session() as db:
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key")
@@ -524,4 +545,17 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
             
         resp.raise_for_status()
         ctype = resp.headers.get("content-type", "image/jpeg")
-        return resp.content, ctype
+        photo_bytes = resp.content
+
+    # 3. Cache the photo bytes (7-day TTL = 604800 seconds)
+    try:
+        import json
+        cache_data = json.dumps({
+            "data": base64.b64encode(photo_bytes).decode("ascii"),
+            "ctype": ctype,
+        })
+        await place_cache_service.set_raw(cache_key, cache_data, ttl=604800)
+    except Exception as e:
+        print(f"⚠️ Photo cache SET error: {e}")
+
+    return photo_bytes, ctype

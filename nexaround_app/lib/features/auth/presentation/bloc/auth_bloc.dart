@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/features/auth/domain/repositories/auth_repository.dart';
 import 'package:nexaround_app/features/auth/domain/entities/user.dart';
 import 'auth_event.dart';
@@ -186,6 +187,29 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           accessToken: '',
         ));
       } else {
+        // Access token expired (>1 hour) — attempt automatic refresh via 30-day refresh_token!
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final refreshToken = prefs.getString('refresh_token');
+          if (refreshToken != null && refreshToken.isNotEmpty) {
+            final refreshResult = await _authRepository.refreshToken(refreshToken);
+            if (refreshResult.isRight()) {
+              final tokens = refreshResult.getOrElse(() => throw Exception());
+              final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
+              print('🔄 Session: Auto-refreshed session on app startup');
+              emit(AuthAuthenticated(
+                user: syncedUser,
+                accessToken: tokens.accessToken,
+              ));
+              return;
+            }
+          }
+        } catch (e) {
+          print('⚠️ Session: Startup token refresh failed: $e');
+        }
+
+        // Both access token and refresh token expired / invalid — log out
+        await _authRepository.logout();
         emit(const AuthUnauthenticated());
       }
     } else {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'package:dio/dio.dart';
@@ -446,49 +447,35 @@ class GooglePlacesService {
     return points;
   }
 
-  /// Get place suggestions/autocomplete from Google Places API via secure proxy
+  // ── Autocomplete debounce & cancellation infrastructure ──────────────
+  static CancelToken? _autocompleteCancelToken;
+
+  /// Get place suggestions/autocomplete from Google Places API via secure proxy.
+  ///
+  /// **Cost optimizations applied:**
+  /// - Minimum 3-character threshold to avoid junk queries.
+  /// - Cancels previous in-flight request when a new one arrives (debounce).
+  /// - Uses backend `/places/search` (which checks cache/DB first) as primary
+  ///   source; only falls back to Google Autocomplete when backend returns
+  ///   fewer than 3 results — eliminating the previous pattern of firing BOTH
+  ///   Google Autocomplete AND backend search on every keystroke.
   static Future<List<Map<String, dynamic>>> getAutocompleteSuggestions({
     required String input,
     required double latitude,
     required double longitude,
   }) async {
     final cleanedInput = _cleanSearchQuery(input);
-    if (cleanedInput.isEmpty) return [];
+    // Minimum 3-char threshold to avoid costly single/double character queries
+    if (cleanedInput.length < 3) return [];
+
+    // Cancel any previous in-flight autocomplete request
+    _autocompleteCancelToken?.cancel('superseded');
+    _autocompleteCancelToken = CancelToken();
+    final cancelToken = _autocompleteCancelToken!;
 
     try {
-      // 1. Fetch autocomplete suggestions from Google (restricted to 15km)
-      List<Map<String, dynamic>> autocompleteResults = [];
-      try {
-        final response = await ApiClient.instance.get(
-          '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
-          queryParameters: {
-            'input': cleanedInput,
-            'location': '$latitude,$longitude',
-            'radius': 50000, // 50km radius bias
-            'origin': '$latitude,$longitude',
-            'language': 'en',
-          },
-        );
-
-        if (response.statusCode == 200) {
-          final data = response.data;
-          final List<dynamic> predictions = data['predictions'] as List? ?? [];
-          autocompleteResults = predictions
-              .map(
-                (p) => {
-                  'description': p['description'] as String? ?? '',
-                  'place_id': p['place_id'] as String? ?? '',
-                  'main_text': (p['structured_formatting']?['main_text'] as String?) ?? '',
-                  'distance_meters': p['distance_meters'] as num?,
-                },
-              )
-              .toList();
-        }
-      } catch (e) {
-        debugPrint('Autocomplete request error: $e');
-      }
-
-      // 2. Fetch semantic search results from our backend /places/search
+      // 1. PRIMARY: Fetch from our backend /places/search first (cache/DB-backed,
+      //    only calls Google Text Search on cache miss)
       List<Map<String, dynamic>> searchResults = [];
       try {
         final response = await ApiClient.instance.get(
@@ -498,6 +485,7 @@ class GooglePlacesService {
             'lat': latitude,
             'lng': longitude,
           },
+          cancelToken: cancelToken,
         );
 
         if (response.statusCode == 200) {
@@ -530,20 +518,59 @@ class GooglePlacesService {
           }
         }
       } catch (e) {
+        if (e is DioException && e.type == DioExceptionType.cancel) rethrow;
         debugPrint('Semantic text search error in suggestions: $e');
+      }
+
+      // 2. FALLBACK: Only call Google Autocomplete if backend returned too few
+      //    results — avoids the previous double-API-call pattern.
+      List<Map<String, dynamic>> autocompleteResults = [];
+      if (searchResults.length < 3) {
+        try {
+          final response = await ApiClient.instance.get(
+            '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
+            queryParameters: {
+              'input': cleanedInput,
+              'location': '$latitude,$longitude',
+              'radius': 50000,
+              'origin': '$latitude,$longitude',
+              'language': 'en',
+            },
+            cancelToken: cancelToken,
+          );
+
+          if (response.statusCode == 200) {
+            final data = response.data;
+            final List<dynamic> predictions = data['predictions'] as List? ?? [];
+            autocompleteResults = predictions
+                .map(
+                  (p) => {
+                    'description': p['description'] as String? ?? '',
+                    'place_id': p['place_id'] as String? ?? '',
+                    'main_text': (p['structured_formatting']?['main_text'] as String?) ?? '',
+                    'distance_meters': p['distance_meters'] as num?,
+                  },
+                )
+                .toList();
+          }
+        } catch (e) {
+          if (e is DioException && e.type == DioExceptionType.cancel) rethrow;
+          debugPrint('Autocomplete request error: $e');
+        }
       }
 
       // 3. Merge results and deduplicate by place_id
       final Map<String, Map<String, dynamic>> merged = {};
 
-      for (final item in autocompleteResults) {
+      // Backend results first (higher quality — already geocoded)
+      for (final item in searchResults) {
         final id = item['place_id'] as String;
         if (id.isNotEmpty) {
           merged[id] = item;
         }
       }
 
-      for (final item in searchResults) {
+      for (final item in autocompleteResults) {
         final id = item['place_id'] as String;
         if (id.isNotEmpty) {
           if (!merged.containsKey(id)) {
@@ -578,6 +605,7 @@ class GooglePlacesService {
               'input': cleanedInput,
               'language': 'en',
             },
+            cancelToken: cancelToken,
           );
           if (globalResp.statusCode == 200) {
             final data = globalResp.data;
@@ -594,11 +622,19 @@ class GooglePlacesService {
                 .toList();
           }
         } catch (e) {
+          if (e is DioException && e.type == DioExceptionType.cancel) rethrow;
           debugPrint('Global fallback autocomplete error: $e');
         }
       }
 
       return mergedList;
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) {
+        // Silently swallow — request was superseded by a newer keystroke
+        return [];
+      }
+      debugPrint('Autocomplete main error: $e');
+      return [];
     } catch (e) {
       debugPrint('Autocomplete main error: $e');
       return [];
@@ -658,13 +694,36 @@ class GooglePlacesService {
     }
   }
 
-  /// Find a place by name, biased towards the user's location, using Google's Find Place API.
+  /// Find a place by name, biased towards the user's location.
+  /// First queries our backend /places/search (which checks Redis/PostgreSQL before Google),
+  /// falling back to Google's Find Place API only if not found.
   static Future<AttractionEntity?> findPlaceByName({
     required String name,
     required double userLat,
     required double userLng,
     String? categoryName,
   }) async {
+    // 1. Try backend /places/search first (cached in Redis / DB — 0 Google API cost on hit)
+    try {
+      final backendResp = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/search',
+        queryParameters: {
+          'query': name,
+          'lat': userLat,
+          'lng': userLng,
+        },
+      );
+      if (backendResp.statusCode == 200) {
+        final data = backendResp.data;
+        final places = data['places'] as List? ?? [];
+        if (places.isNotEmpty) {
+          final p = places[0];
+          return AttractionModel.fromJson(p);
+        }
+      }
+    } catch (_) {}
+
+    // 2. Fallback to Google Find Place API via proxy
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',

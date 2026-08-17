@@ -203,23 +203,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
           
           if (targetCategories.contains(cat)) {
-            // Retrieve geocoded location name bias
-            String locationName = 'Nearby';
-            try {
-              locationName = await GooglePlacesService.reverseGeocode(event.latitude, event.longitude);
-            } catch (_) {}
-            if (locationName == 'Nearby' || locationName.trim().isEmpty) {
-              locationName = 'current location';
-            }
-            
-            // --- LAYER 1: SMART AI (Primary) ---
-            final hybridList = await GooglePlacesService.fetchHybridPlaces(
-              latitude: event.latitude,
-              longitude: event.longitude,
-              categoryName: cat,
-              locationName: locationName,
-            );
-            
+            // --- LAYER 1: Backend Database & Cache (Primary — 0 AI cost on hit) ---
             final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
@@ -240,6 +224,26 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                 useLegacy: true,
               );
               repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            }
+
+            List<AttractionEntity> hybridList = [];
+            // Only call Gemini + Find Place (hybrid) if backend DB/cache returned fewer than 10 places
+            if (repoList.length < 10) {
+              // Retrieve geocoded location name bias
+              String locationName = 'Nearby';
+              try {
+                locationName = await GooglePlacesService.reverseGeocode(event.latitude, event.longitude);
+              } catch (_) {}
+              if (locationName == 'Nearby' || locationName.trim().isEmpty) {
+                locationName = 'current location';
+              }
+
+              hybridList = await GooglePlacesService.fetchHybridPlaces(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                categoryName: cat,
+                locationName: locationName,
+              );
             }
 
             // Merge repo results and hybrid lists

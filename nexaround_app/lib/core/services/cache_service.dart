@@ -602,16 +602,39 @@ class CacheService {
     return unique.values.toList();
   }
 
-  static Future<void> clearHybridPlacesCache() async {
-    final keys = _prefs.getKeys();
-    for (final key in keys) {
-      if (key.startsWith('hybrid_places_v2_')) {
-        await _prefs.remove(key);
-      }
-    }
+  // ── District Trending Experiences Cache (48 hours expiry) ──────────
+  static Future<void> cacheTrending(
+    String district,
+    String markdown,
+    List<dynamic> placesJson,
+  ) async {
+    final clean = district.trim().toLowerCase().replaceAll(' ', '_');
+    final key = 'trending_v1_$clean';
+    final payload = {
+      'markdown': markdown,
+      'places': placesJson,
+    };
+    await _prefs.setString(key, json.encode(payload));
+    await _prefs.setInt('${key}_time', DateTime.now().millisecondsSinceEpoch);
   }
 
+  static Map<String, dynamic>? getCachedTrending(String district) {
+    final clean = district.trim().toLowerCase().replaceAll(' ', '_');
+    final key = 'trending_v1_$clean';
+    final timestamp = _prefs.getInt('${key}_time') ?? 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
 
+    // 48 hours expiry (172,800,000 milliseconds)
+    if (now - timestamp > 172800000) return null;
+
+    final jsonStr = _prefs.getString(key);
+    if (jsonStr == null) return null;
+    try {
+      return json.decode(jsonStr) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<void> clearAll() async {
     await _prefs.clear();

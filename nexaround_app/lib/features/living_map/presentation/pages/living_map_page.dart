@@ -331,6 +331,31 @@ class _LivingMapPageState extends State<LivingMapPage>
       return;
     }
     if (_loadingGeminiTrending) return;
+
+    // 1. Check client-side persistent cache (48h TTL) first — 0 network / API cost
+    final cached = CacheService.getCachedTrending(district);
+    if (cached != null) {
+      final markdown = cached['markdown'] as String? ?? '';
+      final List<dynamic> placesList = cached['places'] as List? ?? [];
+      final resolvedPlaces = placesList
+          .map((p) => AttractionModel.fromJson(p))
+          .toList();
+
+      if (markdown.isNotEmpty && resolvedPlaces.isNotEmpty) {
+        debugPrint('⚡ Loaded trending data for "$district" from local cache (saved Gemini API call)');
+        setState(() {
+          _geminiTrendingMarkdown = markdown;
+          _parseMarkdownDetails(markdown);
+          _geminiTrendingPlaces = resolvedPlaces;
+          _loadingGeminiTrending = false;
+          _lastFetchedDistrict = district;
+          _geminiError = null;
+        });
+        _batchFetchRouteDistances(resolvedPlaces);
+        return;
+      }
+    }
+
     setState(() {
       _loadingGeminiTrending = true;
       _geminiTrendingMarkdown = null;
@@ -349,6 +374,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         final resolvedPlaces = placesList
             .map((p) => AttractionModel.fromJson(p))
             .toList();
+
+        // Save to persistent client-side cache
+        if (markdown.isNotEmpty && placesList.isNotEmpty) {
+          CacheService.cacheTrending(district, markdown, placesList);
+        }
 
         if (mounted) {
           setState(() {

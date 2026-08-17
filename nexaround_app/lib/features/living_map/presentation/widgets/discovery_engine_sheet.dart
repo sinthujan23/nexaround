@@ -12,7 +12,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
-import 'package:nexaround_app/core/services/place_verifier_service.dart';
+// PlaceVerifierService import removed — backend already handles hallucination
+// verification in discovery_ai_service.py, so client-side verification was
+// dead code that would cause duplicate Google API billing if ever invoked.
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 

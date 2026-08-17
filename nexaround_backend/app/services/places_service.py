@@ -794,6 +794,7 @@ async def search(
     clean_query = query.strip().lower().replace(" ", "_")
     key = f"places:search:{snap_lat}:{snap_lng}:{clean_query}"
 
+    # 1. Check Redis Cache
     cached = await place_cache_service.get_cached(key)
     if cached is not None:
         return PlacesNearbyResponse(
@@ -802,6 +803,33 @@ async def search(
             source="cache",
         )
 
+    # 2. Check local PostgreSQL database first (saves Google API calls)
+    async with async_session() as session:
+        repo = AttractionRepository(session)
+        try:
+            db_results = await repo.search_by_name(
+                name=query.strip(),
+                latitude=latitude,
+                longitude=longitude,
+                radius_m=50000.0,
+                limit=20,
+            )
+            if len(db_results) >= 2:
+                place_dicts = [
+                    attraction_to_place_dict(attr, dist)
+                    for attr, dist in db_results
+                ]
+                place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
+                await place_cache_service.set_cached(key, place_dicts)
+                return PlacesNearbyResponse(
+                    places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                    cached=False,
+                    source="database",
+                )
+        except Exception as e:
+            print(f"⚠️ DB search error in places_service.search: {e}")
+
+    # 3. Fallback to Google Text Search (New) on cache/DB miss
     raw = await google_places_client.text_search(
         query=query,
         latitude=latitude,
@@ -955,205 +983,52 @@ async def get_trending(
     user_location = f"{district} ({latitude:.6f}, {longitude:.6f})"
 
     # The exact discovery prompt
-    prompt = f"""# NexAround AI Experience Discovery Engine
-
-You are **NexAround AI**, an intelligent local discovery companion.
-
-Your mission is not to find events.
-
-Your mission is to help people discover experiences worth leaving home for.
-
-Act like a knowledgeable local guide, cultural insider, event curator, and travel companion combined.
-
----
+    prompt = f"""You are NexAround AI, an intelligent local discovery companion helping people discover experiences worth leaving home for.
 
 ## User Context
+- Location: {user_location}
+- Date/Time: {formatted_time}
 
-Analyze and utilize the following information whenever available:
+## Your Task
+Recommend **5 events/experiences** and **5 hidden gems** near the user's location. Focus on:
+- Events happening now or soon (festivals, live music, markets, exhibitions)
+- Outdoor experiences (trails, viewpoints, beaches, parks)
+- Hidden gems locals love (street food, artisan markets, cultural spots)
+- Family-friendly and nightlife options where relevant
 
-* Current location : {user_location}
-* Current date and time: {formatted_time}
-
----
-
-## Experience Search Categories
-
-Search for and prioritize:
-
-### Events
-
-* Festivals
-* Cultural celebrations
-* Religious festivals
-* Community gatherings
-* Live music
-* Concerts
-* Theater
-* Comedy shows
-* Workshops
-* Meetups
-* Art exhibitions
-* Food festivals
-* Farmers markets
-* Sporting events
-
-### Outdoor Experiences
-
-* Walking trails
-* Scenic viewpoints
-* Parks
-* Waterfront experiences
-* Nature activities
-* Adventure activities
-* Seasonal outdoor attractions
-
-### Local Discovery
-
-* Hidden gems
-* Local favorites
-* Historic neighborhoods
-* Street food experiences
-* Artisan markets
-* Cultural districts
-* Unique local businesses
-
-### Family Experiences
-
-* Children's activities
-* Educational attractions
-* Interactive experiences
-* Family festivals
-
-### Nightlife
-
-* Live entertainment
-* Rooftop venues
-* Night markets
-* Cultural performances
-
----
-
-## Recommendation Priorities
-
-Rank opportunities using:
-
-1. Relevance to user interests
-2. Events happening now
-3. Events starting soon
-4. Weather suitability
-5. Local popularity
-6. Authenticity
-7. Uniqueness
-8. User ratings and reviews
-9. Travel convenience
-10. Value for money
-
-Give preference to:
-
-* Hyperlocal discoveries
-* Experiences tourists often miss
-* Time-sensitive opportunities
-* Seasonal events
-* One-time happenings
-* Highly rated local experiences
-
-Avoid:
-
-* Generic tourist recommendations
-* Duplicate listings
-* Outdated events
-* Poorly reviewed experiences
-* Low-quality directory results
-
----
-
-## Scoring Framework
-
-Assign a confidence score from 1–100 based on:
-
-* Data freshness
-* Popularity
-* Interest match
-* Weather fit
-* Timing suitability
-* Travel convenience
-
----
+## Priorities
+1. Hyperlocal discoveries tourists miss
+2. Time-sensitive / seasonal opportunities
+3. Weather-appropriate suggestions
+4. Highly rated, authentic experiences
 
 ## Response Format
 
 # What's Happening Nearby
 
-## Recommended For You (Atleast 5 events)
+## Recommended For You
 
-### [Event or Experience Name]
-
-Why you'll love it:
-[Personalized explanation]
-
-Distance:
-[X km]
-
-Travel Time:
-[X minutes]
-
-When:
-[Time and date]
-
-Cost:
-[Free / Estimated cost]
-
-Best For:
-[Solo / Couple / Family / Friends]
-
-Confidence Score:
-[X/100]
+### [Experience Name]
+Why you'll love it: [1 sentence]
+Distance: [X km] · Travel Time: [X min]
+When: [Time/date] · Cost: [Free/amount]
+Best For: [Solo/Couple/Family/Friends]
+Confidence Score: [X/100]
 
 ---
 
 ### Why It's Worth Leaving Home For
-
-Provide a short personalized recommendation explaining why this experience stands out today.
+[1-2 sentence personalized recommendation]
 
 ---
 
-# Hidden Gem (Atleast 5 gems)
-
-
-If applicable, recommend a lesser-known local experience.
+# Hidden Gems
 
 ### [Hidden Gem Name]
+Why locals love it: [1 sentence]
+Distance: [X km] · Cost: [amount]
 
-Why locals love it:
-[Description]
-
-Distance:
-[X km]
-
-Cost:
-[Estimated cost]
-
-
----
-
-## No Event Fallback Strategy
-
-If no notable events exist, intelligently recommend:
-
-* Self-guided walking tours
-* Food trails
-* Scenic drives
-* Historic neighborhoods
-* Local markets
-* Hidden attractions
-* Sunset viewpoints
-* Cultural experiences
-* Nature spots
-* Weekend adventures
-
-Never return "No events found."
-
-Always provide a meaningful discovery opportunity.
+If no events exist, recommend self-guided tours, food trails, scenic spots, or nature walks. Never return "No events found."
 """
 
     system_instruction = (
@@ -1166,7 +1041,7 @@ Always provide a meaningful discovery opportunity.
         "system_instruction": {"parts": [{"text": system_instruction}]},
         "generationConfig": {
             "temperature": 0.8,
-            "maxOutputTokens": 4096,
+            "maxOutputTokens": 2048,
         },
     }
 
@@ -1229,33 +1104,67 @@ Always provide a meaningful discovery opportunity.
         if name not in extracted_names:
             extracted_names.append(name)
 
-    # 4. Resolve the extracted names using Google Places text search API in parallel
+    # 4. Resolve the extracted names — DB FIRST, Google as fallback.
+    #    This saves ~50% of Google Text Search calls since many trending
+    #    places already exist in our PostgreSQL attractions table from
+    #    previous nearby/search queries.
     resolved_places = []
-    
-    async def resolve_one_place(name_str: str) -> Optional[dict]:
-        try:
-            # We call places_service.search which has built-in Redis caching!
-            res = await search(query=name_str, latitude=latitude, longitude=longitude)
-            if res.places:
-                return res.places[0].model_dump()
-        except Exception as ex:
-            print(f"⚠️ Error resolving place '{name_str}' in get_trending: {ex}")
-        return None
+    names_to_resolve_via_google = []
 
-    # Resolve up to 8 places in parallel
-    search_tasks = [resolve_one_place(n) for n in extracted_names[:8]]
-    resolved_results = await asyncio.gather(*search_tasks)
-    for r in resolved_results:
-        if r is not None:
-            resolved_places.append(r)
+    # 4a. Try local database lookup first (fuzzy name match)
+    async with async_session() as session:
+        repo = AttractionRepository(session)
+        for name_str in extracted_names[:8]:
+            # Search by name in our local DB within 50km
+            try:
+                db_results = await repo.search_by_name(
+                    name=name_str,
+                    latitude=latitude,
+                    longitude=longitude,
+                    radius_m=50000.0,
+                    limit=1,
+                )
+                if db_results:
+                    attr, dist = db_results[0]
+                    place_dict = attraction_to_place_dict(attr, dist)
+                    resolved_places.append(place_dict)
+                    print(f"✅ Trending '{name_str}' resolved from local DB (saved 1 Google API call)")
+                else:
+                    names_to_resolve_via_google.append(name_str)
+            except Exception:
+                # If DB search fails (e.g. search_by_name not available),
+                # fall back to Google
+                names_to_resolve_via_google.append(name_str)
 
-    # 5. Save in Redis (TTL = 24 hours / 86400 seconds)
+    # 4b. Only call Google for places NOT found in local DB
+    if names_to_resolve_via_google:
+        async def resolve_one_place(name_str: str) -> Optional[dict]:
+            try:
+                # We call places_service.search which has built-in Redis caching!
+                res = await search(query=name_str, latitude=latitude, longitude=longitude)
+                if res.places:
+                    return res.places[0].model_dump()
+            except Exception as ex:
+                print(f"⚠️ Error resolving place '{name_str}' in get_trending: {ex}")
+            return None
+
+        print(f"🔍 Resolving {len(names_to_resolve_via_google)} trending places via Google "
+              f"(saved {len(extracted_names[:8]) - len(names_to_resolve_via_google)} calls via DB)")
+        search_tasks = [resolve_one_place(n) for n in names_to_resolve_via_google]
+        resolved_results = await asyncio.gather(*search_tasks)
+        for r in resolved_results:
+            if r is not None:
+                resolved_places.append(r)
+
+    # 5. Save in Redis (TTL = 48 hours / 172800 seconds — trending places don't
+    #    churn that fast, and the previous 24h TTL was causing unnecessary
+    #    re-fetches that doubled Gemini + Google costs)
     response_data = {
         "markdown": response_text,
         "places": resolved_places
     }
     # We will use place_cache_service to set the raw key in Redis
-    await place_cache_service.set_raw(key, json.dumps(response_data, default=str), ttl=86400)
+    await place_cache_service.set_raw(key, json.dumps(response_data, default=str), ttl=172800)
 
     return {
         "markdown": response_text,

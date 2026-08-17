@@ -149,3 +149,40 @@ class AttractionRepository:
     async def delete(self, attraction: Attraction) -> None:
         await self.db.delete(attraction)
         await self.db.flush()
+
+    async def search_by_name(
+        self,
+        name: str,
+        latitude: float,
+        longitude: float,
+        radius_m: float = 50000.0,
+        limit: int = 5,
+    ) -> List[Tuple[Attraction, float]]:
+        """Search attractions by name (ILIKE fuzzy match) within a radius.
+
+        Used by the trending resolution flow to check the local DB before
+        calling Google Text Search, saving API costs.
+        """
+        center_point = create_point(latitude, longitude)
+        distance_func = ST_Distance(
+            func.geography(Attraction.location),
+            func.cast(center_point, Geography),
+        )
+
+        query = (
+            select(Attraction, distance_func.label("distance"))
+            .where(
+                ST_DWithin(
+                    func.geography(Attraction.location),
+                    func.cast(center_point, Geography),
+                    radius_m,
+                ),
+                Attraction.is_active == True,
+                Attraction.name.ilike(f"%{name}%"),
+            )
+            .options(selectinload(Attraction.category))
+            .order_by("distance")
+            .limit(limit)
+        )
+        results = await self.db.execute(query)
+        return [(row[0], row[1]) for row in results.all()]
