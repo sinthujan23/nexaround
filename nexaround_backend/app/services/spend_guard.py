@@ -91,6 +91,12 @@ async def refresh_config() -> dict:
     return await _load_config(force=True)
 
 
+def _ns() -> str:
+    """Same namespace the recorder writes under — see telemetry._keyspace()."""
+    from app.services import telemetry
+    return telemetry._NS
+
+
 async def _redis():
     from app.services import telemetry
     return telemetry._get_redis()
@@ -109,19 +115,19 @@ async def _read_float(key: str) -> float:
 
 async def month_to_date_usd() -> float:
     month = datetime.now(timezone.utc).strftime("%Y-%m")
-    return await _read_float(f"spend:month:{month}")
+    return await _read_float(f"spend:{_ns()}:month:{month}")
 
 
 async def today_usd() -> float:
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return await _read_float(f"spend:day:{day}")
+    return await _read_float(f"spend:{_ns()}:day:{day}")
 
 
 async def user_today_usd(user_id) -> float:
     if not user_id:
         return 0.0
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    return await _read_float(f"spend:user:{user_id}:{day}")
+    return await _read_float(f"spend:{_ns()}:user:{user_id}:{day}")
 
 
 async def status() -> dict:

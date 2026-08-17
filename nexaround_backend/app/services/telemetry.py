@@ -40,7 +40,29 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ───────────────────────────────────────────────────────────────
 
-QUEUE_KEY = "telemetry:queue"
+def _keyspace() -> str:
+    """Namespace Redis keys by the database this process is pointed at.
+
+    Telemetry state lives in Redis but describes the contents of a specific
+    database. Overriding DATABASE_URL for a test run while sharing the Redis
+    instance — which is exactly how this project's verification scripts run —
+    otherwise lets test spend land in the production counters. It did: a
+    verification run reported $1.10 of month-to-date spend against a database
+    holding zero billable events.
+
+    Deriving the prefix from the database name makes that impossible rather
+    than merely discouraged.
+    """
+    try:
+        name = settings.DATABASE_URL.rsplit("/", 1)[-1].split("?")[0]
+        return name or "default"
+    except Exception:
+        return "default"
+
+
+_NS = _keyspace()
+
+QUEUE_KEY = f"telemetry:{_NS}:queue"
 # Cap the Redis queue so a stalled flusher can't consume all of Redis. At ~350
 # bytes a row this is roughly 35 MB worst case.
 MAX_QUEUE_LEN = 100_000
@@ -384,11 +406,11 @@ def _spend_keys(row: dict) -> list[tuple[str, int]]:
     day = row["ts"][:10]                 # YYYY-MM-DD
     month = row["ts"][:7]                # YYYY-MM
     keys = [
-        (f"spend:day:{day}", 3 * 86400),
-        (f"spend:month:{month}", 40 * 86400),
+        (f"spend:{_NS}:day:{day}", 3 * 86400),
+        (f"spend:{_NS}:month:{month}", 40 * 86400),
     ]
     if row.get("user_id"):
-        keys.append((f"spend:user:{row['user_id']}:{day}", 2 * 86400))
+        keys.append((f"spend:{_NS}:user:{row['user_id']}:{day}", 2 * 86400))
     return keys
 
 
