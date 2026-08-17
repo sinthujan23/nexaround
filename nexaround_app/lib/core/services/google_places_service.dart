@@ -641,44 +641,38 @@ class GooglePlacesService {
     }
   }
 
-  /// Get place details (lat/lng/name) by place_id
+  /// Get place details (lat/lng/name) by place_id using backend Places API (New) with 14-day Redis caching
   static Future<AttractionEntity?> getPlaceDetails(String placeId) async {
     try {
+      final cleanId = placeId.replaceFirst('places/', '');
       final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/details/json',
-        queryParameters: {
-          'place_id': placeId,
-          'fields': 'name,geometry,formatted_address',
-        },
+        '${ApiConstants.apiVersion}/places/$cleanId/details',
       );
 
       if (response.statusCode == 200) {
-        final result = response.data['result'] as Map<String, dynamic>?;
-        if (result != null) {
-          final name = result['name'] as String? ?? 'Unknown';
-          final geom = result['geometry'] as Map<String, dynamic>?;
-          final loc = geom != null
-              ? geom['location'] as Map<String, dynamic>?
-              : null;
-          final lat = loc != null ? (loc['lat'] as num).toDouble() : 0.0;
-          final lng = loc != null ? (loc['lng'] as num).toDouble() : 0.0;
-          final address = result['formatted_address'] as String? ?? '';
+        final data = response.data as Map<String, dynamic>?;
+        if (data != null) {
+          final name = data['name'] as String? ?? 'Unknown';
+          final address = data['address'] as String? ?? '';
+          final rating = (data['rating'] as num?)?.toDouble() ?? 4.0;
+          final userRatingsTotal = (data['user_ratings_total'] as num?)?.toInt() ?? 0;
+          final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
 
           return AttractionModel(
             id: placeId,
             name: name,
             description: address,
-            latitude: lat,
-            longitude: lng,
+            latitude: 0.0,
+            longitude: 0.0,
             categoryId: null,
             categoryName: 'Attractions',
             address: address,
             openingHours: const {},
             entryFee: 0.0,
             currency: 'USD',
-            rating: 4.0,
-            reviewCount: 0,
-            photoUrls: const [],
+            rating: rating,
+            reviewCount: userRatingsTotal,
+            photoUrls: photoUrls,
             tags: const [],
             geofenceRadiusM: 100,
             distanceM: 0,

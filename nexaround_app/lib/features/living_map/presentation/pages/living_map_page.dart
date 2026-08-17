@@ -73,6 +73,8 @@ class _LivingMapPageState extends State<LivingMapPage>
   String _selectedCategory = 'All';
   double? _userLatitude;
   double? _userLongitude;
+  double? _lastFetchedLatitude;
+  double? _lastFetchedLongitude;
   StreamSubscription<geo.Position>? _positionSubscription;
   bool _isLocationServiceEnabled = true;
   bool _isLocationOverridden = false;
@@ -216,10 +218,34 @@ class _LivingMapPageState extends State<LivingMapPage>
         geo.Geolocator.getPositionStream(
           locationSettings: const geo.LocationSettings(
             accuracy: geo.LocationAccuracy.high,
-            distanceFilter: 300,
+            distanceFilter: 100,
           ),
         ).listen((position) async {
           if (_isLocationOverridden) return;
+
+          // ── 500m Distance-Threshold Throttling (Smart Geofencing) ──
+          // If the user moves less than 500m, update the live blue dot only.
+          // Do NOT send any network, reverse-geocode, or place requests!
+          if (_lastFetchedLatitude != null && _lastFetchedLongitude != null) {
+            final distM = geo.Geolocator.distanceBetween(
+              _lastFetchedLatitude!,
+              _lastFetchedLongitude!,
+              position.latitude,
+              position.longitude,
+            );
+            if (distM < 500) {
+              if (mounted) {
+                setState(() {
+                  _userLatitude = position.latitude;
+                  _userLongitude = position.longitude;
+                });
+              }
+              return;
+            }
+          }
+
+          _lastFetchedLatitude = position.latitude;
+          _lastFetchedLongitude = position.longitude;
           
           final details = await GooglePlacesService.reverseGeocodeDetailed(
             position.latitude,
@@ -229,7 +255,6 @@ class _LivingMapPageState extends State<LivingMapPage>
           final district = details['district'] ?? 'Nearby';
 
           if (mounted) {
-            final districtChanged = _currentDistrict != district;
             setState(() {
               _userLatitude = position.latitude;
               _userLongitude = position.longitude;
@@ -237,13 +262,14 @@ class _LivingMapPageState extends State<LivingMapPage>
               _currentDistrict = district;
             });
 
-            if (districtChanged) {
-              _fetchGeminiTrending(
-                district,
-                position.latitude,
-                position.longitude,
-              );
-            }
+            // Fetch new places for the new neighborhood (Redis > DB > Google)
+            context.read<MapBloc>().add(
+              FetchNearbyAttractions(
+                latitude: position.latitude,
+                longitude: position.longitude,
+                categoryName: _selectedCategory == 'All' ? null : _selectedCategory,
+              ),
+            );
 
             _fetchMiniTourPlaces(position.latitude, position.longitude);
             _preFetchArPlaces(position.latitude, position.longitude);
@@ -324,133 +350,17 @@ class _LivingMapPageState extends State<LivingMapPage>
     double lat,
     double lng,
   ) async {
-    if (_lastFetchedDistrict == district && _geminiTrendingMarkdown != null) {
-      debugPrint(
-        'ℹ️ Gemini trending already loaded for district "$district". Skipping request.',
-      );
-      return;
-    }
-    if (_loadingGeminiTrending) return;
-
-    // 1. Check client-side persistent cache (48h TTL) first — 0 network / API cost
-    final cached = CacheService.getCachedTrending(district);
-    if (cached != null) {
-      final markdown = cached['markdown'] as String? ?? '';
-      final List<dynamic> placesList = cached['places'] as List? ?? [];
-      final resolvedPlaces = placesList
-          .map((p) => AttractionModel.fromJson(p))
-          .toList();
-
-      if (markdown.isNotEmpty && resolvedPlaces.isNotEmpty) {
-        debugPrint('⚡ Loaded trending data for "$district" from local cache (saved Gemini API call)');
-        setState(() {
-          _geminiTrendingMarkdown = markdown;
-          _parseMarkdownDetails(markdown);
-          _geminiTrendingPlaces = resolvedPlaces;
-          _loadingGeminiTrending = false;
-          _lastFetchedDistrict = district;
-          _geminiError = null;
-        });
-        _batchFetchRouteDistances(resolvedPlaces);
-        return;
-      }
-    }
-
-    setState(() {
-      _loadingGeminiTrending = true;
-      _geminiTrendingMarkdown = null;
-      _geminiError = null;
-    });
-    try {
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.apiVersion}/places/trending',
-        queryParameters: {'district': district, 'lat': lat, 'lng': lng},
-      );
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final markdown = data['markdown'] as String? ?? '';
-        final List<dynamic> placesList = data['places'] as List? ?? [];
-        final resolvedPlaces = placesList
-            .map((p) => AttractionModel.fromJson(p))
-            .toList();
-
-        // Save to persistent client-side cache
-        if (markdown.isNotEmpty && placesList.isNotEmpty) {
-          CacheService.cacheTrending(district, markdown, placesList);
-        }
-
-        if (mounted) {
-          setState(() {
-            _geminiTrendingMarkdown = markdown;
-            _parseMarkdownDetails(markdown);
-            _geminiTrendingPlaces = resolvedPlaces;
-            _loadingGeminiTrending = false;
-            _lastFetchedDistrict = district;
-            _geminiError = null;
-          });
-          // Batch-fetch route distances for resolved places
-          _batchFetchRouteDistances(resolvedPlaces);
-        }
-      } else {
-        throw Exception('Server returned ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error in _fetchGeminiTrending: $e');
-      if (mounted) {
-        setState(() {
-          _loadingGeminiTrending = false;
-          _geminiError = 'Could not load recommendations. Tap to retry.';
-        });
-      }
-    }
+    // Gemini trending is now disabled on the map screen in favor of
+    // the Database/Redis Discover method.
+    return;
   }
 
   void _resolveUnresolvedCardPhotos() {
-    for (final exp in _aiExperiences) {
-      final lowerExpName = exp.name.toLowerCase().trim();
-      bool isResolved = _geminiTrendingPlaces.any(
-        (p) => p.name.toLowerCase().trim() == lowerExpName,
-      );
-      if (!isResolved) {
-        _searchPhotoForUnresolved(exp.name);
-      }
-    }
+    // Unresolved photo search loop disabled to eliminate legacy findplacefromtext calls
   }
 
   Future<void> _searchPhotoForUnresolved(String name) async {
-    if (_unresolvedPhotos.containsKey(name)) return;
-    try {
-      final queryParams = {
-        'input': name,
-        'inputtype': 'textquery',
-        'fields': 'photos',
-      };
-      if (_userLatitude != null && _userLongitude != null) {
-        queryParams['locationbias'] =
-            'circle:5000@$_userLatitude,$_userLongitude';
-      }
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
-        queryParameters: queryParams,
-      );
-      final candidates = response.data['candidates'] as List?;
-      if (candidates != null && candidates.isNotEmpty) {
-        final candidate = candidates[0] as Map<String, dynamic>;
-        final photos = candidate['photos'] as List? ?? [];
-        if (photos.isNotEmpty) {
-          final ref = photos[0]['photo_reference'] as String?;
-          if (ref != null && ref.isNotEmpty) {
-            final url = '/api/v1/places/photo?ref=$ref';
-            if (mounted) {
-              setState(() {
-                _unresolvedPhotos[name] = url;
-              });
-            }
-          }
-        }
-      }
-    } catch (_) {}
+    // Disabled to prevent legacy Google Places API charges
   }
 
   bool _shareSignificantWords(String name1, String name2) {
@@ -646,6 +556,9 @@ class _LivingMapPageState extends State<LivingMapPage>
         return;
       }
 
+      _lastFetchedLatitude = position.latitude;
+      _lastFetchedLongitude = position.longitude;
+
       // Reverse geocode to get human readable address and district
       final details = await GooglePlacesService.reverseGeocodeDetailed(
         position.latitude,
@@ -662,8 +575,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _currentDistrict = district;
         });
 
-        _fetchGeminiTrending(district, position.latitude, position.longitude);
-
+        // Load places cleanly from Database & Cache (0 Gemini cost)
         context.read<MapBloc>().add(
           FetchNearbyAttractions(
             latitude: position.latitude,
@@ -683,6 +595,9 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   void _useFallbackLocation() {
     if (mounted) {
+      _lastFetchedLatitude = 6.9271;
+      _lastFetchedLongitude = 79.8612;
+
       setState(() {
         _currentLocationName = 'Colombo, Sri Lanka';
         _currentDistrict = 'Colombo District';
@@ -690,9 +605,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         _userLongitude = 79.8612;
       });
 
-      _fetchGeminiTrending('Colombo District', 6.9271, 79.8612);
-
-      // Still fetch data with fallback location
+      // Fetch data with fallback location from Database & Cache (0 Gemini cost)
       context.read<MapBloc>().add(
         FetchNearbyAttractions(
           latitude: 6.9271,
@@ -1631,10 +1544,11 @@ class _LivingMapPageState extends State<LivingMapPage>
 
         // Trigger updates for new location
         if (mounted) {
-          _fetchGeminiTrending(district, lat, lng);
+          _lastFetchedLatitude = lat;
+          _lastFetchedLongitude = lng;
           _fetchMiniTourPlaces(lat, lng);
           
-          // Re-fetch "Around You" map places
+          // Re-fetch "Around You" map places from Database / Redis
           context.read<MapBloc>().add(
             FetchNearbyAttractions(
               latitude: lat,
@@ -1667,6 +1581,9 @@ class _LivingMapPageState extends State<LivingMapPage>
           final district = details['district'] ?? 'Nearby';
 
           if (mounted) {
+            _lastFetchedLatitude = position.latitude;
+            _lastFetchedLongitude = position.longitude;
+
             setState(() {
               _userLatitude = position.latitude;
               _userLongitude = position.longitude;
@@ -1683,7 +1600,6 @@ class _LivingMapPageState extends State<LivingMapPage>
             await CacheService.clearHybridPlacesCache();
             GooglePlacesService.clearErrors();
             
-            _fetchGeminiTrending(district, position.latitude, position.longitude);
             _fetchMiniTourPlaces(position.latitude, position.longitude);
             context.read<MapBloc>().add(
               FetchNearbyAttractions(

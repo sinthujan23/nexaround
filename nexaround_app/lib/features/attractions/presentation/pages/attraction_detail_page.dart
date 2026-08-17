@@ -135,8 +135,6 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
   }
 
   Future<void> _fetchPlacesDetails() async {
-    List<String> types = [];
-    String? summaryText;
     try {
       // Use place_id if it looks like a real Google place ID, else find by name+location
       String? resolvedId = widget.id;
@@ -144,71 +142,35 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null || isUuid) {
         resolvedId = await _findPlaceId();
       }
-      if (resolvedId != null) {
-        final fields = 'opening_hours,user_ratings_total,price_level,reviews,editorial_summary,types,photos';
+      if (resolvedId != null && resolvedId.isNotEmpty) {
+        // Call backend Places API (New) details endpoint (14-day Redis cache — 0 Google cost on hit)
+        final cleanId = resolvedId.replaceFirst('places/', '');
         final response = await ApiClient.instance.get(
-          '${ApiConstants.googleMapsProxy}/place/details/json',
-          queryParameters: {
-            'place_id': resolvedId,
-            'fields': fields,
-          },
+          '${ApiConstants.apiVersion}/places/$cleanId/details',
         );
         if (response.statusCode == 200) {
-          final data = response.data['result'] as Map<String, dynamic>?;
+          final data = response.data as Map<String, dynamic>?;
           if (data != null) {
-            // Opening hours
-            final hours = data['opening_hours'] as Map<String, dynamic>?;
-            final openNow = hours?['open_now'] as bool?;
-            final weekday = (hours?['weekday_text'] as List?)?.cast<String>() ?? [];
-            String? closingTime;
-            if (openNow == true && weekday.isNotEmpty) {
-              final today = weekday[DateTime.now().weekday - 1];
-              final match = RegExp(r'–\s*(.+)$').firstMatch(today);
-              closingTime = match?.group(1)?.trim();
-            }
-
-            // Price level → human readable
-            final priceInt = data['price_level'] as int?;
-            final priceText = priceInt == null ? null
-                : priceInt == 0 ? 'Free'
-                : priceInt == 1 ? 'Inexpensive'
-                : priceInt == 2 ? 'Moderate'
-                : priceInt == 3 ? 'Expensive'
-                : 'Very Expensive';
-
-            // Reviews
+            final openNowText = data['open_now_text'] as String?;
+            final closingTime = data['closing_time'] as String?;
+            final totalReviews = data['user_ratings_total'] as int?;
+            final priceLevel = data['price_level'] as String?;
+            final weekday = (data['weekday_hours'] as List?)?.cast<String>() ?? [];
             final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
-            final reviews = rawReviews.take(3).map((r) => {
-              'author': r['author_name'] ?? 'Anonymous',
-              'rating': (r['rating'] as num?)?.toDouble() ?? 0.0,
-              'text': r['text'] ?? '',
-              'time': r['relative_time_description'] ?? '',
-            }).toList();
-
-            types = (data['types'] as List?)?.cast<String>() ?? [];
-            final summaryMap = data['editorial_summary'] as Map<String, dynamic>?;
-            summaryText = summaryMap?['overview'] as String?;
-
-            // Retrieve photo if local photo is null/empty
-            String? fetchedPhotoUrl;
-            final photos = data['photos'] as List? ?? [];
-            if (photos.isNotEmpty) {
-              final ref = photos[0]['photo_reference'] as String?;
-              if (ref != null && ref.isNotEmpty) {
-                fetchedPhotoUrl = '/api/v1/places/photo?ref=$ref';
-              }
-            }
+            final reviews = rawReviews.map((r) => Map<String, dynamic>.from(r)).toList();
+            final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
+            final String? firstPhoto = photoUrls.isNotEmpty ? photoUrls[0] : null;
 
             if (mounted) {
               setState(() {
-                _openNowText = openNow == null ? null : (openNow ? 'Open' : 'Closed');
+                _openNowText = openNowText;
                 _closingTime = closingTime;
-                _totalReviews = data['user_ratings_total'] as int?;
-                _priceLevel = priceText;
-                _realReviews = List<Map<String, dynamic>>.from(reviews);
+                _totalReviews = totalReviews;
+                _priceLevel = priceLevel;
+                _realReviews = reviews;
                 _weekdayHours = weekday;
-                if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && fetchedPhotoUrl != null) {
-                  _resolvedImageUrl = fetchedPhotoUrl;
+                if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && firstPhoto != null) {
+                  _resolvedImageUrl = firstPhoto;
                 }
               });
             }
@@ -226,20 +188,23 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
   Future<String?> _findPlaceId() async {
     try {
-      final queryParams = {
-        'input': widget.name,
-        'inputtype': 'textquery',
-        'fields': 'place_id',
-      };
-      if (widget.latitude != null && widget.longitude != null) {
-        queryParams['locationbias'] = 'circle:5000@${widget.latitude},${widget.longitude}';
-      }
+      // Use backend search (checks Redis & PostgreSQL DB before Google)
       final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/findplacefromtext/json',
-        queryParameters: queryParams,
+        '${ApiConstants.apiVersion}/places/search',
+        queryParameters: {
+          'query': widget.name,
+          'lat': widget.latitude ?? 6.9271,
+          'lng': widget.longitude ?? 79.8612,
+        },
       );
-      final candidates = response.data['candidates'] as List?;
-      return candidates?.isNotEmpty == true ? candidates![0]['place_id'] as String? : null;
+      if (response.statusCode == 200) {
+        final data = response.data;
+        final places = data['places'] as List? ?? [];
+        if (places.isNotEmpty) {
+          return places[0]['id'] as String?;
+        }
+      }
+      return null;
     } catch (_) {
       return null;
     }

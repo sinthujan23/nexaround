@@ -1172,3 +1172,35 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
         "cached": False
     }
 
+
+async def get_place_details(place_id: str) -> Optional[dict]:
+    """Fetch place details with 14-day Redis caching.
+    Uses Google Places API (New) with field masking to minimize billing.
+    """
+    clean_id = place_id.replace("places/", "")
+    key = f"places:details:{clean_id}"
+
+    # 1. Check Redis cache first (14 days TTL)
+    try:
+        cached_raw = await place_cache_service.get_raw(key)
+        if cached_raw is not None:
+            data = json.loads(cached_raw)
+            data["cached"] = True
+            return data
+    except Exception as e:
+        print(f"⚠️ Redis GET error for {key}: {e}")
+
+    # 2. Cache miss — fetch from Google Places API (New)
+    details = await google_places_client.fetch_place_details(place_id)
+    if not details:
+        return None
+
+    # 3. Store in Redis (14-day TTL = 1,209,600 seconds)
+    try:
+        await place_cache_service.set_raw(key, json.dumps(details, default=str), ttl=1209600)
+    except Exception as e:
+        print(f"⚠️ Redis SET error for {key}: {e}")
+
+    details["cached"] = False
+    return details
+

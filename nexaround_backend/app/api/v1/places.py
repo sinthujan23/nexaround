@@ -96,3 +96,17 @@ async def get_trending_experiences(
         db=db,
     )
 
+
+@router.get("/{place_id}/details")
+async def get_place_details_endpoint(
+    place_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Fetch rich details (reviews, opening hours, photos, website, phone, price) for a place
+    using Google Places API (New) with 14-day Redis caching.
+    """
+    details = await places_service.get_place_details(place_id)
+    if details is None:
+        raise HTTPException(status_code=404, detail="Place details not found")
+    return details
+

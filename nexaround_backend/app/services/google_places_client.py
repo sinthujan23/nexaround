@@ -559,3 +559,111 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
         print(f"⚠️ Photo cache SET error: {e}")
 
     return photo_bytes, ctype
+
+
+async def fetch_place_details(place_id: str) -> Optional[dict]:
+    """Fetch rich place details (reviews, regularOpeningHours, photos, phone, website, price)
+    from Google Places API (New) using strict field masking to minimize API billing.
+    """
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ Google Maps API key not configured")
+        return None
+
+    # Handle place ID (strip 'places/' if duplicated, then format for API)
+    raw_id = place_id.replace("places/", "")
+    url = f"https://places.googleapis.com/v1/places/{raw_id}"
+    
+    field_mask = (
+        "id,displayName,formattedAddress,rating,userRatingCount,"
+        "reviews,regularOpeningHours,photos,internationalPhoneNumber,"
+        "websiteUri,editorialSummary,priceLevel"
+    )
+    headers = {
+        "X-Goog-Api-Key": google_maps_key,
+        "X-Goog-FieldMask": field_mask,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+        # Parse Places API (New) response into normalized dict
+        display_name = data.get("displayName", {}).get("text") or "Unknown"
+        formatted_address = data.get("formattedAddress") or ""
+        rating = float(data.get("rating") or 4.0)
+        user_ratings_total = int(data.get("userRatingCount") or 0)
+        
+        # Reviews (top 5)
+        raw_reviews = data.get("reviews") or []
+        reviews = []
+        for r in raw_reviews[:5]:
+            reviews.append({
+                "author": r.get("authorAttribution", {}).get("displayName") or "Anonymous",
+                "rating": float(r.get("rating") or 5.0),
+                "text": r.get("text", {}).get("text") or "",
+                "time": r.get("relativePublishTimeDescription") or "",
+            })
+
+        # Opening Hours
+        hours_data = data.get("regularOpeningHours") or {}
+        open_now = hours_data.get("openNow")
+        weekday_descriptions = hours_data.get("weekdayDescriptions") or []
+        closing_time = None
+        if open_now and weekday_descriptions:
+            import datetime
+            today_idx = datetime.datetime.now().weekday()
+            if today_idx < len(weekday_descriptions):
+                today_text = weekday_descriptions[today_idx]
+                import re
+                match = re.search(r"[–-]\s*(.+)$", today_text)
+                if match:
+                    closing_time = match.group(1).strip()
+
+        # Price Level
+        price_level_str = data.get("priceLevel")
+        price_map = {
+            "PRICE_LEVEL_FREE": "Free",
+            "PRICE_LEVEL_INEXPENSIVE": "Inexpensive",
+            "PRICE_LEVEL_MODERATE": "Moderate",
+            "PRICE_LEVEL_EXPENSIVE": "Expensive",
+            "PRICE_LEVEL_VERY_EXPENSIVE": "Very Expensive",
+        }
+        price_text = price_map.get(price_level_str, "Moderate")
+
+        # Photos (cap at 3)
+        photos = data.get("photos") or []
+        photo_urls = []
+        for ph in photos[:3]:
+            ref = ph.get("name")
+            if ref:
+                photo_urls.append(f"/api/v1/places/photo?ref={ref}")
+
+        # Editorial Summary
+        editorial_summary = data.get("editorialSummary", {}).get("text")
+
+        return {
+            "id": data.get("id") or place_id,
+            "name": display_name,
+            "address": formatted_address,
+            "rating": rating,
+            "user_ratings_total": user_ratings_total,
+            "reviews": reviews,
+            "open_now": open_now,
+            "open_now_text": "Open" if open_now is True else ("Closed" if open_now is False else None),
+            "closing_time": closing_time,
+            "weekday_hours": weekday_descriptions,
+            "price_level": price_text,
+            "photo_urls": photo_urls,
+            "phone_number": data.get("internationalPhoneNumber"),
+            "website_uri": data.get("websiteUri"),
+            "editorial_summary": editorial_summary,
+        }
+    except Exception as e:
+        print(f"⚠️ Error fetching place details from Google Places API (New) for {place_id}: {e}")
+        return None

@@ -192,38 +192,35 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     setState(() => _isLoadingEmergency = true);
 
     try {
-      // Fetch nearby hospitals via Google Places API proxy
+      // Fetch nearby hospitals from backend (Redis > PostgreSQL DB > Google Nearby Search)
       final response = await ApiClient.instance.get(
-        '${ApiConstants.googleMapsProxy}/place/nearbysearch/json',
+        '${ApiConstants.apiVersion}/places/nearby',
         queryParameters: {
-          'location': '$lat,$lng',
+          'lat': lat,
+          'lng': lng,
           'radius': 5000,
-          'type': 'hospital',
+          'category': 'Hospital',
+          'limit': 5,
         },
       );
       final List<Map<String, dynamic>> hospitals = [];
       if (response.statusCode == 200) {
         final data = response.data;
-        final results = data['results'] as List? ?? [];
-        for (final place in results.take(5)) {
-          final placeLocation = place['geometry']?['location'];
-          double? distKm;
-          if (placeLocation != null) {
-            final d = Geolocator.distanceBetween(
-              lat, lng,
-              (placeLocation['lat'] as num).toDouble(),
-              (placeLocation['lng'] as num).toDouble(),
-            );
-            distKm = d / 1000;
-          }
+        final places = data['places'] as List? ?? [];
+        for (final place in places.take(5)) {
+          final plat = (place['latitude'] as num?)?.toDouble() ?? lat;
+          final plng = (place['longitude'] as num?)?.toDouble() ?? lng;
+          final d = Geolocator.distanceBetween(lat, lng, plat, plng);
+          final distKm = d / 1000;
+
           hospitals.add({
             'name': place['name'] ?? 'Hospital',
-            'address': place['vicinity'] ?? '',
-            'dist': distKm != null ? '${distKm.toStringAsFixed(1)} km' : '',
+            'address': place['address'] ?? '',
+            'dist': '${distKm.toStringAsFixed(1)} km',
             'open': place['opening_hours']?['open_now'],
-            'placeId': place['place_id'] ?? '',
-            'lat': (placeLocation?['lat'] as num?)?.toDouble() ?? lat,
-            'lng': (placeLocation?['lng'] as num?)?.toDouble() ?? lng,
+            'placeId': place['id'] ?? '',
+            'lat': plat,
+            'lng': plng,
           });
         }
         hospitals.sort((a, b) {

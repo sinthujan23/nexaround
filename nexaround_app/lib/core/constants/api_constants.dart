@@ -34,6 +34,7 @@ class ApiConstants {
   static const String attractionsNearby = '$apiVersion/attractions/nearby';
   static const String attractionsSearch = '$apiVersion/attractions/search';
   static const String categories = '$apiVersion/categories';
+  static String placeDetails(String placeId) => '$apiVersion/places/$placeId/details';
   
   // Navigation endpoints
   static const String directions = '$apiVersion/navigation/directions';
