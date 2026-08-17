@@ -1,0 +1,33 @@
+name: Backend telemetry coverage
+
+# Fails the build when an outbound HTTP call is added without telemetry.
+# This is what keeps API cost observable: an un-instrumented call site spends
+# money invisibly, which is exactly how the Places spend went unnoticed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'nexaround_backend/app/**'
+      - 'nexaround_backend/scripts/check_telemetry_coverage.py'
+      - '.github/workflows/backend_telemetry_guard.yml'
+  pull_request:
+    paths:
+      - 'nexaround_backend/app/**'
+      - 'nexaround_backend/scripts/check_telemetry_coverage.py'
+
+jobs:
+  telemetry-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Pure-stdlib AST analysis — no project dependencies needed, so this
+      # stays fast and cannot break on an unrelated requirements change.
+      - name: Check telemetry coverage
+        working-directory: nexaround_backend
+        run: python scripts/check_telemetry_coverage.py

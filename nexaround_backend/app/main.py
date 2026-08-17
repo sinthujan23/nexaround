@@ -1,5 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Depends, Request
+import asyncio
 import logging
+import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -25,10 +27,20 @@ async def startup():
     # Import every model module so all tables (incl. broadcasts/notifications/
     # analytics) are registered on Base.metadata before create_all runs.
     import app.models  # noqa: F401
-    # Create tables if they don't exist
+    # Create tables if they don't exist.
+    # api_events is excluded deliberately: it is RANGE-partitioned, and
+    # create_all would emit a plain CREATE TABLE that then collides with the
+    # migration. It is owned by alembic alone.
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        
+        managed = [t for t in Base.metadata.sorted_tables if t.name != "api_events"]
+        await conn.run_sync(Base.metadata.create_all, tables=managed)
+
+    # Telemetry: make sure this month's partition exists before anything tries
+    # to write, then start the background flusher.
+    from app.services import telemetry
+    await telemetry.ensure_partitions()
+    app.state.telemetry_flusher = asyncio.create_task(telemetry.flusher_loop())
+
     # Seed default system settings
     from app.core.database import async_session
     from app.services.settings_service import SettingsService
@@ -99,6 +111,32 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+# Request context — must run before anything that emits telemetry, so it is
+# registered last (Starlette applies http middleware in reverse order).
+@app.middleware("http")
+async def bind_request_context(request: Request, call_next):
+    from app.core import request_context
+    from app.core.rate_limiter import get_client_ip
+
+    request_context.request_id_var.set(uuid.uuid4())
+    request_context.user_id_var.set(None)
+    try:
+        request_context.client_ip_var.set(get_client_ip(request))
+    except Exception:
+        request_context.client_ip_var.set(None)
+    # Sent by the Flutter client so old and new builds are distinguishable in
+    # telemetry. Absent for admin panel and server-side traffic.
+    request_context.app_version_var.set(
+        (request.headers.get("X-App-Version") or None) and
+        request.headers["X-App-Version"][:32]
+    )
+    request_context.platform_var.set(
+        (request.headers.get("X-Platform") or None) and
+        request.headers["X-Platform"][:16]
+    )
+    return await call_next(request)
+
+
 # Security Headers Middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -126,6 +164,7 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Detailed health check."""
+    from app.services import telemetry
     return {
         "status": "healthy",
         "database": "connected",
@@ -133,6 +172,9 @@ async def health_check():
             "auth": "active",
             "attractions": "active",
         },
+        # Surfaced so a silently broken metrics pipeline is visible. Rising
+        # dropped_* counters mean events are being lost.
+        "telemetry": telemetry.get_stats(),
     }
 
 @app.post("/api/lens/identify")

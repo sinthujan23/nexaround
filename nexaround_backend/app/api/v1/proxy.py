@@ -9,8 +9,33 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.settings_service import SettingsService
+from app.services import telemetry
 
 router = APIRouter(tags=["Proxy API"])
+
+
+# Maps a proxied path onto the operation name and billing SKU it corresponds
+# to. Kept here rather than inside telemetry so the proxy owns its own routing
+# knowledge; the SKU strings must match rows in api_sku_rates.
+_GOOGLE_MAPS_SKUS = (
+    ("place/findplacefromtext", "findplacefromtext", "find_place_atmosphere"),
+    ("place/nearbysearch",      "nearby_search",     "nearby_search_legacy"),
+    ("place/autocomplete",      "autocomplete",      "autocomplete_per_request"),
+    ("place/details",           "place_details",     "place_details"),
+    ("place/photo",             "place_photo",       "place_photo"),
+    ("directions",              "directions",        "directions"),
+    ("geocode",                 "geocode",           "geocoding"),
+)
+
+
+def _classify_google_maps_path(path: str) -> tuple[str, str | None]:
+    """Resolve a proxied Google Maps path to (operation, sku)."""
+    for prefix, operation, sku in _GOOGLE_MAPS_SKUS:
+        if path.startswith(prefix):
+            return operation, sku
+    # Unknown path: still recorded, but with no SKU so it cannot silently
+    # invent a cost. Shows up in the dashboard as an unpriced operation.
+    return path.split("/")[0] or "unknown", None
 
 @router.get("/config/keys")
 async def get_config_keys(
@@ -124,26 +149,36 @@ async def proxy_google_maps(
     params["key"] = api_key
 
     url = f"https://maps.googleapis.com/maps/api/{path}"
-    
-    await settings.log_api_request("google_maps", f"/maps/api/{path}", current_user.id)
+
+    operation, sku = _classify_google_maps_path(path)
 
     async with httpx.AsyncClient() as client:
         try:
             if "place/photo" in path:
-                # Stream image bytes to avoid loading entire binary in memory
-                req = client.build_request("GET", url, params=params)
-                resp = await client.send(req, stream=True)
-                return StreamingResponse(
-                    resp.aiter_bytes(),
-                    status_code=resp.status_code,
-                    headers={
-                        "Content-Type": resp.headers.get("Content-Type", "image/jpeg"),
-                        "Cache-Control": resp.headers.get("Cache-Control", "public, max-age=86400")
-                    }
-                )
+                async with telemetry.track(
+                    "google_maps", operation, sku=sku, params=params
+                ) as t:
+                    # Stream image bytes to avoid loading entire binary in memory
+                    req = client.build_request("GET", url, params=params)
+                    resp = await client.send(req, stream=True)
+                    t.upstream(resp)
+                    return StreamingResponse(
+                        resp.aiter_bytes(),
+                        status_code=resp.status_code,
+                        headers={
+                            "Content-Type": resp.headers.get("Content-Type", "image/jpeg"),
+                            "Cache-Control": resp.headers.get("Cache-Control", "public, max-age=86400")
+                        }
+                    )
             else:
-                resp = await client.get(url, params=params, timeout=30.0)
-                return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+                async with telemetry.track(
+                    "google_maps", operation, sku=sku, params=params
+                ) as t:
+                    resp = await client.get(url, params=params, timeout=30.0)
+                    t.upstream(resp)
+                    return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+        except HTTPException:
+            raise
         except Exception as e:
             raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
 
