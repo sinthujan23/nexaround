@@ -63,12 +63,14 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
   void _initVideo() {
     _videoController = VideoPlayerController.asset(
       'assets/animations/museum_banner.mp4',
-    )..initialize().then((_) {
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    )..setVolume(0.0)
+     ..initialize().then((_) {
         if (mounted) {
-          setState(() {});
           _videoController?.setLooping(true);
           _videoController?.setVolume(0.0);
           _videoController?.play();
+          setState(() {});
         }
       });
   }
@@ -250,7 +252,7 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       scrollDirection: Axis.horizontal,
                       itemCount: _countries.length + 1,
-                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      separatorBuilder: (context, index) => const SizedBox(width: 8),
                       itemBuilder: (context, index) {
                         if (index == 0) {
                           final isSelected = _selectedCountry == null;
@@ -423,7 +425,7 @@ class _MuseumCard extends StatelessWidget {
                           ? CachedNetworkImage(
                               imageUrl: _effectiveImageUrl!,
                               fit: BoxFit.cover,
-                              placeholder: (_, __) => Container(
+                              placeholder: (context, url) => Container(
                                 color: AppColors.surface,
                                 child: const Center(
                                   child: SizedBox(

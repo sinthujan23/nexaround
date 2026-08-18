@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
+import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 
 /// The bell inbox: lists notifications received via FCM. Tapping an
-/// "odyssey_ready" item jumps directly to the exact Odyssey plan. Opening the page marks
+/// "odyssey_ready" or "discovery_ready" item jumps directly to the exact plan. Opening the page marks
 /// everything read.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -53,6 +54,31 @@ class _NotificationsPageState extends State<NotificationsPage> {
           HomePage.homeKey.currentState?.switchToPlans();
         }
       }
+    } else if (type == 'discovery_ready' || type.contains('discovery')) {
+      Navigator.pop(context);
+      final discoveryId = (data['discovery_id'] ?? data['id'] ?? n['discovery_id'] ?? n['id'])?.toString();
+      try {
+        final history = await DiscoveryHistoryService.fetchHistory();
+        Map<String, dynamic>? target;
+        if (discoveryId != null && discoveryId.isNotEmpty) {
+          for (final item in history) {
+            if (item['id']?.toString() == discoveryId) {
+              target = item;
+              break;
+            }
+          }
+        }
+        target ??= history.isNotEmpty ? history.first : null;
+        if (target != null) {
+          final res = target['result'] as String?;
+          final loc = target['location'] as String?;
+          if (res != null && res.isNotEmpty) {
+            HomePage.homeKey.currentState?.openDiscoveryPlan(res, location: loc);
+          }
+        }
+      } catch (e) {
+        debugPrint('Error opening discovery plan from inbox notification: $e');
+      }
     }
   }
 
@@ -76,6 +102,8 @@ class _NotificationsPageState extends State<NotificationsPage> {
     switch (type) {
       case 'odyssey_ready':
         return Icons.auto_awesome_rounded;
+      case 'discovery_ready':
+        return Icons.explore_rounded;
       default:
         return Icons.notifications_rounded;
     }
@@ -120,7 +148,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           : ListView.separated(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
               itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              separatorBuilder: (context, index) => const SizedBox(height: 10),
               itemBuilder: (context, i) => _tile(items[i]),
             ),
     );

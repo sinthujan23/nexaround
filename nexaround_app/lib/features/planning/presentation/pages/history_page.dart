@@ -20,18 +20,16 @@ class HistoryPage extends StatefulWidget {
 class _HistoryPageState extends State<HistoryPage> {
   final _repo = OdysseyRepository();
   final _miniRepo = MiniTourRepository();
-  bool _loading = true;
   List<Odyssey> _completedTrips = const [];
   List<Map<String, dynamic>> _miniTours = const [];
 
   @override
   void initState() {
     super.initState();
-    // Render the last cached list instantly; the network refresh updates it.
+    // Render the last cached list instantly; the network refresh updates it in background.
     final cached = _repo.getCachedOdysseys();
     _completedTrips = cached.where((o) => o.status == 'completed').toList();
     _miniTours = CacheService.getMiniTourHistory();
-    _loading = _completedTrips.isEmpty && _miniTours.isEmpty;
     
     _load();
     OdysseyRepository.revision.addListener(_load);
@@ -52,10 +50,12 @@ class _HistoryPageState extends State<HistoryPage> {
     try {
       final list = await _repo.getMyOdysseys();
       if (mounted) {
-        _completedTrips = list.where((o) => o.status == 'completed').toList();
+        setState(() {
+          _completedTrips = list.where((o) => o.status == 'completed').toList();
+        });
       }
     } catch (_) {
-      // Keep whatever we already have.
+      // Keep whatever we already have from cache.
     }
 
     // Mini tours: backend first, then merge any local-only (offline) records.
@@ -68,6 +68,8 @@ class _HistoryPageState extends State<HistoryPage> {
         ...backend,
         ...local.where((l) => !seen.contains(l['id'] ?? l['date'])),
       ]..sort((a, b) => _dateOf(b).compareTo(_dateOf(a)));
+      // Persist permanently to local cache for instant future loads
+      CacheService.cacheMiniTourHistory(tours);
     } catch (_) {
       tours = CacheService.getMiniTourHistory();
     }
@@ -95,7 +97,6 @@ class _HistoryPageState extends State<HistoryPage> {
     if (!mounted) return;
     setState(() {
       _miniTours = tours;
-      _loading = false;
     });
   }
 
@@ -135,29 +136,30 @@ class _HistoryPageState extends State<HistoryPage> {
         ),
         centerTitle: true,
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-                children: [
-                  _sectionHeader('COMPLETED ODYSSEYS', _completedTrips.length),
-                  const SizedBox(height: 10),
-                  if (_completedTrips.isEmpty)
-                    _emptyCard('No completed Odyssey trips yet.')
-                  else
-                    ..._completedTrips.map(_odysseyCard),
-                  const SizedBox(height: 28),
-                  _sectionHeader('MINI TOURS', _miniTours.length),
-                  const SizedBox(height: 10),
-                  if (_miniTours.isEmpty)
-                    _emptyCard('No mini tours recorded yet.')
-                  else
-                    ..._miniTours.map(_miniTourCard),
-                ],
-              ),
-            ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(
+            parent: BouncingScrollPhysics(),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+          children: [
+            _sectionHeader('COMPLETED ODYSSEYS', _completedTrips.length),
+            const SizedBox(height: 10),
+            if (_completedTrips.isEmpty)
+              _emptyCard('No completed Odyssey trips yet.')
+            else
+              ..._completedTrips.map(_odysseyCard),
+            const SizedBox(height: 28),
+            _sectionHeader('MINI TOURS', _miniTours.length),
+            const SizedBox(height: 10),
+            if (_miniTours.isEmpty)
+              _emptyCard('No mini tours recorded yet.')
+            else
+              ..._miniTours.map(_miniTourCard),
+          ],
+        ),
+      ),
     );
   }
 
@@ -217,6 +219,10 @@ class _HistoryPageState extends State<HistoryPage> {
             ? '${o.destination} · ${o.actualDays} ${o.actualDays == 1 ? 'Day' : 'Days'} · '
             : '${o.actualDays} ${o.actualDays == 1 ? 'Day' : 'Days'} · ');
 
+    final int total = o.totalActivities;
+    final int done = o.visitedActivities;
+    final double pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 1.0;
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -232,42 +238,92 @@ class _HistoryPageState extends State<HistoryPage> {
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.black12),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppColors.brandGreen.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.flight_takeoff_rounded,
-                  color: AppColors.brandGreen, size: 22),
+            Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.brandGreen.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.flight_takeoff_rounded,
+                      color: AppColors.brandGreen, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        o.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$prefixText${o.currency} ${formatAmount(o.budget)}',
+                        style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 14, color: Colors.black38),
+              ],
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            if (total > 0) ...[
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    o.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    done == total ? 'All $total stops completed 🎉' : '$done / $total stops visited',
                     style: const TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.brandGreen,
                     ),
                   ),
-                  const SizedBox(height: 2),
                   Text(
-                    '$prefixText${o.currency} ${formatAmount(o.budget)}',
-                    style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                    '${(pct * 100).toInt()}%',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.brandGreen,
+                    ),
                   ),
                 ],
               ),
-            ),
-            const Icon(Icons.arrow_forward_ios_rounded,
-                size: 14, color: Colors.black38),
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 5,
+                  width: double.infinity,
+                  color: const Color(0xFFE2E8F0),
+                  child: FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: pct,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF00E5FF), Color(0xFF007A7C)],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

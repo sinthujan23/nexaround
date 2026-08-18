@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_plan_view.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 
 /// Read-only view of a saved Odyssey, with the option to delete it.
 class OdysseyDetailPage extends StatefulWidget {
@@ -331,29 +334,233 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   }
 
   void _celebrate() {
+    final destination = _odyssey.destination.isNotEmpty
+        ? _odyssey.destination
+        : _odyssey.title;
+    final totalStops = _odyssey.totalActivities;
+    final totalDays = _odyssey.days;
+    final earnedXp = totalStops * 15;
+
+    // Bump explorer XP
+    CacheService.addExploration(placesVisited: totalStops, xp: earnedXp);
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Trip Complete! 🎉'),
-        content: const Text(
-          'Every stop is ticked off. This Odyssey has moved to your History.',
+      barrierDismissible: false,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E293B),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: AppColors.primary.withValues(alpha: 0.35),
+              width: 1.2,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.25),
+                blurRadius: 32,
+                spreadRadius: 2,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Glowing Trophy Icon Badge with pulse animation
+              Container(
+                width: 76,
+                height: 76,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFFFD700), Color(0xFFFF9100)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFFD700).withValues(alpha: 0.45),
+                      blurRadius: 20,
+                      spreadRadius: 4,
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Text('🏆', style: TextStyle(fontSize: 38)),
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat(reverse: true))
+                  .scale(
+                    begin: const Offset(1.0, 1.0),
+                    end: const Offset(1.08, 1.08),
+                    duration: 1200.ms,
+                    curve: Curves.easeInOut,
+                  ),
+              const SizedBox(height: 18),
+
+              // Title
+              const Text(
+                'You Did It, Explorer! 🎉',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: -0.5,
+                ),
+                textAlign: TextAlign.center,
+              ).animate().fade().slideY(begin: 0.2, curve: Curves.easeOutQuad),
+              const SizedBox(height: 10),
+
+              // Engaging sentence
+              Text(
+                'Incredible journey! You conquered every stop in $destination. Your adventure is permanently recorded in your Travel History.',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w400,
+                  color: Color(0xFFCBD5E1),
+                  height: 1.45,
+                ),
+                textAlign: TextAlign.center,
+              ).animate().fade(delay: 150.ms),
+              const SizedBox(height: 20),
+
+              // Summary Stats Chips
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.08),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildCelebrateStat('📍', '$totalStops', 'Stops Visited'),
+                    Container(width: 1, height: 28, color: Colors.white12),
+                    _buildCelebrateStat('⏱️', '$totalDays', 'Days Complete'),
+                    Container(width: 1, height: 28, color: Colors.white12),
+                    _buildCelebrateStat('⭐', '+$earnedXp', 'Explorer XP'),
+                  ],
+                ),
+              ).animate().fade(delay: 250.ms).scale(begin: const Offset(0.95, 0.95)),
+              const SizedBox(height: 24),
+
+              // Primary Action: View in Travel History
+              SizedBox(
+                width: double.infinity,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF00E5FF), Color(0xFF007A7C)],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF00E5FF).withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const HistoryPage()),
+                      );
+                    },
+                    child: const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.map_rounded, color: Colors.black, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'View in Travel History',
+                          style: TextStyle(
+                            color: Colors.black,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ).animate().fade(delay: 350.ms).slideY(begin: 0.1),
+              const SizedBox(height: 10),
+
+              // Secondary Action: Stay on plan
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text(
+                    'Stay on Plan',
+                    style: TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Keep viewing'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.black),
-            onPressed: () {
-              Navigator.pop(ctx);
-              Navigator.pop(context, true);
-            },
-            child: const Text('Done'),
-          ),
-        ],
       ),
+    );
+  }
+
+  Widget _buildCelebrateStat(String emoji, String value, String label) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 13)),
+            const SizedBox(width: 4),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF94A3B8),
+          ),
+        ),
+      ],
     );
   }
 

@@ -41,6 +41,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
 
   int _currentImageIndex = 0;
   Timer? _storyTimer;
+  bool _isPaused = false;
 
   @override
   void initState() {
@@ -52,14 +53,25 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
 
   void _startStoryTimer() {
     _storyTimer?.cancel();
+    if (_isPaused) return;
     _storyTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      if (!mounted) return;
+      if (!mounted || _isPaused) return;
       _goToNext();
     });
   }
 
+  void _pauseTimer() {
+    _isPaused = true;
+    _storyTimer?.cancel();
+  }
+
+  void _resumeTimer() {
+    _isPaused = false;
+    _startStoryTimer();
+  }
+
   void _goToNext() {
-    if (widget.stories.isEmpty) return;
+    if (_isPaused || !mounted || widget.stories.isEmpty) return;
     final story = widget.stories[_currentIndex];
     final imageCount = story.imageUrls.isNotEmpty ? story.imageUrls.length : 1;
     
@@ -80,6 +92,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   }
 
   void _goToPrevious() {
+    if (_isPaused || !mounted) return;
     if (_currentImageIndex > 0) {
       setState(() {
         _currentImageIndex--;
@@ -128,26 +141,26 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
-        placeholder: (_, __) => Container(
+        placeholder: (context, val) => Container(
           color: Colors.white10,
           child: const Center(
             child: CircularProgressIndicator(color: Colors.white),
           ),
         ),
-        errorWidget: (_, __, ___) => Container(color: Colors.white10),
+        errorWidget: (context, val, error) => Container(color: Colors.white10),
       );
     } else if (url.startsWith('/static/')) {
       final fullUrl = '${ApiConstants.baseUrl}$url';
       return CachedNetworkImage(
         imageUrl: fullUrl,
         fit: BoxFit.cover,
-        placeholder: (_, __) => Container(
+        placeholder: (context, val) => Container(
           color: Colors.white10,
           child: const Center(
             child: CircularProgressIndicator(color: Colors.white),
           ),
         ),
-        errorWidget: (_, __, ___) => Container(color: Colors.white10),
+        errorWidget: (context, val, error) => Container(color: Colors.white10),
       );
     } else {
       final file = File(url);
@@ -155,20 +168,20 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         return Image.file(
           file,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(color: Colors.white10),
+          errorBuilder: (context, error, stackTrace) => Container(color: Colors.white10),
         );
       } else {
         final fullUrl = url.startsWith('/') ? '${ApiConstants.baseUrl}$url' : url;
         return CachedNetworkImage(
           imageUrl: fullUrl,
           fit: BoxFit.cover,
-          placeholder: (_, __) => Container(
+          placeholder: (context, val) => Container(
             color: Colors.white10,
             child: const Center(
               child: CircularProgressIndicator(color: Colors.white),
             ),
           ),
-          errorWidget: (_, __, ___) => Container(color: Colors.white10),
+          errorWidget: (context, val, error) => Container(color: Colors.white10),
         );
       }
     }
@@ -178,13 +191,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     final text = _commentController.text.trim();
     if (text.isEmpty) return;
 
+    final authBloc = context.read<AuthBloc>();
     setState(() {
       _isSendingComment = true;
     });
 
     try {
       await TravelStoriesService().addComment(story.id, text, _currentImageIndex);
-      final authState = context.read<AuthBloc>().state;
+      final authState = authBloc.state;
       String author = 'You';
       if (authState is AuthAuthenticated) {
         author = authState.user.displayName;
@@ -222,6 +236,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
   }
 
   void _showCommentsDialog(TravelStory story) {
+    _pauseTimer();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -236,10 +251,15 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
           },
         );
       },
-    );
+    ).then((_) {
+      if (mounted) {
+        _resumeTimer();
+      }
+    });
   }
 
   void _editCurrentStory() {
+    _pauseTimer();
     final story = widget.stories[_currentIndex];
     showModalBottomSheet(
       context: context,
@@ -247,7 +267,6 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        final authState = BlocProvider.of<AuthBloc>(context).state;
         double lat = 6.9271;
         double lng = 79.8612;
         return PostStorySheet(
@@ -272,10 +291,15 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
           },
         );
       },
-    );
+    ).then((_) {
+      if (mounted) {
+        _resumeTimer();
+      }
+    });
   }
 
   Future<void> _deleteCurrentStory() async {
+    _pauseTimer();
     final story = widget.stories[_currentIndex];
     final confirmed = await showDialog<bool>(
       context: context,
@@ -300,7 +324,10 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       ),
     );
 
-    if (confirmed != true || !mounted) return;
+    if (confirmed != true || !mounted) {
+      if (mounted) _resumeTimer();
+      return;
+    }
 
     setState(() => _isDeletingStory = true);
     try {
@@ -379,7 +406,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                   ),
                 ),
                 child: Container(
-                  color: Colors.black.withOpacity(0.6),
+                  color: Colors.black.withValues(alpha: 0.6),
                 ),
               ),
             ),
@@ -408,7 +435,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                     ? Colors.white
                                     : isActive
                                         ? Colors.white
-                                        : Colors.white.withOpacity(0.25),
+                                        : Colors.white.withValues(alpha: 0.25),
                                 borderRadius: BorderRadius.circular(2),
                               ),
                             ),
@@ -550,7 +577,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                   borderRadius: BorderRadius.circular(20),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.35),
+                                      color: Colors.black.withValues(alpha: 0.35),
                                       blurRadius: 24,
                                       offset: const Offset(0, 8),
                                     ),
@@ -570,6 +597,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                         width: MediaQuery.of(context).size.width * 0.35,
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
+                                          onTapDown: (_) => _pauseTimer(),
+                                          onTapUp: (_) => _resumeTimer(),
+                                          onTapCancel: () => _resumeTimer(),
                                           onTap: _goToPrevious,
                                           child: Container(color: Colors.transparent),
                                         ),
@@ -582,6 +612,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                         left: MediaQuery.of(context).size.width * 0.35,
                                         child: GestureDetector(
                                           behavior: HitTestBehavior.opaque,
+                                          onTapDown: (_) => _pauseTimer(),
+                                          onTapUp: (_) => _resumeTimer(),
+                                          onTapCancel: () => _resumeTimer(),
                                           onTap: _goToNext,
                                           child: Container(color: Colors.transparent),
                                         ),
@@ -596,7 +629,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                                             child: Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                              color: Colors.black.withOpacity(0.4),
+                                              color: Colors.black.withValues(alpha: 0.4),
                                               child: Text(
                                                 story.category,
                                                 style: TextStyle(
@@ -635,9 +668,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                                               child: Container(
                                                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                                 decoration: BoxDecoration(
-                                                  color: Colors.black.withOpacity(0.3),
+                                                  color: Colors.black.withValues(alpha: 0.3),
                                                   borderRadius: BorderRadius.circular(20),
-                                                  border: Border.all(color: Colors.white.withOpacity(0.2)),
+                                                  border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                                                 ),
                                                 child: Row(
                                                   mainAxisSize: MainAxisSize.min,
@@ -673,7 +706,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                             Container(
                               padding: const EdgeInsets.all(16),
                               decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.08),
+                                color: Colors.white.withValues(alpha: 0.08),
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(color: Colors.white12),
                               ),
@@ -832,7 +865,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                       Expanded(
                         child: Container(
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(24),
                             border: Border.all(color: Colors.white12),
                           ),
@@ -841,7 +874,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
                             style: const TextStyle(color: Colors.white, fontSize: 13.5),
                             decoration: InputDecoration(
                               hintText: 'Add a comment...',
-                              hintStyle: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 13.5),
+                              hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 13.5),
                               contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                               border: InputBorder.none,
                             ),

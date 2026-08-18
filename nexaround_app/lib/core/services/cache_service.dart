@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/features/auth/domain/entities/user.dart';
+import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 
 class CacheService {
   static SharedPreferences? _prefsOrNull;
@@ -10,6 +11,10 @@ class CacheService {
   /// Clear all user-specific cached data upon user logout or switching accounts
   static Future<void> clearUserData() async {
     if (_prefsOrNull == null) return;
+    await _prefs.remove('access_token');
+    await _prefs.remove('refresh_token');
+    await _prefs.remove('is_logged_in');
+    await _prefs.remove('cached_user_profile_json');
     await _prefs.remove('saved_places_data');
     await _prefs.remove('favorite_places_data');
     await _prefs.remove('user_preferences_json');
@@ -26,10 +31,37 @@ class CacheService {
     notificationsNotifier.value++;
   }
 
+  // ── User Profile Cache ─────────────────────────────────────────────
+  static Future<void> saveCachedUser(UserEntity user) async {
+    if (_prefsOrNull == null) return;
+    final Map<String, dynamic> userMap = {
+      'id': user.id,
+      'email': user.email,
+      'display_name': user.displayName,
+      'avatar_url': user.avatarUrl,
+      'preferences': user.preferences,
+      'language': user.language,
+      'is_active': user.isActive,
+      'is_verified': user.isVerified,
+      'created_at': user.createdAt.toIso8601String(),
+    };
+    await _prefs.setString('cached_user_profile_json', json.encode(userMap));
+  }
+
+  static UserEntity? getCachedUser() {
+    if (_prefsOrNull == null) return null;
+    final str = _prefs.getString('cached_user_profile_json');
+    if (str == null || str.isEmpty) return null;
+    try {
+      final decoded = json.decode(str) as Map<String, dynamic>;
+      return UserModel.fromJson(decoded);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Hydrate local CacheService state from authenticated User Entity
   static Future<void> loadUserPreferences(UserEntity user) async {
-    await clearUserData();
-
     final prefsMap = Map<String, dynamic>.from(user.preferences);
     await saveUserPreferences(prefsMap);
 
@@ -424,6 +456,13 @@ class CacheService {
         })
         .where((m) => m.isNotEmpty)
         .toList();
+  }
+
+  static Future<void> cacheMiniTourHistory(List<Map<String, dynamic>> tours) async {
+    await _prefs.setStringList(
+      'mini_tour_history',
+      tours.map((e) => json.encode(e)).toList(),
+    );
   }
 
   // ── Odyssey list cache ─────────────────────────────────────────────────

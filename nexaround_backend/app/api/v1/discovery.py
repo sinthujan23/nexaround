@@ -48,7 +48,12 @@ async def create_discovery_history(
                 tokens,
                 title="✨ Neva Discovery Ready",
                 body=f"Your itinerary for {data.location} is ready!",
-                data={"type": "discovery_ready"},
+                data={
+                    "type": "discovery_ready",
+                    "id": str(saved_item.id),
+                    "discovery_id": str(saved_item.id),
+                    "location": data.location,
+                },
             )
     except Exception as e:
         # Ignore push notification failure so it doesn't block the history saving flow
@@ -153,7 +158,12 @@ async def _run_discovery_generation(
                         tokens=tokens,
                         title="✨ Neva Discovery Ready",
                         body=f"Your itinerary for {data.location} is ready!",
-                        data={"type": "discovery_ready"},
+                        data={
+                            "type": "discovery_ready",
+                            "id": str(saved.id),
+                            "discovery_id": str(saved.id),
+                            "location": data.location,
+                        },
                     )
                 else:
                     logger.warning(f"Discovery ready but user {user_id} has no device tokens")

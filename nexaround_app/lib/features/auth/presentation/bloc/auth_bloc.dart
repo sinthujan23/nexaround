@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/features/auth/domain/repositories/auth_repository.dart';
@@ -8,6 +9,7 @@ import 'package:nexaround_app/core/services/social_auth_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/features/auth/data/models/user_model.dart';
+import 'package:nexaround_app/core/error/failures.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -30,6 +32,8 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
 
   Future<UserEntity> _loadAndSyncUserPrefs(UserEntity user) async {
     await CacheService.loadUserPreferences(user);
+    await CacheService.saveCachedUser(user);
+    await CacheService.setLoggedIn(true);
 
     // Retry fetching public SDK keys (Mapbox, Google Maps) if they weren't
     // applied during startup (e.g. backend was cold-starting or network was
@@ -178,37 +182,87 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     final loggedIn = await _authRepository.isLoggedIn();
     if (loggedIn) {
+      final cachedUser = CacheService.getCachedUser();
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('access_token') ?? '';
+
       final result = await _authRepository.getCurrentUser();
       if (result.isRight()) {
         final user = result.getOrElse(() => throw Exception());
         final syncedUser = await _loadAndSyncUserPrefs(user);
         emit(AuthAuthenticated(
           user: syncedUser,
-          accessToken: '',
+          accessToken: token,
         ));
       } else {
-        // Access token expired (>1 hour) — attempt automatic refresh via 30-day refresh_token!
+        final failure = result.fold((l) => l, (r) => throw Exception());
+
+        // Device is offline / connection error — DO NOT LOG OUT!
+        if (failure is NetworkFailure) {
+          if (cachedUser != null) {
+            final syncedUser = await _loadAndSyncUserPrefs(cachedUser);
+            debugPrint('📶 Session: Device is offline. Preserving authenticated session from cache.');
+            emit(AuthAuthenticated(
+              user: syncedUser,
+              accessToken: token,
+            ));
+            return;
+          } else {
+            // Fallback user if token exists but cached user object was not saved
+            final prefsMap = CacheService.getUserPreferences();
+            final fallbackUser = UserModel(
+              id: 'offline_user',
+              email: '',
+              displayName: 'Explorer',
+              preferences: prefsMap,
+              createdAt: DateTime.now(),
+            );
+            await CacheService.saveCachedUser(fallbackUser);
+            debugPrint('📶 Session: Device is offline. Using fallback user session.');
+            emit(AuthAuthenticated(
+              user: fallbackUser,
+              accessToken: token,
+            ));
+            return;
+          }
+        }
+
+        // Access token expired (>1 hour) on server — attempt automatic refresh via 30-day refresh_token!
         try {
-          final prefs = await SharedPreferences.getInstance();
           final refreshToken = prefs.getString('refresh_token');
           if (refreshToken != null && refreshToken.isNotEmpty) {
             final refreshResult = await _authRepository.refreshToken(refreshToken);
             if (refreshResult.isRight()) {
               final tokens = refreshResult.getOrElse(() => throw Exception());
               final syncedUser = await _loadAndSyncUserPrefs(tokens.user);
-              print('🔄 Session: Auto-refreshed session on app startup');
+              debugPrint('🔄 Session: Auto-refreshed session on app startup');
               emit(AuthAuthenticated(
                 user: syncedUser,
                 accessToken: tokens.accessToken,
               ));
               return;
+            } else {
+              final refreshFailure = refreshResult.fold((l) => l, (r) => throw Exception());
+              if (refreshFailure is NetworkFailure) {
+                // Refresh failed due to offline / network — KEEP USER LOGGED IN!
+                if (cachedUser != null) {
+                  final syncedUser = await _loadAndSyncUserPrefs(cachedUser);
+                  debugPrint('📶 Session: Offline refresh error. Preserving cached session.');
+                  emit(AuthAuthenticated(
+                    user: syncedUser,
+                    accessToken: token,
+                  ));
+                  return;
+                }
+              }
             }
           }
         } catch (e) {
-          print('⚠️ Session: Startup token refresh failed: $e');
+          debugPrint('⚠️ Session: Startup token refresh failed: $e');
         }
 
-        // Both access token and refresh token expired / invalid — log out
+        // Only log out if both tokens are truly rejected/invalid on server
+        debugPrint('🔒 Session: Token invalid or session expired. Logging out.');
         await _authRepository.logout();
         emit(const AuthUnauthenticated());
       }

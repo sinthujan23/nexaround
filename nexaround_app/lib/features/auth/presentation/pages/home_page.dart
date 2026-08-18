@@ -1,10 +1,8 @@
 import 'dart:ui';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
-import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/living_map_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/features/ai_companion/presentation/pages/ai_chat_page.dart';
@@ -12,17 +10,12 @@ import 'package:nexaround_app/features/food_radar/presentation/pages/discover_pa
 import 'package:nexaround_app/features/profile/presentation/pages/profile_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/my_odysseys_page.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
-import 'package:nexaround_app/features/budget/presentation/bloc/budget_event.dart';
-import 'package:nexaround_app/features/budget/data/repositories/budget_repository_impl.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
@@ -30,10 +23,11 @@ import 'package:nexaround_app/features/onboarding/presentation/pages/splash_scre
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
-  HomePage() : super(key: homeKey);
+  const HomePage({super.key});
 
   @override
   State<HomePage> createState() => HomePageState();
@@ -77,17 +71,49 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         }
       }
       if (data['type'] == 'story_comment') switchToExplore();
-      if (data['type'] == 'discovery_ready') {
+      if (type == 'discovery_ready' || data['type'] == 'discovery_ready') {
+        final discoveryId = (data['discovery_id'] ?? data['id'])?.toString();
         switchToExplore();
-        final history = await DiscoveryHistoryService.fetchHistory();
-        if (history.isNotEmpty) {
-          final latest = history.first;
-          CacheService.discoveryResultNotifier.value = latest['result'] as String?;
-          CacheService.isDiscoveringNotifier.value = false;
+        CacheService.isDiscoveringNotifier.value = false;
+        try {
+          final history = await DiscoveryHistoryService.fetchHistory();
+          Map<String, dynamic>? target;
+          if (discoveryId != null && discoveryId.isNotEmpty) {
+            for (final item in history) {
+              if (item['id']?.toString() == discoveryId) {
+                target = item;
+                break;
+              }
+            }
+          }
+          target ??= history.isNotEmpty ? history.first : null;
+          if (target != null && mounted) {
+            final res = target['result'] as String?;
+            final loc = target['location'] as String?;
+            if (res != null && res.isNotEmpty) {
+              openDiscoveryPlan(res, location: loc);
+            }
+          }
+        } catch (e) {
+          debugPrint('Error opening discovery plan from push: $e');
         }
       }
     };
     NotificationService.instance.syncToken();
+  }
+
+  void openDiscoveryPlan(String result, {String? location}) {
+    switchToExplore();
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => DiscoveryEngineSheet(
+        locationName: location ?? '',
+        initialResult: result,
+      ),
+    );
   }
 
   void openOdysseyDetail(Odyssey odyssey) {
@@ -282,7 +308,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.92),
+              color: Colors.white.withValues(alpha: 0.92),
               borderRadius: BorderRadius.circular(26),
               border: Border.all(color: AppColors.glassBorder, width: 0.6),
             ),
@@ -321,7 +347,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           boxShadow: isActive
               ? [
                   BoxShadow(
-                    color: AppColors.primary.withOpacity(0.18),
+                    color: AppColors.primary.withValues(alpha: 0.18),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                     spreadRadius: -4,

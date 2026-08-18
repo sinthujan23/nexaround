@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -9,7 +8,6 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
 import 'dart:convert';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
@@ -19,6 +17,8 @@ import 'package:nexaround_app/features/attractions/presentation/pages/attraction
 import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
+import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -28,6 +28,41 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
+  final OdysseyRepository _odysseyRepo = OdysseyRepository();
+  int _completedTripsCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTripsCount();
+    OdysseyRepository.revision.addListener(_fetchTripsCount);
+    CacheService.historyNotifier.addListener(_fetchTripsCount);
+  }
+
+  @override
+  void dispose() {
+    OdysseyRepository.revision.removeListener(_fetchTripsCount);
+    CacheService.historyNotifier.removeListener(_fetchTripsCount);
+    super.dispose();
+  }
+
+  void _loadTripsCount() {
+    final cached = _odysseyRepo.getCachedOdysseys();
+    _completedTripsCount = cached.where((o) => o.status == 'completed').length;
+    _fetchTripsCount();
+  }
+
+  Future<void> _fetchTripsCount() async {
+    try {
+      final list = await _odysseyRepo.getMyOdysseys();
+      if (mounted) {
+        setState(() {
+          _completedTripsCount = list.where((o) => o.status == 'completed').length;
+        });
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<AuthBloc, AuthState>(
@@ -43,20 +78,20 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     // Header
                     _buildProfileHeader(context, user),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
 
-                    // Stats row
+                    // Stats row (Trips Completed & Favourite Places)
                     _buildStatsRow(),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 20),
 
                     // Travel Journal Card
                     _buildJournalCard(context),
-                    const SizedBox(height: 28),
+                    const SizedBox(height: 24),
 
                     // Favourite Places
                     ValueListenableBuilder<int>(
                       valueListenable: CacheService.favoritePlacesNotifier,
-                      builder: (context, _, __) {
+                      builder: (context, value, child) {
                         return _buildSection('Favourite Places', Icons.favorite_rounded, [
                           if (CacheService.getFavoritePlaceJsons().isEmpty)
                             const Padding(
@@ -155,7 +190,7 @@ class _ProfilePageState extends State<ProfilePage> {
             gradient: AppColors.achievementGradient,
             boxShadow: [
               BoxShadow(
-                color: AppColors.warning.withOpacity(0.4),
+                color: AppColors.warning.withValues(alpha: 0.4),
                 blurRadius: 15,
                 offset: const Offset(0, 4),
               ),
@@ -163,7 +198,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           child: ValueListenableBuilder<int>(
             valueListenable: CacheService.statsNotifier,
-            builder: (context, _, __) => Row(
+            builder: (context, value, child) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.diamond_rounded, color: Colors.black, size: 14),
@@ -187,46 +222,91 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Widget _buildStatsRow() {
     return ValueListenableBuilder<int>(
-      valueListenable: CacheService.statsNotifier,
-      builder: (context, _, __) {
-        final visited = CacheService.getPlacesVisited();
+      valueListenable: CacheService.favoritePlacesNotifier,
+      builder: (context, value, child) {
+        final favCount = CacheService.getFavoritePlaceJsons().length;
         return Row(
           children: [
-            _buildStat('$visited', 'Places\nVisited', AppColors.primary),
-            const SizedBox(width: 10),
-            _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
-            const SizedBox(width: 10),
-            ValueListenableBuilder<int>(
-              valueListenable: CacheService.favoritePlacesNotifier,
-              builder: (context, _, __) {
-                final favCount = CacheService.getFavoritePlaceJsons().length;
-                return _buildStat('$favCount', 'Favourite\nPlaces', const Color(0xFFFF2D55));
+            _buildStat(
+              '$_completedTripsCount',
+              'Trips Completed',
+              AppColors.primary,
+              icon: Icons.flight_takeoff_rounded,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const HistoryPage()),
+                );
               },
             ),
-            const SizedBox(width: 10),
-            _buildStat('--', 'Avg\nRating', AppColors.warning),
+            const SizedBox(width: 12),
+            _buildStat(
+              '$favCount',
+              'Favourite Places',
+              const Color(0xFFFF2D55),
+              icon: Icons.favorite_rounded,
+            ),
           ],
         );
       },
     ).animate().fade(delay: 300.ms);
   }
 
-  Widget _buildStat(String value, String label, Color color) {
+  Widget _buildStat(
+    String value,
+    String label,
+    Color color, {
+    IconData? icon,
+    VoidCallback? onTap,
+  }) {
     return Expanded(
       child: GlassCard(
-        padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
         glowColor: color,
-        child: Column(
+        borderRadius: BorderRadius.circular(16),
+        child: Row(
           children: [
-            Text(
-              value,
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: color),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              label,
-              style: const TextStyle(fontSize: 10, color: AppColors.textTertiary, height: 1.3),
-              textAlign: TextAlign.center,
+            if (icon != null) ...[
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+              const SizedBox(width: 10),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: color,
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                      height: 1.1,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -437,7 +517,7 @@ class _ProfilePageState extends State<ProfilePage> {
           child: Container(
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.error.withOpacity(0.3)),
+              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
             ),
             child: TextButton.icon(
               onPressed: () {
@@ -487,7 +567,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     height: 4,
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
-                      color: AppColors.textMuted.withOpacity(0.3),
+                      color: AppColors.textMuted.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
@@ -552,7 +632,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                 width: 44,
                                 height: 44,
                                 decoration: BoxDecoration(
-                                  color: isSelected ? AppColors.primary.withOpacity(0.1) : AppColors.surfaceVariant,
+                                  color: isSelected ? AppColors.primary.withValues(alpha: 0.1) : AppColors.surfaceVariant,
                                   shape: BoxShape.circle,
                                 ),
                                 child: Center(
@@ -649,7 +729,7 @@ class _ProfilePageState extends State<ProfilePage> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.08),
+              color: Colors.black.withValues(alpha: 0.08),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -662,7 +742,7 @@ class _ProfilePageState extends State<ProfilePage> {
               height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.12),
+                color: Colors.white.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Text('📖', style: TextStyle(fontSize: 24)),

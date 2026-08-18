@@ -1,20 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/app/theme/app_dimensions.dart';
-import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
-import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
-import 'package:nexaround_app/core/services/currency_service.dart';
-// PlaceVerifierService import removed — backend already handles hallucination
-// verification in discovery_ai_service.py, so client-side verification was
-// dead code that would cause duplicate Google API billing if ever invoked.
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 
@@ -49,7 +39,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   late String _currentLocationName;
   double? _currentLatitude;
   double? _currentLongitude;
-  String? _currentDistrict;
   String _selectedWeather = '🌧️ Rainy';
 
   @override
@@ -58,7 +47,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     _currentLocationName = widget.locationName;
     _currentLatitude = widget.latitude;
     _currentLongitude = widget.longitude;
-    _currentDistrict = widget.district;
 
     if (widget.initialResult != null) {
       _sheetState = SheetState.result;
@@ -107,43 +95,54 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isResult = _sheetState == SheetState.result;
+
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.9,
+        maxHeight: isResult
+            ? MediaQuery.of(context).size.height
+            : MediaQuery.of(context).size.height * 0.92,
       ),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(24),
-          topRight: Radius.circular(24),
-        ),
+        borderRadius: isResult
+            ? BorderRadius.zero
+            : const BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+              ),
       ),
-      child: Stack(
-        children: [
-          if (_sheetState == SheetState.input)
-            _buildInputView()
-          else if (_sheetState == SheetState.loading)
-            _buildLoadingView()
-          else if (_sheetState == SheetState.result)
-            _buildResultView(),
-            
-          // Close button bar
-          Positioned(
-            top: 10,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppColors.textSecondary.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
+      child: SafeArea(
+        top: isResult,
+        bottom: false,
+        child: Stack(
+          children: [
+            if (_sheetState == SheetState.input)
+              _buildInputView()
+            else if (_sheetState == SheetState.loading)
+              _buildLoadingView()
+            else if (_sheetState == SheetState.result)
+              _buildResultView(),
+              
+            // Close / drag handle on input and loading sheets
+            if (!isResult)
+              Positioned(
+                top: 10,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppColors.textSecondary.withValues(alpha: 0.3),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     ).animate().slideY(begin: 1, end: 0, duration: 400.ms, curve: Curves.easeOutCubic);
   }
@@ -199,7 +198,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               color: AppColors.background,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.textPrimary.withOpacity(0.05),
+                  color: AppColors.textPrimary.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
@@ -214,7 +213,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.brandGreen.withOpacity(0.3),
+                      color: AppColors.brandGreen.withValues(alpha: 0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -255,7 +254,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.brandGreen.withOpacity(0.3),
+                  color: AppColors.brandGreen.withValues(alpha: 0.3),
                   blurRadius: 20,
                   spreadRadius: 5,
                 ),
@@ -282,106 +281,214 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
   
   Widget _buildResultView() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(left: 24, right: 24, top: 40, bottom: 40),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SizedBox(height: 40),
-          Row(
+    return Column(
+      children: [
+        // ── Top Navigation Bar with Back Button ──
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            border: Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.8), width: 1.0)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
             children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.brandGreen.withOpacity(0.2),
-                      blurRadius: 10,
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textPrimary, size: 20),
+                onPressed: () {
+                  if (widget.initialResult != null) {
+                    Navigator.pop(context);
+                  } else {
+                    setState(() => _sheetState = SheetState.input);
+                  }
+                },
+                tooltip: 'Back',
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Where to Go Plan",
+                      style: TextStyle(
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                    if (_currentLocationName.isNotEmpty)
+                      Text(
+                        _currentLocationName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.brandGreen,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              // History button
+              IconButton(
+                icon: const Icon(Icons.history_rounded, color: AppColors.brandGreen, size: 22),
+                onPressed: _showHistorySheet,
+                tooltip: 'History',
+              ),
+              // Close button
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary, size: 24),
+                onPressed: () => Navigator.pop(context),
+                tooltip: 'Close to Map',
+              ),
+            ],
+          ),
+        ),
+
+        // ── Scrollable Plan Content ──
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 36),
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Plan Hero Banner
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.brandGreen.withValues(alpha: 0.14),
+                        AppColors.actionTeal.withValues(alpha: 0.05),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.brandGreen.withValues(alpha: 0.3), width: 1.2),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.brandGreen.withValues(alpha: 0.25),
+                              blurRadius: 10,
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: Image.asset('assets/images/neva_avatar.png', fit: BoxFit.cover),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              "Neva's Personalized Discovery ✨",
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              'Mood: $_selectedMood · Mode: ${_selectedMode ?? 'Explore'}',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+
+                // Markdown Itinerary Card
+                Container(
+                  padding: const EdgeInsets.all(22),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        blurRadius: 20,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                    border: Border.all(color: AppColors.border, width: 1.0),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildParsedResult(_aiResult),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          setState(() => _sheetState = SheetState.input);
+                        },
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
+                        label: const Text('New Plan'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          foregroundColor: AppColors.textSecondary,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: AppColors.border, width: 1.2),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(Icons.map_rounded, size: 18, color: Colors.white),
+                        label: const Text('Explore on Map', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          backgroundColor: AppColors.brandGreen,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                child: ClipOval(
-                  child: Image.asset('assets/images/neva_avatar.png', fit: BoxFit.cover),
-                ),
-              ),
-              const SizedBox(width: 16),
-              const Expanded(
-                child: Text(
-                  "Neva's Discovery",
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-          Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.brandGreen.withOpacity(0.12),
-                  blurRadius: 30,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-              border: Border.all(color: AppColors.brandGreen.withOpacity(0.3), width: 1.5),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.format_quote_rounded, color: AppColors.brandGreen.withOpacity(0.4), size: 36),
-                const SizedBox(height: 12),
-                _buildParsedResult(_aiResult),
               ],
             ),
           ),
-          const SizedBox(height: 40),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () {
-                    setState(() => _sheetState = SheetState.input);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    side: const BorderSide(color: AppColors.border, width: 1.5),
-                  ),
-                  child: const Text('Try Again', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: AppColors.brandGreen,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text('Let\'s Go!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ).animate().fadeIn().slideY(begin: 0.1);
+        ),
+      ],
+    ).animate().fadeIn(duration: 250.ms);
   }
 
   Widget _buildParsedResult(String text) {
@@ -489,7 +596,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     return Container(
       padding: const EdgeInsets.only(top: 24, left: 24, right: 24, bottom: 20),
       decoration: BoxDecoration(
-        color: AppColors.surface.withOpacity(0.5),
+        color: AppColors.surface.withValues(alpha: 0.5),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(24),
           topRight: Radius.circular(24),
@@ -586,7 +693,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: AppColors.textSecondary.withOpacity(0.3),
+                  color: AppColors.textSecondary.withValues(alpha: 0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -618,7 +725,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.brandGreen.withOpacity(0.1),
+                  color: AppColors.brandGreen.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
@@ -661,11 +768,11 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               color: isSelected ? AppColors.brandGreen : AppColors.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: isSelected ? AppColors.brandGreen : AppColors.border.withOpacity(0.5),
+                color: isSelected ? AppColors.brandGreen : AppColors.border.withValues(alpha: 0.5),
                 width: 1,
               ),
               boxShadow: isSelected 
-                  ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))] 
+                  ? [BoxShadow(color: AppColors.brandGreen.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 3))] 
                   : [],
             ),
             child: Row(
@@ -715,12 +822,12 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               color: isSelected ? AppColors.brandGreen : AppColors.surface,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: isSelected ? AppColors.brandGreen : AppColors.border.withOpacity(0.5),
+                color: isSelected ? AppColors.brandGreen : AppColors.border.withValues(alpha: 0.5),
                 width: 1,
               ),
               boxShadow: isSelected 
-                  ? [BoxShadow(color: AppColors.brandGreen.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 3))]
-                  : [BoxShadow(color: AppColors.textPrimary.withOpacity(0.01), blurRadius: 6)],
+                  ? [BoxShadow(color: AppColors.brandGreen.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 3))]
+                  : [BoxShadow(color: AppColors.textPrimary.withValues(alpha: 0.01), blurRadius: 6)],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -729,7 +836,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                   duration: const Duration(milliseconds: 300),
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.white.withOpacity(0.2) : AppColors.brandGreen.withOpacity(0.05),
+                    color: isSelected ? Colors.white.withValues(alpha: 0.2) : AppColors.brandGreen.withValues(alpha: 0.05),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -805,7 +912,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                   Navigator.pop(context);
                 },
               );
-            }).toList(),
+            }),
             const SizedBox(height: 20),
           ],
         ),
@@ -840,7 +947,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                     _currentLocationName = result['name'] ?? _currentLocationName;
                     _currentLatitude = result['latitude'] as double?;
                     _currentLongitude = result['longitude'] as double?;
-                    _currentDistrict = result['district'] as String?;
                   });
                 }
               });
@@ -922,7 +1028,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: AppColors.textSecondary.withOpacity(0.3),
+                color: AppColors.textSecondary.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -953,7 +1059,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.history_rounded, size: 48, color: AppColors.textTertiary),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Text('No past itineraries found', style: TextStyle(color: AppColors.textSecondary)),
                         ],
                       ),
@@ -961,7 +1067,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                   }
                   return ListView.separated(
                     itemCount: history.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                    separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (context, index) {
                       final item = history[index];
                       final createdStr = item['created_at'] as String? ?? '';

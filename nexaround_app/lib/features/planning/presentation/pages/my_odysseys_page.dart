@@ -23,7 +23,7 @@ class MyOdysseysPage extends StatefulWidget {
 class _MyOdysseysPageState extends State<MyOdysseysPage> {
   final OdysseyRepository _repository = OdysseyRepository();
 
-  bool _loading = true;
+  bool _loading = false;
   String? _error;
   List<Odyssey> _odysseys = const [];
   Timer? _pollTimer;
@@ -32,9 +32,9 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   @override
   void initState() {
     super.initState();
-    // Render the last cached list instantly; the network refresh updates it.
+    // Render the last cached list instantly; the network refresh updates it in background.
     _odysseys = _repository.getCachedOdysseys();
-    _loading = _odysseys.isEmpty;
+    _loading = false;
     _load();
     // Refresh whenever an Odyssey is saved/deleted anywhere in the app.
     OdysseyRepository.revision.addListener(_load);
@@ -44,12 +44,14 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   void _initVideo() {
     _videoController = VideoPlayerController.asset(
       'assets/animations/odyssey_banner.mp4',
-    )..initialize().then((_) {
+      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+    )..setVolume(0.0)
+     ..initialize().then((_) {
         if (mounted) {
-          setState(() {});
           _videoController?.setLooping(true);
           _videoController?.setVolume(0.0);
           _videoController?.play();
+          setState(() {});
         }
       });
   }
@@ -63,7 +65,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   }
 
   Future<void> _load() async {
-    if (mounted) setState(() => _loading = _odysseys.isEmpty);
     try {
       final list = await _repository.getMyOdysseys();
       if (!mounted) return;
@@ -538,7 +539,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
 
     final double screenWidth = MediaQuery.of(context).size.width;
     final double cardWidth = (screenWidth - 32 - 12) / 2;
-    final double childAspectRatio = cardWidth / 175.0;
+    final double childAspectRatio = cardWidth / 196.0;
 
     return SliverPadding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
@@ -601,7 +602,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       const LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [Color(0xFF0F766E), Color(0xFF312E81)],
+        colors: [Color(0xFF065F46), Color(0xFF1E3A8A)],
       ),
       const LinearGradient(
         begin: Alignment.topLeft,
@@ -675,6 +676,11 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     final countryData = _getCountryFlagAndName(odyssey.destination);
     final flag = countryData.key;
     final countryName = countryData.value;
+
+    final int totalStops = odyssey.totalActivities;
+    final int visitedStops = odyssey.visitedActivities;
+    final double progress = totalStops > 0 ? (visitedStops / totalStops).clamp(0.0, 1.0) : 0.0;
+    final int percent = (progress * 100).toInt();
 
     return GestureDetector(
       onTap: isGenerating ? null : () => _openDetail(odyssey),
@@ -860,7 +866,73 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    // Progress Bar Pill
+                    if (totalStops > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6, bottom: 4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  visitedStops == totalStops
+                                      ? 'Completed 🎉'
+                                      : '$visitedStops / $totalStops Visited',
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                                Text(
+                                  '$percent%',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: visitedStops == totalStops
+                                        ? const Color(0xFF00E5FF)
+                                        : const Color(0xFF38BDF8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                height: 4.5,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.22),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: FractionallySizedBox(
+                                  alignment: Alignment.centerLeft,
+                                  widthFactor: progress.clamp(0.0, 1.0),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF00E5FF), Color(0xFF007A7C)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 4),
                     // Days + Budget row
                     Wrap(
                       spacing: 4,
@@ -888,6 +960,32 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                   ],
                 ),
               ),
+
+              // ── Bottom edge progress line ─────────────────────────────────
+              if (totalStops > 0)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)),
+                    child: Container(
+                      height: 3,
+                      color: Colors.white.withValues(alpha: 0.12),
+                      child: FractionallySizedBox(
+                        alignment: Alignment.centerLeft,
+                        widthFactor: progress.clamp(0.0, 1.0),
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Color(0xFF00E5FF), Color(0xFF007A7C)],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

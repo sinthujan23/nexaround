@@ -46,6 +46,7 @@ class AuthRepositoryImpl implements AuthRepository {
         otp: otp,
       );
       await _saveTokens(result.accessToken, result.refreshToken);
+      await CacheService.saveCachedUser(result.user);
       return Right(result);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -80,6 +81,7 @@ class AuthRepositoryImpl implements AuthRepository {
         password: password,
       );
       await _saveTokens(result.accessToken, result.refreshToken);
+      await CacheService.saveCachedUser(result.user);
       return Right(result);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -93,6 +95,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final result = await _remoteDatasource.googleLogin(idToken);
       await _saveTokens(result.accessToken, result.refreshToken);
+      await CacheService.saveCachedUser(result.user);
       return Right(result);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -116,6 +119,7 @@ class AuthRepositoryImpl implements AuthRepository {
         familyName: familyName,
       );
       await _saveTokens(result.accessToken, result.refreshToken);
+      await CacheService.saveCachedUser(result.user);
       return Right(result);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -129,6 +133,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       final result = await _remoteDatasource.refreshToken(refreshToken);
       await _saveTokens(result.accessToken, result.refreshToken);
+      await CacheService.saveCachedUser(result.user);
       return Right(result);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -141,6 +146,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<Either<Failure, UserEntity>> getCurrentUser() async {
     try {
       final user = await _remoteDatasource.getCurrentUser();
+      await CacheService.saveCachedUser(user);
       return Right(user);
     } on DioException catch (e) {
       return Left(_handleDioError(e));
@@ -224,7 +230,8 @@ class AuthRepositoryImpl implements AuthRepository {
   @override
   Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString('access_token') != null;
+    final token = prefs.getString('access_token');
+    return (token != null && token.isNotEmpty) || CacheService.isLoggedIn();
   }
 
   // --- Private helpers ---
@@ -233,6 +240,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
+    await CacheService.setLoggedIn(true);
   }
 
   Failure _handleDioError(DioException e) {
