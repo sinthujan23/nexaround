@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import json
 import logging
 import math
 import httpx
@@ -10,7 +12,7 @@ from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.services.settings_service import SettingsService
-from app.services import telemetry, spend_guard
+from app.services import telemetry, spend_guard, place_cache_service
 
 router = APIRouter(tags=["Proxy API"])
 
@@ -80,6 +82,22 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
     return None
 
 
+# How long a cached answer stays good, per operation. These are properties of
+# the data, not guesses: a place's identity and its coordinates do not change,
+# a route does when traffic does.
+_CACHE_TTL = {
+    "findplacefromtext": 14 * 24 * 3600,   # place identity is stable
+    "place_details":      7 * 24 * 3600,
+    "nearby_search":      7 * 24 * 3600,
+    "geocode":           30 * 24 * 3600,   # a coordinate's address does not move
+    "autocomplete":           24 * 3600,
+    "directions":              1 * 3600,   # traffic-sensitive, keep it short
+}
+# A provider error is cached only long enough to stop a retry storm. Any longer
+# and a restored API key would appear broken until the entry aged out.
+_NEGATIVE_TTL = 60
+
+
 def _classify_google_maps_path(path: str) -> tuple[str, str | None]:
     """Resolve a proxied Google Maps path to (operation, sku)."""
     for prefix, operation, sku in _GOOGLE_MAPS_SKUS:
@@ -142,6 +160,32 @@ async def proxy_gemini_generate(
         gen_config.setdefault("thinkingConfig", {"thinkingBudget": 0})
         gen_config.setdefault("maxOutputTokens", 2048)
 
+    # Opening the app fires roughly sixteen of these before the user touches
+    # anything, and the prompts repeat — the same district asks the same
+    # question every launch. Identical prompt in, identical answer out, for six
+    # hours. Generation is sampled rather than deterministic, so this trades a
+    # little variety for most of the bill; trending copy does not need to be
+    # different every time the app is reopened.
+    cache_key = None
+    try:
+        digest = hashlib.sha256(
+            json.dumps(payload, sort_keys=True, default=str).encode()
+        ).hexdigest()
+        cache_key = f"proxy:gemini:v1:{digest}"
+    except (TypeError, ValueError):
+        pass
+
+    if cache_key:
+        cached = await place_cache_service.get_raw(cache_key)
+        if cached is not None:
+            async with telemetry.track(
+                "gemini", "generate_content", sku="gemini_flash_generate",
+                cache_key=digest[:32],
+            ) as t:
+                t.hit("redis")
+            return Response(content=cached.encode(), status_code=200,
+                            media_type="application/json")
+
     async with httpx.AsyncClient() as client:
         try:
             resp = None
@@ -168,6 +212,10 @@ async def proxy_gemini_generate(
                     logging.warning(f"Model {model} returned status {resp.status_code}. Retrying next model...")
                     continue
                 break
+
+            if cache_key and resp is not None and resp.status_code == 200:
+                await place_cache_service.set_raw(
+                    cache_key, resp.text, ttl=6 * 3600)
             return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except Exception as e:
             raise HTTPException(status_code=500, detail="Proxy request failed. Please try again.")
@@ -260,12 +308,37 @@ async def proxy_google_maps(
                         }
                     )
             else:
+                cache_key = _google_maps_cache_key(path, params)
+                ttl = _CACHE_TTL.get(operation)
+                redis_key = f"proxy:gmaps:v1:{cache_key}" if (cache_key and ttl) else None
+
                 async with telemetry.track(
                     "google_maps", operation, sku=sku, params=params,
-                    cache_key=_google_maps_cache_key(path, params),
+                    cache_key=cache_key,
                 ) as t:
+                    if redis_key:
+                        hit = await place_cache_service.get_raw(redis_key)
+                        if hit is not None:
+                            # Served without paying. In the last half hour this
+                            # path bought the same six lookups 19-29 times each.
+                            t.hit("redis")
+                            return Response(content=hit,
+                                            status_code=200,
+                                            media_type="application/json")
+
                     resp = await client.get(url, params=params, timeout=30.0)
                     t.upstream(resp)
+
+                    if redis_key and resp.status_code == 200:
+                        body = resp.text
+                        status = telemetry._extract_provider_status(resp)
+                        if status in (None, "OK"):
+                            await place_cache_service.set_raw(redis_key, body, ttl=ttl)
+                        elif status == "ZERO_RESULTS":
+                            # Worth remembering briefly: a query that matches
+                            # nothing is still billed, and the app retries it.
+                            await place_cache_service.set_raw(
+                                redis_key, body, ttl=_NEGATIVE_TTL)
                     return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
         except HTTPException:
             raise
