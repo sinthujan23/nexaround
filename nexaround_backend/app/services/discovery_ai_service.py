@@ -221,6 +221,9 @@ async def generate_discovery_itinerary(
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {
+            # Reasoning tokens bill as output; see proxy.py. An itinerary is a
+            # formatting task, not one that needs the model to think first.
+            "thinkingConfig": {"thinkingBudget": 0},
             "temperature": 0.7,
             "maxOutputTokens": 3072,
         },

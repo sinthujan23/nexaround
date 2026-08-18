@@ -1070,6 +1070,8 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
         "contents": [{"parts": [{"text": prompt}]}],
         "system_instruction": {"parts": [{"text": system_instruction}]},
         "generationConfig": {
+            # Reasoning tokens bill as output; see proxy.py.
+            "thinkingConfig": {"thinkingBudget": 0},
             "temperature": 0.8,
             "maxOutputTokens": 2048,
         },

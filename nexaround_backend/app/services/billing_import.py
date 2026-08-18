@@ -30,15 +30,25 @@ logger = logging.getLogger(__name__)
 # case-insensitively as substrings, most specific first — "Places API Place
 # Details" must win over a bare "Places API".
 SKU_PATTERNS = [
+    # Gemini is split by direction, and the split is the whole story: reasoning
+    # tokens bill at the output rate, so output and input must not be merged.
+    (r"output token.*gemini|gemini.*output token",  "generate_content_output"),
+    (r"input token.*gemini|gemini.*input token",    "generate_content_input"),
+    (r"gemini|generative language",                 "generate_content"),
+    # Places bills the lookup and its returned field groups as separate SKUs.
+    # Atmosphere Data is what `rating` and `user_ratings_total` cost on top of
+    # a Find Place call, which is why it appears without a call of its own.
+    (r"atmosphere data",                "find_place_atmosphere_addon"),
+    (r"contact data",                   "find_place_contact_addon"),
+    (r"basic data",                     "find_place_basic_addon"),
     (r"find place",                     "findplacefromtext"),
-    (r"place details",                  "place_details"),
-    (r"place photo",                    "place_photo"),
+    (r"place details|places details",   "place_details"),
+    (r"place photo|places photo",       "place_photo"),
     (r"nearby search",                  "nearby_search"),
     (r"text search",                    "text_search"),
     (r"autocomplete",                   "autocomplete"),
     (r"\bdirections\b",                 "directions"),
     (r"geocoding|geocode",              "geocode"),
-    (r"gemini|generative language",     "generate_content"),
     (r"maps.*(sdk|tiles|dynamic)",      "maps_sdk"),
 ]
 
@@ -104,8 +114,17 @@ UPSERT = text("""
 """)
 
 
-async def import_csv(content: bytes, default_currency: str = "INR") -> dict:
-    """Load a Billing → Reports / Cost table CSV export."""
+async def import_csv(content: bytes, default_currency: str = "INR",
+                     period_start: date = None, period_end: date = None) -> dict:
+    """Load a Billing → Reports or Cost table CSV export.
+
+    Two shapes exist. A per-day export carries a usage date; a grouped-by-SKU
+    export is a summary over the whole reporting period and carries none. The
+    second is more useful for calibration — cost divided by usage is a rate
+    regardless of how the period is sliced — so a missing date is not an error,
+    it just needs the period supplied and is marked so the daily chart can
+    exclude it rather than draw a spike on one arbitrary day.
+    """
     text_content = content.decode("utf-8-sig", errors="replace")
 
     # Console exports often prepend metadata lines before the real header; find
@@ -125,22 +144,29 @@ async def import_csv(content: bytes, default_currency: str = "INR") -> dict:
         for row in reader:
             if not row or all(v in (None, "") for v in row.values()):
                 continue
-            sku = _find(row, "skudescription", "sku", "skuname")
-            raw_date = _find(row, "usagedate", "usagestartdate", "date", "day")
-            if not sku or not raw_date:
+            sku = _find(row, "skudescription", "skuname", "sku")
+            # Trailing Subtotal / Tax / Total rows have no SKU. Skip them
+            # silently; counting them as failures would misreport the import.
+            if not sku or not sku.strip():
                 skipped += 1
                 continue
 
+            raw_date = _find(row, "usagedate", "usagestartdate", "date", "day")
             parsed = None
-            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"):
-                try:
-                    parsed = datetime.strptime(raw_date.strip()[:11], fmt).date()
-                    break
-                except (ValueError, AttributeError):
-                    continue
+            if raw_date:
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%b %d, %Y", "%d %b %Y"):
+                    try:
+                        parsed = datetime.strptime(raw_date.strip()[:11], fmt).date()
+                        break
+                    except (ValueError, AttributeError):
+                        continue
+            row_source = "csv"
             if parsed is None:
-                skipped += 1
-                continue
+                if period_end is None:
+                    skipped += 1
+                    continue
+                parsed = period_end
+                row_source = "csv-period"
 
             operation = map_sku(sku)
             if operation is None:
@@ -155,12 +181,16 @@ async def import_csv(content: bytes, default_currency: str = "INR") -> dict:
                 "usage_amount": _dec(_find(row, "usageamountinpricingunits",
                                            "usageamount", "usage", "quantity")),
                 "usage_unit": (_find(row, "pricingunit", "usageunit", "unit") or None),
-                "cost": _dec(_find(row, "usagecost", "cost", "subtotal", "charges")),
-                "credits": _dec(_find(row, "credits", "othersavings",
-                                      "promotionsandothers", "savings")),
+                # List cost is the gross charge before credits; subtotal is
+                # after. Storing gross plus credits separately is what lets the
+                # dashboard show that Places was used heavily and still cost
+                # nothing, rather than reporting it as unused.
+                "cost": _dec(_find(row, "listcost", "usagecost", "cost", "charges")),
+                "credits": _dec(_find(row, "othersavings", "credits",
+                                      "promotionsandothers", "savingsprograms")),
                 "currency": (_find(row, "currency") or default_currency)[:8],
                 "mapped_operation": operation,
-                "source": "csv",
+                "source": row_source,
             })
             imported += 1
         await db.commit()
@@ -227,6 +257,24 @@ async def sync_bigquery(days: int = 35) -> dict:
     return {"imported": imported, "since": str(since)}
 
 
+# Which rate row each billed operation feeds. Explicit, because fuzzy matching
+# between Google's SKU names and our internal ones silently matched nothing —
+# "findplacefromtext" shares no token with "find_place_atmosphere".
+OPERATION_TO_SKU = {
+    "generate_content_output": ("gemini_flash_generate", "output_per_1k_usd", 1000),
+    "generate_content_input":  ("gemini_flash_generate", "input_per_1k_usd", 1000),
+    "findplacefromtext":       ("find_place_basic", "unit_cost_usd", 1),
+    "find_place_atmosphere_addon": ("find_place_atmosphere", "unit_cost_usd", 1),
+    "directions":              ("directions", "unit_cost_usd", 1),
+    "geocode":                 ("geocoding", "unit_cost_usd", 1),
+    "place_details":           ("place_details", "unit_cost_usd", 1),
+    "place_photo":             ("place_photo", "unit_cost_usd", 1),
+    "autocomplete":            ("autocomplete_per_request", "unit_cost_usd", 1),
+    "nearby_search":           ("nearby_search_new", "unit_cost_usd", 1),
+    "text_search":             ("text_search_new", "unit_cost_usd", 1),
+}
+
+
 async def calibrate_rates(min_usage: float = 100.0) -> dict:
     """Derive per-call rates from actual cost divided by actual usage.
 
@@ -243,32 +291,42 @@ async def calibrate_rates(min_usage: float = 100.0) -> dict:
           AND usage_date >= CURRENT_DATE - 60
         GROUP BY 1 HAVING sum(usage_amount) >= :min_usage
     """)
-    updated = []
+    updated, unmatched = [], []
     async with async_session() as db:
+        fx = float((await db.execute(text(
+            "SELECT value FROM system_settings WHERE key='billing_fx_to_usd'"
+        ))).scalar() or 1.0) or 1.0
+
         for r in (await db.execute(rows_sql, {"min_usage": min_usage})).mappings():
             usage = float(r["usage"] or 0)
-            if usage <= 0:
+            op = r["mapped_operation"]
+            if usage <= 0 or op not in OPERATION_TO_SKU:
+                if op:
+                    unmatched.append(op)
                 continue
-            # Gross cost, before credits: the free tier is a monthly allowance
-            # applied at read time, not a property of the call's price.
-            rate = float(r["cost"] or 0) / usage
-            res = await db.execute(text("""
+            sku, column, per = OPERATION_TO_SKU[op]
+
+            # List cost, not the post-credit subtotal. Credits are a monthly
+            # allowance, not a property of what a call costs — pricing off the
+            # net would say Find Place is free right up until the allowance
+            # runs out, and then be wrong by the whole amount.
+            native = float(r["cost"] or 0) / usage * per
+            rate_usd = native / fx
+
+            res = await db.execute(text(f"""
                 UPDATE api_sku_rates
-                SET unit_cost_usd = :rate, currency = :cur,
-                    source = 'billing', calibrated_at = now(),
-                    notes = COALESCE(notes,'') || ' [calibrated from billing]'
-                WHERE sku IN (
-                    SELECT sku FROM api_sku_rates
-                    WHERE :op = ANY(string_to_array(sku, '_')) OR sku LIKE :like
-                )
-            """), {"rate": rate, "cur": r["currency"] or "USD",
-                   "op": r["mapped_operation"], "like": f"%{r['mapped_operation']}%"})
+                SET {column} = :rate, source = 'billing', calibrated_at = now()
+                WHERE sku = :sku
+            """), {"rate": rate_usd, "sku": sku})
             if res.rowcount:
-                updated.append({"operation": r["mapped_operation"],
-                                "rate": round(rate, 8), "usage": usage,
-                                "currency": r["currency"]})
+                updated.append({
+                    "operation": op, "sku": sku, "field": column,
+                    "usage": usage, "rate_usd": round(rate_usd, 10),
+                    "native_per_unit": round(native / per, 8),
+                    "currency": r["currency"],
+                })
         await db.commit()
 
     from app.services import telemetry
     await telemetry.refresh_rates()
-    return {"calibrated": updated}
+    return {"calibrated": updated, "unmatched": sorted(set(unmatched))}

@@ -128,6 +128,20 @@ async def proxy_gemini_generate(
         "gemini-2.0-flash",
         "gemini-1.5-flash",
     ]
+    # gemini-2.5-flash reasons by default, and reasoning tokens bill at the
+    # OUTPUT rate. Across four months this path produced 22.8M output tokens
+    # against 977k input — a 23:1 ratio — and was 100% of the platform's bill,
+    # while every Google Maps call was covered by the free tier. The equivalent
+    # non-thinking SKU shows 115x fewer tokens for the same work.
+    #
+    # The client controls this payload, so the budget is imposed here rather
+    # than trusted to arrive. An explicit thinkingConfig from the caller is
+    # respected; absence of one is not treated as consent to reason freely.
+    gen_config = payload.setdefault("generationConfig", {})
+    if isinstance(gen_config, dict):
+        gen_config.setdefault("thinkingConfig", {"thinkingBudget": 0})
+        gen_config.setdefault("maxOutputTokens", 2048)
+
     async with httpx.AsyncClient() as client:
         try:
             resp = None

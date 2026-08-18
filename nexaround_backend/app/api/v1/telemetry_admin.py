@@ -951,6 +951,8 @@ async def data_coverage(
 async def import_billing_csv(
     file: UploadFile = File(...),
     currency: str = Query("INR"),
+    period_start: Optional[str] = Query(None, description="YYYY-MM-DD, for SKU-summary exports"),
+    period_end: Optional[str] = Query(None, description="YYYY-MM-DD, for SKU-summary exports"),
     _=Depends(verify_admin_token),
 ):
     """Load a Billing → Reports or Cost table CSV export.
@@ -965,7 +967,15 @@ async def import_billing_csv(
     content = await file.read()
     if len(content) > 25 * 1024 * 1024:
         raise HTTPException(400, "File exceeds 25 MB")
-    result = await billing_import.import_csv(content, default_currency=currency)
+    from datetime import date as _date
+    def _parse(v):
+        try:
+            return _date.fromisoformat(v) if v else None
+        except ValueError:
+            raise HTTPException(400, f"Invalid date: {v}")
+    result = await billing_import.import_csv(
+        content, default_currency=currency,
+        period_start=_parse(period_start), period_end=_parse(period_end))
     if result["imported"] == 0:
         raise HTTPException(
             400,
