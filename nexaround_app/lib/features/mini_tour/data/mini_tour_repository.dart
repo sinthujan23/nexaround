@@ -18,6 +18,10 @@ class MiniTourRepository {
     required String area,
     required List<String> placeNames,
     required int xp,
+    int? visitedCount,
+    int? totalPlaces,
+    String status = 'completed',
+    String? tourId,
   }) async {
     await _dio.post(
       _collection,
@@ -29,11 +33,15 @@ class MiniTourRepository {
             'kind': 'mini_tour_meta',
             'area': area,
             'places': placeNames,
+            'visited_count': visitedCount ?? placeNames.length,
+            'total_places': totalPlaces ?? placeNames.length,
             'xp': xp,
+            'status': status,
+            'tour_id': tourId,
             'date': DateTime.now().toIso8601String(),
           }
         ],
-        'status': 'completed',
+        'status': status == 'completed' ? 'completed' : 'active',
       },
     );
     // Lets any open History screen (which listens to this notifier) refresh.
@@ -63,12 +71,15 @@ class MiniTourRepository {
 
   static Map<String, dynamic> _toRecord(Map<String, dynamic> json) {
     final meta = ((json['items'] as List).first as Map).cast<String, dynamic>();
+    final placesList = (meta['places'] as List?)?.map((e) => e.toString()).toList() ??
+        const <String>[];
     return {
       'id': json['id']?.toString(),
       'area': (meta['area'] ?? 'Mini Tour').toString(),
-      'places':
-          (meta['places'] as List?)?.map((e) => e.toString()).toList() ??
-              const <String>[],
+      'places': placesList,
+      'visited_count': (meta['visited_count'] as num?)?.toInt() ?? placesList.length,
+      'total_places': (meta['total_places'] as num?)?.toInt() ?? placesList.length,
+      'status': (meta['status'] ?? (json['status'] == 'completed' ? 'completed' : 'incomplete')).toString(),
       'xp': (meta['xp'] as num?)?.toInt() ?? 0,
       'date': (meta['date'] ?? json['created_at'] ?? '').toString(),
     };

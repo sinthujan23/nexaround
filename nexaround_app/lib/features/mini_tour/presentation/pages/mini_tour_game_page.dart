@@ -46,6 +46,20 @@ class _TourStop {
   final double lng;
   bool visited;
   _TourStop({required this.name, required this.lat, required this.lng, this.visited = false});
+
+  Map<String, dynamic> toJson() => {
+    'name': name,
+    'lat': lat,
+    'lng': lng,
+    'visited': visited,
+  };
+
+  factory _TourStop.fromJson(Map<String, dynamic> json) => _TourStop(
+    name: (json['name'] ?? '').toString(),
+    lat: (json['lat'] as num?)?.toDouble() ?? 0.0,
+    lng: (json['lng'] as num?)?.toDouble() ?? 0.0,
+    visited: json['visited'] == true,
+  );
 }
 
 class _MiniTourGamePageState extends State<MiniTourGamePage> {
@@ -56,6 +70,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   _Phase _phase = _Phase.loading;
   String _error = '';
   String _area = 'your area';
+  String _tourId = '';
   List<_TourStop> _stops = [];
   int? _selectedNavigationIndex;
 
@@ -74,6 +89,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   int _xpEarned = 0;
   bool _leveledUp = false;
   int _newLevel = 1;
+
+  bool _isExpanded = false;
 
   @override
   void initState() {
@@ -134,6 +151,67 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         } catch (_) {}
       }
 
+      // Check if there is an active saved tour for this location
+      final savedTour = CacheService.getActiveMiniTour();
+      if (savedTour != null) {
+        final savedLat = (savedTour['centerLat'] as num?)?.toDouble();
+        final savedLng = (savedTour['centerLng'] as num?)?.toDouble();
+        final savedStopsRaw = (savedTour['stops'] as List?)
+            ?.map((e) => (e as Map).cast<String, dynamic>())
+            .toList() ?? [];
+
+        if (savedLat != null && savedLng != null && savedStopsRaw.isNotEmpty) {
+          final distFromSaved = _haversine(centerLat, centerLng, savedLat, savedLng);
+          // If within 3km of saved tour center, restore and resume!
+          if (distFromSaved <= 3000) {
+            _tourId = (savedTour['id'] ?? '').toString();
+            _area = (savedTour['area'] ?? _area).toString();
+            _stops = savedStopsRaw.map((m) => _TourStop.fromJson(m)).toList();
+            
+            if (!mounted) return;
+            setState(() => _phase = _Phase.playing);
+            _stopsReady = true;
+            _maybePlayIntro();
+            _startRotationTimer();
+            return;
+          } else {
+            // User moved to a different area! Archive previous incomplete walk to backend & history
+            final prevVisited = (savedTour['visited_count'] as num?)?.toInt() ??
+                savedStopsRaw.where((s) => s['visited'] == true).length;
+            final prevPlaces = savedStopsRaw
+                .map((s) => (s['name'] ?? '').toString())
+                .toList();
+            final prevArea = (savedTour['area'] ?? 'Walk').toString();
+            final prevXp = (savedTour['xp'] as num?)?.toInt() ?? (prevVisited * _xpPerStop);
+            final prevId = (savedTour['id'] ?? '').toString();
+
+            if (prevVisited > 0 && prevPlaces.isNotEmpty) {
+              try {
+                await MiniTourRepository().saveMiniTour(
+                  area: prevArea,
+                  placeNames: prevPlaces,
+                  visitedCount: prevVisited,
+                  totalPlaces: prevPlaces.length,
+                  xp: prevXp,
+                  status: 'incomplete',
+                  tourId: prevId,
+                );
+              } catch (_) {}
+              await CacheService.addMiniTourHistory(
+                id: prevId,
+                area: prevArea,
+                placeNames: prevPlaces,
+                visitedCount: prevVisited,
+                totalPlaces: prevPlaces.length,
+                xp: prevXp,
+                status: 'incomplete',
+              );
+            }
+            await CacheService.clearActiveMiniTour();
+          }
+        }
+      }
+
       // Fetch famous tourist attractions within 2–3 km if not pre-fetched.
       final List<AttractionEntity> places;
       if (widget.preFetchedPlaces != null && widget.preFetchedPlaces!.isNotEmpty) {
@@ -159,7 +237,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         ];
         
         for (final keyword in privateKeywords) {
-          if (name.contains(keyword)) {
+          if (name.contains(keyword) || desc.contains(keyword)) {
             if (name.contains('museum') || name.contains('historic') || name.contains('heritage') || name.contains('public')) {
               continue;
             }
@@ -212,6 +290,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
       }
 
       _stops = optimizedStops;
+      _tourId = 'tour_${DateTime.now().millisecondsSinceEpoch}';
+      await _persistActiveState();
 
       if (!mounted) return;
       setState(() => _phase = _Phase.playing);
@@ -431,11 +511,13 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         if (!s.visited && _haversine(pos.latitude, pos.longitude, s.lat, s.lng) <= _checkInRadiusM) {
           s.visited = true;
           changed = true;
+          CacheService.addExploration(placesVisited: 1, xp: _xpPerStop);
         }
       }
       _updateRouteLine();
       setState(() {}); // refresh live distances in the panel
       if (changed) {
+        _persistActiveState();
         _refreshMarkers();
         if (_allVisited) _finish();
       }
@@ -645,6 +727,61 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     await _map!.flyTo(camera, mapbox.MapAnimationOptions(duration: 1200));
   }
 
+  Future<void> _persistActiveState() async {
+    if (_stops.isEmpty) return;
+    final visitedCount = _stops.where((s) => s.visited).length;
+    final totalCount = _stops.length;
+    final xp = visitedCount * _xpPerStop;
+    final isDone = visitedCount == totalCount;
+
+    if (_tourId.isEmpty) {
+      _tourId = 'tour_${DateTime.now().millisecondsSinceEpoch}';
+    }
+
+    final data = {
+      'id': _tourId,
+      'area': _area,
+      'centerLat': _userLat,
+      'centerLng': _userLng,
+      'stops': _stops.map((s) => s.toJson()).toList(),
+      'date': DateTime.now().toIso8601String(),
+      'status': isDone ? 'completed' : 'incomplete',
+      'visited_count': visitedCount,
+      'total_places': totalCount,
+      'xp': xp,
+    };
+
+    if (isDone) {
+      await CacheService.clearActiveMiniTour();
+    } else {
+      await CacheService.saveActiveMiniTour(data);
+    }
+
+    // Sync to local history so History page shows it as incomplete or completed
+    await CacheService.addMiniTourHistory(
+      id: _tourId,
+      area: _area,
+      placeNames: _stops.map((s) => s.name).toList(),
+      visitedCount: visitedCount,
+      totalPlaces: totalCount,
+      xp: xp,
+      status: isDone ? 'completed' : 'incomplete',
+    );
+
+    // Also sync to VPS backend DB (PostgreSQL via /api/v1/itineraries)
+    try {
+      unawaited(MiniTourRepository().saveMiniTour(
+        area: _area,
+        placeNames: _stops.map((s) => s.name).toList(),
+        visitedCount: visitedCount,
+        totalPlaces: totalCount,
+        xp: xp,
+        status: isDone ? 'completed' : 'incomplete',
+        tourId: _tourId,
+      ));
+    } catch (_) {}
+  }
+
   void _checkIn(int i) {
     if (_stops[i].visited) return;
     setState(() {
@@ -653,6 +790,8 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         _selectedNavigationIndex = null;
       }
     });
+    CacheService.addExploration(placesVisited: 1, xp: _xpPerStop);
+    _persistActiveState();
     _refreshMarkers();
     _updateRouteLine();
     if (_allVisited) _finish();
@@ -664,6 +803,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
       _stops[i].visited = false;
       _selectedNavigationIndex = i;
     });
+    _persistActiveState();
     _refreshMarkers();
     _updateRouteLine();
   }
@@ -671,27 +811,38 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   Future<void> _finish() async {
     await _posSub?.cancel();
     final xp = _stops.length * _xpPerStop;
-    final leveled = await CacheService.addExploration(placesVisited: _stops.length, xp: xp);
     final placeNames = _stops.map((s) => s.name).toList();
+
+    // Persist as completed and clear active state
+    await _persistActiveState();
+
     // Save to the backend (syncs across devices); fall back to local storage
     // if offline so the record is never lost.
     try {
       await MiniTourRepository().saveMiniTour(
         area: _area,
         placeNames: placeNames,
+        visitedCount: _stops.length,
+        totalPlaces: _stops.length,
         xp: xp,
+        status: 'completed',
+        tourId: _tourId,
       );
     } catch (_) {
       await CacheService.addMiniTourHistory(
+        id: _tourId,
         area: _area,
         placeNames: placeNames,
+        visitedCount: _stops.length,
+        totalPlaces: _stops.length,
         xp: xp,
+        status: 'completed',
       );
     }
     if (!mounted) return;
     setState(() {
       _xpEarned = xp;
-      _leveledUp = leveled;
+      _leveledUp = false;
       _newLevel = CacheService.getExplorerLevel();
       _phase = _Phase.finished;
     });
@@ -882,9 +1033,11 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
             ).animate().slideY(begin: -0.2, end: 0).fade(),
           ),
 
-        Positioned(
+        AnimatedPositioned(
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
           right: 16,
-          bottom: 296,
+          bottom: _isExpanded ? math.min(MediaQuery.of(context).size.height * 0.65, _stops.length * 62.0 + 70) : 230,
           child: FloatingActionButton.small(
             heroTag: 'recenter',
             backgroundColor: Colors.white,
@@ -943,34 +1096,84 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
       left: 0,
       right: 0,
       bottom: 0,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 28),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)),
-            ).animate().fade(),
-            const Text('WALK STOPS', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2, color: Colors.black54)),
-            const SizedBox(height: 8),
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 200),
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: _stops.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, i) => _buildStopRow(i),
+      child: GestureDetector(
+        onVerticalDragEnd: (details) {
+          if (details.primaryVelocity != null) {
+            if (details.primaryVelocity! < -100) {
+              setState(() => _isExpanded = true);
+            } else if (details.primaryVelocity! > 100) {
+              setState(() => _isExpanded = false);
+            }
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 20),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 16,
+                offset: const Offset(0, -4),
               ),
+            ],
+          ),
+          child: AnimatedSize(
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() => _isExpanded = !_isExpanded),
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 36,
+                          height: 4,
+                          margin: const EdgeInsets.only(bottom: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.black26,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                      const Center(
+                        child: Text(
+                          'WALK STOPS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 2,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                  ),
+                ),
+                ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.65,
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    physics: _isExpanded
+                        ? const BouncingScrollPhysics()
+                        : const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: _isExpanded ? _stops.length : math.min(2, _stops.length),
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (context, i) => _buildStopRow(i),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -8,7 +8,7 @@ import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
-import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -238,24 +238,35 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         },
       );
       final List<Map<String, dynamic>> hospitals = [];
+      final Set<String> seenHospitalKeys = {};
       if (response.statusCode == 200) {
         final data = response.data;
         final places = data['places'] as List? ?? [];
-        for (final place in places.take(5)) {
+        for (final place in places) {
+          final rawName = (place['name'] as String? ?? 'Hospital').trim();
+          final placeId = (place['id'] as String? ?? '').trim();
+          final normName = rawName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+          if (seenHospitalKeys.contains(normName) || (placeId.isNotEmpty && seenHospitalKeys.contains(placeId))) {
+            continue;
+          }
+          if (normName.isNotEmpty) seenHospitalKeys.add(normName);
+          if (placeId.isNotEmpty) seenHospitalKeys.add(placeId);
+
           final plat = (place['latitude'] as num?)?.toDouble() ?? lat;
           final plng = (place['longitude'] as num?)?.toDouble() ?? lng;
           final d = Geolocator.distanceBetween(lat, lng, plat, plng);
           final distKm = d / 1000;
 
           hospitals.add({
-            'name': place['name'] ?? 'Hospital',
+            'name': rawName,
             'address': place['address'] ?? '',
             'dist': '${distKm.toStringAsFixed(1)} km',
             'open': place['opening_hours']?['open_now'],
-            'placeId': place['id'] ?? '',
+            'placeId': placeId,
             'lat': plat,
             'lng': plng,
           });
+          if (hospitals.length >= 5) break;
         }
         hospitals.sort((a, b) {
           final da = double.tryParse((a['dist'] as String).replaceAll(' km', '')) ?? 999;
@@ -391,7 +402,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     final isLoading = _tabs[_selectedTab] != 'Budget' && _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
                     
                     // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
-                    final masterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
+                    final rawMasterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
+                    final masterList = _deduplicateAttractions(rawMasterList);
                     
                     // Filter Food List
                     _foodList = masterList.where((a) {
@@ -622,6 +634,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _natureList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
+                    _foodList = _deduplicateAttractions(_foodList);
+                    _experienceList = _deduplicateAttractions(_experienceList);
+                    _shoppingList = _deduplicateAttractions(_shoppingList);
+                    _medicalList = _deduplicateAttractions(_medicalList);
+                    _hospitalList = _deduplicateAttractions(_hospitalList);
+                    _natureList = _deduplicateAttractions(_natureList);
+
                     return Column(
                       children: [
                         
@@ -641,6 +660,23 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         ),
       ),
     );
+  }
+
+  List<AttractionEntity> _deduplicateAttractions(List<AttractionEntity> list) {
+    final seenKeys = <String>{};
+    final result = <AttractionEntity>[];
+    for (final a in list) {
+      final nameKey = a.name.trim().toLowerCase();
+      final idKey = a.id.trim();
+      if ((nameKey.isNotEmpty && seenKeys.contains(nameKey)) ||
+          (idKey.isNotEmpty && seenKeys.contains(idKey))) {
+        continue;
+      }
+      if (nameKey.isNotEmpty) seenKeys.add(nameKey);
+      if (idKey.isNotEmpty) seenKeys.add(idKey);
+      result.add(a);
+    }
+    return result;
   }
 
   Widget _buildTabContent(bool isLoading) {
@@ -1469,7 +1505,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   children: [
                     const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
                     const SizedBox(width: 4),
-                    Text('${place.rating} (${place.reviewCount})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                    Text('${place.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
                     const SizedBox(width: 12),
                     Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                     const SizedBox(width: 3),
@@ -1595,7 +1631,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 Row(
                   children: [
                     Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                    Text(' ${a.rating} (${a.reviewCount})', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                    Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                     const SizedBox(width: 10),
                     Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
                     Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
@@ -3017,7 +3053,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => GoogleMapsPage(
+                  builder: (_) => SmartTourismMapPage(
                     initialLat: lat,
                     initialLng: lng,
                     destinationName: name,

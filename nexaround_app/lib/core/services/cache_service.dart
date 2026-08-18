@@ -271,7 +271,15 @@ class CacheService {
     final existing = getCachedAttractions();
     final List<Map<String, dynamic>> merged = List.from(existing);
     for (final newItem in placesJson) {
-      if (!merged.any((item) => item['name'] == newItem['name'] || item['id'] == newItem['id'])) {
+      final newNameNorm = (newItem['name'] as String? ?? '').trim().toLowerCase();
+      final newId = (newItem['id'] as String? ?? '').trim();
+      final exists = merged.any((item) {
+        final itemNameNorm = (item['name'] as String? ?? '').trim().toLowerCase();
+        final itemId = (item['id'] as String? ?? '').trim();
+        return (newNameNorm.isNotEmpty && newNameNorm == itemNameNorm) ||
+               (newId.isNotEmpty && newId == itemId);
+      });
+      if (!exists) {
         merged.add(newItem);
       }
     }
@@ -336,26 +344,70 @@ class CacheService {
     return getExplorerLevel() > beforeLevel;
   }
 
+  // ── Active In-Progress Mini Tour ───────────────────────────────────────
+  static Future<void> saveActiveMiniTour(Map<String, dynamic> tourData) async {
+    await _prefs.setString('active_mini_tour', json.encode(tourData));
+    historyNotifier.value++;
+  }
+
+  static Map<String, dynamic>? getActiveMiniTour() {
+    final str = _prefs.getString('active_mini_tour');
+    if (str == null || str.isEmpty) return null;
+    try {
+      return json.decode(str) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> clearActiveMiniTour() async {
+    await _prefs.remove('active_mini_tour');
+    historyNotifier.value++;
+  }
+
   // ── Mini Tour history ──────────────────────────────────────────────────
-  // Completed mini tours are kept locally (there's no backend table for them).
-  // Newest first. Each record: {area, places:[..], xp, date(ISO)}.
+  // Completed & In-progress mini tours are kept locally and synced with backend.
+  // Newest first. Each record: {id, area, places:[..], visited_count, total_places, xp, status, date(ISO)}.
   static final ValueNotifier<int> historyNotifier = ValueNotifier(0);
 
   static Future<void> addMiniTourHistory({
     required String area,
     required List<String> placeNames,
     required int xp,
+    int? visitedCount,
+    int? totalPlaces,
+    String status = 'completed',
+    String? date,
+    String? id,
   }) async {
     final list = _prefs.getStringList('mini_tour_history') ?? [];
-    list.insert(
-      0,
-      json.encode({
-        'area': area,
-        'places': placeNames,
-        'xp': xp,
-        'date': DateTime.now().toIso8601String(),
-      }),
-    );
+    final newEntry = {
+      'id': id ?? 'local_${DateTime.now().millisecondsSinceEpoch}',
+      'area': area,
+      'places': placeNames,
+      'visited_count': visitedCount ?? placeNames.length,
+      'total_places': totalPlaces ?? placeNames.length,
+      'xp': xp,
+      'status': status,
+      'date': date ?? DateTime.now().toIso8601String(),
+    };
+    
+    int existingIndex = -1;
+    if (id != null) {
+      existingIndex = list.indexWhere((s) {
+        try {
+          final m = json.decode(s);
+          return m['id'] == id;
+        } catch (_) {
+          return false;
+        }
+      });
+    }
+    if (existingIndex != -1) {
+      list[existingIndex] = json.encode(newEntry);
+    } else {
+      list.insert(0, json.encode(newEntry));
+    }
     await _prefs.setStringList('mini_tour_history', list);
     historyNotifier.value++;
   }

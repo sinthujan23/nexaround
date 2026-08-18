@@ -571,10 +571,31 @@ class Odyssey {
       0, (n, d) => n + d.activities.where((a) => a.visited).length);
   bool get isComplete =>
       totalActivities > 0 && visitedActivities == totalActivities;
+  bool get isGenerating => status == 'generating';
+  bool get isFailed => status == 'failed';
+
+  /// Computes the exact number of calendar days based on date range (startDate..endDate),
+  /// falling back to dayPlans.length or the default days property.
+  int get actualDays {
+    final s = startDate?.trim() ?? '';
+    final e = endDate?.trim() ?? '';
+    if (s.isNotEmpty && e.isNotEmpty) {
+      try {
+        final startDt = DateTime.parse(s);
+        final endDt = DateTime.parse(e);
+        final diff = endDt.difference(startDt).inDays;
+        if (diff >= 0) return diff + 1;
+      } catch (_) {}
+    }
+    if (dayPlans.isNotEmpty) {
+      return dayPlans.length;
+    }
+    return days > 0 ? days : 1;
+  }
 
   /// One-line stats label used on cards, e.g. "4 Days · LKR 120,000".
   String get statsLabel =>
-      '$days ${days == 1 ? 'Day' : 'Days'} · $currency ${formatAmount(budget)}';
+      '$actualDays ${actualDays == 1 ? 'Day' : 'Days'} · $currency ${formatAmount(budget)}';
 
   /// User-facing date range string, e.g. "Aug 10, 2026 – Aug 13, 2026".
   String get formattedDateRange {
@@ -661,6 +682,12 @@ class Odyssey {
       coverUrl: (json['cover_url'] ?? '').toString(),
       startDate: (json['start_date'] ?? '').toString(),
       endDate: (json['end_date'] ?? '').toString(),
+      budgetBreakdown: json['budget_breakdown'] is Map
+          ? (json['budget_breakdown'] as Map).map(
+              (k, v) => MapEntry(k.toString(), (v as num?)?.toDouble() ?? 0.0),
+            )
+          : const {},
+      budgetAdvisory: (json['budget_advisory'] ?? '').toString(),
     );
   }
 

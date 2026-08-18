@@ -5,7 +5,7 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
-import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 
 /// Read-back of everything the traveler has finished: completed Odyssey trips
 /// (status == 'completed', pulled from the backend) and completed Mini Tours
@@ -63,13 +63,33 @@ class _HistoryPageState extends State<HistoryPage> {
     try {
       final backend = await _miniRepo.getMiniTours();
       final local = CacheService.getMiniTourHistory();
-      final seen = backend.map((t) => t['date']).toSet();
+      final seen = backend.map((t) => t['id'] ?? t['date']).toSet();
       tours = [
         ...backend,
-        ...local.where((l) => !seen.contains(l['date'])),
+        ...local.where((l) => !seen.contains(l['id'] ?? l['date'])),
       ]..sort((a, b) => _dateOf(b).compareTo(_dateOf(a)));
     } catch (_) {
       tours = CacheService.getMiniTourHistory();
+    }
+
+    // Merge in-progress active tour if not already in list
+    final active = CacheService.getActiveMiniTour();
+    if (active != null) {
+      final activeId = active['id']?.toString();
+      final activeDate = active['date']?.toString();
+      if (!tours.any((t) => (activeId != null && t['id'] == activeId) || t['date'] == activeDate)) {
+        final stopsList = (active['stops'] as List?) ?? [];
+        tours.insert(0, {
+          'id': active['id'],
+          'area': active['area'] ?? 'Walk',
+          'places': stopsList.map((s) => (s['name'] ?? '').toString()).toList(),
+          'visited_count': active['visited_count'] ?? stopsList.where((s) => s['visited'] == true).length,
+          'total_places': active['total_places'] ?? stopsList.length,
+          'xp': active['xp'] ?? 0,
+          'status': active['status'] ?? 'incomplete',
+          'date': active['date'] ?? DateTime.now().toIso8601String(),
+        });
+      }
     }
 
     if (!mounted) return;
@@ -92,12 +112,8 @@ class _HistoryPageState extends State<HistoryPage> {
     ];
     return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
-
   @override
   Widget build(BuildContext context) {
-    final tours = _miniTours;
-    final bool empty = _completedTrips.isEmpty && tours.isEmpty;
-
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -109,7 +125,7 @@ class _HistoryPageState extends State<HistoryPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'HISTORY',
+          'TRAVEL HISTORY',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w800,
@@ -120,112 +136,100 @@ class _HistoryPageState extends State<HistoryPage> {
         centerTitle: true,
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: Colors.black))
-          : empty
-              ? _buildEmpty()
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                  children: [
-                    _sectionLabel('COMPLETED TRIPS', _completedTrips.length),
-                    if (_completedTrips.isEmpty)
-                      _emptyNote('No completed trips yet.')
-                    else
-                      ..._completedTrips.map(_tripCard),
-                    const SizedBox(height: 24),
-                    _sectionLabel('COMPLETED WALKS', tours.length),
-                    if (tours.isEmpty)
-                      _emptyNote('No walks completed yet.')
-                    else
-                      ...tours.map(_miniTourCard),
-                  ],
-                ),
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                children: [
+                  _sectionHeader('COMPLETED ODYSSEYS', _completedTrips.length),
+                  const SizedBox(height: 10),
+                  if (_completedTrips.isEmpty)
+                    _emptyCard('No completed Odyssey trips yet.')
+                  else
+                    ..._completedTrips.map(_odysseyCard),
+                  const SizedBox(height: 28),
+                  _sectionHeader('MINI TOURS', _miniTours.length),
+                  const SizedBox(height: 10),
+                  if (_miniTours.isEmpty)
+                    _emptyCard('No mini tours recorded yet.')
+                  else
+                    ..._miniTours.map(_miniTourCard),
+                ],
+              ),
+            ),
     );
   }
 
-  Widget _buildEmpty() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.history_rounded, size: 56, color: Colors.black26),
-            const SizedBox(height: 16),
-            const Text(
-              'Nothing here yet',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+  Widget _sectionHeader(String title, int count) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            color: Colors.black54,
+            letterSpacing: 1.5,
+          ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            '$count',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: Colors.black54,
             ),
-            const SizedBox(height: 8),
-            Text(
-              'Finish an Odyssey trip or complete a Walk and it’ll show up here.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13.5, color: AppColors.textSecondary),
-            ),
-          ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyCard(String msg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Center(
+        child: Text(
+          msg,
+          style: const TextStyle(fontSize: 13, color: Colors.black38),
         ),
       ),
     );
   }
 
-  Widget _sectionLabel(String text, int count) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12, top: 4),
-      child: Row(
-        children: [
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 2,
-            ),
-          ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.black,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '$count',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _odysseyCard(Odyssey o) {
+    final prefixText = o.formattedDateRange.isNotEmpty
+        ? '${o.destination.isNotEmpty ? "${o.destination} · " : ""}${o.formattedDateRange} · '
+        : (o.destination.isNotEmpty
+            ? '${o.destination} · ${o.actualDays} ${o.actualDays == 1 ? 'Day' : 'Days'} · '
+            : '${o.actualDays} ${o.actualDays == 1 ? 'Day' : 'Days'} · ');
 
-  Widget _emptyNote(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 13, color: AppColors.textTertiary),
-      ),
-    );
-  }
-
-  Widget _tripCard(Odyssey o) {
     return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => OdysseyDetailPage(odyssey: o)),
-        );
-        _load();
-      },
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OdysseyDetailPage(odyssey: o),
+        ),
+      ),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(18),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.black12),
         ),
         child: Row(
@@ -233,13 +237,12 @@ class _HistoryPageState extends State<HistoryPage> {
             Container(
               width: 44,
               height: 44,
-              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: AppColors.neonGreen.withValues(alpha: 0.15),
+                color: AppColors.brandGreen.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: const Icon(Icons.check_circle_rounded,
-                  color: AppColors.neonGreen, size: 24),
+              child: const Icon(Icons.flight_takeoff_rounded,
+                  color: AppColors.brandGreen, size: 22),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -256,14 +259,8 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  ConvertedCurrencyText(
-                    amount: o.budget,
-                    originalCurrency: o.currency,
-                    prefix: o.formattedDateRange.isNotEmpty
-                        ? '${o.destination.isNotEmpty ? "${o.destination} · " : ""}${o.formattedDateRange} · '
-                        : (o.destination.isNotEmpty
-                            ? '${o.destination} · ${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '
-                            : '${o.days} ${o.days == 1 ? 'Day' : 'Days'} · '),
+                  Text(
+                    '$prefixText${o.currency} ${formatAmount(o.budget)}',
                     style: const TextStyle(fontSize: 12.5, color: Colors.black54),
                   ),
                 ],
@@ -280,7 +277,11 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget _miniTourCard(Map<String, dynamic> t) {
     final area = (t['area'] ?? 'Walk').toString();
     final places = (t['places'] as List?)?.length ?? 0;
-    final xp = (t['xp'] as num?)?.toInt() ?? 0;
+    final totalPlaces = (t['total_places'] as num?)?.toInt() ?? places;
+    final visitedCount = (t['visited_count'] as num?)?.toInt() ?? places;
+    final status = (t['status'] ?? 'completed').toString().toLowerCase();
+    final isCompleted = status == 'completed';
+    final xp = (t['xp'] as num?)?.toInt() ?? (visitedCount * 20);
     final date = _fmtDate((t['date'] ?? '').toString());
 
     return Container(
@@ -289,7 +290,9 @@ class _HistoryPageState extends State<HistoryPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(
+          color: isCompleted ? Colors.black12 : Colors.amber.withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         children: [
@@ -298,29 +301,61 @@ class _HistoryPageState extends State<HistoryPage> {
             height: 44,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.brandGreen.withValues(alpha: 0.12),
+              color: isCompleted
+                  ? AppColors.brandGreen.withValues(alpha: 0.12)
+                  : Colors.amber.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: const Text('🏁', style: TextStyle(fontSize: 22)),
+            child: Text(
+              isCompleted ? '🏁' : '🚶',
+              style: const TextStyle(fontSize: 22),
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  area,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        area,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isCompleted
+                            ? AppColors.brandGreen.withValues(alpha: 0.12)
+                            : Colors.amber.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        isCompleted ? 'COMPLETED' : 'INCOMPLETE',
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: isCompleted
+                              ? AppColors.brandGreen
+                              : const Color(0xFFB45309),
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
-                  '$places ${places == 1 ? 'place' : 'places'} · +$xp XP'
-                  '${date.isNotEmpty ? ' · $date' : ''}',
+                  isCompleted
+                      ? '$totalPlaces ${totalPlaces == 1 ? 'place' : 'places'} · +$xp XP${date.isNotEmpty ? ' · $date' : ''}'
+                      : '$visitedCount of $totalPlaces places · +$xp XP${date.isNotEmpty ? ' · $date' : ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 12.5, color: Colors.black54),

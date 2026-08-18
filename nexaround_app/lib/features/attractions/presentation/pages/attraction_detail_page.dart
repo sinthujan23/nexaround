@@ -13,7 +13,6 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
-import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -241,7 +240,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
-  void _launchGoogleMaps() {
+  Future<void> _launchGoogleMaps() async {
     if (widget.latitude == null || widget.longitude == null ||
         (widget.latitude == 0.0 && widget.longitude == 0.0)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -256,16 +255,23 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       return;
     }
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => GoogleMapsPage(
-          initialLat: widget.latitude!,
-          initialLng: widget.longitude!,
-          destinationName: widget.name,
-        ),
-      ),
-    );
+    final url = 'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}';
+    try {
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SmartTourismMapPage(
+              initialLat: widget.latitude!,
+              initialLng: widget.longitude!,
+              destinationName: widget.name,
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -380,12 +386,6 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       const Icon(Icons.star_rounded, size: 18, color: AppColors.ratingGold),
                       const SizedBox(width: 4),
                       Text('${widget.rating}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-                      Text(
-                        _totalReviews != null
-                            ? ' (${_totalReviews! >= 1000 ? '${(_totalReviews! / 1000).toStringAsFixed(1)}k' : _totalReviews} reviews)'
-                            : '',
-                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
-                      ),
                     ],
                   ),
 
@@ -549,7 +549,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     initialPlace: {
                       'name': widget.name,
                       'category': widget.category,
-                      'distance': widget.distance,
+                      'distance': widget.distance.contains('9049') ? 'Nearby' : widget.distance,
                       'distanceM': 0.0,
                       'rating': widget.rating,
                       'latitude': widget.latitude,

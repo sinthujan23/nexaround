@@ -226,10 +226,25 @@ class MapBloc extends Bloc<MapEvent, MapState> {
             }
 
             var mergedList = repoList;
-            final Map<String, AttractionEntity> mergedMap = {
-              for (final p in repoList) p.id: p,
-              for (final p in repoList) p.name.trim().toLowerCase(): p,
-            };
+            final Map<String, AttractionEntity> mergedMap = {};
+            void addPlaceToMerged(AttractionEntity p) {
+              final normName = p.name.trim().toLowerCase();
+              final placeId = p.id.trim();
+              String targetKey = normName.isNotEmpty ? normName : placeId;
+              for (final existingKey in mergedMap.keys) {
+                final item = mergedMap[existingKey]!;
+                if ((normName.isNotEmpty && item.name.trim().toLowerCase() == normName) ||
+                    (placeId.isNotEmpty && item.id.trim() == placeId)) {
+                  targetKey = existingKey;
+                  break;
+                }
+              }
+              mergedMap[targetKey] = p;
+            }
+
+            for (final p in repoList) {
+              addPlaceToMerged(p);
+            }
 
             // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
             if (mergedList.length < 15) {
@@ -255,10 +270,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                     photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
                     distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
                   );
-                  mergedMap[p.id] = correctedP;
-                  mergedMap[p.name.trim().toLowerCase()] = correctedP;
+                  addPlaceToMerged(correctedP);
                 }
-                mergedList = mergedMap.values.toSet().toList();
+                mergedList = mergedMap.values.toList();
                 print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
               } catch (e) {
                 print('⚠️ fetchNearbyPlaces fallback failed for $cat: $e');
@@ -283,10 +297,9 @@ class MapBloc extends Bloc<MapEvent, MapState> {
                       photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
                       distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
                     );
-                    mergedMap[p.id] = correctedP;
-                    mergedMap[p.name.trim().toLowerCase()] = correctedP;
+                    addPlaceToMerged(correctedP);
                   }
-                  mergedList = mergedMap.values.toSet().toList();
+                  mergedList = mergedMap.values.toList();
                   print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
                 } catch (e) {
                   print('⚠️ Google legacy fallback also failed for $cat: $e');

@@ -22,7 +22,6 @@ class FlightStrategiesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
         Row(
           children: [
             Container(

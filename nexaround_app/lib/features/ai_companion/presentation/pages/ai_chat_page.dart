@@ -1,16 +1,13 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
 class AiChatPage extends StatefulWidget {
   final String? initialPrompt;
@@ -379,7 +376,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     height: 300,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: AppColors.primary.withOpacity(0.03),
+                      color: AppColors.primary.withValues(alpha: 0.03),
                     ),
                   ),
                 ),
@@ -406,7 +403,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 20,
                   offset: const Offset(0, -5),
                 ),
@@ -456,7 +453,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF64B5F6).withOpacity(0.5),
+            color: const Color(0xFF64B5F6).withValues(alpha: 0.5),
             blurRadius: 15,
             spreadRadius: 2,
           ),
@@ -484,7 +481,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: Colors.black.withOpacity(0.05),
+        color: Colors.black.withValues(alpha: 0.05),
         border: Border.all(color: Colors.black12, width: 1),
       ),
       child: Icon(
@@ -521,7 +518,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 height: 40,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   border: Border.all(color: Colors.black12),
                 ),
                 child: const Icon(
@@ -611,13 +608,13 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.03),
+                        color: Colors.black.withValues(alpha: 0.03),
                         blurRadius: 10,
                         offset: const Offset(0, 5),
                       ),
                     ],
                     border: !isUser
-                        ? Border.all(color: Colors.black.withOpacity(0.03))
+                        ? Border.all(color: Colors.black.withValues(alpha: 0.03))
                         : null,
                   ),
                   child: isUser
@@ -661,7 +658,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -671,7 +668,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     height: 4,
                     margin: const EdgeInsets.symmetric(horizontal: 1.5),
                     decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
+                       shape: BoxShape.circle,
                       color: Colors.black26,
                     ),
                   )
@@ -705,7 +702,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => GoogleMapsPage(
+                builder: (_) => SmartTourismMapPage(
                   initialLat: p.latitude,
                   initialLng: p.longitude,
                   destinationName: p.name,
@@ -719,10 +716,10 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.black.withOpacity(0.05)),
+              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.03),
+                  color: Colors.black.withValues(alpha: 0.03),
                   blurRadius: 8,
                   offset: const Offset(0, 2),
                 ),
@@ -736,12 +733,12 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                   child: Container(
                     width: 44,
                     height: 44,
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     child: p.photoUrls.isNotEmpty
                         ? Image.network(
                             p.photoUrls.first,
                             fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => const Icon(
+                            errorBuilder: (context, error, stackTrace) => const Icon(
                               Icons.place_rounded,
                               color: Colors.black38,
                               size: 22,
@@ -865,7 +862,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 color: color,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.15),
+                    color: Colors.black.withValues(alpha: 0.15),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   ),
@@ -923,9 +920,9 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => GoogleMapsPage(
-                      initialLat: (lat as num).toDouble(),
-                      initialLng: (lng as num).toDouble(),
+                    builder: (_) => SmartTourismMapPage(
+                      initialLat: lat.toDouble(),
+                      initialLng: lng.toDouble(),
                       destinationName: name,
                     ),
                   ),
@@ -1012,7 +1009,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             itemCount: _nearbyCategories.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final cat = _nearbyCategories[index];
               final id = cat['id'] as String;
@@ -1033,7 +1030,7 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                     boxShadow: isActive
                         ? [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: Colors.black.withValues(alpha: 0.2),
                               blurRadius: 12,
                             ),
                           ]
@@ -1110,55 +1107,95 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
   }
 
   Widget _buildInputBar() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _controller,
+      builder: (context, value, _) {
+        final hasText = value.text.trim().isNotEmpty;
+
+        return Container(
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: Colors.black12),
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(28),
+            border: Border.all(
+              color: const Color(0xFFE5E7EB),
+              width: 1.0,
+            ),
           ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Row(
             children: [
+              const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _controller,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
+                    color: Color(0xFF111827),
                   ),
                   decoration: const InputDecoration(
                     hintText: 'Talk to Neva...',
-                    hintStyle: TextStyle(color: Colors.black26, fontSize: 15),
+                    hintStyle: TextStyle(
+                      color: Color(0xFF9CA3AF),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    filled: true,
+                    fillColor: Colors.transparent,
                     border: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    errorBorder: InputBorder.none,
+                    disabledBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+                    isDense: true,
                   ),
+                  textInputAction: TextInputAction.send,
                   onSubmitted: _sendMessage,
                 ),
               ),
-              GestureDetector(
-                onTap: () => _sendMessage(_controller.text),
-                child: Container(
-                  width: 48,
-                  height: 48,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.black,
-                  ),
-                  child: const Icon(
-                    Icons.arrow_upward_rounded,
-                    color: Colors.white,
-                    size: 22,
+              const SizedBox(width: 4),
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeInOut,
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: hasText ? const Color(0xFF111827) : const Color(0xFFE5E7EB),
+                  boxShadow: hasText
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: hasText ? () => _sendMessage(_controller.text) : null,
+                    customBorder: const CircleBorder(),
+                    child: Center(
+                      child: AnimatedScale(
+                        scale: hasText ? 1.0 : 0.88,
+                        duration: const Duration(milliseconds: 200),
+                        child: Icon(
+                          Icons.arrow_upward_rounded,
+                          color: hasText ? Colors.white : const Color(0xFF9CA3AF),
+                          size: 20,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

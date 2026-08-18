@@ -1172,7 +1172,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     // If launched with an initial place (e.g. from Attraction Details AR button), auto-start route navigation
     if (widget.initialPlace != null) {
-      Future.delayed(const Duration(milliseconds: 400), () {
+      Future.microtask(() async {
         if (mounted && !_initialPlaceTriggered) {
           _initialPlaceTriggered = true;
           final p = widget.initialPlace!;
@@ -1183,18 +1183,28 @@ class _ArCameraPageState extends State<ArCameraPage>
                   ? (p['photo_urls'] as List).first.toString()
                   : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
 
+          geo.Position? currentPos = _currentPosition;
+          if (currentPos == null) {
+            try {
+              currentPos = await geo.Geolocator.getLastKnownPosition();
+              if (currentPos != null && mounted) {
+                _currentPosition = currentPos;
+              }
+            } catch (_) {}
+          }
+
           double initialBearing = 0.0;
           double distanceM = (p['distanceM'] as num?)?.toDouble() ?? 0.0;
-          if (_currentPosition != null && lat != null && lng != null) {
+          if (currentPos != null && lat != null && lng != null && lat != 0.0 && lng != 0.0) {
             distanceM = geo.Geolocator.distanceBetween(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
+              currentPos.latitude,
+              currentPos.longitude,
               lat,
               lng,
             );
             initialBearing = _calculateBearing(
-              _currentPosition!.latitude,
-              _currentPosition!.longitude,
+              currentPos.latitude,
+              currentPos.longitude,
               lat,
               lng,
             );
@@ -1203,7 +1213,9 @@ class _ArCameraPageState extends State<ArCameraPage>
           final distKm = distanceM / 1000;
           final distStr = distanceM > 0
               ? (distKm < 1 ? '${distanceM.toInt()} m' : '${distKm.toStringAsFixed(1)} km')
-              : (p['distance'] ?? 'Nearby');
+              : ((p['distance'] != null && (p['distance'] as String).isNotEmpty && !(p['distance'] as String).contains('9049'))
+                  ? p['distance']
+                  : 'Nearby');
 
           final landmark = _ArLandmark(
             p['name'] ?? 'Destination',
@@ -1218,16 +1230,18 @@ class _ArCameraPageState extends State<ArCameraPage>
             lng,
           );
 
-          setState(() {
-            if (!_landmarks.any((l) => l.name == landmark.name)) {
-              _landmarks.insert(0, landmark);
-              _allLandmarks.insert(0, landmark);
-            }
-            _selectedLandmark = _landmarks.indexWhere((l) => l.name == landmark.name);
-          });
+          if (mounted) {
+            setState(() {
+              if (!_landmarks.any((l) => l.name == landmark.name)) {
+                _landmarks.insert(0, landmark);
+                _allLandmarks.insert(0, landmark);
+              }
+              _selectedLandmark = _landmarks.indexWhere((l) => l.name == landmark.name);
+            });
 
-          // Start route navigation to this specific place
-          _startRouteNavigation(landmark);
+            // Start route navigation to this specific place
+            _startRouteNavigation(landmark);
+          }
         }
       });
     }
@@ -1369,11 +1383,18 @@ class _ArCameraPageState extends State<ArCameraPage>
         if (results.isNotEmpty) {
           final place = results.first;
           final pos = _currentPosition;
-          final distanceM = place.distanceM ?? 0.0;
+          final double distanceM = (pos != null && place.latitude != 0.0 && place.longitude != 0.0)
+              ? geo.Geolocator.distanceBetween(
+                  pos.latitude,
+                  pos.longitude,
+                  place.latitude,
+                  place.longitude,
+                )
+              : (place.distanceM ?? 0.0);
           final distanceText = distanceM < 1000
               ? '${distanceM.toInt()} m'
               : '${(distanceM / 1000).toStringAsFixed(1)} km';
-          final bearing = pos != null
+          final bearing = (pos != null && place.latitude != 0.0 && place.longitude != 0.0)
               ? _calculateBearing(
                   pos.latitude,
                   pos.longitude,
@@ -1436,8 +1457,37 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   void _startRouteNavigation(_ArLandmark landmark) {
+    _ArLandmark target = landmark;
+    if (_currentPosition != null &&
+        landmark.lat != null &&
+        landmark.lng != null &&
+        landmark.lat != 0.0 &&
+        landmark.lng != 0.0) {
+      final double distM = geo.Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        landmark.lat!,
+        landmark.lng!,
+      );
+      final double bearing = _calculateBearing(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        landmark.lat!,
+        landmark.lng!,
+      );
+      final distKm = distM / 1000;
+      final distStr = distKm < 1
+          ? '${distM.toInt()} m'
+          : '${distKm.toStringAsFixed(1)} km';
+      target = landmark.copyWith(
+        distance: distStr,
+        distanceM: distM,
+        bearing: bearing,
+      );
+    }
+
     setState(() {
-      _navigationTarget = landmark;
+      _navigationTarget = target;
       _isNavigating = true;
       _showInfoCard = false;
       _arMode = 'navigate';
@@ -1448,7 +1498,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     });
 
     // Fetch walking route in background
-    _fetchWalkingRoute(landmark);
+    _fetchWalkingRoute(target);
   }
 
   Future<void> _fetchWalkingRoute(_ArLandmark landmark) async {
@@ -1483,6 +1533,32 @@ class _ArCameraPageState extends State<ArCameraPage>
         _walkingRoute = route;
         _currentStepIndex = 0;
         _isFetchingRoute = false;
+        if (_navigationTarget != null) {
+          double distM = _navigationTarget!.distanceM;
+          if (_currentPosition != null &&
+              _navigationTarget!.lat != null &&
+              _navigationTarget!.lng != null &&
+              _navigationTarget!.lat != 0.0 &&
+              _navigationTarget!.lng != 0.0) {
+            distM = geo.Geolocator.distanceBetween(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              _navigationTarget!.lat!,
+              _navigationTarget!.lng!,
+            );
+          } else if (route != null && route.totalDistanceM > 0) {
+            distM = route.totalDistanceM;
+          }
+          final distKm = distM / 1000;
+          final distStr = distM < 1000
+              ? '${distM.round()} m'
+              : '${distKm.toStringAsFixed(1)} km';
+
+          _navigationTarget = _navigationTarget!.copyWith(
+            distance: distStr,
+            distanceM: distM,
+          );
+        }
       });
       if (route != null) {
         debugPrint(
@@ -2229,14 +2305,23 @@ class _ArCameraPageState extends State<ArCameraPage>
       // Helper: convert raw API result into an _ArLandmark (deduped against collected)
       _ArLandmark? _toLandmark(dynamic p, double radiusLimit) {
         if (collected.any((l) => l.name == p.name)) return null;
-        final rawDistM = (p.distanceM ?? 0).toDouble();
-        if (p.distanceM != null && rawDistM > (radiusLimit * 1.5)) return null;
-        final bearing = _calculateBearing(
-          pos.latitude,
-          pos.longitude,
-          p.latitude,
-          p.longitude,
-        );
+        final double rawDistM = (p.latitude != null && p.longitude != null && p.latitude != 0.0 && p.longitude != 0.0)
+            ? geo.Geolocator.distanceBetween(
+                pos.latitude,
+                pos.longitude,
+                (p.latitude as num).toDouble(),
+                (p.longitude as num).toDouble(),
+              )
+            : ((p.distanceM ?? 0).toDouble());
+        if (rawDistM > (radiusLimit * 1.5)) return null;
+        final bearing = (p.latitude != null && p.longitude != null && p.latitude != 0.0 && p.longitude != 0.0)
+            ? _calculateBearing(
+                pos.latitude,
+                pos.longitude,
+                (p.latitude as num).toDouble(),
+                (p.longitude as num).toDouble(),
+              )
+            : 0.0;
         final distKm = rawDistM / 1000;
         final distStr = distKm < 1
             ? '${rawDistM.toInt()} m'
@@ -2569,11 +2654,9 @@ class _ArCameraPageState extends State<ArCameraPage>
         return 'Near ${nearest.name}';
       }
     }
-    // Show coordinates when GPS is available but reverse geocode hasn't resolved
+    // Return friendly name when GPS is available
     if (_currentPosition != null) {
-      final lat = _currentPosition!.latitude.toStringAsFixed(4);
-      final lng = _currentPosition!.longitude.toStringAsFixed(4);
-      return '$lat, $lng';
+      return 'Current Location';
     }
     return 'Locating…';
   }
@@ -3844,45 +3927,44 @@ class _ArCameraPageState extends State<ArCameraPage>
                 ),
               ),
             ],
-            // Search Bar
+            // Search Bar (Deep OLED Black & Cyan Neon)
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
               child: Container(
-                height: 48,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.6),
+                  color: const Color(0xFF0A0E17).withOpacity(0.92),
                   borderRadius: BorderRadius.circular(26),
                   border: Border.all(
                     color: _isListening
-                        ? const Color(0xFF00E5FF).withOpacity(0.6)
-                        : Colors.white.withOpacity(0.15),
+                        ? const Color(0xFF00E5FF)
+                        : const Color(0xFF00E5FF).withOpacity(0.35),
                     width: 1.2,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 12,
-                      offset: const Offset(0, -2),
+                      color: const Color(0xFF00E5FF).withOpacity(_isListening ? 0.3 : 0.1),
+                      blurRadius: _isListening ? 18 : 12,
+                      spreadRadius: _isListening ? 1 : 0,
                     ),
-                    if (_isListening)
-                      BoxShadow(
-                        color: const Color(0xFF00E5FF).withOpacity(0.2),
-                        blurRadius: 10,
-                        spreadRadius: 1,
-                      ),
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.55),
+                      blurRadius: 14,
+                      offset: const Offset(0, 3),
+                    ),
                   ],
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(26),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                     child: Row(
                       children: [
-                        const SizedBox(width: 14),
+                        const SizedBox(width: 6),
                         // Global Compass
                         Container(
-                          width: 42,
-                          height: 42,
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
                             color: const Color(0xFFFFD600), // Yellow background
                             shape: BoxShape.circle,
@@ -3897,13 +3979,13 @@ class _ArCameraPageState extends State<ArCameraPage>
                               const Icon(
                                 Icons.explore_outlined,
                                 color: Colors.black, // Black needle
-                                size: 16,
+                                size: 14,
                               ),
                               Text(
                                 _cardinalFromHeading(_heading),
                                 style: const TextStyle(
                                   color: Colors.black, // Black text
-                                  fontSize: 9,
+                                  fontSize: 8.5,
                                   fontWeight: FontWeight.w900,
                                   letterSpacing: 0.5,
                                 ),
@@ -3911,7 +3993,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                             ],
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         GestureDetector(
                           onTap: () {
                             final text = _searchController.text.trim();
@@ -3923,43 +4005,63 @@ class _ArCameraPageState extends State<ArCameraPage>
                                 _isListening
                                     ? Icons.graphic_eq_rounded
                                     : Icons.search_rounded,
-                                color: _isListening
-                                    ? const Color(0xFF00E5FF)
-                                    : AppColors.brandGreen,
-                                size: 18,
+                                color: const Color(0xFF00E5FF),
+                                size: 20,
                               )
                               .animate(target: _isListening ? 1 : 0)
                               .scaleXY(end: 1.1, duration: 200.ms),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            textInputAction: TextInputAction.search,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                            ),
-                            decoration: InputDecoration(
-                              hintText: _isListening
-                                  ? 'Listening...'
-                                  : 'Search place...',
-                              hintStyle: TextStyle(
-                                color: _isListening
-                                    ? const Color(0xFF00E5FF).withOpacity(0.8)
-                                    : Colors.white54,
-                                fontSize: 14,
+                          child: Theme(
+                            data: Theme.of(context).copyWith(
+                              textSelectionTheme: const TextSelectionThemeData(
+                                cursorColor: Color(0xFF00E5FF),
+                                selectionColor: Color(0x5500E5FF),
+                                selectionHandleColor: Color(0xFF00E5FF),
                               ),
-                              border: InputBorder.none,
-                              isDense: true,
                             ),
-                            onTap: () {
-                              updateState(() => _isSearching = true);
-                            },
-                            onChanged: _onSearchQueryChanged,
-                            onSubmitted: (val) {
-                              _performArSearchAndSelectFirst(val);
-                            },
+                            child: TextField(
+                              controller: _searchController,
+                              cursorColor: const Color(0xFF00E5FF),
+                              cursorWidth: 2.2,
+                              cursorRadius: const Radius.circular(2.0),
+                              textInputAction: TextInputAction.search,
+                              textAlignVertical: TextAlignVertical.center,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                hintText: _isListening
+                                    ? 'Listening...'
+                                    : 'Search place...',
+                                hintStyle: TextStyle(
+                                  color: _isListening
+                                      ? const Color(0xFF00E5FF).withOpacity(0.9)
+                                      : Colors.white.withOpacity(0.55),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w400,
+                                ),
+                                filled: true,
+                                fillColor: Colors.transparent,
+                                border: InputBorder.none,
+                                enabledBorder: InputBorder.none,
+                                focusedBorder: InputBorder.none,
+                                errorBorder: InputBorder.none,
+                                disabledBorder: InputBorder.none,
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                              ),
+                              onTap: () {
+                                updateState(() => _isSearching = true);
+                              },
+                              onChanged: _onSearchQueryChanged,
+                              onSubmitted: (val) {
+                                _performArSearchAndSelectFirst(val);
+                              },
+                            ),
                           ),
                         ),
                         if (_searchController.text.isNotEmpty)
@@ -3972,10 +4074,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                               });
                             },
                             child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 8),
+                              padding: EdgeInsets.symmetric(horizontal: 4),
                               child: Icon(
                                 Icons.close_rounded,
-                                color: Colors.white54,
+                                color: Colors.white70,
                                 size: 20,
                               ),
                             ),
@@ -3992,18 +4094,16 @@ class _ArCameraPageState extends State<ArCameraPage>
                           child: Container(
                             color: Colors.transparent, // Expand hit area
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
+                              horizontal: 10,
+                              vertical: 8,
                             ),
                             child:
                                 Icon(
                                       _isListening
                                           ? Icons.mic_rounded
                                           : Icons.mic_none_rounded,
-                                      color: _isListening
-                                          ? const Color(0xFF00E5FF)
-                                          : AppColors.brandGreen,
-                                      size: 26,
+                                      color: const Color(0xFF00E5FF),
+                                      size: 24,
                                     )
                                     .animate(target: _isListening ? 1 : 0)
                                     .scaleXY(end: 1.2, duration: 200.ms),
@@ -7066,7 +7166,7 @@ HOW TO FORMAT EVERY REPLY:
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => GoogleMapsPage(
+                              builder: (_) => SmartTourismMapPage(
                                 initialLat: lat!,
                                 initialLng: lng!,
                                 destinationName: name,
@@ -7962,7 +8062,29 @@ HOW TO FORMAT EVERY REPLY:
                                           crossAxisAlignment:
                                               WrapCrossAlignment.center,
                                           children: [
-
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(
+                                                horizontal: 8,
+                                                vertical: 4,
+                                              ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.white.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(
+                                                  color: Colors.white.withOpacity(0.2),
+                                                  width: 0.8,
+                                                ),
+                                              ),
+                                              child: Text(
+                                                landmark.category.toUpperCase(),
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w800,
+                                                  letterSpacing: 0.5,
+                                                ),
+                                              ),
+                                            ),
                                             if (_selectedFilter != 'All' &&
                                                 _selectedFilter != 'Others')
                                               // Range button
@@ -8073,14 +8195,34 @@ HOW TO FORMAT EVERY REPLY:
                                   ),
                                   const SizedBox(width: 3),
                                   Flexible(
-                                    child: Text(
-                                      landmark.distance,
-                                      style: TextStyle(
-                                        color: Colors.white.withOpacity(0.75),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
+                                    child: Builder(
+                                      builder: (context) {
+                                        String distText = landmark.distance;
+                                        if (_currentPosition != null &&
+                                            landmark.lat != null &&
+                                            landmark.lng != null &&
+                                            landmark.lat != 0.0 &&
+                                            landmark.lng != 0.0) {
+                                          final dM = geo.Geolocator.distanceBetween(
+                                            _currentPosition!.latitude,
+                                            _currentPosition!.longitude,
+                                            landmark.lat!,
+                                            landmark.lng!,
+                                          );
+                                          distText = dM < 1000
+                                              ? '${dM.round()} m'
+                                              : '${(dM / 1000).toStringAsFixed(1)} km';
+                                        }
+                                        return Text(
+                                          distText,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.75),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        );
+                                      },
                                     ),
                                   ),
                                 ],
@@ -9375,22 +9517,42 @@ HOW TO FORMAT EVERY REPLY:
               right: 0,
               child: Column(
                 children: [
-                  Text(
-                        _navigationTarget!.distance.toUpperCase(),
-                        style: const TextStyle(
-                          color: cyan,
-                          fontSize: 72,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -2,
-                          shadows: [Shadow(color: cyan, blurRadius: 30)],
-                        ),
-                      )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .scale(
-                        begin: const Offset(1, 1),
-                        end: const Offset(1.05, 1.05),
-                        duration: 1.seconds,
-                      ),
+                  Builder(
+                    builder: (context) {
+                      String displayDist = _navigationTarget!.distance;
+                      if (_currentPosition != null &&
+                          _navigationTarget!.lat != null &&
+                          _navigationTarget!.lng != null &&
+                          _navigationTarget!.lat != 0.0 &&
+                          _navigationTarget!.lng != 0.0) {
+                        final dM = geo.Geolocator.distanceBetween(
+                          _currentPosition!.latitude,
+                          _currentPosition!.longitude,
+                          _navigationTarget!.lat!,
+                          _navigationTarget!.lng!,
+                        );
+                        displayDist = dM < 1000
+                            ? '${dM.round()} M'
+                            : '${(dM / 1000).toStringAsFixed(1)} KM';
+                      }
+                      return Text(
+                            displayDist.toUpperCase(),
+                            style: const TextStyle(
+                              color: cyan,
+                              fontSize: 72,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -2,
+                              shadows: [Shadow(color: cyan, blurRadius: 30)],
+                            ),
+                          )
+                          .animate(onPlay: (c) => c.repeat(reverse: true))
+                          .scale(
+                            begin: const Offset(1, 1),
+                            end: const Offset(1.05, 1.05),
+                            duration: 1.seconds,
+                          );
+                    },
+                  ),
                   Text(
                     'TO ${_navigationTarget!.name.toUpperCase()}',
                     style: const TextStyle(
@@ -9801,12 +9963,32 @@ HOW TO FORMAT EVERY REPLY:
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          Text(
-                            l.distance,
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 10,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              String dStr = l.distance;
+                              if (_currentPosition != null &&
+                                  l.lat != null &&
+                                  l.lng != null &&
+                                  l.lat != 0.0 &&
+                                  l.lng != 0.0) {
+                                final dM = geo.Geolocator.distanceBetween(
+                                  _currentPosition!.latitude,
+                                  _currentPosition!.longitude,
+                                  l.lat!,
+                                  l.lng!,
+                                );
+                                dStr = dM < 1000
+                                    ? '${dM.round()} m'
+                                    : '${(dM / 1000).toStringAsFixed(1)} km';
+                              }
+                              return Text(
+                                dStr,
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 10,
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),
@@ -11147,10 +11329,10 @@ extension _ArCameraNavigation on _ArCameraPageState {
       left: 16,
       right: 16,
       child: Container(
-        height: 48,
+        height: 50,
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.55),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(25),
           border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.2),
           boxShadow: [
             BoxShadow(
@@ -11161,23 +11343,24 @@ extension _ArCameraNavigation on _ArCameraPageState {
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(25),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: TextField(
               controller: _searchController,
               textInputAction: TextInputAction.search,
+              textAlignVertical: TextAlignVertical.center,
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
+                fontSize: 15.5,
+                fontWeight: FontWeight.w500,
               ),
               decoration: InputDecoration(
                 hintText: 'Search any place to navigate...',
                 hintStyle: TextStyle(
                   color: Colors.white.withOpacity(0.5),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w400,
                 ),
                 prefixIcon: GestureDetector(
                   onTap: () {
@@ -11213,7 +11396,8 @@ extension _ArCameraNavigation on _ArCameraPageState {
                 focusedBorder: InputBorder.none,
                 filled: true,
                 fillColor: Colors.transparent,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
               ),
               onChanged: _onSearchQueryChanged,
               onSubmitted: (val) {

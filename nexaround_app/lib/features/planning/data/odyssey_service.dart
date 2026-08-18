@@ -18,8 +18,10 @@ class OdysseyService {
       'You are NexAround\'s expert local travel designer. '
       'You craft realistic, budget-aware, day-by-day trip blueprints. '
       'You always reply with a single JSON object that matches the requested '
-      'schema exactly — no markdown, no commentary, no code fences. Costs must '
-      'be realistic for the destination and stay within the user\'s total budget. '
+      'schema exactly — no markdown, no commentary, no code fences. '
+      'CRITICAL: If the user provides an unrealistically low or impossible budget (e.g. 1 USD or very low amount), '
+      'DO NOT FAIL OR REFUSE. Instead, generate an ultra-low budget / free exploration itinerary for the destination, '
+      'and include a clear, helpful "budget_advisory" disclaimer explaining the realistic costs required. '
       'CRITICAL HOTEL REQUIREMENT: Recommend ONLY genuine, real, famous, and currently operating hotels that are bookable on major platforms like Booking.com and Agoda. DO NOT invent fictitious names or append company suffixes like "Pvt Ltd" or "City". Use the exact official hotel name as listed on Google Maps / Booking.com (e.g., "The Heritage Madurai", "Hotel Royal Court", "Courtyard by Marriott Madurai"). Exclude non-existent or unbookable properties.';
 
   Future<Odyssey> generate({
@@ -84,6 +86,13 @@ Trip brief:
 - Total budget: ${budget.toStringAsFixed(0)} $currency (this is the hard cap for the whole trip)
 - Currency to use in all costs: $currency
 
+CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
+1. If the total budget of ${budget.toStringAsFixed(0)} $currency is too low to cover standard travel/hotel/flights for $destination for $days days (e.g. 1 $currency, very low funds):
+   - NEVER fail or refuse to generate a plan.
+   - Design an ultra-saver plan with free sights, public parks, iconic viewpoints, self-guided walks, and affordable street food.
+   - Set "budget_advisory" with a clear disclaimer: "A total budget of ${budget.toStringAsFixed(0)} $currency is insufficient for a standard $days-day trip to $destination (realistic minimum starts from ~$currency X). This itinerary is generated as an ultra-saver plan with free sights and low-cost exploration, but additional funds will be needed for actual lodging, transit, and meals."
+2. If the budget is sufficient, set "budget_advisory": "".
+
 Return ONLY a JSON object with EXACTLY this shape:
 {
   "title": "Evocative 2-4 word trip name",
@@ -93,6 +102,7 @@ Return ONLY a JSON object with EXACTLY this shape:
   "currency": "$currency",
   "summary": "1-2 sentence overview matching the '$mood' style.",
   "budget_split": "Short split, e.g. '40% Stay · 30% Food · 30% Experiences'",
+  "budget_advisory": "Notice if budget cap is insufficient for realistic rates, otherwise empty string.",
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
   "day_plans": [

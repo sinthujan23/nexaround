@@ -154,45 +154,73 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     super.dispose();
   }
 
-  // ─── Step 1: Get user GPS, then fetch places & route ───
+  // ─── Step 1: Instant Location + Concurrent Data Fetching ───
   Future<void> _getUserLocationThenInit() async {
+    // 1. Instant Cache/Last-Known Position (< 5ms)
     try {
-      // Check location permission first (critical for iOS)
-      final permissionGranted = await Permission.locationWhenInUse.status;
-      if (!permissionGranted.isGranted && !permissionGranted.isLimited) {
-        final result = await Permission.locationWhenInUse.request();
-        if (!result.isGranted && !result.isLimited) {
-          debugPrint('📍 Location permission not granted for map');
-          // Fall through to fallback below
-          throw Exception('Location permission denied');
-        }
+      final lastPos = await geo.Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted) {
+        setState(() {
+          _userLat = lastPos.latitude;
+          _userLng = lastPos.longitude;
+        });
+      }
+    } catch (_) {}
+
+    // Fallback if still null
+    if (_userLat == null || _userLng == null) {
+      _userLat = (widget.initialLat != 0.0) ? widget.initialLat : 6.9271;
+      _userLng = (widget.initialLng != 0.0) ? widget.initialLng : 79.8612;
+      _currentNeighborhood = 'Colombo';
+    }
+
+    // 2. Launch Place Discovery and Route Directions in Parallel
+    if (_destinationName == null) {
+      _fetchPlaces();
+    } else {
+      if (mounted) setState(() => _isLoading = false);
+    }
+    _fetchRoute();
+
+    // 3. Background Precision GPS & Reverse Geocoding (non-blocking)
+    _refreshHighAccuracyGpsInBackground();
+  }
+
+  Future<void> _refreshHighAccuracyGpsInBackground() async {
+    try {
+      final permissionGranted = await Permission.locationWhenInUse.isGranted ||
+          await Permission.locationWhenInUse.isLimited;
+      if (!permissionGranted) {
+        final req = await Permission.locationWhenInUse.request();
+        if (!req.isGranted && !req.isLimited) return;
       }
 
-      final pos = await geo.Geolocator.getCurrentPosition();
+      final pos = await geo.Geolocator.getCurrentPosition(
+        desiredAccuracy: geo.LocationAccuracy.high,
+      );
+      if (!mounted) return;
+
+      final prevLat = _userLat ?? 0.0;
+      final prevLng = _userLng ?? 0.0;
+      final distanceMoved = _haversine(prevLat, prevLng, pos.latitude, pos.longitude);
+
       setState(() {
         _userLat = pos.latitude;
         _userLng = pos.longitude;
       });
-      // Fetch neighborhood name
-      final name = await GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude);
-      if (mounted) {
-        setState(() => _currentNeighborhood = name.split(',')[0]);
-      }
-    } catch (_) {
-      // Fallback to Colombo
-      setState(() {
-        _userLat = 6.9271;
-        _userLng = 79.8612;
-        _currentNeighborhood = 'Colombo';
-      });
-    }
 
-    if (_destinationName == null) {
-      _fetchPlaces();
-    } else {
-      setState(() => _isLoading = false);
-    }
-    _fetchRoute();
+      // Only re-fetch reverse geocode or route if moved > 50m to conserve API costs
+      if (distanceMoved > 50) {
+        GooglePlacesService.reverseGeocode(pos.latitude, pos.longitude).then((name) {
+          if (mounted && name.isNotEmpty) {
+            setState(() => _currentNeighborhood = name.split(',')[0]);
+          }
+        });
+        if (_destinationName != null && !_isActivelyNavigating) {
+          _fetchRoute();
+        }
+      }
+    } catch (_) {}
   }
 
   // ─── Fetch nearby places ───
@@ -343,46 +371,43 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   void _onMapCreated(mapbox.MapboxMap map) async {
     _mapboxMap = map;
 
-    // Enable the user‑location puck (blue dot) only if permission is granted to avoid native crashes
-    final permissionGranted = await Permission.locationWhenInUse.isGranted || await Permission.locationWhenInUse.isLimited;
+    // Enable location puck immediately
     map.location.updateSettings(
       mapbox.LocationComponentSettings(
-        enabled: permissionGranted,
-        pulsingEnabled: permissionGranted,
+        enabled: true,
+        pulsingEnabled: true,
         pulsingColor: AppColors.primary.toARGB32(),
-        showAccuracyRing: permissionGranted,
+        showAccuracyRing: true,
       ),
     );
 
     // Hide default Mapbox ornaments for a clean, custom UI
     _disableOrnaments();
 
-    // Wait for style to fully load before adding layers
-    await Future.delayed(const Duration(milliseconds: 800));
-    _disableOrnaments(); // Ensure ornaments remain hidden after style loading
-
-    // Add 3D building extrusion layer
-    await _add3DBuildingLayer();
-
-    // Animate camera to show both origin & destination
+    // Animate camera to show both origin & destination immediately
     _fitRouteBounds();
 
-    // Setup markers
-    _annotationManager =
-        await map.annotations.createPointAnnotationManager();
+    // Setup markers manager without arbitrary delays
+    map.annotations.createPointAnnotationManager().then((manager) {
+      if (mounted) {
+        _annotationManager = manager;
+        _addMarkers();
+      }
+    });
 
-    _addMarkers();
-
-    // If route was already fetched, draw it
+    // If route was already fetched, draw it immediately
     if (_routeLoaded) {
       _drawRoute();
     }
+
+    // Add 3D building extrusion layer asynchronously in background
+    _add3DBuildingLayer();
 
     // Start location streaming for live tracking
     geo.Geolocator.getPositionStream(
       locationSettings: const geo.LocationSettings(
         accuracy: geo.LocationAccuracy.high,
-        distanceFilter: 10,
+        distanceFilter: 15,
       ),
     ).listen((pos) {
       if (mounted) {
@@ -1606,12 +1631,14 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   }
 
   void _launchExternalMapNav() {
+    final double targetLat = (_destLat != 0.0) ? _destLat : (_userLat ?? widget.initialLat);
+    final double targetLng = (_destLng != 0.0) ? _destLng : (_userLng ?? widget.initialLng);
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => GoogleMapsPage(
-          initialLat: _destLat,
-          initialLng: _destLng,
+          initialLat: targetLat,
+          initialLng: targetLng,
           destinationName: _destinationName,
         ),
       ),
@@ -2132,30 +2159,42 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
               const Icon(Icons.search_rounded, color: Color(0xFF00E5FF), size: 18),
               const SizedBox(width: 8),
               Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  focusNode: _searchFocusNode,
-                  onChanged: _onSearchTextChanged,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Search location...',
-                    hintStyle: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.4),
-                      fontSize: 13,
+                child: Theme(
+                  data: Theme.of(context).copyWith(
+                    textSelectionTheme: const TextSelectionThemeData(
+                      cursorColor: Color(0xFF00E5FF),
+                      selectionColor: Color(0x5500E5FF),
+                      selectionHandleColor: Color(0xFF00E5FF),
                     ),
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    filled: false,
                   ),
-                  textInputAction: TextInputAction.search,
-                  onSubmitted: _onSearchSubmitted,
+                  child: TextField(
+                    controller: _searchController,
+                    focusNode: _searchFocusNode,
+                    cursorColor: const Color(0xFF00E5FF),
+                    cursorWidth: 2.0,
+                    cursorRadius: const Radius.circular(2.0),
+                    onChanged: _onSearchTextChanged,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Search location...',
+                      hintStyle: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.5),
+                        fontSize: 14,
+                      ),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      filled: false,
+                    ),
+                    textInputAction: TextInputAction.search,
+                    onSubmitted: _onSearchSubmitted,
+                  ),
                 ),
               ),
               if (_searchController.text.isNotEmpty)

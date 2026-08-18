@@ -112,12 +112,13 @@ def _model_url(model: str) -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 _SYSTEM = (
-    "You are NexAround's expert local travel designer for Sri Lanka and beyond. "
+    "You are NexAround's expert local travel designer. "
     "You craft realistic, budget-aware, day-by-day trip blueprints. You always "
     "reply with a single JSON object that matches the requested schema exactly - "
-    "no markdown, no commentary, no code fences. Costs must be realistic for the "
-    "destination and stay within the user's total budget. Prefer genuine, "
-    "well-known places over invented ones."
+    "no markdown, no commentary, no code fences. "
+    "CRITICAL: If the user provides an unrealistically low or impossible budget (e.g. 1 USD, 10 USD, or very low funds), "
+    "DO NOT FAIL OR REFUSE. Instead, generate an ultra-low budget / free exploration itinerary for the destination, "
+    "and include a clear, helpful 'budget_advisory' disclaimer explaining the realistic costs required."
 )
 
 
@@ -164,6 +165,7 @@ def build_meta_item(
     end_date: str = "",
     departure_city: str = "",
     budget_breakdown: dict = None,
+    budget_advisory: str = "",
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -188,6 +190,7 @@ def build_meta_item(
         "end_date": end_date,
         "departure_city": departure_city,
         "budget_breakdown": budget_breakdown or {},
+        "budget_advisory": budget_advisory,
     }
 
 
@@ -674,6 +677,16 @@ async def generate_odyssey(
     activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
+    # Advisory calculation: ensure ultra-low budgets always carry a clear disclaimer
+    gemini_advisory = str(plan.get("budget_advisory") or "").strip()
+    estimated_min_daily = 35.0 * max(travelers, 1) * g_days
+    if not gemini_advisory:
+        if budget <= 10 or budget < estimated_min_daily or (cheapest_flight_cost + cheapest_hotel_cost > budget and budget > 0):
+            gemini_advisory = (
+                f"Your budget of {int(budget)} {currency} is below the typical minimum required for a {g_days}-day trip to {final_destination}. "
+                f"We've tailored an ultra-saver plan featuring free attractions and budget-friendly exploration, but additional funds will be required for actual flights, accommodation, and daily meals."
+            )
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
@@ -694,6 +707,7 @@ async def generate_odyssey(
         end_date=final_end_date,
         departure_city=departure_city or "",
         budget_breakdown=budget_breakdown,
+        budget_advisory=gemini_advisory,
     )
 
     day_items: list[dict] = []
@@ -754,13 +768,7 @@ async def generate_replacement_activity(
     existing_names: list[str],
     api_key: str,
 ) -> dict:
-    """Generate ONE replacement stop for a single activity the user wants
-    swapped out (e.g. already visited / not interested). Returns a dict shaped
-    like an activity: {time, name, tip, cost, type, restaurants}. The original `time_slot` is
-    preserved so the day's ordering stays stable.
-
-    Raises on any failure so the caller can surface an error to the user.
-    """
+    """Generate ONE replacement activity with restaurants."""
     prompt = _build_swap_prompt(
         destination=destination,
         mood=mood,
@@ -858,14 +866,18 @@ Trip brief:
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
 
+CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
+1. If the total budget of {int(budget)} {currency} is NOT realistic or too low to cover standard travel/hotel/flights for {travelers} traveler(s) in {destination} for {days} days (e.g. 1 USD, very low amount):
+   - NEVER fail, refuse, or return an empty error plan.
+   - Design an ultra-saver / backpacker / free-exploration itinerary: prioritize free iconic sights, self-guided walking tours, scenic parks, public viewpoints, free museums/galleries, and affordable street food/market stalls.
+   - Populate "budget_advisory" with a clear, polite disclaimer explaining: "A total budget of {int(budget)} {currency} is insufficient for a standard {days}-day trip to {destination} (realistic budget typically starts from ~{currency} X). This itinerary is optimized as an ultra-saver plan with free sights and low-cost exploration, but additional funds will be needed for realistic lodging, transit, and meals."
+2. If the budget is sufficient and realistic, set "budget_advisory": "".
+
 CRITICAL BUDGET PRIORITY RULES:
 1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
 2. Allocate realistic funds for Flights (~40-50%) and Stay (~30-35%).
-3. Stay (Accommodation) budget MUST NEVER be near zero or under 25% of total budget unless flights alone exceed 70%.
+3. Stay (Accommodation) budget MUST NEVER be near zero or under 25% of total budget unless flights alone exceed 70% or total budget is an ultra-saver amount.
 4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget.
-5. IF the total budget of {int(budget)} {currency} is NOT SUFFICIENT to realistically cover flights and accommodation for {travelers} traveler(s) in {destination} for {days} days:
-   Add a "budget_advisory" field explaining clearly: "Flights and hotel costs for {travelers} traveler(s) in {destination} typically require at least {currency} X. We recommend allocating an extra {currency} Y for a comfortable trip."
-   If the budget is sufficient, set "budget_advisory": "".
 
 Return ONLY a JSON object with EXACTLY this shape:
 {{
@@ -876,7 +888,7 @@ Return ONLY a JSON object with EXACTLY this shape:
   "currency": "{currency}",
   "summary": "1-2 sentence overview matching the '{mood}' style.",
   "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
-  "budget_advisory": "Optional notice if budget cap is insufficient for realistic flight/hotel rates, otherwise empty string.",
+  "budget_advisory": "Notice if budget cap is insufficient for realistic flight/hotel rates, otherwise empty string.",
   "budget_breakdown": {{
     "stay": {int(budget * 0.35)},
     "transit": {int(budget * 0.45)},

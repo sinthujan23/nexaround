@@ -27,6 +27,10 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/onboarding/presentation/pages/splash_screen.dart';
 
+import 'package:nexaround_app/features/planning/domain/odyssey.dart';
+import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
+
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
   HomePage() : super(key: homeKey);
@@ -35,7 +39,7 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => HomePageState();
 }
 
-class HomePageState extends State<HomePage> with TickerProviderStateMixin, WidgetsBindingObserver {
+class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
@@ -50,9 +54,28 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     _checkLocationService();
 
     // Now that we're in the authenticated shell, register the device for push
-    // and route notification taps to the right tab.
+    // and route notification taps to the right tab / exact plan.
     NotificationService.instance.onOpen = (data) async {
-      if (data['type'] == 'odyssey_ready') switchToPlans();
+      final type = (data['type'] ?? '').toString();
+      final odysseyId = (data['odyssey_id'] ?? data['itinerary_id'] ?? data['id'] ?? data['odysseyId'])?.toString();
+
+      if (type == 'odyssey_ready' || type == 'odyssey_generated' || type == 'plan_ready' || (odysseyId != null && odysseyId.isNotEmpty && type.contains('odyssey'))) {
+        if (odysseyId != null && odysseyId.isNotEmpty) {
+          await openOdysseyById(odysseyId);
+        } else {
+          try {
+            final repo = OdysseyRepository();
+            final list = await repo.getMyOdysseys();
+            if (list.isNotEmpty && mounted) {
+              openOdysseyDetail(list.first);
+            } else {
+              switchToPlans();
+            }
+          } catch (_) {
+            switchToPlans();
+          }
+        }
+      }
       if (data['type'] == 'story_comment') switchToExplore();
       if (data['type'] == 'discovery_ready') {
         switchToExplore();
@@ -65,6 +88,36 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
       }
     };
     NotificationService.instance.syncToken();
+  }
+
+  void openOdysseyDetail(Odyssey odyssey) {
+    switchToPlans();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => OdysseyDetailPage(odyssey: odyssey),
+      ),
+    );
+  }
+
+  Future<void> openOdysseyById(String? odysseyId) async {
+    switchToPlans();
+    if (odysseyId == null || odysseyId.isEmpty) return;
+
+    try {
+      final repo = OdysseyRepository();
+      // Fetch fresh network first to ensure full plan with all days is loaded
+      Odyssey? odyssey = await repo.getOdysseyById(odysseyId);
+      odyssey ??= repo.getCachedOdysseys().where((o) => o.id == odysseyId).firstOrNull;
+      if (odyssey != null && mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OdysseyDetailPage(odyssey: odyssey!),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error opening odyssey by id: $e');
+    }
   }
 
   @override

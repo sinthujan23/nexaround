@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/core/utils/booking_url_helper.dart';
-import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
@@ -36,7 +36,7 @@ class OdysseyPlanView extends StatelessWidget {
   const OdysseyPlanView({
     super.key,
     required this.odyssey,
-    this.padding = const EdgeInsets.all(24),
+    this.padding = const EdgeInsets.fromLTRB(20, 16, 20, 24),
     this.onSwapActivity,
     this.swappingKey,
     this.onToggleVisited,
@@ -48,8 +48,46 @@ class OdysseyPlanView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool hasFlights = odyssey.flightStrategies.isNotEmpty ||
+        odyssey.flightGeneralTips.isNotEmpty ||
+        odyssey.flightBestMonths.isNotEmpty;
+    final bool hasHotels = odyssey.hotelStrategies.isNotEmpty ||
+        odyssey.hotelGeneralTips.isNotEmpty ||
+        odyssey.hotelBestAreas.isNotEmpty;
+
+    Widget buildTabItem({required IconData icon, required String label}) {
+      return Tab(
+        height: 44,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16),
+            const SizedBox(width: 6),
+            Text(label),
+          ],
+        ),
+      );
+    }
+
+    final List<Widget> tabs = [
+      buildTabItem(icon: Icons.dashboard_outlined, label: 'Overview'),
+      buildTabItem(icon: Icons.map_outlined, label: 'Itinerary'),
+      if (hasFlights)
+        buildTabItem(icon: Icons.flight_outlined, label: 'Flights'),
+      if (hasHotels)
+        buildTabItem(icon: Icons.hotel_outlined, label: 'Stays'),
+    ];
+
+    final List<Widget> tabViews = [
+      _buildOverviewTab(context),
+      _buildItineraryTab(context),
+      if (hasFlights) _buildFlightsTab(context),
+      if (hasHotels) _buildStaysTab(context),
+    ];
+
     return DefaultTabController(
-      length: 4,
+      length: tabs.length,
       child: Column(
         children: [
           Container(
@@ -59,39 +97,300 @@ class OdysseyPlanView extends StatelessWidget {
                 bottom: BorderSide(color: Colors.black12, width: 1),
               ),
             ),
-            child: const TabBar(
-              isScrollable: false,
+            child: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.center,
+              labelPadding: const EdgeInsets.symmetric(horizontal: 14),
               indicatorColor: Colors.black,
-              indicatorWeight: 3,
+              indicatorWeight: 2.5,
+              indicatorSize: TabBarIndicatorSize.label,
               labelColor: Colors.black,
               unselectedLabelColor: AppColors.textSecondary,
-              labelStyle: TextStyle(
-                fontSize: 11,
+              labelStyle: const TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.w800,
+                letterSpacing: -0.2,
               ),
-              unselectedLabelStyle: TextStyle(
-                fontSize: 11,
+              unselectedLabelStyle: const TextStyle(
+                fontSize: 13,
                 fontWeight: FontWeight.w600,
+                letterSpacing: -0.2,
               ),
-              tabs: [
-                Tab(icon: Icon(Icons.dashboard_outlined, size: 18), text: 'Overview'),
-                Tab(icon: Icon(Icons.map_outlined, size: 18), text: 'Itinerary'),
-                Tab(icon: Icon(Icons.flight_outlined, size: 18), text: 'Flights'),
-                Tab(icon: Icon(Icons.hotel_outlined, size: 18), text: 'Stays'),
-              ],
+              tabs: tabs,
             ),
           ),
           Expanded(
             child: TabBarView(
-              children: [
-                _buildOverviewTab(context),
-                _buildItineraryTab(context),
-                _buildFlightsTab(context),
-                _buildStaysTab(context),
-              ],
+              children: tabViews,
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  LinearGradient _getThemedGradient(String destination) {
+    final hash = destination.hashCode;
+    final gradients = [
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF0F766E), Color(0xFF312E81)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF581C87), Color(0xFF0F172A)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFFB45309), Color(0xFF451A03)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF065F46), Color(0xFF1E3A8A)],
+      ),
+      const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF881337), Color(0xFF1C1917)],
+      ),
+    ];
+    return gradients[hash.abs() % gradients.length];
+  }
+
+  Widget _buildCinematicHeroCard(BuildContext context) {
+    final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
+    final gradient = _getThemedGradient(odyssey.destination);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      constraints: const BoxConstraints(minHeight: 250),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 18,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            // ── 1. Real Sharp Hero Cover Photo ───────────────────────────
+            Positioned.fill(
+              child: hasImage
+                  ? CachedNetworkImage(
+                      imageUrl: odyssey.coverUrl!,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(
+                        color: const Color(0xFF0F172A),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white60,
+                            ),
+                          ),
+                        ),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        decoration: BoxDecoration(gradient: gradient),
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(gradient: gradient),
+                    ),
+            ),
+
+            // ── 2. Dark Vignette Gradient Overlay (Crisp Text Readability) ─
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0.50),
+                      Colors.black.withValues(alpha: 0.20),
+                      Colors.black.withValues(alpha: 0.95),
+                    ],
+                    stops: const [0.0, 0.35, 1.0],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── 3. Content Layer (Auto-expanding, zero text clipping) ────
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top Badges Row (Destination & Duration Chips)
+                  Row(
+                    children: [
+                      if (odyssey.destination.isNotEmpty)
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.50),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.30),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.place_rounded, color: Color(0xFFFFD600), size: 13),
+                                const SizedBox(width: 4),
+                                Flexible(
+                                  child: Text(
+                                    odyssey.destination,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.50),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.30),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
+                          '${odyssey.nights > 0 ? ' • ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+
+                  // Mood Tag
+                  if (odyssey.mood.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF00E5FF).withValues(alpha: 0.28),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: const Color(0xFF00E5FF).withValues(alpha: 0.6),
+                            width: 0.8,
+                          ),
+                        ),
+                        child: Text(
+                          odyssey.mood.toUpperCase(),
+                          style: const TextStyle(
+                            color: Color(0xFF00E5FF),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // Title (Full text visible)
+                  Text(
+                    odyssey.title,
+                    style: const TextStyle(
+                      fontSize: 21,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                      height: 1.2,
+                      letterSpacing: -0.3,
+                      shadows: [
+                        Shadow(
+                          color: Colors.black,
+                          blurRadius: 12,
+                          offset: Offset(0, 2),
+                        ),
+                        Shadow(
+                          color: Colors.black87,
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // AI Intro / Summary (Fully visible, wraps across lines without ellipsis)
+                  if (odyssey.summary.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          width: 0.7,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 2),
+                            child: Icon(
+                              Icons.auto_awesome_rounded,
+                              color: Color(0xFFFFD600),
+                              size: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              odyssey.summary,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                height: 1.4,
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -102,36 +401,23 @@ class OdysseyPlanView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            odyssey.title,
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w800,
-              height: 1.1,
-            ),
-          ),
-          if (odyssey.summary.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              odyssey.summary,
-              style: const TextStyle(
-                fontSize: 15,
-                height: 1.5,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-          const SizedBox(height: 24),
-          if (odyssey.formattedDateRange.isNotEmpty)
+          _buildCinematicHeroCard(context),
+          if (odyssey.formattedDateRange.isNotEmpty) ...[
             _infoCard(
-              'Trip Dates & Duration',
-              '${odyssey.formattedDateRange} (${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''})',
+              'Trip Dates',
+              odyssey.formattedDateRange,
               Icons.calendar_month_rounded,
-            )
-          else
+            ),
             _infoCard(
               'Duration',
-              '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}'
+              '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
+                  '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+              Icons.wb_sunny_rounded,
+            ),
+          ] else
+            _infoCard(
+              'Duration',
+              '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
                   '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
               Icons.wb_sunny_rounded,
             ),
@@ -347,8 +633,22 @@ class OdysseyPlanView extends StatelessWidget {
 
     double percent(double val) => total > 0 ? (val / total).clamp(0.0, 1.0) : 0.25;
 
+    String formatPercentage(double val) {
+      if (val <= 0 || total <= 0) return '0%';
+      final pct = (val / total) * 100;
+      if (pct >= 0.95) {
+        return '${pct.round()}%';
+      } else if (pct >= 0.1) {
+        return '${pct.toStringAsFixed(1)}%';
+      } else {
+        final formatted = pct.toStringAsFixed(2);
+        return formatted == '0.00' ? '< 0.01%' : '$formatted%';
+      }
+    }
+
     Widget categoryBar(String name, String emoji, double val, Color color) {
-      final p = (percent(val) * 100).toStringAsFixed(0);
+      final pStr = formatPercentage(val);
+      final progVal = (val > 0 && percent(val) < 0.01) ? 0.01 : percent(val);
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Column(
@@ -366,7 +666,7 @@ class OdysseyPlanView extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$currency ${formatAmount(val)} ($p%)',
+                  '$currency ${formatAmount(val)} ($pStr)',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w800,
@@ -379,7 +679,7 @@ class OdysseyPlanView extends StatelessWidget {
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
               child: LinearProgressIndicator(
-                value: percent(val),
+                value: progVal,
                 minHeight: 8,
                 backgroundColor: color.withValues(alpha: 0.15),
                 valueColor: AlwaysStoppedAnimation<Color>(color),
@@ -647,9 +947,8 @@ class OdysseyPlanView extends StatelessWidget {
                     ),
                     if (act.cost.isNotEmpty) ...[
                       const SizedBox(width: 8),
-                      ConvertedCurrencyText(
-                        rawText: act.cost,
-                        originalCurrency: odyssey.currency,
+                      Text(
+                        act.cost,
                         style: const TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
@@ -705,9 +1004,9 @@ class OdysseyPlanView extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                       tooltip: 'Swap this place',
                       icon: const Icon(
-                        Icons.autorenew_rounded,
-                        size: 18,
-                        color: Colors.black45,
+                        Icons.swap_horiz_rounded,
+                        size: 20,
+                        color: AppColors.actionTeal,
                       ),
                       onPressed: swappingKey != null
                           ? null
@@ -972,11 +1271,11 @@ class OdysseyPlanView extends StatelessWidget {
                   ],
                   if (r.priceRange.isNotEmpty) ...[
                     const SizedBox(height: 4),
-                    ConvertedCurrencyText(
-                      rawText: r.priceRange,
-                      originalCurrency: odyssey.currency,
+                    Text(
+                      r.priceRange,
                       style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
                         color: AppColors.actionTeal,
                       ),
                     ),
@@ -998,39 +1297,61 @@ class OdysseyPlanView extends StatelessWidget {
   Widget _budgetAdvisoryCard(BuildContext context) {
     if (odyssey.budgetAdvisory.isEmpty) return const SizedBox.shrink();
     return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFFFE082)),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
+        ),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFFDE68A), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFD97706).withValues(alpha: 0.08),
+            blurRadius: 16,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: Color(0xFFF57F17), size: 22),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.warning_amber_rounded,
+              color: Color(0xFFD97706),
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'BUDGET ADVISORY',
+                  'BUDGET ADVISORY & REALITY CHECK',
                   style: TextStyle(
                     fontSize: 10.5,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFFF57F17),
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFFB45309),
                     letterSpacing: 1.0,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   odyssey.budgetAdvisory,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                    height: 1.35,
+                    color: Color(0xFF451A03),
+                    height: 1.45,
                   ),
                 ),
               ],
@@ -1317,7 +1638,7 @@ class OdysseyPlanView extends StatelessWidget {
                   )
                 else if (isAiGenerated && onSwapPartner != null)
                   IconButton(
-                    icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
+                    icon: const Icon(Icons.swap_horiz_rounded, size: 20, color: AppColors.actionTeal),
                     onPressed: () => onSwapPartner!(title),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),

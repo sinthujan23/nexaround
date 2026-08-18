@@ -444,10 +444,19 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
             expandedHeight: 260,
             pinned: true,
             backgroundColor: Colors.black,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white),
-              onPressed: () => Navigator.pop(context),
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                      size: 16, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
             ),
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
@@ -456,6 +465,9 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
+                  shadows: [
+                    Shadow(color: Colors.black, blurRadius: 8),
+                  ],
                 ),
               ),
               background: Stack(

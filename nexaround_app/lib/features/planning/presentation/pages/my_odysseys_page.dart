@@ -10,7 +10,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_plann
 import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
-import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 
 class MyOdysseysPage extends StatefulWidget {
@@ -122,7 +122,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 16,
               offset: const Offset(0, 8),
             ),
@@ -193,7 +193,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.12),
+              color: Colors.black.withValues(alpha: 0.12),
               blurRadius: 16,
               offset: const Offset(0, 8),
             ),
@@ -232,7 +232,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(Icons.museum_rounded, color: AppColors.brandGreen, size: 22),
+                        Icon(Icons.museum_rounded, color: Color(0xFF00E5FF), size: 22),
                         Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
                       ],
                     ),
@@ -242,10 +242,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                         Text(
                           'TOP MUSEUMS',
                           style: TextStyle(
-                            fontSize: 8,
-                            fontWeight: FontWeight.w800,
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w900,
                             letterSpacing: 1.5,
-                            color: AppColors.brandGreen,
+                            color: Color(0xFF00E5FF),
                           ),
                         ),
                         SizedBox(height: 4),
@@ -307,48 +307,100 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           slivers: [
             SliverAppBar(
               pinned: true,
-              expandedHeight: 145, // Reduced from 200 to 145 for a tighter, cleaner layout
-              backgroundColor: Colors.transparent,
+              expandedHeight: 145,
+              backgroundColor: const Color(0xFF0F172A),
               elevation: 0,
-              scrolledUnderElevation: 0,
+              scrolledUnderElevation: 4,
               automaticallyImplyLeading: false,
               actions: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextButton.icon(
-                      onPressed: _openPlanner,
-                      icon: const Icon(Icons.auto_awesome_rounded,
-                          color: Colors.white, size: 12),
-                      label: const Text(
-                        'CREATE',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 10),
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, right: 20),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // History Pill Button
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _openHistory,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.35)),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.history_rounded,
+                                    color: Colors.white, size: 15),
+                                SizedBox(width: 5),
+                                Text(
+                                  'History',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        backgroundColor: Colors.white.withOpacity(0.18),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                      const SizedBox(width: 8),
+                      // Create Plan Button
+                      Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: _openPlanner,
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF007A7C), Color(0xFF00B4D8)],
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF007A7C)
+                                      .withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(Icons.auto_awesome_rounded,
+                                    color: Colors.white, size: 14),
+                                SizedBox(width: 6),
+                                Text(
+                                  '+ Create Plan',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 4),
-                    IconButton(
-                      onPressed: _openHistory,
-                      tooltip: 'History',
-                      icon: const Icon(Icons.history_rounded,
-                          color: Colors.white70),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
+                    ],
+                  ),
                 ),
               ],
               flexibleSpace: FlexibleSpaceBar(
                 centerTitle: false,
-                titlePadding: const EdgeInsets.only(left: 24, bottom: 14),
+                titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
                 title: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -357,20 +409,26 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     Text(
                       'MY ODYSSEYS',
                       style: TextStyle(
-                        fontSize: 8,
+                        fontSize: 9,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 2,
                         color: AppColors.brandGreen,
+                        shadows: [
+                          Shadow(color: Colors.black87, blurRadius: 4),
+                        ],
                       ),
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'Blueprints',
+                      'Trip Blueprints',
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                         color: Colors.white,
+                        shadows: [
+                          Shadow(color: Colors.black, blurRadius: 8),
+                        ],
                       ),
                     ),
                   ],
@@ -383,7 +441,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       FittedBox(
                         fit: BoxFit.cover,
                         child: Transform.scale(
-                          scale: 1.16, // Zoom in slightly to crop out watermarks on outer edges
+                          scale: 1.16,
                           child: SizedBox(
                             width: _videoController!.value.size.width,
                             height: _videoController!.value.size.height,
@@ -401,16 +459,18 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           ),
                         ),
                       ),
-                    // Dark atmospheric gradient overlay for readability
+                    // Atmospheric gradient overlay for optimal readability
                     Container(
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            Colors.black45,
+                            Colors.black54,
+                            Colors.black26,
                             Colors.black87,
                           ],
+                          stops: [0.0, 0.4, 1.0],
                         ),
                       ),
                     ),
@@ -567,12 +627,12 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     return gradients[hash.abs() % gradients.length];
   }
 
-  Future<void> _confirmDelete(BuildContext context, Odyssey odyssey) async {
+  Future<void> _confirmDelete(Odyssey odyssey) async {
     final id = odyssey.id;
     if (id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Delete Blueprint?'),
         content: Text('Are you sure you want to permanently delete "${odyssey.title}"?'),
@@ -590,20 +650,19 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
 
     if (confirmed == true) {
+      if (!mounted) return;
       try {
         await _repository.delete(id);
-        if (mounted) {
-          _load();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Blueprint deleted successfully.')),
-          );
-        }
+        if (!mounted) return;
+        _load();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Blueprint deleted successfully.')),
+        );
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting blueprint: $e')),
-          );
-        }
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting blueprint: $e')),
+        );
       }
     }
   }
@@ -688,7 +747,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 )
               else if (isFailed)
                 Container(
-                  color: Colors.redAccent.withOpacity(0.15),
+                  color: Colors.redAccent.withValues(alpha: 0.15),
                   child: const Center(
                     child: Icon(
                       Icons.error_outline_rounded,
@@ -731,7 +790,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 top: 8,
                 left: 8,
                 child: GestureDetector(
-                  onTap: () => _confirmDelete(context, odyssey),
+                  onTap: () => _confirmDelete(odyssey),
                   child: Container(
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
@@ -811,8 +870,8 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                         _pillChip(
                           Icons.calendar_today_rounded,
                           odyssey.formattedShortDateRange.isNotEmpty
-                              ? '${odyssey.formattedShortDateRange} (${odyssey.days}d)'
-                              : '${odyssey.days} ${odyssey.days == 1 ? 'Day' : 'Days'}',
+                              ? '${odyssey.formattedShortDateRange} (${odyssey.actualDays}d)'
+                              : '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}',
                         ),
                         if (odyssey.travelers > 0)
                           _pillChip(
@@ -926,9 +985,8 @@ class _BudgetPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConvertedCurrencyText(
-      amount: amount,
-      originalCurrency: currency,
+    return Text(
+      '$currency ${formatAmount(amount)}',
       style: const TextStyle(
         fontSize: 9,
         fontWeight: FontWeight.w600,

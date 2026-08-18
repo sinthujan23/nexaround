@@ -486,10 +486,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             child: Column(
               children: [
                 SwitchListTile(
-                  activeThumbColor: Colors.black,
-                  activeTrackColor: Colors.black12,
-                  inactiveThumbColor: Colors.grey,
-                  inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.brandGreen,
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
                   title: const Row(
                     children: [
                       Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
@@ -553,10 +553,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             child: Column(
               children: [
                 SwitchListTile(
-                  activeThumbColor: Colors.black,
-                  activeTrackColor: Colors.black12,
-                  inactiveThumbColor: Colors.grey,
-                  inactiveTrackColor: Colors.black.withValues(alpha: 0.05),
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.brandGreen,
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
                   title: const Row(
                     children: [
                       Icon(Icons.hotel_rounded, color: Colors.black87),

@@ -145,22 +145,39 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
           SliverAppBar(
             pinned: true,
             expandedHeight: 200,
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            scrolledUnderElevation: 0,
-            leading: IconButton(
-              icon: Icon(Icons.arrow_back_ios_new_rounded,
-                  color: _isScrolled ? Colors.black : Colors.white),
-              onPressed: () => Navigator.pop(context),
+            backgroundColor: _isScrolled ? Colors.white : const Color(0xFF0F172A),
+            elevation: _isScrolled ? 2 : 0,
+            scrolledUnderElevation: 2,
+            leading: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: _isScrolled
+                      ? Colors.black.withValues(alpha: 0.06)
+                      : Colors.black.withValues(alpha: 0.4),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  icon: Icon(Icons.arrow_back_ios_new_rounded,
+                      size: 16,
+                      color: _isScrolled ? Colors.black : Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
             ),
             flexibleSpace: FlexibleSpaceBar(
               centerTitle: true,
               title: Text(
                 'Top Museums of the World',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: _isScrolled ? Colors.black : Colors.white,
+                  shadows: _isScrolled
+                      ? null
+                      : const [
+                          Shadow(color: Colors.black, blurRadius: 6),
+                        ],
                 ),
               ),
               background: _videoController != null &&

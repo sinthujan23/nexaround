@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
@@ -16,6 +17,8 @@ class OdysseyDetailPage extends StatefulWidget {
 class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   final _repo = OdysseyRepository();
   bool _deleting = false;
+  bool _loadingFresh = false;
+  Timer? _pollTimer;
 
   /// Local working copy so AI swaps update the view in place.
   late Odyssey _odyssey = widget.odyssey;
@@ -25,6 +28,75 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
 
   /// Name of the partner currently being swapped, or null.
   String? _swappingPartnerName;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchFreshPlan();
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchFreshPlan() async {
+    final id = _odyssey.id;
+    if (id == null) return;
+
+    if (_odyssey.dayPlans.isEmpty || _odyssey.isGenerating) {
+      setState(() => _loadingFresh = true);
+    }
+
+    try {
+      final fresh = await _repo.getOdysseyById(id);
+      if (!mounted) return;
+      if (fresh != null) {
+        setState(() {
+          _odyssey = fresh;
+          _loadingFresh = false;
+        });
+
+        // If it's still being generated on the server, poll until ready
+        if (fresh.isGenerating || fresh.dayPlans.isEmpty) {
+          _startPollTimer(id);
+        } else {
+          _pollTimer?.cancel();
+        }
+      } else {
+        setState(() => _loadingFresh = false);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingFresh = false);
+    }
+  }
+
+  void _startPollTimer(String id) {
+    _pollTimer?.cancel();
+    int attempts = 0;
+    _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      attempts++;
+      if (attempts > 20 || !mounted) {
+        timer.cancel();
+        return;
+      }
+      try {
+        final fresh = await _repo.getOdysseyById(id);
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        if (fresh != null && (fresh.dayPlans.isNotEmpty || !fresh.isGenerating)) {
+          setState(() {
+            _odyssey = fresh;
+            _loadingFresh = false;
+          });
+          timer.cancel();
+        }
+      } catch (_) {}
+    });
+  }
 
   Future<void> _swapActivity(int dayIndex, int activityIndex) async {
     final id = _odyssey.id;
@@ -326,17 +398,18 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        toolbarHeight: 44,
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: Colors.black, size: 20),
+              color: Colors.black, size: 18),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           'ODYSSEY',
           style: TextStyle(
-            fontSize: 12,
+            fontSize: 12.5,
             fontWeight: FontWeight.w800,
             color: Colors.black,
             letterSpacing: 2,
@@ -346,7 +419,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
         actions: [
           if (_deleting)
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(12),
               child: SizedBox(
                 width: 18,
                 height: 18,
@@ -355,20 +428,55 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
             )
           else
             IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, color: Colors.black54),
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.black54, size: 20),
               onPressed: _delete,
             ),
         ],
       ),
-      body: OdysseyPlanView(
-        odyssey: _odyssey,
-        onSwapActivity: _swapActivity,
-        swappingKey: _swappingKey,
-        onToggleVisited: _toggleVisited,
-        onSwapPartner: _swapPartner,
-        swappingPartnerName: _swappingPartnerName,
-        onActualCostChanged: _updateActualCost,
-      ),
+      body: (_loadingFresh && _odyssey.dayPlans.isEmpty)
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      width: 44,
+                      height: 44,
+                      child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
+                    ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Finalizing your Odyssey blueprint...',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Generating days, activities, and strategies',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : OdysseyPlanView(
+              odyssey: _odyssey,
+              onSwapActivity: _swapActivity,
+              swappingKey: _swappingKey,
+              onToggleVisited: _toggleVisited,
+              onSwapPartner: _swapPartner,
+              swappingPartnerName: _swappingPartnerName,
+              onActualCostChanged: _updateActualCost,
+            ),
     );
   }
 }

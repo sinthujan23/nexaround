@@ -180,18 +180,30 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      focusNode: _focusNode,
-                      textInputAction: TextInputAction.search,
-                      onChanged: _onSearchChanged,
-                      onSubmitted: (query) => _executeSearch(query),
-                      decoration: const InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Search for a city, area, or country...',
-                        hintStyle: TextStyle(color: AppColors.textSecondary),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(
+                        textSelectionTheme: const TextSelectionThemeData(
+                          cursorColor: Color(0xFF00E5FF),
+                          selectionColor: Color(0x5500E5FF),
+                          selectionHandleColor: Color(0xFF00E5FF),
+                        ),
                       ),
-                      style: const TextStyle(color: AppColors.textPrimary),
+                      child: TextField(
+                        controller: _searchController,
+                        focusNode: _focusNode,
+                        cursorColor: const Color(0xFF00E5FF),
+                        cursorWidth: 2.0,
+                        cursorRadius: const Radius.circular(2.0),
+                        textInputAction: TextInputAction.search,
+                        onChanged: _onSearchChanged,
+                        onSubmitted: (query) => _executeSearch(query),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          hintText: 'Search for a city, area, or country...',
+                          hintStyle: TextStyle(color: AppColors.textSecondary),
+                        ),
+                        style: const TextStyle(color: AppColors.textPrimary),
+                      ),
                     ),
                   ),
                   if (_searchController.text.isNotEmpty)

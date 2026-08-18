@@ -172,6 +172,31 @@ class OdysseyRepository {
     return list;
   }
 
+  /// Fetch a single Odyssey by its itinerary ID (network first, cached fallback).
+  Future<Odyssey?> getOdysseyById(String id) async {
+    try {
+      final response = await _dio.get('${ApiConstants.itineraries}/$id');
+      final json = (response.data as Map).cast<String, dynamic>();
+      final odyssey = Odyssey.fromItinerary(json);
+
+      // Cache the full fresh Odyssey immediately so lists and details have full data
+      final cachedRaw = CacheService.getCachedOdysseysRaw();
+      final idx = cachedRaw.indexWhere((item) => item['id']?.toString() == id);
+      if (idx != -1) {
+        cachedRaw[idx] = json;
+      } else {
+        cachedRaw.insert(0, json);
+      }
+      await CacheService.cacheOdysseys(cachedRaw);
+      revision.value++;
+
+      return odyssey;
+    } catch (_) {
+      final cached = getCachedOdysseys();
+      return cached.where((o) => o.id == id).firstOrNull;
+    }
+  }
+
   Future<void> delete(String id) async {
     await _dio.delete('${ApiConstants.itineraries}/$id');
     revision.value++;

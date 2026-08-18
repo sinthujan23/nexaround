@@ -4,6 +4,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
@@ -100,6 +102,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       curve: Curves.easeOutBack,
     );
 
+    // Initialize Android Google Maps renderer for compatibility
+    final GoogleMapsFlutterPlatform mapsImplementation =
+        GoogleMapsFlutterPlatform.instance;
+    if (mapsImplementation is GoogleMapsFlutterAndroid) {
+      try {
+        mapsImplementation.useAndroidViewSurface = true;
+        mapsImplementation.initializeWithRenderer(AndroidMapRenderer.latest);
+      } catch (_) {}
+    }
+
     _init();
   }
 
@@ -115,12 +127,38 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     super.dispose();
   }
 
+  static BitmapDescriptor? _cachedCarIcon;
+  static BitmapDescriptor? _cachedWalkIcon;
+
   Future<void> _init() async {
-    await _ensureVehicleIcons(); // Load custom 3D puck icons
-    await _getUserLocation();
-    _addDestinationMarker();
-    _fetchRoute();
+    // 1. Instantly read last known position (< 5ms)
+    try {
+      final lastPos = await geo.Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted) {
+        setState(() {
+          _userLat = lastPos.latitude;
+          _userLng = lastPos.longitude;
+        });
+      }
+    } catch (_) {}
+
+    if (_userLat == null || _userLng == null) {
+      _userLat = (widget.initialLat != 0.0) ? widget.initialLat : 6.9271;
+      _userLng = (widget.initialLng != 0.0) ? widget.initialLng : 79.8612;
+    }
+
+    _addUserMarker();
+    if (_destLat != 0.0 && _destLng != 0.0) {
+      _addDestinationMarker();
+      _fetchRoute();
+    }
     _fabAnimController.forward();
+
+    // 2. Load icons and precision location concurrently in background
+    _ensureVehicleIcons().then((_) {
+      if (mounted) _addUserMarker();
+    });
+    _refreshHighAccuracyLocation();
 
     // Start compass listener to rotate the puck in real-time
     _compassSub?.cancel();
@@ -136,26 +174,51 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     });
   }
 
-  Future<void> _getUserLocation() async {
+  Future<void> _refreshHighAccuracyLocation() async {
     try {
       final pos = await geo.Geolocator.getCurrentPosition(
         desiredAccuracy: geo.LocationAccuracy.high,
       );
       if (mounted) {
+        final prevLat = _userLat ?? 0.0;
+        final prevLng = _userLng ?? 0.0;
+        final distMoved = _haversine(prevLat, prevLng, pos.latitude, pos.longitude);
+
         setState(() {
           _userLat = pos.latitude;
           _userLng = pos.longitude;
         });
         _addUserMarker();
-        _resolveCurrentLocationName(pos.latitude, pos.longitude);
+
+        // Only reverse geocode if moved > 50m to conserve API costs
+        if (distMoved > 50) {
+          _resolveCurrentLocationName(pos.latitude, pos.longitude);
+          if (!_isNavigating && _destLat != 0.0 && _destLng != 0.0) {
+            _fetchRoute();
+          }
+        }
       }
     } catch (_) {
-      // Fallback
-      setState(() {
-        _userLat = 6.9271;
-        _userLng = 79.8612;
-      });
+      if (_userLat == null && mounted) {
+        setState(() {
+          _userLat = 6.9271;
+          _userLng = 79.8612;
+        });
+      }
     }
+  }
+
+  double _haversine(double lat1, double lon1, double lat2, double lon2) {
+    const r = 6371000.0;
+    final dLat = (lat2 - lat1) * (math.pi / 180.0);
+    final dLon = (lon2 - lon1) * (math.pi / 180.0);
+    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1 * (math.pi / 180.0)) *
+            math.cos(lat2 * (math.pi / 180.0)) *
+            math.sin(dLon / 2) *
+            math.sin(dLon / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return r * c;
   }
 
   Future<void> _resolveCurrentLocationName(double lat, double lng) async {
@@ -196,12 +259,22 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     });
   }
 
-  // Build (and cache) the car / person navigation puck.
+  // Build (and cache statically) the car / person navigation puck.
   Future<void> _ensureVehicleIcons() async {
-    if (_carIcon != null && _walkIcon != null) return;
+    if (_cachedCarIcon != null && _cachedWalkIcon != null) {
+      _carIcon = _cachedCarIcon;
+      _walkIcon = _cachedWalkIcon;
+      return;
+    }
     _assetPuck = false;
-    _carIcon = await _renderVehicleIcon(Icons.directions_car_rounded);
-    _walkIcon = await _renderVehicleIcon(Icons.directions_walk_rounded);
+    try {
+      _cachedCarIcon ??= await _renderVehicleIcon(Icons.directions_car_rounded);
+      _cachedWalkIcon ??= await _renderVehicleIcon(Icons.directions_walk_rounded);
+      _carIcon = _cachedCarIcon;
+      _walkIcon = _cachedWalkIcon;
+    } catch (e) {
+      debugPrint('Error generating custom pucks: $e');
+    }
   }
 
   // Load a bundled PNG as a marker, or null if the file hasn't been added yet.
@@ -558,11 +631,19 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   void _onMapCreated(GoogleMapController controller) {
     _controller = controller;
-    // Light / white Google Maps theme (the default normal map) — deliberately
-    // different from the dark Mapbox view so the switch is obvious.
-    // Fit to show both user and destination if route loads
-    if (!_routeLoaded) {
-      _animateCameraToDestination();
+    if (_destLat != 0.0 && _destLng != 0.0) {
+      if (!_routeLoaded) {
+        _animateCameraToDestination();
+      }
+    } else if (_userLat != null && _userLng != null) {
+      _controller?.animateCamera(
+        CameraUpdate.newCameraPosition(
+          CameraPosition(
+            target: LatLng(_userLat!, _userLng!),
+            zoom: 15.0,
+          ),
+        ),
+      );
     }
   }
 
@@ -589,7 +670,10 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           GoogleMap(
             onMapCreated: _onMapCreated,
             initialCameraPosition: CameraPosition(
-              target: LatLng(widget.initialLat, widget.initialLng),
+              target: LatLng(
+                (widget.initialLat != 0.0) ? widget.initialLat : (_userLat ?? 6.9271),
+                (widget.initialLng != 0.0) ? widget.initialLng : (_userLng ?? 79.8612),
+              ),
               zoom: 14.0,
               tilt: 0.0,
             ),

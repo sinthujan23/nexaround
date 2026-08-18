@@ -21,7 +21,6 @@ class HotelStrategiesSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 32),
         // Section Header
         Row(
           children: [
@@ -165,13 +164,6 @@ class HotelStrategiesSection extends StatelessWidget {
                                     hs.rating,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
-                                  if (hs.reviews > 0) ...[
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '(${hs.reviews})',
-                                      style: const TextStyle(fontSize: 10, color: Colors.black45, fontWeight: FontWeight.w500),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),

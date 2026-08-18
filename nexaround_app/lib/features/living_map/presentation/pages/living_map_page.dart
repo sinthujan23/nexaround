@@ -2106,9 +2106,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                   const SizedBox(width: 6),
                   Text(
                     distance,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 9,
-                      color: color.withOpacity(0.8),
+                      color: Colors.white,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -3815,7 +3815,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               ),
                               const SizedBox(width: 4),
                               Text(
-                                '${matchedPlace.rating} (${matchedPlace.reviewCount})',
+                                '${matchedPlace.rating}',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
@@ -4904,7 +4904,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${place.rating} (${place.reviewCount})',
+                              '${place.rating}',
                               style: const TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
@@ -5167,7 +5167,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              '${place.rating} (${place.reviewCount})',
+                              '${place.rating}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
@@ -6995,17 +6995,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                             color: Colors.white,
                           ),
                         ),
-                        if (place.reviewCount > 0) ...[
-                          const SizedBox(width: 2),
-                          Text(
-                            '(${place.reviewCount})',
-                            style: TextStyle(
-                              fontSize: 9,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.white.withOpacity(0.6),
-                            ),
-                          ),
-                        ],
+
                       ],
                     ),
                     const SizedBox(height: 4),

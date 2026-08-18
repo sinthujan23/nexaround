@@ -180,13 +180,16 @@ class GoogleDirectionsService {
         ));
       }
 
-      debugPrint('✅ Walking route: ${steps.length} steps, ${leg['distance']['text']}');
+      final totalDistVal = (leg['distance']['value'] as num).toDouble();
+      final totalDistText = totalDistVal < 1000
+          ? '${totalDistVal.round()} m'
+          : '${(totalDistVal / 1000).toStringAsFixed(1)} km';
 
       return WalkingRoute(
         steps: steps,
-        totalDistance: leg['distance']['text'] as String? ?? '',
+        totalDistance: totalDistText,
         totalDuration: leg['duration']['text'] as String? ?? '',
-        totalDistanceM: (leg['distance']['value'] as num).toDouble(),
+        totalDistanceM: totalDistVal,
         overviewPolyline: overviewPoints,
       );
     } catch (e) {

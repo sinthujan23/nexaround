@@ -3,8 +3,10 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 
+import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
+
 /// The bell inbox: lists notifications received via FCM. Tapping an
-/// "odyssey_ready" item jumps to the Blueprints tab. Opening the page marks
+/// "odyssey_ready" item jumps directly to the exact Odyssey plan. Opening the page marks
 /// everything read.
 class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
@@ -29,11 +31,28 @@ class _NotificationsPageState extends State<NotificationsPage> {
     await CacheService.markNotificationsRead();
   }
 
-  void _onTap(Map<String, dynamic> n) {
+  void _onTap(Map<String, dynamic> n) async {
     final type = (n['type'] ?? '').toString();
-    if (type == 'odyssey_ready') {
+    final data = (n['data'] as Map?)?.cast<String, dynamic>() ?? n;
+    final odysseyId = (data['odyssey_id'] ?? data['itinerary_id'] ?? data['id'] ?? data['odysseyId'] ?? n['odyssey_id'] ?? n['id'])?.toString();
+
+    if (type == 'odyssey_ready' || type == 'odyssey_generated' || type == 'plan_ready' || (odysseyId != null && odysseyId.isNotEmpty && type.contains('odyssey'))) {
       Navigator.pop(context);
-      HomePage.homeKey.currentState?.switchToPlans();
+      if (odysseyId != null && odysseyId.isNotEmpty) {
+        await HomePage.homeKey.currentState?.openOdysseyById(odysseyId);
+      } else {
+        try {
+          final repo = OdysseyRepository();
+          final list = await repo.getMyOdysseys();
+          if (list.isNotEmpty) {
+            HomePage.homeKey.currentState?.openOdysseyDetail(list.first);
+          } else {
+            HomePage.homeKey.currentState?.switchToPlans();
+          }
+        } catch (_) {
+          HomePage.homeKey.currentState?.switchToPlans();
+        }
+      }
     }
   }
 
