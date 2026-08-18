@@ -28,6 +28,17 @@ logger = logging.getLogger(__name__)
 # an incident.
 _MIN_SAMPLE = 30
 
+# The current window was guarded; the baseline was not, and that produced four
+# critical alerts on the day instrumentation landed. Operations first recorded
+# yesterday had a "7-day median" built from three or four hours, all of them
+# their own first hours, so any normal traffic read as a 20-90x spike.
+#
+# An operation is not judged until it has been watched long enough to have a
+# normal, and a median too small to be meaningful cannot anchor a ratio: 1
+# call/hour against 30 is 30x whether or not anything is wrong.
+_MIN_BASELINE_HOURS = 24
+_MIN_BASELINE_MEDIAN = 5
+
 RULES = {
     "request_denied": {
         "window_minutes": 15,
@@ -126,11 +137,15 @@ async def _check_cache_collapse(db) -> list:
             GROUP BY 1 HAVING count(*) >= :min_sample
         ),
         baseline AS (
+            -- Same cold-start guard as volume_spike: a cache rate measured over
+            -- a handful of hours is not a normal to compare against.
             SELECT operation, count(*) total,
                    count(*) FILTER (WHERE served_from <> 'upstream') cached
             FROM api_events
             WHERE ts >= :base_since AND ts < :recent_since
-            GROUP BY 1 HAVING count(*) >= :min_sample
+            GROUP BY 1
+            HAVING count(*) >= :min_sample
+               AND count(DISTINCT date_trunc('hour', ts)) >= :min_hours
         )
         SELECT r.operation,
                100.0 * r.cached / r.total AS recent_pct,
@@ -139,7 +154,8 @@ async def _check_cache_collapse(db) -> list:
         FROM recent r JOIN baseline b USING (operation)
         WHERE (100.0 * b.cached / b.total) - (100.0 * r.cached / r.total) >= :drop
     """), {"recent_since": recent_since, "base_since": base_since,
-           "min_sample": _MIN_SAMPLE, "drop": cfg["drop_points"]})).mappings().all()
+           "min_sample": _MIN_SAMPLE, "drop": cfg["drop_points"],
+           "min_hours": _MIN_BASELINE_HOURS})).mappings().all()
 
     fired = []
     for r in rows:
@@ -179,15 +195,20 @@ async def _check_volume_spike(db) -> list:
         ),
         med AS (
             SELECT operation,
-                   percentile_cont(0.5) WITHIN GROUP (ORDER BY c) AS median_hourly
+                   percentile_cont(0.5) WITHIN GROUP (ORDER BY c) AS median_hourly,
+                   count(*) AS baseline_hours
             FROM hourly GROUP BY 1
         )
-        SELECT r.operation, r.calls, m.median_hourly
+        SELECT r.operation, r.calls, m.median_hourly, m.baseline_hours
         FROM recent r JOIN med m USING (operation)
-        WHERE m.median_hourly > 0 AND r.calls >= m.median_hourly * :multiple
+        WHERE m.baseline_hours >= :min_hours
+          AND m.median_hourly >= :min_median
+          AND r.calls >= m.median_hourly * :multiple
     """), {"recent_since": recent_since,
            "base_since": now - timedelta(days=7),
-           "min_sample": _MIN_SAMPLE, "multiple": cfg["multiple"]})).mappings().all()
+           "min_sample": _MIN_SAMPLE, "multiple": cfg["multiple"],
+           "min_hours": _MIN_BASELINE_HOURS,
+           "min_median": _MIN_BASELINE_MEDIAN})).mappings().all()
 
     fired = []
     for r in rows:
