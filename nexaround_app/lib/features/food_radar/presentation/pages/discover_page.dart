@@ -264,9 +264,16 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         });
       }
 
-      // Fetch emergency numbers + phrases for this location via Gemini
+      // Coordinates are snapped to ~0.1 degrees (~11 km) before going into the
+      // prompt. The answer is country- and city-level — emergency numbers do
+      // not change between one street and the next — and the backend caches
+      // Gemini responses by prompt hash, so full-precision GPS would make every
+      // launch a unique prompt and a cache miss. Same mistake `locationbias`
+      // made on the Places side.
+      final coarseLat = (lat * 10).roundToDouble() / 10;
+      final coarseLng = (lng * 10).roundToDouble() / 10;
       final geminiPrompt =
-          'I am a traveller at GPS coordinates ($lat, $lng). '
+          'I am a traveller at GPS coordinates ($coarseLat, $coarseLng). '
           'What country/city am I likely in? '
           'Give me ONLY a JSON object with these fields (no markdown): '
           '{ "country": "...", "city": "...", "emergency_numbers": [{"label":"Police","number":"..."},{"label":"Ambulance","number":"..."},{"label":"Fire","number":"..."},{"label":"Tourist Helpline","number":"..."}], '

@@ -1,5 +1,6 @@
 """Top-level Places service: cache-first, Google as fallback."""
 import math
+import re
 from typing import Optional
 from app.services import google_places_client, place_cache_service, telemetry, spend_guard
 from app.schemas.place import PlaceResponse, PlacesNearbyResponse
@@ -1210,6 +1211,47 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
     }
 
 
+# A local attraction id, not a Google one. The app has two kinds of identifier
+# and one detail screen, and it does not always know which it is holding.
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.I)
+
+
+async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
+    """Build a details payload from our own table.
+
+    Reached when the client sends a local UUID. Google rejects those with 400
+    INVALID_ARGUMENT — 27 times today alone — so the request was always going
+    to fail. We hold the row it is asking about, so answer from it instead of
+    forwarding a request that cannot succeed.
+    """
+    try:
+        async with async_session() as session:
+            attr = (await session.execute(
+                select(Attraction).where(Attraction.id == attraction_id)
+            )).scalar_one_or_none()
+            if attr is None:
+                return None
+            lat, lng = get_lat_lng(attr.location)
+            return {
+                "place_id": str(attr.id),
+                "name": attr.name,
+                "address": attr.address or "",
+                "latitude": lat,
+                "longitude": lng,
+                "rating": attr.rating or 0.0,
+                "user_ratings_total": attr.review_count or 0,
+                "photo_urls": list(attr.photo_urls or []),
+                "opening_hours": attr.opening_hours or {},
+                "description": attr.description,
+                "reviews": [],
+                "source": "database",
+            }
+    except Exception as e:
+        print(f"⚠️ local attraction details lookup failed for {attraction_id}: {e}")
+        return None
+
+
 async def get_place_details(place_id: str) -> Optional[dict]:
     """Fetch place details with 14-day Redis caching.
     Uses Google Places API (New) with field masking to minimize billing.
@@ -1217,10 +1259,24 @@ async def get_place_details(place_id: str) -> Optional[dict]:
     clean_id = place_id.replace("places/", "")
     key = f"places:details:{clean_id}"
 
+    # 0. A local id can never resolve at Google. Serve it from our own table
+    #    rather than spending a guaranteed-failing request on it.
+    if _UUID_RE.match(clean_id):
+        async with telemetry.track(
+            "internal", "place_details", cache_key=f"pd:{clean_id}"
+        ) as t:
+            local = await _local_attraction_details(clean_id)
+            t.hit("database" if local else "negative")
+        return local
+
     # 1. Check Redis cache first (14 days TTL)
     try:
         cached_raw = await place_cache_service.get_raw(key)
         if cached_raw is not None:
+            async with telemetry.track(
+                "internal", "place_details", cache_key=f"pd:{clean_id}"
+            ) as t:
+                t.hit("redis")
             data = json.loads(cached_raw)
             data["cached"] = True
             return data

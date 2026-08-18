@@ -96,7 +96,12 @@ class GeminiService {
     final path = ApiConstants.geminiProxy;
     final base64Image = base64Encode(imageBytes);
 
-    final prompt = '''You are NexAround's AI travel assistant "Neva". Analyze this image taken at GPS coordinates ($latitude, $longitude).
+    // Snapped to ~1 km. The image is what identifies the place; the coordinate
+    // only narrows the region, and full precision would make an otherwise
+    // repeatable prompt unique per request and uncacheable.
+    final coarseLat = (latitude * 100).roundToDouble() / 100;
+    final coarseLng = (longitude * 100).roundToDouble() / 100;
+    final prompt = '''You are NexAround's AI travel assistant "Neva". Analyze this image taken at GPS coordinates ($coarseLat, $coarseLng).
 
 IMPORTANT CONTEXT:
 - This could be a local business, office, residential building, or everyday location
