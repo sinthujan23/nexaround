@@ -208,6 +208,7 @@ async def timeseries(
 async def breakdown(
     frm: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -264,6 +265,7 @@ async def breakdown(
 async def funnel(
     frm: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -273,17 +275,28 @@ async def funnel(
     which is the single most actionable signal in this dashboard.
     """
     start, end = _window(frm, to)
-    src = "api_usage_hourly" if _use_rollup(start, end) else "api_events"
-    tcol = "bucket" if src == "api_usage_hourly" else "ts"
-    ccol = "sum(calls)" if src == "api_usage_hourly" else "count(*)"
-
-    rows = (await db.execute(text(f"""
-        SELECT operation, served_from, {ccol} calls,
-               COALESCE(sum(est_cost_usd),0) cost
-        FROM {src}
-        WHERE {tcol} >= :start AND {tcol} < :end
-        GROUP BY 1,2
-    """), {"start": start, "end": end})).mappings().all()
+    # A user filter forces the per-user rollup: the hourly one has no user
+    # dimension, and raw events would scan.
+    if user_id:
+        rows = (await db.execute(text("""
+            SELECT operation, served_from, sum(calls) calls,
+                   COALESCE(sum(est_cost_usd),0) cost
+            FROM api_usage_user_daily
+            WHERE user_id = CAST(:uid AS uuid)
+              AND day >= CAST(:start AS date) AND day <= CAST(:end AS date)
+            GROUP BY 1,2
+        """), {"uid": user_id, "start": start, "end": end})).mappings().all()
+    else:
+        src = "api_usage_hourly" if _use_rollup(start, end) else "api_events"
+        tcol = "bucket" if src == "api_usage_hourly" else "ts"
+        ccol = "sum(calls)" if src == "api_usage_hourly" else "count(*)"
+        rows = (await db.execute(text(f"""
+            SELECT operation, served_from, {ccol} calls,
+                   COALESCE(sum(est_cost_usd),0) cost
+            FROM {src}
+            WHERE {tcol} >= :start AND {tcol} < :end
+            GROUP BY 1,2
+        """), {"start": start, "end": end})).mappings().all()
 
     ops: dict[str, dict] = {}
     for r in rows:
@@ -310,6 +323,7 @@ async def funnel(
 async def duplicates(
     frm: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
@@ -327,10 +341,14 @@ async def duplicates(
         FROM api_events
         WHERE ts >= :start AND ts < :end
           AND served_from = 'upstream' AND cache_key IS NOT NULL
+          {ufilter}
         GROUP BY 1,2 HAVING count(*) > 1
         ORDER BY recoverable DESC, paid_times DESC
         LIMIT :limit
-    """), {"start": start, "end": end, "limit": limit})).mappings().all()
+    """.replace("{ufilter}", "AND user_id = CAST(:uid AS uuid)" if user_id else "")),
+        {"start": start, "end": end, "limit": limit,
+         **({"uid": user_id} if user_id else {})}
+    )).mappings().all()
 
     return {
         "keys": [
@@ -747,24 +765,47 @@ async def user_detail(
         FROM users u WHERE u.id = CAST(:uid AS uuid)
     """), {"uid": user_id})).mappings().first()
 
+    # Reads api_usage_user_daily, not api_events. For the heaviest account the
+    # raw version scanned 66k rows and 7,600 buffers; this touches a few hundred
+    # pre-aggregated ones.
     totals = (await db.execute(text("""
-        SELECT count(*) requests,
-               count(*) FILTER (WHERE billable) billable,
+        SELECT COALESCE(sum(calls),0) requests,
+               COALESCE(sum(billable_calls),0) billable,
                COALESCE(sum(est_cost_usd),0) cost,
                COALESCE(sum(total_tokens),0) tokens,
-               count(DISTINCT request_id) actions,
-               count(DISTINCT ts::date) active_days,
-               min(ts) first_seen, max(ts) last_seen
-        FROM api_events
-        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+               COALESCE(sum(actions),0) actions,
+               count(DISTINCT day) active_days,
+               min(day) first_seen, max(day) last_seen
+        FROM api_usage_user_daily
+        WHERE user_id = CAST(:uid AS uuid)
+          AND day >= CAST(:start AS date) AND day <= CAST(:end AS date)
     """), p)).mappings().one()
 
+    # Which endpoints this account uses, and whether each was answered locally
+    # or bought from a provider — the two questions a per-user view exists for.
     by_operation = (await db.execute(text("""
-        SELECT operation, served_from, count(*) calls,
-               COALESCE(sum(est_cost_usd),0) cost
-        FROM api_events
-        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
-        GROUP BY 1,2 ORDER BY calls DESC LIMIT 40
+        SELECT operation, served_from,
+               sum(calls) calls, sum(billable_calls) billable,
+               COALESCE(sum(est_cost_usd),0) cost,
+               COALESCE(sum(total_tokens),0) tokens
+        FROM api_usage_user_daily
+        WHERE user_id = CAST(:uid AS uuid)
+          AND day >= CAST(:start AS date) AND day <= CAST(:end AS date)
+        GROUP BY 1,2 ORDER BY calls DESC LIMIT 60
+    """), p)).mappings().all()
+
+    # Same data collapsed per endpoint, with the local/paid split spelled out.
+    by_endpoint = (await db.execute(text("""
+        SELECT operation,
+               sum(calls) calls,
+               sum(calls) FILTER (WHERE served_from = 'upstream') paid_calls,
+               sum(calls) FILTER (WHERE served_from <> 'upstream') local_calls,
+               COALESCE(sum(est_cost_usd),0) cost,
+               COALESCE(sum(total_tokens),0) tokens
+        FROM api_usage_user_daily
+        WHERE user_id = CAST(:uid AS uuid)
+          AND day >= CAST(:start AS date) AND day <= CAST(:end AS date)
+        GROUP BY 1 ORDER BY cost DESC, calls DESC
     """), p)).mappings().all()
 
     # Which screens this account actually uses, ranked by what they cost.
@@ -778,9 +819,10 @@ async def user_detail(
     """), p)).mappings().all()
 
     daily = (await db.execute(text("""
-        SELECT ts::date d, count(*) calls, COALESCE(sum(est_cost_usd),0) cost
-        FROM api_events
-        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+        SELECT day d, sum(calls) calls, COALESCE(sum(est_cost_usd),0) cost
+        FROM api_usage_user_daily
+        WHERE user_id = CAST(:uid AS uuid)
+          AND day >= CAST(:start AS date) AND day <= CAST(:end AS date)
         GROUP BY 1 ORDER BY 1
     """), p)).mappings().all()
 
@@ -796,6 +838,10 @@ async def user_detail(
         "user": dict(profile) if profile else {"email": None, "display_name": None},
         "totals": dict(totals) | {"cost": float(totals["cost"] or 0)},
         "by_operation": [dict(r) | {"cost": float(r["cost"])} for r in by_operation],
+        "by_endpoint": [dict(r) | {
+            "cost": float(r["cost"]),
+            "local_pct": round(100.0 * (r["local_calls"] or 0) / r["calls"], 1) if r["calls"] else 0.0,
+        } for r in by_endpoint],
         "by_route": [dict(r) | {"cost": float(r["cost"])} for r in by_route],
         "daily": [dict(r) | {"cost": float(r["cost"])} for r in daily],
         "recent_actions": [dict(r) | {"cost": float(r["cost"])} for r in recent],
@@ -806,6 +852,7 @@ async def user_detail(
 async def routes_breakdown(
     frm: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = None,
+    user_id: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -824,8 +871,11 @@ async def routes_breakdown(
                COALESCE(sum(total_tokens),0) tokens
         FROM api_events
         WHERE ts >= :start AND ts < :end AND route IS NOT NULL
+          {ufilter}
         GROUP BY 1 ORDER BY cost DESC, calls DESC LIMIT 40
-    """), {"start": start, "end": end})).mappings().all()
+    """.replace("{ufilter}", "AND user_id = CAST(:uid AS uuid)" if user_id else "")),
+        {"start": start, "end": end, **({"uid": user_id} if user_id else {})}
+    )).mappings().all()
     return {"routes": [
         dict(r) | {
             "cost": float(r["cost"]),

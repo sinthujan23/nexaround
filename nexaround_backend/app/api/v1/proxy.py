@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
@@ -26,6 +27,57 @@ _GOOGLE_MAPS_SKUS = (
     ("directions",              "directions",        "directions"),
     ("geocode",                 "geocode",           "geocoding"),
 )
+
+
+# Coordinates are snapped to ~500m before hashing, the same grid
+# place_cache_service uses. Without this, two users standing metres apart
+# asking for the same landmark produce different keys and the duplicate
+# detector sees nothing — which is exactly how 45% of Find Place spend went
+# unnoticed: `locationbias` embeds raw GPS, so no two requests ever matched.
+_GRID = 0.005
+
+
+def _snap(value: str) -> str:
+    try:
+        return f"{math.floor(float(value) / _GRID) * _GRID:.4f}"
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _snap_pair(latlng: str) -> str:
+    parts = (latlng or "").split(",")
+    if len(parts) != 2:
+        return "?"
+    return f"{_snap(parts[0])},{_snap(parts[1])}"
+
+
+def _google_maps_cache_key(path: str, params: dict) -> str | None:
+    """Normalised identity of a proxied Google Maps call.
+
+    This is what the duplicates panel groups on, so it must ignore everything
+    that does not change the answer — the API key, exact GPS, field ordering.
+    """
+    q = {k: v for k, v in params.items() if k != "key"}
+    if path.startswith("place/findplacefromtext"):
+        bias = q.get("locationbias", "")
+        snapped = _snap_pair(bias.split("@")[-1]) if "@" in bias else ""
+        return f"fpt:{(q.get('input') or '').strip().lower()}|{snapped}"
+    if path.startswith("directions"):
+        return (f"dir:{_snap_pair(q.get('origin',''))}>"
+                f"{_snap_pair(q.get('destination',''))}|{q.get('mode','driving')}")
+    if path.startswith("geocode"):
+        return f"geo:{_snap_pair(q.get('latlng','')) if q.get('latlng') else (q.get('address') or '').strip().lower()}"
+    if path.startswith("place/details"):
+        return f"pd:{q.get('place_id') or q.get('placeid') or '?'}"
+    if path.startswith("place/nearbysearch"):
+        return (f"nbl:{_snap_pair(q.get('location',''))}|"
+                f"{q.get('type','all')}|r{q.get('radius','?')}")
+    if path.startswith("place/autocomplete"):
+        return f"ac:{(q.get('input') or '').strip().lower()}"
+    if path.startswith("place/photo"):
+        ref = q.get("photo_reference") or q.get("photoreference") or "?"
+        return f"photo:{ref[:180]}:{q.get('maxwidth','?')}"
+    return None
 
 
 def _classify_google_maps_path(path: str) -> tuple[str, str | None]:
@@ -178,7 +230,8 @@ async def proxy_google_maps(
         try:
             if "place/photo" in path:
                 async with telemetry.track(
-                    "google_maps", operation, sku=sku, params=params
+                    "google_maps", operation, sku=sku, params=params,
+                    cache_key=_google_maps_cache_key(path, params),
                 ) as t:
                     # Stream image bytes to avoid loading entire binary in memory
                     req = client.build_request("GET", url, params=params)
@@ -194,7 +247,8 @@ async def proxy_google_maps(
                     )
             else:
                 async with telemetry.track(
-                    "google_maps", operation, sku=sku, params=params
+                    "google_maps", operation, sku=sku, params=params,
+                    cache_key=_google_maps_cache_key(path, params),
                 ) as t:
                     resp = await client.get(url, params=params, timeout=30.0)
                     t.upstream(resp)

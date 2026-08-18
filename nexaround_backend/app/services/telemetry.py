@@ -236,10 +236,15 @@ class _Recorder:
             return
         self.prompt_tokens = (usage.get("promptTokenCount")
                               or usage.get("prompt_tokens") or usage.get("input_tokens"))
-        self.completion_tokens = (usage.get("candidatesTokenCount")
-                                  or usage.get("completion_tokens") or usage.get("output_tokens"))
+        # Reasoning tokens bill as output but arrive in their own field, so
+        # candidatesTokenCount alone undercounts what is charged. A short reply
+        # after a long think showed 1 candidate token against 20 thought ones.
+        completion = (usage.get("candidatesTokenCount")
+                      or usage.get("completion_tokens") or usage.get("output_tokens") or 0)
+        completion += usage.get("thoughtsTokenCount") or 0
+        self.completion_tokens = completion or None
         self.total_tokens = (usage.get("totalTokenCount") or usage.get("total_tokens")
-                             or ((self.prompt_tokens or 0) + (self.completion_tokens or 0)) or None)
+                             or ((self.prompt_tokens or 0) + completion) or None)
 
     def failed(self, exc: BaseException) -> None:
         """Transport-level failure — timeout, DNS, connection reset. Nothing was

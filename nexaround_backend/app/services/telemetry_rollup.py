@@ -59,19 +59,26 @@ _HOURLY_SQL = text("""
 
 _USER_DAILY_SQL = text("""
     INSERT INTO api_usage_user_daily (
-        day, user_id, provider, calls, billable_calls, est_cost_usd
+        day, user_id, provider, operation, served_from,
+        calls, billable_calls, est_cost_usd, total_tokens, actions
     )
     SELECT
-        ts::date, user_id, provider,
-        count(*), count(*) FILTER (WHERE billable), COALESCE(sum(est_cost_usd), 0)
+        ts::date, user_id, provider, operation, served_from,
+        count(*),
+        count(*) FILTER (WHERE billable),
+        COALESCE(sum(est_cost_usd), 0),
+        COALESCE(sum(total_tokens), 0),
+        count(DISTINCT request_id)
     FROM api_events
     WHERE ts >= :since AND ts < :until AND user_id IS NOT NULL
-    GROUP BY 1, 2, 3
-    ON CONFLICT (day, user_id, provider)
+    GROUP BY 1, 2, 3, 4, 5
+    ON CONFLICT (day, user_id, provider, operation, served_from)
     DO UPDATE SET
         calls          = EXCLUDED.calls,
         billable_calls = EXCLUDED.billable_calls,
-        est_cost_usd   = EXCLUDED.est_cost_usd
+        est_cost_usd   = EXCLUDED.est_cost_usd,
+        total_tokens   = EXCLUDED.total_tokens,
+        actions        = EXCLUDED.actions
 """)
 
 

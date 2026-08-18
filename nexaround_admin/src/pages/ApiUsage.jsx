@@ -147,6 +147,7 @@ export default function ApiUsage() {
   const [range, setRange] = useState('7d');
   const [provider, setProvider] = useState('');
   const [ingest, setIngest] = useState('');
+  const [userFilter, setUserFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -196,16 +197,16 @@ export default function ApiUsage() {
         const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
           apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
-          apiGet(`/admin/telemetry/funnel?${q}`),
+          apiGet(`/admin/telemetry/funnel?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet(`/admin/telemetry/breakdown?${q}`),
-          apiGet(`/admin/telemetry/duplicates?${q}&limit=15`),
+          apiGet(`/admin/telemetry/duplicates?${q}&limit=15${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet(`/admin/telemetry/users?${q}&limit=10`),
           apiGet(`/admin/telemetry/errors?${q}`),
-          apiGet(`/admin/telemetry/events?${q}&page_size=40${tailFilter ? `&operation=${encodeURIComponent(tailFilter)}` : ''}`),
+          apiGet(`/admin/telemetry/events?${q}&page_size=40${tailFilter ? `&operation=${encodeURIComponent(tailFilter)}` : ''}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet('/admin/telemetry/pipeline'),
           apiGet('/admin/telemetry/alerts?only_open=true&limit=10'),
           apiGet('/admin/telemetry/spend'),
-          apiGet(`/admin/telemetry/routes?${q}`),
+          apiGet(`/admin/telemetry/routes?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet(`/admin/telemetry/tokens?${q}`),
           apiGet('/admin/telemetry/coverage'),
         ]);
@@ -223,7 +224,7 @@ export default function ApiUsage() {
     })();
 
     return () => { cancelled = true; };
-  }, [activeRange.hours, provider, ingest, tailFilter, reloadToken]);
+  }, [activeRange.hours, provider, ingest, userFilter, tailFilter, reloadToken]);
 
   // Only the 24-hour view is worth polling; re-running the 90-day rollup
   // queries every half minute would be churn for no new information.
@@ -439,6 +440,19 @@ export default function ApiUsage() {
             <option value="live">Measured only</option>
             <option value="legacy">Historical only</option>
           </select>
+          <select
+            className="form-input"
+            style={{ width: 'auto', minWidth: '210px' }}
+            value={userFilter}
+            onChange={(e) => setUserFilter(e.target.value)}
+          >
+            <option value="">All users</option>
+            {users.map((u) => (
+              <option key={u.user_id} value={u.user_id}>
+                {(u.display_name || u.email || u.user_id).slice(0, 30)} — {usd(u.est_cost_usd)}
+              </option>
+            ))}
+          </select>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
             {summary && (
               <span className="badge badge-ghost" title="Wide ranges read the hourly rollup rather than raw events">
@@ -455,6 +469,26 @@ export default function ApiUsage() {
       {err && (
         <div className="card" style={{ marginBottom: '20px', borderColor: 'rgba(229,57,53,0.3)' }}>
           <span style={{ color: 'var(--danger)', fontWeight: 700 }}>{err}</span>
+        </div>
+      )}
+
+      {userFilter && (
+        <div className="card" style={{ marginBottom: '20px', borderLeft: '4px solid var(--accent)',
+                                       display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <span className="badge badge-blue">Filtered to one user</span>
+          <span style={{ fontSize: '13.5px', color: 'var(--text-secondary)' }}>
+            {(users.find((u) => u.user_id === userFilter) || {}).email || userFilter}
+          </span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }}
+                    onClick={() => openUser(userFilter)}>
+              Full profile
+            </button>
+            <button className="btn btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }}
+                    onClick={() => setUserFilter('')}>
+              Clear
+            </button>
+          </div>
         </div>
       )}
 
@@ -955,6 +989,30 @@ export default function ApiUsage() {
                 <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginTop: '3px' }}>{label}</div>
               </div>
             ))}
+          </div>
+
+          <h4 style={{ fontSize: '13px', margin: '0 0 8px' }}>Endpoints used — and where each was answered</h4>
+          <div className="table-wrap" style={{ marginBottom: '18px' }}>
+            <table>
+              <thead><tr><th>Endpoint</th><th>Calls</th><th>From cache/DB</th><th>Paid to provider</th><th>Tokens</th><th>Cost</th></tr></thead>
+              <tbody>
+                {(userDetail.by_endpoint || []).map((e) => (
+                  <tr key={e.operation}>
+                    <td style={{ fontSize: '12.5px', fontWeight: 600 }}>{e.operation}</td>
+                    <td>{num(e.calls)}</td>
+                    <td>
+                      <span style={{ color: 'var(--success)' }}>{num(e.local_calls)}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', marginLeft: '5px' }}>
+                        {e.local_pct}%
+                      </span>
+                    </td>
+                    <td style={{ color: e.paid_calls ? 'var(--danger)' : 'var(--text-muted)' }}>{num(e.paid_calls)}</td>
+                    <td>{e.tokens ? num(e.tokens) : '—'}</td>
+                    <td style={{ fontWeight: 700 }}>{usd(e.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <h4 style={{ fontSize: '13px', margin: '0 0 8px' }}>Screens used</h4>
