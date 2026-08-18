@@ -88,6 +88,17 @@ class ApiEvent(Base):
     params_digest: Mapped[str] = mapped_column(CHAR(64), nullable=True)
     error: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # Gemini bills per token, so a call count says nothing about AI cost.
+    prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=True)
+    completion_tokens: Mapped[int] = mapped_column(Integer, nullable=True)
+    total_tokens: Mapped[int] = mapped_column(Integer, nullable=True)
+    # Inbound endpoint that caused this call. request_id groups the fan-out;
+    # this names what fanned out.
+    route: Mapped[str] = mapped_column(String(255), nullable=True)
+    # 'live' = measured. 'legacy' = reconstructed from api_request_logs, which
+    # predates outcome and cache recording, so volume only.
+    ingest: Mapped[str] = mapped_column(String(16), nullable=False, default="live")
+
 
 class ApiUsageHourly(Base):
     """Hourly rollup. Every dashboard panel spanning more than 48h reads this
@@ -112,6 +123,7 @@ class ApiUsageHourly(Base):
     p50_latency_ms: Mapped[int] = mapped_column(Integer, nullable=True)
     p95_latency_ms: Mapped[int] = mapped_column(Integer, nullable=True)
     error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
 
 class ApiUsageUserDaily(Base):
@@ -145,6 +157,9 @@ class ApiSkuRate(Base):
     unit_cost_usd: Mapped[float] = mapped_column(Numeric(10, 6), nullable=False)
     # Calls per calendar month billed at zero before unit_cost_usd applies.
     free_tier_monthly: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Token-priced providers use these; per-call providers leave them at 0.
+    input_per_1k_usd: Mapped[float] = mapped_column(Numeric(10, 8), nullable=False, default=0)
+    output_per_1k_usd: Mapped[float] = mapped_column(Numeric(10, 8), nullable=False, default=0)
     effective_from: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(

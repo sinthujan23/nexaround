@@ -159,6 +159,7 @@ async def bind_request_context(request: Request, call_next):
         (request.headers.get("X-Platform") or None) and
         request.headers["X-Platform"][:16]
     )
+    request_context.route_var.set(str(request.url.path)[:255])
     return await call_next(request)
 
 

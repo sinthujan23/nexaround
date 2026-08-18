@@ -25,6 +25,9 @@ client_ip_var: ContextVar[Optional[str]] = ContextVar("client_ip", default=None)
 # investigation slow — the fix was already shipped but still generating load.
 app_version_var: ContextVar[Optional[str]] = ContextVar("app_version", default=None)
 platform_var: ContextVar[Optional[str]] = ContextVar("platform", default=None)
+# The inbound endpoint that caused this work. request_id groups the upstream
+# calls one client action produced; this names the action.
+route_var: ContextVar[Optional[str]] = ContextVar("route", default=None)
 
 
 def current_request_id() -> Optional[uuid.UUID]:
@@ -58,4 +61,5 @@ def snapshot() -> dict:
         "client_ip": client_ip_var.get(),
         "app_version": app_version_var.get(),
         "platform": platform_var.get(),
+        "route": route_var.get(),
     }

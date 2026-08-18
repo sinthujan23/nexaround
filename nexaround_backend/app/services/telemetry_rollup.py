@@ -27,7 +27,7 @@ _HOURLY_SQL = text("""
     INSERT INTO api_usage_hourly (
         bucket, provider, operation, served_from, provider_status,
         calls, billable_calls, est_cost_usd,
-        p50_latency_ms, p95_latency_ms, error_count
+        p50_latency_ms, p95_latency_ms, error_count, total_tokens
     )
     SELECT
         date_trunc('hour', ts)                                    AS bucket,
@@ -40,7 +40,8 @@ _HOURLY_SQL = text("""
         COALESCE(sum(est_cost_usd), 0)                            AS est_cost_usd,
         percentile_disc(0.5) WITHIN GROUP (ORDER BY latency_ms)   AS p50_latency_ms,
         percentile_disc(0.95) WITHIN GROUP (ORDER BY latency_ms)  AS p95_latency_ms,
-        count(*) FILTER (WHERE error IS NOT NULL OR http_status >= 400) AS error_count
+        count(*) FILTER (WHERE error IS NOT NULL OR http_status >= 400) AS error_count,
+        COALESCE(sum(total_tokens), 0)                            AS total_tokens
     FROM api_events
     WHERE ts >= :since AND ts < :until
     GROUP BY 1, 2, 3, 4, 5
@@ -51,7 +52,8 @@ _HOURLY_SQL = text("""
         est_cost_usd   = EXCLUDED.est_cost_usd,
         p50_latency_ms = EXCLUDED.p50_latency_ms,
         p95_latency_ms = EXCLUDED.p95_latency_ms,
-        error_count    = EXCLUDED.error_count
+        error_count    = EXCLUDED.error_count,
+        total_tokens   = EXCLUDED.total_tokens
 """)
 
 
@@ -111,12 +113,35 @@ async def rollup_loop(interval_seconds: float = 300.0) -> None:
             logger.warning("telemetry rollup loop error: %s", e)
 
 
-async def maintenance_once(retention_days: int = 30) -> dict:
+# Retention is read from settings so it can be changed without a deploy, and
+# defaults long. A short window here is not a tidy-up, it is data destruction:
+# a 30-day default silently dropped two months of imported history the moment
+# it first ran.
+RETENTION_SETTING = "api_events_retention_days"
+DEFAULT_RETENTION_DAYS = 400
+
+
+async def _retention_days() -> int:
+    try:
+        from app.services.settings_service import SettingsService
+        async with async_session() as db:
+            raw = await SettingsService(db).get_setting(RETENTION_SETTING)
+        days = int(raw) if raw else DEFAULT_RETENTION_DAYS
+        # A floor, so a typo or a stray zero cannot wipe recent history either.
+        return max(days, 60)
+    except Exception:
+        return DEFAULT_RETENTION_DAYS
+
+
+async def maintenance_once(retention_days: int = None) -> dict:
     """Daily housekeeping: create upcoming partitions, drop expired ones.
 
     Retention is a partition DROP rather than a DELETE — instantaneous, and it
-    leaves no dead tuples for autovacuum to chase.
+    leaves no dead tuples for autovacuum to chase. Only whole months strictly
+    older than the cutoff are dropped, so the current period is never partial.
     """
+    if retention_days is None:
+        retention_days = await _retention_days()
     out = {"dropped_partitions": 0}
     try:
         from app.services import telemetry

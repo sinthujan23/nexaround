@@ -108,6 +108,41 @@ function Bar({ pct, color, height = 8 }) {
   );
 }
 
+/** Drill-down overlay for one request or one user. */
+function Detail({ title, subtitle, onClose, children }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(18,18,18,0.45)',
+        zIndex: 1000, display: 'flex', alignItems: 'flex-start',
+        justifyContent: 'center', padding: '48px 20px', overflowY: 'auto',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="card"
+        style={{ maxWidth: '900px', width: '100%', maxHeight: '85vh', overflowY: 'auto' }}
+      >
+        <div className="card-header">
+          <div>
+            <div className="card-title">{title}</div>
+            {subtitle && (
+              <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '3px' }}>
+                {subtitle}
+              </div>
+            )}
+          </div>
+          <button className="btn btn-ghost" style={{ padding: '6px 12px' }} onClick={onClose}>
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function ApiUsage() {
   const [range, setRange] = useState('7d');
   const [provider, setProvider] = useState('');
@@ -126,6 +161,13 @@ export default function ApiUsage() {
   const [tailFilter, setTailFilter] = useState('');
   const [alerts, setAlerts] = useState({ alerts: [], open_counts: {} });
   const [spend, setSpend] = useState(null);
+  const [routes, setRoutes] = useState([]);
+  const [tokens, setTokens] = useState({ usage: [], total_tokens: 0 });
+  const [coverage, setCoverage] = useState([]);
+  // Drill-downs. Null = closed; the modal renders whichever is set.
+  const [reqDetail, setReqDetail] = useState(null);
+  const [userDetail, setUserDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const activeRange = RANGES.find((r) => r.key === range) || RANGES[1];
 
@@ -149,7 +191,7 @@ export default function ApiUsage() {
       const from = new Date(to.getTime() - hours * 3600 * 1000);
       const q = `from=${from.toISOString()}&to=${to.toISOString()}${provider ? `&provider=${provider}` : ''}`;
       try {
-        const [s, ts, f, b, d, u, h, ev, pl, al, sp] = await Promise.all([
+        const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
           apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
           apiGet(`/admin/telemetry/funnel?${q}`),
@@ -161,12 +203,16 @@ export default function ApiUsage() {
           apiGet('/admin/telemetry/pipeline'),
           apiGet('/admin/telemetry/alerts?only_open=true&limit=10'),
           apiGet('/admin/telemetry/spend'),
+          apiGet(`/admin/telemetry/routes?${q}`),
+          apiGet(`/admin/telemetry/tokens?${q}`),
+          apiGet('/admin/telemetry/coverage'),
         ]);
         if (cancelled) return;
         setSummary(s); setSeries(ts); setFunnel(f.operations || []);
         setBreakdown(b); setDupes(d); setUsers(u.users || []);
         setHealth(h); setEvents(ev.events || []); setPipeline(pl);
         setAlerts(al); setSpend(sp);
+        setRoutes(rt.routes || []); setTokens(tk); setCoverage(cv.sources || []);
       } catch (e) {
         if (!cancelled) setErr(e.message || 'Could not load telemetry.');
       } finally {
@@ -184,6 +230,27 @@ export default function ApiUsage() {
     const id = setInterval(refresh, 30000);
     return () => clearInterval(id);
   }, [range, refresh]);
+
+  const openRequest = async (rid) => {
+    if (!rid) return;
+    setDetailLoading(true); setUserDetail(null);
+    try {
+      setReqDetail(await apiGet(`/admin/telemetry/request/${rid}`));
+    } catch (e) { setErr(e.message || 'Could not load request detail.'); }
+    finally { setDetailLoading(false); }
+  };
+
+  const openUser = async (uid) => {
+    if (!uid) return;
+    setDetailLoading(true); setReqDetail(null);
+    const to = new Date();
+    const from = new Date(to.getTime() - activeRange.hours * 3600 * 1000);
+    try {
+      setUserDetail(await apiGet(
+        `/admin/telemetry/user/${uid}?from=${from.toISOString()}&to=${to.toISOString()}`));
+    } catch (e) { setErr(e.message || 'Could not load user detail.'); }
+    finally { setDetailLoading(false); }
+  };
 
   const ackAlert = async (id) => {
     try {
@@ -261,6 +328,37 @@ export default function ApiUsage() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Data coverage ────────────────────────────────────────── */}
+      {coverage.some((c) => c.ingest === 'legacy' && c.rows > 0) && (
+        <div className="card" style={{ marginBottom: '20px', borderLeft: '4px solid var(--warning)' }}>
+          <div className="card-header"><div className="card-title">What this data can tell you</div></div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Source</th><th>Rows</th><th>Period</th><th>Cache tier</th><th>Cost</th></tr></thead>
+              <tbody>
+                {coverage.map((c) => (
+                  <tr key={c.ingest}>
+                    <td><span className={`badge ${c.ingest === 'live' ? 'badge-green' : 'badge-yellow'}`}>{c.ingest}</span></td>
+                    <td>{num(c.rows)}</td>
+                    <td style={{ fontSize: '12px' }}>
+                      {c.lo ? new Date(c.lo).toLocaleDateString() : '—'} → {c.hi ? new Date(c.hi).toLocaleDateString() : '—'}
+                    </td>
+                    <td>{c.has_cache_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
+                    <td>{c.has_cost_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+            Legacy rows were reconstructed from the old request log, which was written
+            <em> before</em> each call was made and never saw a cache hit. Their volume is real;
+            their cost and cache columns read zero because that data was never captured, not
+            because it was free. Only <strong>live</strong> rows carry a measured cost.
+          </p>
         </div>
       )}
 
@@ -483,6 +581,86 @@ export default function ApiUsage() {
         </div>
       </div>
 
+      {/* ── Routes & fan-out ─────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: '20px' }}>
+        <div className="card-header">
+          <div className="card-title">Which screens generate the work</div>
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            fan-out = upstream calls per user action
+          </span>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
+          A high fan-out is a design problem, not a traffic problem: one tap firing fifteen
+          paid lookups costs fifteen times what it looks like it should.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Endpoint</th><th>Actions</th><th>Calls</th><th>Fan-out</th><th>Paid</th><th>Tokens</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+              {routes.length === 0 && (
+                <tr><td colSpan={7}><div className="empty-state">No routed traffic in this window.</div></td></tr>
+              )}
+              {routes.slice(0, 15).map((r) => (
+                <tr key={r.route}>
+                  <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '12px' }}>{r.route}</td>
+                  <td>{num(r.actions)}</td>
+                  <td>{num(r.calls)}</td>
+                  <td>
+                    <span className={`badge ${r.fan_out > 5 ? 'badge-red' : r.fan_out > 2 ? 'badge-yellow' : 'badge-ghost'}`}>
+                      {r.fan_out ?? '—'}×
+                    </span>
+                  </td>
+                  <td style={{ color: r.upstream ? 'var(--danger)' : 'var(--text-muted)' }}>{num(r.upstream)}</td>
+                  <td>{r.tokens ? num(r.tokens) : '—'}</td>
+                  <td style={{ fontWeight: 700 }}>{usd(r.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── AI tokens ────────────────────────────────────────────── */}
+      <div className="card" style={{ marginTop: '20px' }}>
+        <div className="card-header">
+          <div className="card-title">AI token usage</div>
+          <span className="badge badge-ghost">{num(tokens.total_tokens)} tokens</span>
+        </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginBottom: '14px' }}>
+          Gemini bills per token, not per call — one long itinerary prompt can cost more than a
+          hundred short lookups, so a call count says nothing useful here.
+        </p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Provider</th><th>Operation</th><th>Calls</th><th>Prompt</th><th>Completion</th><th>Avg / call</th><th>Cost</th></tr>
+            </thead>
+            <tbody>
+              {tokens.usage.length === 0 && (
+                <tr><td colSpan={7}>
+                  <div className="empty-state">
+                    No token data yet — recorded from the next AI call onward.
+                  </div>
+                </td></tr>
+              )}
+              {tokens.usage.map((t, i) => (
+                <tr key={i}>
+                  <td>{t.provider}</td>
+                  <td style={{ fontSize: '12.5px' }}>{t.operation}</td>
+                  <td>{num(t.calls)}</td>
+                  <td>{num(t.prompt_tokens)}</td>
+                  <td>{num(t.completion_tokens)}</td>
+                  <td>{num(t.avg_tokens)}</td>
+                  <td style={{ fontWeight: 700 }}>{usd(t.cost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* ── Duplicates ───────────────────────────────────────────── */}
       <div className="card" style={{ marginTop: '20px' }}>
         <div className="card-header">
@@ -528,7 +706,9 @@ export default function ApiUsage() {
                   <tr><td colSpan={4}><div className="empty-state">No attributed usage yet.</div></td></tr>
                 )}
                 {users.map((u) => (
-                  <tr key={u.user_id}>
+                  <tr key={u.user_id} className="clickable-row"
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => openUser(u.user_id)}>
                     <td>
                       <div className="user-name">{u.display_name || '—'}</div>
                       <div style={{ fontSize: '11.5px', color: 'var(--text-muted)' }}>{u.email || u.user_id}</div>
@@ -596,15 +776,21 @@ export default function ApiUsage() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Time</th><th>Provider</th><th>Operation</th><th>Source</th><th>Status</th><th>Latency</th><th>Cost</th><th>App</th></tr>
+              <tr><th>Time</th><th>Route</th><th>Provider</th><th>Operation</th><th>Source</th><th>Status</th><th>Latency</th><th>Tokens</th><th>Cost</th><th>App</th></tr>
             </thead>
             <tbody>
               {events.length === 0 && (
                 <tr><td colSpan={8}><div className="empty-state">No events recorded.</div></td></tr>
               )}
               {events.map((e, i) => (
-                <tr key={i}>
+                <tr key={i} className="clickable-row"
+                    style={{ cursor: e.request_id ? 'pointer' : 'default' }}
+                    onClick={() => openRequest(e.request_id)}
+                    title={e.request_id ? 'Show every call this request made' : ''}>
                   <td style={{ fontSize: '12px', whiteSpace: 'nowrap' }}>{new Date(e.ts).toLocaleTimeString()}</td>
+                  <td style={{ fontSize: '11.5px', fontFamily: 'ui-monospace, Menlo, monospace', color: 'var(--text-secondary)' }}>
+                    {e.route ? e.route.replace('/api/v1', '') : '—'}
+                  </td>
                   <td style={{ fontSize: '12.5px' }}>{e.provider}</td>
                   <td style={{ fontSize: '12.5px' }}>{e.operation}</td>
                   <td>
@@ -623,6 +809,7 @@ export default function ApiUsage() {
                     <ClockIcon size={11} style={{ verticalAlign: '-1px', marginRight: '3px', color: 'var(--text-muted)' }} />
                     {e.latency_ms ?? '—'} ms
                   </td>
+                  <td style={{ fontSize: '12px' }}>{e.total_tokens ? num(e.total_tokens) : '—'}</td>
                   <td style={{ fontSize: '12px', fontWeight: e.billable ? 700 : 400, color: e.billable ? 'var(--danger)' : 'var(--text-muted)' }}>
                     {e.billable ? usd(e.est_cost_usd) : 'free'}
                   </td>
@@ -663,6 +850,130 @@ export default function ApiUsage() {
       </p>
 
       {loading && <div style={{ marginTop: '16px', color: 'var(--text-muted)', fontSize: '13px' }}>Loading…</div>}
+
+      {/* ── Request drill-down ───────────────────────────────────── */}
+      {reqDetail && (
+        <Detail
+          title="Request detail"
+          subtitle={`${reqDetail.route || 'unknown route'} · ${new Date(reqDetail.started_at).toLocaleString()}`}
+          onClose={() => setReqDetail(null)}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: '12px', marginBottom: '18px' }}>
+            {[
+              ['Upstream calls', num(reqDetail.upstream_calls), reqDetail.upstream_calls ? 'var(--danger)' : undefined],
+              ['Served cached', num(reqDetail.cached_calls), 'var(--success)'],
+              ['Cost', usd(reqDetail.total_cost_usd)],
+              ['Tokens', reqDetail.total_tokens ? num(reqDetail.total_tokens) : '—'],
+              ['Total latency', `${num(reqDetail.total_latency_ms)} ms`],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                <div style={{ fontSize: '18px', fontWeight: 700, color: color || 'var(--text-primary)' }}>{value}</div>
+                <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginTop: '3px' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: '12.5px', color: 'var(--text-secondary)', marginBottom: '10px' }}>
+            {reqDetail.user_id
+              ? <>User <code>{reqDetail.user_id}</code> · {reqDetail.platform || '—'} {reqDetail.app_version || ''}</>
+              : 'Anonymous request'}
+          </div>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>Provider</th><th>Operation</th><th>Source</th><th>Status</th><th>Latency</th><th>Tokens</th><th>Cost</th><th>Cache key</th></tr></thead>
+              <tbody>
+                {reqDetail.calls.map((c, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>{c.provider}</td>
+                    <td style={{ fontSize: '12.5px' }}>{c.operation}</td>
+                    <td>
+                      <span className="badge" style={{ background: `${SOURCE_COLOR[c.served_from]}14`, color: SOURCE_COLOR[c.served_from] }}>
+                        {c.served_from}
+                      </span>
+                    </td>
+                    <td style={{ fontSize: '12px' }}>{c.provider_status || c.http_status || '—'}</td>
+                    <td style={{ fontSize: '12px' }}>{c.latency_ms ?? '—'} ms</td>
+                    <td style={{ fontSize: '12px' }}>{c.total_tokens ? num(c.total_tokens) : '—'}</td>
+                    <td style={{ fontWeight: c.billable ? 700 : 400, color: c.billable ? 'var(--danger)' : 'var(--text-muted)' }}>
+                      {c.billable ? usd(c.est_cost_usd) : 'free'}
+                    </td>
+                    <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      {c.cache_key || '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Detail>
+      )}
+
+      {/* ── User drill-down ──────────────────────────────────────── */}
+      {userDetail && (
+        <Detail
+          title={userDetail.user.display_name || userDetail.user.email || 'User'}
+          subtitle={userDetail.user.email || ''}
+          onClose={() => setUserDetail(null)}
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(110px,1fr))', gap: '12px', marginBottom: '18px' }}>
+            {[
+              ['Actions', num(userDetail.totals.actions)],
+              ['API calls', num(userDetail.totals.requests)],
+              ['Paid calls', num(userDetail.totals.billable)],
+              ['Cost', usd(userDetail.totals.cost)],
+              ['Tokens', userDetail.totals.tokens ? num(userDetail.totals.tokens) : '—'],
+              ['Active days', num(userDetail.totals.active_days)],
+            ].map(([label, value]) => (
+              <div key={label} style={{ border: '1px solid var(--border)', borderRadius: '10px', padding: '12px' }}>
+                <div style={{ fontSize: '17px', fontWeight: 700 }}>{value}</div>
+                <div style={{ fontSize: '10.5px', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginTop: '3px' }}>{label}</div>
+              </div>
+            ))}
+          </div>
+
+          <h4 style={{ fontSize: '13px', margin: '0 0 8px' }}>Screens used</h4>
+          <div className="table-wrap" style={{ marginBottom: '18px' }}>
+            <table>
+              <thead><tr><th>Endpoint</th><th>Actions</th><th>Calls</th><th>Cost</th></tr></thead>
+              <tbody>
+                {userDetail.by_route.map((r) => (
+                  <tr key={r.route}>
+                    <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11.5px' }}>{r.route}</td>
+                    <td>{num(r.actions)}</td>
+                    <td>{num(r.calls)}</td>
+                    <td>{usd(r.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h4 style={{ fontSize: '13px', margin: '0 0 8px' }}>Recent actions</h4>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>When</th><th>Endpoint</th><th>Calls</th><th>Cost</th></tr></thead>
+              <tbody>
+                {userDetail.recent_actions.map((a) => (
+                  <tr key={a.request_id} className="clickable-row" style={{ cursor: 'pointer' }}
+                      onClick={() => openRequest(a.request_id)}>
+                    <td style={{ fontSize: '12px' }}>{new Date(a.ts).toLocaleString()}</td>
+                    <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11.5px' }}>{a.route || '—'}</td>
+                    <td>{num(a.calls)}</td>
+                    <td>{usd(a.cost)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Detail>
+      )}
+
+      {detailLoading && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(18,18,18,0.25)', zIndex: 999,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
+          Loading detail…
+        </div>
+      )}
     </div>
   );
 }

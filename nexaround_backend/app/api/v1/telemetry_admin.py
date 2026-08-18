@@ -447,7 +447,9 @@ async def events(
     rows = (await db.execute(text(f"""
         SELECT e.ts, e.request_id, e.provider, e.operation, e.sku, e.served_from,
                e.billable, e.est_cost_usd, e.http_status, e.provider_status,
-               e.latency_ms, e.user_id, e.app_version, e.platform, e.cache_key, e.error
+               e.latency_ms, e.user_id, e.app_version, e.platform, e.cache_key,
+               e.error, e.route, e.ingest,
+               e.prompt_tokens, e.completion_tokens, e.total_tokens
         FROM api_events e
         WHERE e.ts >= :start AND e.ts < :end {where}
         ORDER BY e.ts DESC LIMIT :limit OFFSET :offset
@@ -676,3 +678,203 @@ async def set_spend_limits(
     await svc.set_setting(spend_guard.K_ENFORCE, "true" if body.enforce else "false")
     await spend_guard.refresh_config()
     return await spend_guard.status()
+
+
+# ── Per-request and per-user detail ─────────────────────────────────────────
+
+@router.get("/request/{request_id}")
+async def request_detail(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Everything one inbound request caused.
+
+    This is the view that makes fan-out legible: a single tap on a category
+    tile used to produce fifteen paid Find Place calls, and nothing in the old
+    logging could show that they belonged together.
+    """
+    rows = (await db.execute(text("""
+        SELECT ts, provider, operation, sku, served_from, billable, est_cost_usd,
+               http_status, provider_status, latency_ms, cache_key, error,
+               prompt_tokens, completion_tokens, total_tokens, route,
+               user_id, app_version, platform, client_ip
+        FROM api_events WHERE request_id = :rid ORDER BY ts
+    """), {"rid": request_id})).mappings().all()
+    if not rows:
+        raise HTTPException(404, "No events for that request id")
+
+    first = rows[0]
+    return {
+        "request_id": request_id,
+        "route": first["route"],
+        "user_id": str(first["user_id"]) if first["user_id"] else None,
+        "app_version": first["app_version"],
+        "platform": first["platform"],
+        "client_ip": str(first["client_ip"]) if first["client_ip"] else None,
+        "started_at": first["ts"],
+        "upstream_calls": sum(1 for r in rows if r["served_from"] == "upstream"),
+        "cached_calls": sum(1 for r in rows if r["served_from"] != "upstream"),
+        "total_cost_usd": float(sum(r["est_cost_usd"] or 0 for r in rows)),
+        "total_tokens": sum(r["total_tokens"] or 0 for r in rows) or None,
+        "total_latency_ms": sum(r["latency_ms"] or 0 for r in rows),
+        "calls": [dict(r) | {"est_cost_usd": float(r["est_cost_usd"] or 0),
+                             "user_id": None, "client_ip": None} for r in rows],
+    }
+
+
+@router.get("/user/{user_id}")
+async def user_detail(
+    user_id: str,
+    frm: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """One account's behaviour: what they used, how it was served, what it cost."""
+    start, end = _window(frm, to)
+    p = {"uid": user_id, "start": start, "end": end}
+
+    profile = (await db.execute(text("""
+        SELECT u.email, u.display_name, u.created_at, u.is_active
+        FROM users u WHERE u.id = CAST(:uid AS uuid)
+    """), {"uid": user_id})).mappings().first()
+
+    totals = (await db.execute(text("""
+        SELECT count(*) requests,
+               count(*) FILTER (WHERE billable) billable,
+               COALESCE(sum(est_cost_usd),0) cost,
+               COALESCE(sum(total_tokens),0) tokens,
+               count(DISTINCT request_id) actions,
+               count(DISTINCT ts::date) active_days,
+               min(ts) first_seen, max(ts) last_seen
+        FROM api_events
+        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+    """), p)).mappings().one()
+
+    by_operation = (await db.execute(text("""
+        SELECT operation, served_from, count(*) calls,
+               COALESCE(sum(est_cost_usd),0) cost
+        FROM api_events
+        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+        GROUP BY 1,2 ORDER BY calls DESC LIMIT 40
+    """), p)).mappings().all()
+
+    # Which screens this account actually uses, ranked by what they cost.
+    by_route = (await db.execute(text("""
+        SELECT COALESCE(route,'(unknown)') route, count(*) calls,
+               count(DISTINCT request_id) actions,
+               COALESCE(sum(est_cost_usd),0) cost
+        FROM api_events
+        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+        GROUP BY 1 ORDER BY cost DESC, calls DESC LIMIT 25
+    """), p)).mappings().all()
+
+    daily = (await db.execute(text("""
+        SELECT ts::date d, count(*) calls, COALESCE(sum(est_cost_usd),0) cost
+        FROM api_events
+        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+        GROUP BY 1 ORDER BY 1
+    """), p)).mappings().all()
+
+    recent = (await db.execute(text("""
+        SELECT request_id, route, min(ts) ts, count(*) calls,
+               COALESCE(sum(est_cost_usd),0) cost
+        FROM api_events
+        WHERE user_id = CAST(:uid AS uuid) AND ts >= :start AND ts < :end
+        GROUP BY 1,2 ORDER BY ts DESC LIMIT 25
+    """), p)).mappings().all()
+
+    return {
+        "user": dict(profile) if profile else {"email": None, "display_name": None},
+        "totals": dict(totals) | {"cost": float(totals["cost"] or 0)},
+        "by_operation": [dict(r) | {"cost": float(r["cost"])} for r in by_operation],
+        "by_route": [dict(r) | {"cost": float(r["cost"])} for r in by_route],
+        "daily": [dict(r) | {"cost": float(r["cost"])} for r in daily],
+        "recent_actions": [dict(r) | {"cost": float(r["cost"])} for r in recent],
+    }
+
+
+@router.get("/routes")
+async def routes_breakdown(
+    frm: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Which inbound endpoints generate the upstream work.
+
+    Fan-out is the number to watch: calls per action. A screen that fires
+    fifteen paid lookups per tap is a design problem, not a traffic problem.
+    """
+    start, end = _window(frm, to)
+    rows = (await db.execute(text("""
+        SELECT COALESCE(route,'(unknown)') route,
+               count(*) calls,
+               count(DISTINCT request_id) actions,
+               count(*) FILTER (WHERE served_from = 'upstream') upstream,
+               COALESCE(sum(est_cost_usd),0) cost,
+               COALESCE(sum(total_tokens),0) tokens
+        FROM api_events
+        WHERE ts >= :start AND ts < :end AND route IS NOT NULL
+        GROUP BY 1 ORDER BY cost DESC, calls DESC LIMIT 40
+    """), {"start": start, "end": end})).mappings().all()
+    return {"routes": [
+        dict(r) | {
+            "cost": float(r["cost"]),
+            "fan_out": round(r["calls"] / r["actions"], 2) if r["actions"] else None,
+        } for r in rows
+    ]}
+
+
+@router.get("/tokens")
+async def token_usage(
+    frm: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """AI token accounting. Token-metered providers cannot be understood from
+    a call count — one long prompt can outweigh a hundred short ones."""
+    start, end = _window(frm, to)
+    rows = (await db.execute(text("""
+        SELECT provider, operation,
+               count(*) calls,
+               COALESCE(sum(prompt_tokens),0) prompt_tokens,
+               COALESCE(sum(completion_tokens),0) completion_tokens,
+               COALESCE(sum(total_tokens),0) total_tokens,
+               COALESCE(sum(est_cost_usd),0) cost,
+               COALESCE(round(avg(total_tokens)),0) avg_tokens
+        FROM api_events
+        WHERE ts >= :start AND ts < :end AND total_tokens IS NOT NULL
+        GROUP BY 1,2 ORDER BY total_tokens DESC
+    """), {"start": start, "end": end})).mappings().all()
+    return {"usage": [dict(r) | {"cost": float(r["cost"])} for r in rows],
+            "total_tokens": sum(r["total_tokens"] for r in rows)}
+
+
+@router.get("/coverage")
+async def data_coverage(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """What the dashboard can and cannot tell you, by period.
+
+    Legacy rows were reconstructed from api_request_logs, which logged before
+    the HTTP call and never saw a cache. They carry real volume and nothing
+    else. Saying so here stops a reconstructed number being read as a measured
+    one.
+    """
+    rows = (await db.execute(text("""
+        SELECT ingest, count(*) rows, min(ts) lo, max(ts) hi,
+               count(*) FILTER (WHERE served_from <> 'upstream') cached,
+               COALESCE(sum(est_cost_usd),0) cost
+        FROM api_events GROUP BY 1
+    """))).mappings().all()
+    return {"sources": [
+        dict(r) | {
+            "cost": float(r["cost"]),
+            "has_cache_data": r["ingest"] == "live",
+            "has_cost_data": r["ingest"] == "live",
+        } for r in rows
+    ]}

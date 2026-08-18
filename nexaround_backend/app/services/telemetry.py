@@ -132,12 +132,15 @@ async def _load_rates(force: bool = False) -> dict[str, dict]:
         from app.core.database import async_session
         async with async_session() as session:
             result = await session.execute(
-                text("SELECT sku, unit_cost_usd, free_tier_monthly FROM api_sku_rates")
+                text("SELECT sku, unit_cost_usd, free_tier_monthly, "
+                     "input_per_1k_usd, output_per_1k_usd FROM api_sku_rates")
             )
             _rate_cache = {
                 row.sku: {
                     "unit_cost_usd": Decimal(str(row.unit_cost_usd)),
                     "free_tier_monthly": row.free_tier_monthly,
+                    "input_per_1k": Decimal(str(row.input_per_1k_usd)),
+                    "output_per_1k": Decimal(str(row.output_per_1k_usd)),
                 }
                 for row in result
             }
@@ -165,6 +168,7 @@ class _Recorder:
         "provider", "operation", "sku", "cache_key", "params_digest",
         "_started", "served_from", "http_status", "provider_status",
         "latency_ms", "error", "_ctx", "_finalised",
+        "prompt_tokens", "completion_tokens", "total_tokens",
     )
 
     def __init__(self, provider, operation, sku, cache_key, params_digest, ctx):
@@ -181,6 +185,9 @@ class _Recorder:
         self.latency_ms: Optional[int] = None
         self.error: Optional[str] = None
         self._finalised = False
+        self.prompt_tokens: Optional[int] = None
+        self.completion_tokens: Optional[int] = None
+        self.total_tokens: Optional[int] = None
 
     # -- markers -------------------------------------------------------------
 
@@ -200,8 +207,39 @@ class _Recorder:
             self.http_status = getattr(response, "status_code", None)
             if provider_status is None:
                 provider_status = _extract_provider_status(response)
+            self._read_tokens(response)
         self.provider_status = provider_status
         self._stop_clock()
+
+    def tokens(self, prompt: int = None, completion: int = None,
+               total: int = None) -> None:
+        """Record token usage explicitly, for providers we cannot parse."""
+        self.prompt_tokens = prompt
+        self.completion_tokens = completion
+        self.total_tokens = total if total is not None else (
+            (prompt or 0) + (completion or 0) or None)
+
+    def _read_tokens(self, response: Any) -> None:
+        """Pull token counts out of a provider response.
+
+        Gemini bills per token, so a call count says nothing about AI spend —
+        one itinerary prompt can cost more than a hundred short ones.
+        """
+        try:
+            body = response.json()
+        except Exception:
+            return
+        if not isinstance(body, dict):
+            return
+        usage = body.get("usageMetadata") or body.get("usage") or {}
+        if not isinstance(usage, dict):
+            return
+        self.prompt_tokens = (usage.get("promptTokenCount")
+                              or usage.get("prompt_tokens") or usage.get("input_tokens"))
+        self.completion_tokens = (usage.get("candidatesTokenCount")
+                                  or usage.get("completion_tokens") or usage.get("output_tokens"))
+        self.total_tokens = (usage.get("totalTokenCount") or usage.get("total_tokens")
+                             or ((self.prompt_tokens or 0) + (self.completion_tokens or 0)) or None)
 
     def failed(self, exc: BaseException) -> None:
         """Transport-level failure — timeout, DNS, connection reset. Nothing was
@@ -235,7 +273,15 @@ class _Recorder:
             rates = await _load_rates()
             rate = rates.get(self.sku)
             if rate:
-                cost = rate["unit_cost_usd"]
+                # Token-priced SKUs (Gemini) carry per-1k rates and a zero
+                # per-call rate; everything else is the other way round.
+                if rate["input_per_1k"] or rate["output_per_1k"]:
+                    cost = (
+                        Decimal(self.prompt_tokens or 0) / 1000 * rate["input_per_1k"]
+                        + Decimal(self.completion_tokens or 0) / 1000 * rate["output_per_1k"]
+                    )
+                else:
+                    cost = rate["unit_cost_usd"]
         ctx = self._ctx
         return {
             "ts": datetime.now(timezone.utc).isoformat(),
@@ -256,6 +302,10 @@ class _Recorder:
             "cache_key": (self.cache_key or None) and self.cache_key[:255],
             "params_digest": self.params_digest,
             "error": self.error,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "total_tokens": self.total_tokens,
+            "route": ctx.get("route"),
         }
 
 
@@ -374,6 +424,10 @@ def track_sync(
                 "cache_key": (rec.cache_key or None) and rec.cache_key[:255],
                 "params_digest": None,
                 "error": rec.error,
+                "prompt_tokens": rec.prompt_tokens,
+                "completion_tokens": rec.completion_tokens,
+                "total_tokens": rec.total_tokens,
+                "route": ctx.get("route"),
             }
             if len(_fallback) == _fallback.maxlen:
                 _stats["dropped_queue_full"] += 1
@@ -445,11 +499,13 @@ _INSERT_SQL = text("""
     INSERT INTO api_events (
         ts, request_id, provider, operation, sku, served_from, billable,
         est_cost_usd, http_status, provider_status, latency_ms, user_id,
-        client_ip, app_version, platform, cache_key, params_digest, error
+        client_ip, app_version, platform, cache_key, params_digest, error,
+        prompt_tokens, completion_tokens, total_tokens, route
     ) VALUES (
         :ts, :request_id, :provider, :operation, :sku, :served_from, :billable,
         :est_cost_usd, :http_status, :provider_status, :latency_ms, :user_id,
-        :client_ip, :app_version, :platform, :cache_key, :params_digest, :error
+        :client_ip, :app_version, :platform, :cache_key, :params_digest, :error,
+        :prompt_tokens, :completion_tokens, :total_tokens, :route
     )
 """)
 
