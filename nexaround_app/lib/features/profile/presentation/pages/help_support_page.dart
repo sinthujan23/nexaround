@@ -206,7 +206,7 @@ class HelpSupportPage extends StatelessWidget {
             _buildFaqItem('How does AI tourism navigation work?', 
               'NexAround uses real-time computer vision and location analytics to highlight points of interest and guide you through customized routes.'),
             _buildFaqItem('Can I use the app offline?', 
-              'Certain features like map navigation, search, and generative itineraries require an active internet connection, but saved places and basic offline caches remain accessible.'),
+              'Certain features like map navigation, search, and generative itineraries require an active internet connection, but favourite places and basic offline caches remain accessible.'),
             _buildFaqItem('How do I update my settings currency?', 
               'Go to the Me tab, click on "Currency" under Settings, and choose your preferred currency. It will update budgets and cost targets globally.'),
           ],

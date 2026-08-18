@@ -1124,6 +1124,9 @@ class _ArCameraPageState extends State<ArCameraPage>
 
             // If navigating, also update the navigation target explicitly
             if (_isNavigating && _navigationTarget != null) {
+              if (_walkingRoute == null && !_isFetchingRoute) {
+                _fetchWalkingRoute(_navigationTarget!);
+              }
               final target = _navigationTarget!;
               if (target.lat != null && target.lng != null) {
                 final double distM = geo.Geolocator.distanceBetween(
@@ -1167,25 +1170,64 @@ class _ArCameraPageState extends State<ArCameraPage>
           });
         });
 
-    // If launched from proximity alert, auto-trigger Neva after short delay
+    // If launched with an initial place (e.g. from Attraction Details AR button), auto-start route navigation
     if (widget.initialPlace != null) {
-      Future.delayed(const Duration(milliseconds: 1200), () {
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted && !_initialPlaceTriggered) {
           _initialPlaceTriggered = true;
           final p = widget.initialPlace!;
+          final lat = (p['latitude'] as num?)?.toDouble();
+          final lng = (p['longitude'] as num?)?.toDouble();
+          final photoUrl = (p['imageUrl'] as String?) ??
+              ((p['photo_urls'] is List && (p['photo_urls'] as List).isNotEmpty)
+                  ? (p['photo_urls'] as List).first.toString()
+                  : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop');
+
+          double initialBearing = 0.0;
+          double distanceM = (p['distanceM'] as num?)?.toDouble() ?? 0.0;
+          if (_currentPosition != null && lat != null && lng != null) {
+            distanceM = geo.Geolocator.distanceBetween(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              lat,
+              lng,
+            );
+            initialBearing = _calculateBearing(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              lat,
+              lng,
+            );
+          }
+
+          final distKm = distanceM / 1000;
+          final distStr = distanceM > 0
+              ? (distKm < 1 ? '${distanceM.toInt()} m' : '${distKm.toStringAsFixed(1)} km')
+              : (p['distance'] ?? 'Nearby');
+
           final landmark = _ArLandmark(
-            p['name'] ?? 'Unknown',
-            '',
-            (p['rating'] ?? 0.0).toDouble(),
-            p['distance'] ?? 'Nearby',
-            0,
-            '',
-            p['category'] ?? 'Place',
-            (p['distanceM'] ?? 0).toDouble(),
-            p['latitude'],
-            p['longitude'],
+            p['name'] ?? 'Destination',
+            photoUrl,
+            (p['rating'] as num?)?.toDouble() ?? 4.5,
+            distStr,
+            initialBearing,
+            p['description'] ?? '',
+            (p['category'] ?? 'ATTRACTION').toString().toUpperCase(),
+            distanceM,
+            lat,
+            lng,
           );
-          _startNevaSearch(landmark);
+
+          setState(() {
+            if (!_landmarks.any((l) => l.name == landmark.name)) {
+              _landmarks.insert(0, landmark);
+              _allLandmarks.insert(0, landmark);
+            }
+            _selectedLandmark = _landmarks.indexWhere((l) => l.name == landmark.name);
+          });
+
+          // Start route navigation to this specific place
+          _startRouteNavigation(landmark);
         }
       });
     }
@@ -1410,9 +1452,21 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   Future<void> _fetchWalkingRoute(_ArLandmark landmark) async {
-    if (_currentPosition == null ||
-        landmark.lat == null ||
-        landmark.lng == null) {
+    if (landmark.lat == null || landmark.lng == null) {
+      if (mounted) setState(() => _isFetchingRoute = false);
+      return;
+    }
+
+    if (_currentPosition == null) {
+      try {
+        _currentPosition = await geo.Geolocator.getCurrentPosition(
+          desiredAccuracy: geo.LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 4),
+        );
+      } catch (_) {}
+    }
+
+    if (_currentPosition == null) {
       if (mounted) setState(() => _isFetchingRoute = false);
       return;
     }
@@ -3645,11 +3699,11 @@ class _ArCameraPageState extends State<ArCameraPage>
     );
   }
 
-  Widget _buildSaveButton(_ArLandmark landmark) {
+  Widget _buildFavoriteButton(_ArLandmark landmark) {
     return ValueListenableBuilder<int>(
-      valueListenable: CacheService.savedPlacesNotifier,
+      valueListenable: CacheService.favoritePlacesNotifier,
       builder: (context, _, __) {
-        final isSaved = CacheService.isPlaceSaved(landmark.name);
+        final isFav = CacheService.isPlaceFavorite(landmark.name);
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: () async {
@@ -3666,24 +3720,24 @@ class _ArCameraPageState extends State<ArCameraPage>
               'description': landmark.description,
               'created_at': DateTime.now().toIso8601String(),
             };
-            await CacheService.toggleSavedPlace(map);
+            await CacheService.toggleFavoritePlace(map);
             if (mounted) setState(() {});
           },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: isSaved
-                  ? const Color(0xFFFFB300)
+              color: isFav
+                  ? const Color(0xFFFF2D55)
                   : AppColors.brandGreen,
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: Colors.white.withOpacity(0.4),
                 width: 1.2,
               ),
-              boxShadow: isSaved
+              boxShadow: isFav
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFFFB300).withOpacity(0.4),
+                        color: const Color(0xFFFF2D55).withOpacity(0.4),
                         blurRadius: 8,
                       )
                     ]
@@ -3693,13 +3747,13 @@ class _ArCameraPageState extends State<ArCameraPage>
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(
-                  isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                  isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                   color: Colors.white,
                   size: 15,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  isSaved ? 'Saved' : 'Save',
+                  isFav ? 'Favourite' : 'Favourite',
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 13,
@@ -4796,10 +4850,10 @@ class _ArCameraPageState extends State<ArCameraPage>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (CacheService.isPlaceSaved(landmark.name)) ...[
+                        if (CacheService.isPlaceFavorite(landmark.name)) ...[
                           const Icon(
-                            Icons.bookmark_rounded,
-                            color: AppColors.ratingGold,
+                            Icons.favorite_rounded,
+                            color: Color(0xFFFF2D55),
                             size: 12,
                           ),
                           const SizedBox(width: 4),
@@ -5090,112 +5144,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                         ),
                                       ),
 
-                                      // Improvised Save / Saved pill for pointed landmark card
-                                      ValueListenableBuilder<int>(
-                                        valueListenable:
-                                            CacheService.savedPlacesNotifier,
-                                        builder: (context, _, __) {
-                                          final isSaved =
-                                              CacheService.isPlaceSaved(
-                                                pointedLandmark.name,
-                                              );
-                                          return GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTap: () async {
-                                              HapticFeedback.mediumImpact();
-                                              final map = {
-                                                'id': pointedLandmark.name,
-                                                'name': pointedLandmark.name,
-                                                'category_name':
-                                                    pointedLandmark.category,
-                                                'rating':
-                                                    pointedLandmark.rating,
-                                                'photo_urls':
-                                                    pointedLandmark
-                                                            .imagePath
-                                                            .isNotEmpty
-                                                        ? [
-                                                          pointedLandmark
-                                                              .imagePath,
-                                                        ]
-                                                        : <String>[],
-                                                'latitude':
-                                                    pointedLandmark.lat ?? 0.0,
-                                                'longitude':
-                                                    pointedLandmark.lng ?? 0.0,
-                                                'description':
-                                                    pointedLandmark.description,
-                                                'created_at':
-                                                    DateTime.now()
-                                                        .toIso8601String(),
-                                              };
-                                              await CacheService.toggleSavedPlace(
-                                                map,
-                                              );
-                                              if (mounted) setState(() {});
-                                            },
-                                            child: Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 3,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color:
-                                                    isSaved
-                                                        ? AppColors.ratingGold
-                                                            .withOpacity(0.2)
-                                                        : Colors.white
-                                                            .withOpacity(0.12),
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                                border: Border.all(
-                                                  color:
-                                                      isSaved
-                                                          ? AppColors.ratingGold
-                                                          : Colors.white
-                                                              .withOpacity(0.3),
-                                                  width: 0.8,
-                                                ),
-                                              ),
-                                              child: Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  Icon(
-                                                    isSaved
-                                                        ? Icons.bookmark_rounded
-                                                        : Icons
-                                                            .bookmark_border_rounded,
-                                                    color:
-                                                        isSaved
-                                                            ? AppColors
-                                                                .ratingGold
-                                                            : Colors.white,
-                                                    size: 11,
-                                                  ),
-                                                  const SizedBox(width: 3),
-                                                  Text(
-                                                    isSaved ? 'SAVED' : 'SAVE',
-                                                    style: TextStyle(
-                                                      color:
-                                                          isSaved
-                                                              ? AppColors
-                                                                  .ratingGold
-                                                              : Colors.white,
-                                                      fontSize: 9,
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                      letterSpacing: 1.2,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-
-                                      // Heart/Pinned pill button connected to CacheService.favoritePlacesNotifier
+                                      // Favourite pill button connected to CacheService.favoritePlacesNotifier
                                       ValueListenableBuilder<int>(
                                         valueListenable:
                                             CacheService.favoritePlacesNotifier,
@@ -5242,7 +5191,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                             child: Container(
                                               padding:
                                                   const EdgeInsets.symmetric(
-                                                    horizontal: 6,
+                                                    horizontal: 8,
                                                     vertical: 4,
                                                   ),
                                               decoration: BoxDecoration(
@@ -5263,21 +5212,41 @@ class _ArCameraPageState extends State<ArCameraPage>
                                                   width: 0.8,
                                                 ),
                                               ),
-                                              child: Icon(
-                                                isFav
-                                                    ? Icons.favorite_rounded
-                                                    : Icons
-                                                        .favorite_border_rounded,
-                                                color:
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(
                                                     isFav
-                                                        ? const Color(0xFFFF2D55)
-                                                        : Colors.white,
-                                                size: 15,
+                                                        ? Icons.favorite_rounded
+                                                        : Icons
+                                                            .favorite_border_rounded,
+                                                    color:
+                                                        isFav
+                                                            ? const Color(0xFFFF2D55)
+                                                            : Colors.white,
+                                                    size: 13,
+                                                  ),
+                                                  const SizedBox(width: 3),
+                                                  Text(
+                                                    isFav ? 'FAVOURITE' : 'FAVOURITE',
+                                                    style: TextStyle(
+                                                      color:
+                                                          isFav
+                                                              ? const Color(0xFFFF2D55)
+                                                              : Colors.white,
+                                                      fontSize: 9,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      letterSpacing: 1.0,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           );
                                         },
                                       ),
+
 
                                       if (_selectedFilter != 'All' &&
                                           _selectedFilter != 'Others')
@@ -7814,7 +7783,7 @@ HOW TO FORMAT EVERY REPLY:
                         ),
                         Row(
                           children: [
-                            // Improvised Save / Saved text pill button connected to CacheService
+                            // Favourite pill button connected to CacheService.favoritePlacesNotifier
                             GestureDetector(
                               onTap: () async {
                                 HapticFeedback.mediumImpact();
@@ -7833,13 +7802,13 @@ HOW TO FORMAT EVERY REPLY:
                                   'created_at':
                                       DateTime.now().toIso8601String(),
                                 };
-                                await CacheService.toggleSavedPlace(map);
+                                await CacheService.toggleFavoritePlace(map);
                                 if (mounted) setState(() {});
                               },
                               child: ValueListenableBuilder<int>(
-                                valueListenable: CacheService.savedPlacesNotifier,
+                                valueListenable: CacheService.favoritePlacesNotifier,
                                 builder: (context, _, __) {
-                                  final isSaved = CacheService.isPlaceSaved(
+                                  final isFav = CacheService.isPlaceFavorite(
                                     landmark.name,
                                   );
                                   return Container(
@@ -7851,23 +7820,23 @@ HOW TO FORMAT EVERY REPLY:
                                     decoration: BoxDecoration(
                                       borderRadius: BorderRadius.circular(14),
                                       color:
-                                          isSaved
-                                              ? AppColors.ratingGold.withOpacity(
+                                          isFav
+                                              ? const Color(0xFFFF2D55).withOpacity(
                                                 0.2,
                                               )
                                               : Colors.white.withOpacity(0.1),
                                       border: Border.all(
                                         color:
-                                            isSaved
-                                                ? AppColors.ratingGold
+                                            isFav
+                                                ? const Color(0xFFFF2D55)
                                                 : Colors.white.withOpacity(0.3),
                                         width: 1.2,
                                       ),
                                       boxShadow:
-                                          isSaved
+                                          isFav
                                               ? [
                                                 BoxShadow(
-                                                  color: AppColors.ratingGold
+                                                  color: const Color(0xFFFF2D55)
                                                       .withOpacity(0.3),
                                                   blurRadius: 6,
                                                 ),
@@ -7878,22 +7847,22 @@ HOW TO FORMAT EVERY REPLY:
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Icon(
-                                          isSaved
-                                              ? Icons.bookmark_rounded
-                                              : Icons.bookmark_border_rounded,
+                                          isFav
+                                              ? Icons.favorite_rounded
+                                              : Icons.favorite_border_rounded,
                                           color:
-                                              isSaved
-                                                  ? AppColors.ratingGold
+                                              isFav
+                                                  ? const Color(0xFFFF2D55)
                                                   : Colors.white,
                                           size: 14,
                                         ),
                                         const SizedBox(width: 4),
                                         Text(
-                                          isSaved ? 'Saved' : 'Save',
+                                          isFav ? 'Favourite' : 'Favourite',
                                           style: TextStyle(
                                             color:
-                                                isSaved
-                                                    ? AppColors.ratingGold
+                                                isFav
+                                                    ? const Color(0xFFFF2D55)
                                                     : Colors.white,
                                             fontSize: 11,
                                             fontWeight: FontWeight.w800,

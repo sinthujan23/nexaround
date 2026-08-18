@@ -18,6 +18,7 @@ import 'package:nexaround_app/features/profile/presentation/pages/help_support_p
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_journal_page.dart';
+import 'package:nexaround_app/core/services/avatar_service.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -52,67 +53,20 @@ class _ProfilePageState extends State<ProfilePage> {
                     _buildJournalCard(context),
                     const SizedBox(height: 28),
 
-                    // Favorite / Pinned Places (Heart)
+                    // Favourite Places
                     ValueListenableBuilder<int>(
                       valueListenable: CacheService.favoritePlacesNotifier,
                       builder: (context, _, __) {
-                        return _buildSection('Favorite Places', Icons.favorite_rounded, [
+                        return _buildSection('Favourite Places', Icons.favorite_rounded, [
                           if (CacheService.getFavoritePlaceJsons().isEmpty)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Center(child: Text('No favorite places yet', style: TextStyle(color: AppColors.textTertiary))),
+                              child: Center(child: Text('No favourite places yet', style: TextStyle(color: AppColors.textTertiary))),
                             )
                           else
                             ...CacheService.getFavoritePlaceJsons().map((jsonStr) {
                               final attraction = AttractionModel.fromJson(json.decode(jsonStr));
-                              return _buildSavedPlace(
-                                attraction.name, 
-                                attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛', 
-                                attraction.rating, 
-                                attraction.categoryName ?? 'Attraction',
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => AttractionDetailPage(
-                                        id: attraction.id,
-                                        name: attraction.name,
-                                        category: attraction.categoryName ?? 'Attraction',
-                                        rating: attraction.rating,
-                                        distance: attraction.distanceM != null 
-                                            ? '${(attraction.distanceM! / 1000).toStringAsFixed(1)} km' 
-                                            : '0.0 km',
-                                        emoji: attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛',
-                                        imageUrl: attraction.photoUrls.isNotEmpty 
-                                            ? attraction.photoUrls.first 
-                                            : null,
-                                        latitude: attraction.latitude,
-                                        longitude: attraction.longitude,
-                                      ),
-                                    ),
-                                  );
-                                },
-                              );
-                            }),
-                        ]);
-                      },
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Saved Places
-                    ValueListenableBuilder<int>(
-                      valueListenable: CacheService.savedPlacesNotifier,
-                      builder: (context, _, __) {
-                        return _buildSection('Saved Places', Icons.bookmark_rounded, [
-                          if (CacheService.getSavedPlaceJsons().isEmpty)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Center(child: Text('No saved places yet', style: TextStyle(color: AppColors.textTertiary))),
-                            )
-                          else
-                            ...CacheService.getSavedPlaceJsons().map((jsonStr) {
-                              final attraction = AttractionModel.fromJson(json.decode(jsonStr));
-                              return _buildSavedPlace(
+                              return _buildFavoritePlace(
                                 attraction.name, 
                                 attraction.categoryName?.contains('Food') == true ? '🍜' : '🏛', 
                                 attraction.rating, 
@@ -167,68 +121,13 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Widget _buildProfileHeader(BuildContext context, dynamic user) {
-    final String name = user.displayName?.toString() ?? '';
-    final initials = name.isNotEmpty 
-        ? name.split(' ').where((String e) => e.isNotEmpty).map((String e) => e[0]).take(2).join('').toUpperCase()
-        : '??';
-
     return Column(
       children: [
-        // Avatar + edit
-        Stack(
-          alignment: Alignment.bottomRight,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.primaryGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 24,
-                    spreadRadius: 4,
-                  ),
-                ],
-              ),
-              child: user.avatarUrl != null && user.avatarUrl!.isNotEmpty
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(50),
-                    child: CachedNetworkImage(
-                      imageUrl: user.avatarUrl!,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(color: AppColors.surfaceVariant),
-                      errorWidget: (context, url, error) => Center(
-                        child: Text(
-                          initials,
-                          style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w700, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  )
-                : Center(
-                    child: Text(
-                      initials,
-                      style: const TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-            ),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surfaceElevated,
-                border: Border.all(color: AppColors.primary, width: 2),
-              ),
-              child: const Icon(Icons.camera_alt_rounded, color: AppColors.primary, size: 14),
-            ),
-          ],
+        // Avatar + edit studio
+        UserAvatarView(
+          user: user,
+          size: 104,
+          showEditBadge: true,
         ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
         const SizedBox(height: 16),
 
@@ -298,10 +197,10 @@ class _ProfilePageState extends State<ProfilePage> {
             _buildStat('0', 'Trips\nCompleted', AppColors.secondary),
             const SizedBox(width: 10),
             ValueListenableBuilder<int>(
-              valueListenable: CacheService.savedPlacesNotifier,
+              valueListenable: CacheService.favoritePlacesNotifier,
               builder: (context, _, __) {
-                final savedCount = CacheService.getSavedPlaceJsons().length;
-                return _buildStat('$savedCount', 'Places\nSaved', AppColors.neonGreen);
+                final favCount = CacheService.getFavoritePlaceJsons().length;
+                return _buildStat('$favCount', 'Favourite\nPlaces', const Color(0xFFFF2D55));
               },
             ),
             const SizedBox(width: 10),
@@ -341,7 +240,7 @@ class _ProfilePageState extends State<ProfilePage> {
       children: [
         Row(
           children: [
-            Icon(icon, size: 18, color: AppColors.primary),
+            Icon(icon, size: 18, color: icon == Icons.favorite_rounded ? const Color(0xFFFF2D55) : AppColors.primary),
             const SizedBox(width: 8),
             Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
           ],
@@ -352,7 +251,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildSavedPlace(String name, String emoji, double rating, String type, {VoidCallback? onTap}) {
+  Widget _buildFavoritePlace(String name, String emoji, double rating, String type, {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: GlassCard(
@@ -379,7 +278,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
-            const Icon(Icons.bookmark_rounded, size: 18, color: AppColors.primary),
+            const Icon(Icons.favorite_rounded, size: 18, color: Color(0xFFFF2D55)),
           ],
         ),
       ),
@@ -435,6 +334,12 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
         const SizedBox(height: 14),
+        _buildMenuItem(
+          Icons.auto_awesome_rounded,
+          'Travel Avatar',
+          'Persona',
+          onTap: () => AvatarService.showAvatarStudio(context, user),
+        ),
         _buildMenuItem(
           Icons.language_rounded,
           'Language',

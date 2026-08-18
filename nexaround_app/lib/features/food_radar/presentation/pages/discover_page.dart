@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -38,7 +39,13 @@ import 'package:http/http.dart' as http;
 class DiscoverPage extends StatefulWidget {
   final int initialTab;
   final bool isActive;
-  const DiscoverPage({super.key, this.initialTab = 0, this.isActive = false});
+  final int requestCount;
+  const DiscoverPage({
+    super.key,
+    this.initialTab = 0,
+    this.isActive = false,
+    this.requestCount = 0,
+  });
 
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
@@ -47,6 +54,7 @@ class DiscoverPage extends StatefulWidget {
 class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMixin {
   late int _selectedTab;
   late AnimationController _radarController;
+  final ScrollController _tabScrollController = ScrollController();
   Position? _currentPosition;
 
   List<AttractionEntity> _foodList = [];
@@ -79,20 +87,46 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     _loadEmergencyCache();
     context.read<BudgetBloc>().add(FetchBudget());
     _initLocationAndFetch();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTab(_selectedTab));
+  }
+
+  @override
+  void dispose() {
+    _radarController.dispose();
+    _tabScrollController.dispose();
+    super.dispose();
   }
 
   @override
   void didUpdateWidget(covariant DiscoverPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialTab != oldWidget.initialTab) {
+    if (widget.initialTab != oldWidget.initialTab || widget.requestCount != oldWidget.requestCount) {
       setState(() {
         _selectedTab = widget.initialTab;
+        _selectedFoodCategory = null;
+        _selectedExperienceCategory = null;
+        _selectedShoppingCategory = null;
+        _selectedMedicalCategory = null;
+        _selectedHospitalCategory = null;
+        _selectedNatureCategory = null;
       });
       _fetchForTab(_selectedTab);
       if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTab(_selectedTab));
     }
     if (widget.isActive && !oldWidget.isActive) {
       _initLocationAndFetch();
+    }
+  }
+
+  void _scrollToTab(int index) {
+    if (_tabScrollController.hasClients) {
+      final targetOffset = (index * 95.0).clamp(0.0, _tabScrollController.position.maxScrollExtent);
+      _tabScrollController.animateTo(
+        targetOffset,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutCubic,
+      );
     }
   }
 
@@ -263,12 +297,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   @override
-  void dispose() {
-    _radarController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -282,24 +310,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
                 child: Row(
                   children: [
-
                     ShaderMask(
                       shaderCallback: (b) => AppColors.primaryGradient.createShader(Rect.fromLTWH(0, 0, b.width, b.height)),
                       child: const Text(
                         'Discover',
                         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w700, color: Colors.white, letterSpacing: -0.5),
                       ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: AppColors.surfaceVariant,
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: const Icon(Icons.search_rounded, color: AppColors.textSecondary, size: 20),
                     ),
                   ],
                 ),
@@ -311,6 +327,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 child: SizedBox(
                   height: 40,
                   child: ListView.builder(
+                    controller: _tabScrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     scrollDirection: Axis.horizontal,
                     itemCount: _tabs.length,
@@ -1199,12 +1216,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             const SizedBox(width: 16),
             GestureDetector(
               onTap: () async {
-                await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
+                await CacheService.toggleFavoritePlace((a as AttractionModel).toJson());
                 setState(() {}); // Refresh UI
               },
               child: Icon(
-                CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
+                CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
                 size: 20,
               ),
             ),
@@ -1549,12 +1566,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     ),
                     GestureDetector(
                       onTap: () async {
-                        await CacheService.toggleSavedPlace((a as AttractionModel).toJson());
+                        await CacheService.toggleFavoritePlace((a as AttractionModel).toJson());
                         setState(() {});
                       },
                       child: Icon(
-                        CacheService.isPlaceSaved(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                        color: CacheService.isPlaceSaved(a.id) ? AppColors.primary : AppColors.textTertiary,
+                        CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                        color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
                         size: 20,
                       ),
                     ),
@@ -1699,12 +1716,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             const SizedBox(width: 16),
             GestureDetector(
               onTap: () async {
-                await CacheService.toggleSavedPlace((shop as AttractionModel).toJson());
+                await CacheService.toggleFavoritePlace((shop as AttractionModel).toJson());
                 setState(() {});
               },
               child: Icon(
-                CacheService.isPlaceSaved(shop.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceSaved(shop.id) ? AppColors.primary : AppColors.textTertiary,
+                CacheService.isPlaceFavorite(shop.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceFavorite(shop.id) ? AppColors.primary : AppColors.textTertiary,
                 size: 20,
               ),
             ),
@@ -1811,12 +1828,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             const SizedBox(width: 16),
             GestureDetector(
               onTap: () async {
-                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                await CacheService.toggleFavoritePlace((item as AttractionModel).toJson());
                 setState(() {});
               },
               child: Icon(
-                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                CacheService.isPlaceFavorite(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceFavorite(item.id) ? AppColors.primary : AppColors.textTertiary,
                 size: 20,
               ),
             ),
@@ -1898,12 +1915,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             const SizedBox(width: 16),
             GestureDetector(
               onTap: () async {
-                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                await CacheService.toggleFavoritePlace((item as AttractionModel).toJson());
                 setState(() {});
               },
               child: Icon(
-                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                CacheService.isPlaceFavorite(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceFavorite(item.id) ? AppColors.primary : AppColors.textTertiary,
                 size: 20,
               ),
             ),
@@ -2989,9 +3006,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             ),
           ),
           GestureDetector(
-            onTap: () async {
-              final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng');
-              if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GoogleMapsPage(
+                    initialLat: lat,
+                    initialLng: lng,
+                    destinationName: name,
+                  ),
+                ),
+              );
             },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -3258,12 +3283,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             const SizedBox(width: 16),
             GestureDetector(
               onTap: () async {
-                await CacheService.toggleSavedPlace((item as AttractionModel).toJson());
+                await CacheService.toggleFavoritePlace((item as AttractionModel).toJson());
                 setState(() {});
               },
               child: Icon(
-                CacheService.isPlaceSaved(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceSaved(item.id) ? AppColors.primary : AppColors.textTertiary,
+                CacheService.isPlaceFavorite(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                color: CacheService.isPlaceFavorite(item.id) ? AppColors.primary : AppColors.textTertiary,
                 size: 20,
                ),
              ),

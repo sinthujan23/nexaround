@@ -571,12 +571,25 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
 
   String _timeAgo(DateTime dateTime) {
     final difference = DateTime.now().difference(dateTime);
-    if (difference.inDays >= 1) {
-      return '${difference.inDays}d ago';
+    final days = difference.inDays;
+
+    if (days >= 365) {
+      final years = (days / 365).floor();
+      return years == 1 ? '1 year ago' : '$years years ago';
+    } else if (days >= 60) {
+      final months = (days / 30).floor();
+      return '$months months ago';
+    } else if (days >= 30) {
+      return '1 month ago';
+    } else if (days >= 7) {
+      final weeks = (days / 7).floor();
+      return weeks == 1 ? '1 week ago' : '$weeks weeks ago';
+    } else if (days >= 1) {
+      return days == 1 ? '1 day ago' : '$days days ago';
     } else if (difference.inHours >= 1) {
-      return '${difference.inHours}h ago';
+      return difference.inHours == 1 ? '1 hour ago' : '${difference.inHours} hours ago';
     } else if (difference.inMinutes >= 1) {
-      return '${difference.inMinutes}m ago';
+      return difference.inMinutes == 1 ? '1 min ago' : '${difference.inMinutes} mins ago';
     } else {
       return 'just now';
     }

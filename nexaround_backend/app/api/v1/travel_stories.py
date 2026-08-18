@@ -220,6 +220,66 @@ async def toggle_like(
     return {"liked": liked, "likes_count": count}
 
 
+async def _notify_story_comment(
+    db: AsyncSession,
+    story_owner_id: uuid.UUID,
+    commenter_name: str,
+    story_location: str,
+    comment_text: str,
+    story_id: uuid.UUID
+) -> None:
+    """Send an in-app notification and FCM push notification to the story owner."""
+    try:
+        import logging
+        from app.models.notification import Notification
+        from app.services import fcm_service
+
+        snippet = comment_text[:100] + ("..." if len(comment_text) > 100 else "")
+        loc_str = f" in {story_location}" if story_location else ""
+
+        # 1. Create in-app notification for the bell icon
+        notif = Notification(
+            user_id=story_owner_id,
+            title="💬 New Comment",
+            body=f"{commenter_name} commented on your story{loc_str}: \"{snippet}\"",
+            type="story_comment",
+        )
+        db.add(notif)
+        await db.commit()
+
+        # 2. Send FCM push notification
+        res = await db.execute(select(User).where(User.id == story_owner_id))
+        owner = res.scalar_one_or_none()
+        if not owner:
+            return
+
+        prefs = owner.preferences or {}
+        tokens = list(prefs.get("fcm_tokens") or [])
+        legacy = prefs.get("fcm_token")
+        if legacy and legacy not in tokens:
+            tokens.append(legacy)
+
+        if tokens:
+            invalid = await fcm_service.send_to_tokens(
+                db,
+                tokens,
+                title="💬 New Comment",
+                body=f"{commenter_name} commented on your story{loc_str}: \"{snippet}\"",
+                data={
+                    "type": "story_comment",
+                    "story_id": str(story_id),
+                },
+            )
+            if invalid:
+                new_prefs = {**prefs, "fcm_tokens": [t for t in tokens if t not in invalid]}
+                new_prefs.pop("fcm_token", None)
+                owner.preferences = new_prefs
+                await db.commit()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Failed to send comment notification to story owner {story_owner_id}: {e}")
+
+
 @router.post("/{story_id}/comment", response_model=TravelStoryCommentResponse)
 async def create_comment(
     story_id: uuid.UUID,
@@ -247,6 +307,17 @@ async def create_comment(
     db.add(comment)
     await db.flush()
     await db.commit()
+
+    # Notify story owner if commenter is someone else
+    if story.user_id != current_user.id:
+        await _notify_story_comment(
+            db=db,
+            story_owner_id=story.user_id,
+            commenter_name=current_user.display_name or "Someone",
+            story_location=story.location_name or "",
+            comment_text=data.comment_text,
+            story_id=story.id
+        )
 
     return TravelStoryCommentResponse(
         id=comment.id,

@@ -1,22 +1,51 @@
 class TravelStoryComment {
   final String id;
   final String author;
+  final String? authorId;
+  final String? authorAvatar;
   final String text;
   final int imageIndex;
+  final DateTime? createdAt;
 
   TravelStoryComment({
     required this.id,
     required this.author,
+    this.authorId,
+    this.authorAvatar,
     required this.text,
     this.imageIndex = 0,
+    this.createdAt,
   });
+
+  TravelStoryComment copyWith({
+    String? id,
+    String? author,
+    String? authorId,
+    String? authorAvatar,
+    String? text,
+    int? imageIndex,
+    DateTime? createdAt,
+  }) {
+    return TravelStoryComment(
+      id: id ?? this.id,
+      author: author ?? this.author,
+      authorId: authorId ?? this.authorId,
+      authorAvatar: authorAvatar ?? this.authorAvatar,
+      text: text ?? this.text,
+      imageIndex: imageIndex ?? this.imageIndex,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
 
   factory TravelStoryComment.fromJson(Map<String, dynamic> json) {
     return TravelStoryComment(
       id: (json['id'] ?? '').toString(),
       author: json['user_display_name'] as String? ?? json['author'] as String? ?? json['userName'] as String? ?? json['user_name'] as String? ?? 'Anonymous',
-      text: json['comment_text'] as String? ?? '',
+      authorId: (json['user_id'] ?? json['userId'] ?? json['author_id'] ?? json['authorId'])?.toString(),
+      authorAvatar: json['user_avatar'] as String? ?? json['userAvatar'] as String? ?? json['author_avatar'] as String?,
+      text: json['comment_text'] as String? ?? json['text'] as String? ?? '',
       imageIndex: json['image_index'] as int? ?? 0,
+      createdAt: json['created_at'] != null ? DateTime.tryParse(json['created_at'].toString()) : null,
     );
   }
 
@@ -24,8 +53,11 @@ class TravelStoryComment {
     return {
       'id': id,
       'user_display_name': author,
+      'user_id': authorId,
+      'user_avatar': authorAvatar,
       'comment_text': text,
       'image_index': imageIndex,
+      'created_at': createdAt?.toIso8601String(),
     };
   }
 }

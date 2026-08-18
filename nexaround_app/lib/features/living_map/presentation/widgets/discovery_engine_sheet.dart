@@ -77,10 +77,10 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   String _companions = 'Solo';
   int _budgetLevel = 1; // 0 = Budget, 1 = Moderate, 2 = Luxury
 
-  String _getBudgetString(String symbol) {
-    if (_budgetLevel == 0) return 'Budget ($symbol)';
-    if (_budgetLevel == 2) return 'Luxury ($symbol$symbol$symbol)';
-    return 'Moderate ($symbol$symbol)';
+  String _getBudgetString() {
+    if (_budgetLevel == 0) return 'Budget (\$)';
+    if (_budgetLevel == 2) return 'Luxury (\$\$\$)';
+    return 'Moderate (\$\$)';
   }
 
   final List<Map<String, dynamic>> _moods = [
@@ -157,7 +157,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
             _buildHeader(),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 120, top: 12),
+                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 150, top: 12),
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -173,6 +173,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                     _buildSectionTitle(Icons.tune_rounded, 'Tell us a few details', 'These help us create your personalized itinerary.'),
                     const SizedBox(height: 12),
                     _buildDetailsList(),
+                    const SizedBox(height: 30),
                   ],
                 ),
               ),
@@ -189,8 +190,10 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
             padding: EdgeInsets.only(
               left: 20, 
               right: 20, 
-              bottom: MediaQuery.of(context).padding.bottom + 20,
-              top: 20,
+              bottom: MediaQuery.of(context).padding.bottom > 0
+                  ? MediaQuery.of(context).padding.bottom + 6
+                  : 16,
+              top: 12,
             ),
             decoration: BoxDecoration(
               color: AppColors.background,
@@ -423,25 +426,13 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
 
-    // Get currency symbol
-    final authState = context.read<AuthBloc>().state;
-    String currencySymbol = '₹';
-    if (authState is AuthAuthenticated) {
-      final userCurrencyCode = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
-      final currencyInfo = CurrencyService.supportedCurrencies.firstWhere(
-        (c) => c['code'] == userCurrencyCode,
-        orElse: () => {'symbol': '\$'},
-      );
-      currencySymbol = currencyInfo['symbol'] ?? '\$';
-    }
-
     final currentLoc = _currentLocationName;
     final currentLat = _currentLatitude;
     final currentLng = _currentLongitude;
     final currentTimeAvailable = _timeAvailable;
     final currentMood = _selectedMood;
     final currentMode = _selectedMode ?? 'Explore';
-    final currentBudget = _getBudgetString(currencySymbol);
+    final currentBudget = _getBudgetString();
     final currentCompanions = _companions;
     final currentWeather = _selectedWeather;
     final formattedTime = TimeOfDay.now().format(context);
@@ -527,17 +518,47 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                             letterSpacing: -1,
                           ),
                         ).animate().fadeIn(delay: 100.ms).slideY(begin: 0.2),
-                        TextButton(
-                          onPressed: _showHistorySheet,
-                          child: const Text(
-                            'History',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.brandGreen,
+                        GestureDetector(
+                          onTap: _showHistorySheet,
+                          child: Container(
+                            margin: const EdgeInsets.only(top: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: AppColors.brandGreen.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: AppColors.brandGreen.withValues(alpha: 0.35),
+                                width: 1.2,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppColors.brandGreen.withValues(alpha: 0.08),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: const [
+                                Icon(
+                                  Icons.history_rounded,
+                                  size: 15,
+                                  color: AppColors.brandGreen,
+                                ),
+                                SizedBox(width: 5),
+                                Text(
+                                  'History',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.brandGreen,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
+                        ).animate().fadeIn(delay: 150.ms),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -752,6 +773,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   void _showSelectionSheet(String title, List<String> options, String currentValue, Function(String) onSelected) {
     showModalBottomSheet(
       context: context,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: const BoxDecoration(
@@ -792,17 +814,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
 
   Widget _buildDetailsList() {
-    final authState = context.read<AuthBloc>().state;
-    String currencySymbol = '₹';
-    if (authState is AuthAuthenticated) {
-      final userCurrencyCode = authState.user.preferences['currency']?.toString().toUpperCase() ?? 'USD';
-      final currencyInfo = CurrencyService.supportedCurrencies.firstWhere(
-        (c) => c['code'] == userCurrencyCode,
-        orElse: () => {'symbol': '\$'},
-      );
-      currencySymbol = currencyInfo['symbol'] ?? '\$';
-    }
-
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -820,6 +831,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               showModalBottomSheet(
                 context: context,
                 isScrollControlled: true,
+                showDragHandle: false,
                 backgroundColor: Colors.transparent,
                 builder: (context) => const LocationSearchModal(),
               ).then((result) {
@@ -869,11 +881,11 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
           ),
           const Divider(height: 1, color: AppColors.border),
           _buildDetailRow(
-            Icons.account_balance_wallet_rounded, 'Budget', _getBudgetString(currencySymbol), AppColors.brandGreen,
+            Icons.account_balance_wallet_rounded, 'Budget', _getBudgetString(), AppColors.brandGreen,
             onTap: () => _showSelectionSheet(
               'Budget', 
-              ['Budget ($currencySymbol)', 'Moderate ($currencySymbol$currencySymbol)', 'Luxury ($currencySymbol$currencySymbol$currencySymbol)'], 
-              _getBudgetString(currencySymbol), 
+              const ['Budget (\$)', 'Moderate (\$\$)', 'Luxury (\$\$\$)'], 
+              _getBudgetString(), 
               (val) {
                 setState(() {
                   if (val.startsWith('Budget')) {

@@ -231,13 +231,17 @@ class AuthService:
             payload = await self._verify_apple_token(apple_id_token)
             
             email = payload.get("email")
+            sub = payload.get("sub")
+            if not email and sub:
+                email = f"{sub}@privaterelay.appleid.com"
+
             if not email:
-                raise UnauthorizedException(detail="Invalid Apple token: no email")
+                raise UnauthorizedException(detail="Invalid Apple token: no email or subject identifier")
 
             user = await self.repo.get_by_email(email)
             if not user:
                 # Register new user from Apple
-                display_name = "User"
+                display_name = "Explorer"
                 if given_name:
                     display_name = f"{given_name} {family_name or ''}".strip()
                 
@@ -275,17 +279,33 @@ class AuthService:
         if not matching_key:
             raise UnauthorizedException(detail="Invalid Apple token: unrecognised key ID")
 
-        allowed_auds = settings.APPLE_CLIENT_IDS
+        allowed_auds = [a for a in settings.APPLE_CLIENT_IDS if a]
         try:
             payload = jwt.decode(
                 apple_id_token,
                 matching_key,
                 algorithms=["RS256"],
                 issuer="https://appleid.apple.com",
-                options={"verify_aud": bool(allowed_auds)},
-                audience=allowed_auds[0] if len(allowed_auds) == 1 else allowed_auds if allowed_auds else None
+                options={"verify_aud": False},
             )
+
+            # Manually validate audience against allowed Apple Client IDs
+            if allowed_auds:
+                token_aud = payload.get("aud")
+                if isinstance(token_aud, list):
+                    if not any(aud in allowed_auds for aud in token_aud):
+                        raise UnauthorizedException(
+                            detail=f"Invalid Apple token: audience {token_aud} not in allowed client IDs"
+                        )
+                else:
+                    if token_aud not in allowed_auds:
+                        raise UnauthorizedException(
+                            detail=f"Invalid Apple token: audience '{token_aud}' not in allowed client IDs"
+                        )
+
             return payload
+        except UnauthorizedException:
+            raise
         except Exception as err:
             raise UnauthorizedException(detail=f"Apple token signature verification failed: {err}")
 

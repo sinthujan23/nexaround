@@ -99,23 +99,69 @@ class TravelStoriesService {
     }
   }
 
-  Future<void> addComment(String id, String commentText, int imageIndex) async {
+  Future<void> addComment(
+    String id,
+    String commentText,
+    int imageIndex, {
+    String? author,
+    String? authorId,
+    String? authorAvatar,
+  }) async {
     try {
       final response = await _dio.post(
         '${ApiConstants.travelStories}/$id/comment',
         data: {
           'comment_text': commentText,
           'image_index': imageIndex,
+          'user_display_name': author,
+          'user_id': authorId,
+          'user_avatar': authorAvatar,
         },
       );
       if (response.statusCode == 200 || response.statusCode == 201) {
-        // Successfully added to backend, update Hive cache
-        await _addCommentToHive(id, commentText, imageIndex, true);
+        await _addCommentToHive(
+          id,
+          commentText,
+          imageIndex,
+          true,
+          author: author,
+          authorId: authorId,
+          authorAvatar: authorAvatar,
+        );
       }
     } catch (e) {
       print('⚠️ TravelStoriesService: Failed to post comment to backend ($e). Saving locally.');
-      await _addCommentToHive(id, commentText, imageIndex, false);
+      await _addCommentToHive(
+        id,
+        commentText,
+        imageIndex,
+        false,
+        author: author,
+        authorId: authorId,
+        authorAvatar: authorAvatar,
+      );
     }
+  }
+
+  Future<void> editComment(String storyId, String commentId, String updatedText) async {
+    try {
+      await _dio.put(
+        '${ApiConstants.travelStories}/$storyId/comment/$commentId',
+        data: {'comment_text': updatedText},
+      );
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to update comment on backend ($e). Updating locally.');
+    }
+    await _editCommentInHive(storyId, commentId, updatedText);
+  }
+
+  Future<void> deleteComment(String storyId, String commentId) async {
+    try {
+      await _dio.delete('${ApiConstants.travelStories}/$storyId/comment/$commentId');
+    } catch (e) {
+      print('⚠️ TravelStoriesService: Failed to delete comment on backend ($e). Deleting locally.');
+    }
+    await _deleteCommentFromHive(storyId, commentId);
   }
 
   Future<TravelStory?> updateStory(String storyId, TravelStory updatedStory) async {
@@ -230,23 +276,65 @@ class TravelStoriesService {
     }
   }
 
-  Future<void> _addCommentToHive(String id, String commentText, int imageIndex, bool fromApi) async {
+  Future<void> _addCommentToHive(
+    String id,
+    String commentText,
+    int imageIndex,
+    bool fromApi, {
+    String? author,
+    String? authorId,
+    String? authorAvatar,
+  }) async {
     for (var i = 0; i < _box.length; i++) {
       final Map<dynamic, dynamic>? raw = _box.getAt(i);
       if (raw != null) {
         final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
         if (jsonMap['id'] == id) {
           final story = TravelStory.fromJson(jsonMap);
-          // Only add locally if the API didn't already return a fresh response,
-          // though typically we'd reload the story. For simplicity we just append it.
           story.comments.add(
             TravelStoryComment(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
-              author: 'You',
+              author: author ?? 'You',
+              authorId: authorId,
+              authorAvatar: authorAvatar,
               text: commentText,
               imageIndex: imageIndex,
+              createdAt: DateTime.now(),
             ),
           );
+          await _box.putAt(i, story.toJson());
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void> _editCommentInHive(String storyId, String commentId, String updatedText) async {
+    for (var i = 0; i < _box.length; i++) {
+      final Map<dynamic, dynamic>? raw = _box.getAt(i);
+      if (raw != null) {
+        final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+        if (jsonMap['id'] == storyId) {
+          final story = TravelStory.fromJson(jsonMap);
+          final idx = story.comments.indexWhere((c) => c.id == commentId);
+          if (idx != -1) {
+            story.comments[idx] = story.comments[idx].copyWith(text: updatedText);
+            await _box.putAt(i, story.toJson());
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  Future<void> _deleteCommentFromHive(String storyId, String commentId) async {
+    for (var i = 0; i < _box.length; i++) {
+      final Map<dynamic, dynamic>? raw = _box.getAt(i);
+      if (raw != null) {
+        final Map<String, dynamic> jsonMap = Map<String, dynamic>.from(raw);
+        if (jsonMap['id'] == storyId) {
+          final story = TravelStory.fromJson(jsonMap);
+          story.comments.removeWhere((c) => c.id == commentId);
           await _box.putAt(i, story.toJson());
           break;
         }

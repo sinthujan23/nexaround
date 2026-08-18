@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/app/theme/app_dimensions.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
@@ -39,6 +40,8 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
   int _discoverInitialTab = 0;
+  int _discoverRequestCount = 0;
+  DateTime? _lastBackPressTime;
   @override
   void initState() {
     super.initState();
@@ -50,6 +53,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
     // and route notification taps to the right tab.
     NotificationService.instance.onOpen = (data) async {
       if (data['type'] == 'odyssey_ready') switchToPlans();
+      if (data['type'] == 'story_comment') switchToExplore();
       if (data['type'] == 'discovery_ready') {
         switchToExplore();
         final history = await DiscoveryHistoryService.fetchHistory();
@@ -126,6 +130,7 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
   void switchToDiscover({int initialTab = 0}) {
     setState(() {
       _discoverInitialTab = initialTab;
+      _discoverRequestCount++;
       _selectedIndex = 3; // Discover Tab
     });
   }
@@ -148,31 +153,65 @@ class HomePageState extends State<HomePage> with TickerProviderStateMixin, Widge
       const LivingMapPage(),
       ArCameraPage(isActive: _selectedIndex == 1),
       AiChatPage(initialPrompt: _pendingPrompt, placeContext: _pendingPlaceContext),
-      DiscoverPage(initialTab: _discoverInitialTab, isActive: _selectedIndex == 3),
+      DiscoverPage(
+        initialTab: _discoverInitialTab,
+        isActive: _selectedIndex == 3,
+        requestCount: _discoverRequestCount,
+      ),
       const MyOdysseysPage(),
       const ProfilePage(),
     ];
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      extendBody: true,
-      resizeToAvoidBottomInset: false,
-      body: BlocListener<AuthBloc, AuthState>(
-        listener: (context, state) {
-          if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
-              (route) => false,
-            );
-            return;
-          }
-        },
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: pages,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) {
+        if (didPop) return;
+        if (_selectedIndex != 0) {
+          setState(() {
+            _selectedIndex = 0; // Redirect back to Home tab
+          });
+          return;
+        }
+
+        final now = DateTime.now();
+        if (_lastBackPressTime == null ||
+            now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Press back again to exit NexAround'),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          );
+        } else {
+          SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        extendBody: true,
+        resizeToAvoidBottomInset: false,
+        body: BlocListener<AuthBloc, AuthState>(
+          listener: (context, state) {
+            if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+                (route) => false,
+              );
+              return;
+            }
+          },
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: pages,
+          ),
         ),
+        bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),
       ),
-      bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),
     );
   }
 

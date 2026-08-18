@@ -225,26 +225,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return StoriesCommentsDialog(
           story: story,
           imageIndex: _currentImageIndex,
           onCommentAdded: (commentText, imgIndex) {
-            final authState = context.read<AuthBloc>().state;
-            String author = 'You';
-            if (authState is AuthAuthenticated) {
-              author = authState.user.displayName;
-            }
-            setState(() {
-              story.comments.add(TravelStoryComment(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                author: author,
-                text: commentText,
-                imageIndex: imgIndex,
-              ));
-            });
-            TravelStoriesService().addComment(story.id, commentText, imgIndex);
+            setState(() {});
           },
         );
       },
@@ -256,6 +244,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         final authState = BlocProvider.of<AuthBloc>(context).state;

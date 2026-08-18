@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -26,7 +27,8 @@ class OTPVerificationPage extends StatefulWidget {
   State<OTPVerificationPage> createState() => _OTPVerificationPageState();
 }
 
-class _OTPVerificationPageState extends State<OTPVerificationPage> {
+class _OTPVerificationPageState extends State<OTPVerificationPage>
+    with WidgetsBindingObserver {
   final List<TextEditingController> _controllers =
       List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
@@ -34,11 +36,14 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
   Timer? _timer;
   int _start = 60;
   bool _canResend = false;
+  String? _clipboardOtp;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _startTimer();
+    _checkClipboardForOtp();
     if (widget.initialMessage != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -51,6 +56,58 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
         );
       });
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkClipboardForOtp();
+    }
+  }
+
+  Future<void> _checkClipboardForOtp() async {
+    try {
+      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
+      final text = clipboardData?.text?.trim() ?? '';
+      final match = RegExp(r'\b\d{6}\b').firstMatch(text);
+      if (match != null) {
+        final code = match.group(0)!;
+        if (mounted) {
+          setState(() {
+            _clipboardOtp = code;
+          });
+          // If all boxes are currently empty, auto-fill and submit
+          if (_otpCode.isEmpty) {
+            _populateOtp(code, autoSubmit: true);
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _populateOtp(String rawCode, {bool autoSubmit = true}) {
+    final digits = rawCode.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return;
+
+    for (int i = 0; i < 6; i++) {
+      if (i < digits.length) {
+        _controllers[i].text = digits[i];
+      } else {
+        _controllers[i].text = '';
+      }
+    }
+
+    if (digits.length >= 6) {
+      for (var f in _focusNodes) {
+        f.unfocus();
+      }
+      if (autoSubmit) {
+        _submitOtp();
+      }
+    } else {
+      _focusNodes[digits.length].requestFocus();
+    }
+    setState(() {});
   }
 
   void _startTimer() {
@@ -75,6 +132,7 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     for (var c in _controllers) {
       c.dispose();
@@ -88,6 +146,11 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
   String get _otpCode => _controllers.map((c) => c.text).join();
 
   void _onDigitChanged(int index, String value) {
+    if (value.length > 1) {
+      _populateOtp(value, autoSubmit: true);
+      return;
+    }
+
     if (value.isNotEmpty) {
       if (index < 5) {
         _focusNodes[index + 1].requestFocus();
@@ -290,52 +353,91 @@ class _OTPVerificationPageState extends State<OTPVerificationPage> {
 
                           const SizedBox(height: 32),
 
-                          // 6-Digit PIN Fields
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: List.generate(6, (index) {
-                              return SizedBox(
-                                width: 44,
-                                height: 56,
-                                child: TextField(
-                                  controller: _controllers[index],
-                                  focusNode: _focusNodes[index],
-                                  keyboardType: TextInputType.number,
-                                  textAlign: TextAlign.center,
-                                  textAlignVertical: TextAlignVertical.center,
-                                  maxLength: 1,
-                                  cursorColor: Colors.black,
-                                  style: const TextStyle(
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.black,
-                                  ),
-                                  decoration: InputDecoration(
-                                    counterText: '',
-                                    filled: true,
-                                    fillColor: AppColors.surfaceVariant,
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: AppColors.border),
+                          // 6-Digit PIN Fields inside AutofillGroup
+                          AutofillGroup(
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: List.generate(6, (index) {
+                                return SizedBox(
+                                  width: 44,
+                                  height: 56,
+                                  child: TextField(
+                                    controller: _controllers[index],
+                                    focusNode: _focusNodes[index],
+                                    keyboardType: TextInputType.number,
+                                    autofillHints: const [AutofillHints.oneTimeCode],
+                                    textAlign: TextAlign.center,
+                                    textAlignVertical: TextAlignVertical.center,
+                                    cursorColor: Colors.black,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly,
+                                    ],
+                                    style: const TextStyle(
+                                      fontSize: 22,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.black,
                                     ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(color: AppColors.border),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      borderSide: BorderSide(
-                                        color: AppColors.primary.withOpacity(0.6),
-                                        width: 1.5,
+                                    decoration: InputDecoration(
+                                      counterText: '',
+                                      filled: true,
+                                      fillColor: AppColors.surfaceVariant,
+                                      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(color: AppColors.border),
+                                      ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(color: AppColors.border),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        borderSide: BorderSide(
+                                          color: AppColors.primary.withValues(alpha: 0.6),
+                                          width: 1.5,
+                                        ),
                                       ),
                                     ),
+                                    onChanged: (val) => _onDigitChanged(index, val),
                                   ),
-                                  onChanged: (val) => _onDigitChanged(index, val),
-                                ),
-                              );
-                            }),
+                                );
+                              }),
+                            ),
                           ).animate().fade(delay: 350.ms).slideY(begin: 0.05, end: 0),
+
+                          if (_clipboardOtp != null && _otpCode.length < 6) ...[
+                            const SizedBox(height: 14),
+                            Center(
+                              child: GestureDetector(
+                                onTap: () => _populateOtp(_clipboardOtp!, autoSubmit: true),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: AppColors.primary.withValues(alpha: 0.3),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.paste_rounded, size: 14, color: AppColors.primary),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Paste code: $_clipboardOtp',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ).animate().fadeIn().scale(begin: const Offset(0.9, 0.9)),
+                          ],
 
                           const SizedBox(height: 28),
 

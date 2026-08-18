@@ -77,6 +77,37 @@ class CacheService {
   static double? overriddenLatitude;
   static double? overriddenLongitude;
 
+  // ── User Avatar Customization ──────────────────────────────────────
+  static const String _keySelectedAvatarId = 'selected_avatar_id';
+  static const String _keyUseSocialAvatar = 'use_social_avatar';
+
+  static final ValueNotifier<String?> selectedAvatarNotifier = ValueNotifier(null);
+  static final ValueNotifier<bool> useSocialAvatarNotifier = ValueNotifier(true);
+
+  static String? getSelectedAvatarId() {
+    return _prefsOrNull?.getString(_keySelectedAvatarId);
+  }
+
+  static bool getUseSocialAvatar() {
+    return _prefsOrNull?.getBool(_keyUseSocialAvatar) ?? true;
+  }
+
+  static Future<void> setSelectedAvatarId(String? avatarId) async {
+    if (_prefsOrNull == null) return;
+    if (avatarId == null) {
+      await _prefs.remove(_keySelectedAvatarId);
+    } else {
+      await _prefs.setString(_keySelectedAvatarId, avatarId);
+    }
+    selectedAvatarNotifier.value = avatarId;
+  }
+
+  static Future<void> setUseSocialAvatar(bool useSocial) async {
+    if (_prefsOrNull == null) return;
+    await _prefs.setBool(_keyUseSocialAvatar, useSocial);
+    useSocialAvatarNotifier.value = useSocial;
+  }
+
   // Onboarding
   static bool isFirstTime() {
     return _prefs.getBool('first_time') ?? true;
@@ -138,69 +169,27 @@ class CacheService {
     return _prefs.getString('vision_cache_$key');
   }
 
-  // Saved Places
+  // Favorite / Saved Places (Unified under Favorite Places)
   static final ValueNotifier<int> savedPlacesNotifier = ValueNotifier(0);
-
-  static List<String> getSavedPlaceJsons() {
-    return _prefs.getStringList('saved_places_data') ?? [];
-  }
-
-  static List<Map<String, dynamic>> getSavedPlaceMaps() {
-    return getSavedPlaceJsons().map((s) {
-      try {
-        return json.decode(s) as Map<String, dynamic>;
-      } catch (_) {
-        return <String, dynamic>{};
-      }
-    }).where((m) => m.isNotEmpty).toList();
-  }
-
-  static bool isPlaceSaved(String placeId) {
-    final List<String> current = getSavedPlaceJsons();
-    return current.any((jsonStr) {
-      try {
-        final data = json.decode(jsonStr);
-        return data['id'] == placeId || data['name'] == placeId;
-      } catch (_) {
-        return false;
-      }
-    });
-  }
-
-  static Future<void> toggleSavedPlace(Map<String, dynamic> placeData) async {
-    final List<String> current = getSavedPlaceJsons();
-    final String placeId = placeData['id']?.toString() ?? placeData['name']?.toString() ?? '';
-    
-    int index = -1;
-    for (int i = 0; i < current.length; i++) {
-      try {
-        final decoded = json.decode(current[i]);
-        if (decoded['id'] == placeId || decoded['name'] == placeId) {
-          index = i;
-          break;
-        }
-      } catch (_) {}
-    }
-
-    if (index != -1) {
-      current.removeAt(index);
-    } else {
-      current.add(json.encode(placeData));
-    }
-    await _prefs.setStringList('saved_places_data', current);
-    savedPlacesNotifier.value++;
-
-    final currentPrefs = getUserPreferences();
-    currentPrefs['saved_places'] = getSavedPlaceMaps();
-    await saveUserPreferences(currentPrefs);
-  }
-
-  // Favorite / Pinned Places (Heart)
   static final ValueNotifier<int> favoritePlacesNotifier = ValueNotifier(0);
 
   static List<String> getFavoritePlaceJsons() {
-    return _prefs.getStringList('favorite_places_data') ?? [];
+    final favs = _prefs.getStringList('favorite_places_data') ?? [];
+    final saved = _prefs.getStringList('saved_places_data') ?? [];
+    final unique = <String, String>{};
+    for (final s in [...favs, ...saved]) {
+      try {
+        final d = json.decode(s);
+        final id = (d['id'] ?? d['name'])?.toString() ?? '';
+        if (id.isNotEmpty && !unique.containsKey(id)) {
+          unique[id] = s;
+        }
+      } catch (_) {}
+    }
+    return unique.values.toList();
   }
+
+  static List<String> getSavedPlaceJsons() => getFavoritePlaceJsons();
 
   static List<Map<String, dynamic>> getFavoritePlaceMaps() {
     return getFavoritePlaceJsons().map((s) {
@@ -211,6 +200,8 @@ class CacheService {
       }
     }).where((m) => m.isNotEmpty).toList();
   }
+
+  static List<Map<String, dynamic>> getSavedPlaceMaps() => getFavoritePlaceMaps();
 
   static bool isPlaceFavorite(String placeId) {
     final List<String> current = getFavoritePlaceJsons();
@@ -223,6 +214,8 @@ class CacheService {
       }
     });
   }
+
+  static bool isPlaceSaved(String placeId) => isPlaceFavorite(placeId);
 
   static Future<void> toggleFavoritePlace(Map<String, dynamic> placeData) async {
     final List<String> current = getFavoritePlaceJsons();
@@ -245,11 +238,18 @@ class CacheService {
       current.add(json.encode(placeData));
     }
     await _prefs.setStringList('favorite_places_data', current);
+    await _prefs.setStringList('saved_places_data', current);
     favoritePlacesNotifier.value++;
+    savedPlacesNotifier.value++;
 
     final currentPrefs = getUserPreferences();
     currentPrefs['favorite_places'] = getFavoritePlaceMaps();
+    currentPrefs['saved_places'] = getFavoritePlaceMaps();
     await saveUserPreferences(currentPrefs);
+  }
+
+  static Future<void> toggleSavedPlace(Map<String, dynamic> placeData) async {
+    await toggleFavoritePlace(placeData);
   }
 
   // Attractions Caching

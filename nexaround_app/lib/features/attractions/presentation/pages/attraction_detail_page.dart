@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -12,6 +13,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -239,7 +241,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
     );
   }
 
-  Future<void> _launchGoogleMaps() async {
+  void _launchGoogleMaps() {
     if (widget.latitude == null || widget.longitude == null ||
         (widget.latitude == 0.0 && widget.longitude == 0.0)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -254,23 +256,21 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       return;
     }
 
-    final url = 'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}';
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not open Google Maps'),
-          backgroundColor: Colors.black87,
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GoogleMapsPage(
+          initialLat: widget.latitude!,
+          initialLng: widget.longitude!,
+          destinationName: widget.name,
         ),
-      );
-    }
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isSaved = CacheService.isPlaceSaved(_placeId);
+    final isFav = CacheService.isPlaceFavorite(_placeId);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -296,6 +296,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
             actions: [
               GestureDetector(
                 onTap: () async {
+                  HapticFeedback.mediumImpact();
                   final map = {
                     'id': _placeId,
                     'name': widget.name,
@@ -306,7 +307,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     'longitude': widget.longitude ?? 0.0,
                     'created_at': DateTime.now().toIso8601String(),
                   };
-                  await CacheService.toggleSavedPlace(map);
+                  await CacheService.toggleFavoritePlace(map);
                   if (mounted) setState(() {});
                 },
                 child: Container(
@@ -318,8 +319,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     color: Colors.black.withOpacity(0.3),
                   ),
                   child: Icon(
-                    isSaved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-                    color: isSaved ? AppColors.ratingGold : Colors.white,
+                    isFav ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                    color: isFav ? const Color(0xFFFF2D55) : Colors.white,
                     size: 20,
                   ),
                 ),
@@ -419,13 +420,19 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                         Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6))),
                       ] else if (_openNowText != null && _openNowText!.isNotEmpty) ...[
                         const SizedBox(width: 16),
-                        const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
+                        Icon(
+                          Icons.access_time_rounded,
+                          size: 14,
+                          color: _openNowText == 'Open' ? Colors.green : Colors.red,
+                        ),
                         const SizedBox(width: 4),
                         Text(
-                          _openNowText == 'Open'
-                              ? 'Open${_closingTime != null ? ' · Closes $_closingTime' : ''}'
-                              : 'Closed',
-                          style: TextStyle(fontSize: 13, color: _openNowText == 'Open' ? Colors.green : Colors.red, fontWeight: FontWeight.w600),
+                          _openNowText == 'Open' ? 'Open' : 'Closed',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: _openNowText == 'Open' ? Colors.green : Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ],
                     ],
@@ -547,6 +554,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                       'rating': widget.rating,
                       'latitude': widget.latitude,
                       'longitude': widget.longitude,
+                      'imageUrl': _resolvedImageUrl ?? widget.imageUrl,
+                      'description': widget.aiWhy ?? '',
                     },
                   ),
                 ),

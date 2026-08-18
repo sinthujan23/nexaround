@@ -48,6 +48,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/location_
 import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
+import 'package:nexaround_app/core/services/avatar_service.dart';
 
 class _LocalEvent {
   final String title;
@@ -842,19 +843,27 @@ class _LivingMapPageState extends State<LivingMapPage>
                               onTap: () {
                                 final homeState = context.findAncestorStateOfType<HomePageState>();
                                 if (homeState != null) {
-                                  homeState.switchToDiscover(initialTab: 5);
+                                  homeState.switchToDiscover(initialTab: 6);
                                 }
                               },
                             ),
                             const SizedBox(width: 8),
-                            // Profile Icon
-                            _buildGlassCircle(
-                              Icons.person_outline_rounded,
-                              onTap: () {
-                                final homeState = context.findAncestorStateOfType<HomePageState>();
-                                if (homeState != null) {
-                                  homeState.switchToProfile();
-                                }
+                            // Profile Avatar
+                            BlocBuilder<AuthBloc, AuthState>(
+                              builder: (context, authState) {
+                                final user = authState is AuthAuthenticated ? authState.user : null;
+                                return GestureDetector(
+                                  onTap: () {
+                                    final homeState = context.findAncestorStateOfType<HomePageState>();
+                                    if (homeState != null) {
+                                      homeState.switchToProfile();
+                                    }
+                                  },
+                                  child: UserAvatarView(
+                                    user: user,
+                                    size: 38,
+                                  ),
+                                );
                               },
                             ),
                             const SizedBox(width: 8),
@@ -908,7 +917,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                               'Travel Stories',
                               null,
                               customAction: _buildTravelStoriesHeaderAction(),
-                              onTitleTap: () => _navigateToTravelStories(0),
                             ),
                           ),
                         ),
@@ -934,7 +942,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 24, bottom: 8),
+                            padding: const EdgeInsets.only(top: 12, bottom: 4),
                             child: _buildMuseumBanner(),
                           ),
                         ),
@@ -1039,7 +1047,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                             'Travel Stories',
                             null,
                             customAction: _buildTravelStoriesHeaderAction(),
-                            onTitleTap: () => _navigateToTravelStories(0),
                           ),
                         ),
                       ),
@@ -1068,7 +1075,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 24, bottom: 8),
+                          padding: const EdgeInsets.only(top: 12, bottom: 4),
                           child: _buildMuseumBanner(),
                         ),
                       ),
@@ -1207,7 +1214,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ];
                   }(),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 120)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 75)),
                 ],
               ),
               
@@ -1562,6 +1569,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: parentContext,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => DiscoveryEngineSheet(
         locationName: _currentLocationName,
@@ -2809,28 +2817,14 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return StoriesCommentsDialog(
           story: story,
           imageIndex: 0,
           onCommentAdded: (commentText, imgIndex) {
-            final authState = context.read<AuthBloc>().state;
-            String author = 'You';
-            if (authState is AuthAuthenticated) {
-              author = authState.user.displayName;
-            }
-            setState(() {
-              story.comments.add(
-                TravelStoryComment(
-                  author: author,
-                  text: commentText,
-                  imageIndex: imgIndex,
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                ),
-              );
-            });
-            TravelStoriesService().addComment(story.id, commentText, imgIndex);
+            setState(() {});
           },
         );
       },
@@ -6007,11 +6001,14 @@ class _LivingMapPageState extends State<LivingMapPage>
       });
     }
 
+    final maxItems = grouped.values.map((l) => l.length).fold(0, (max, v) => v > max ? v : max);
+    final double listHeight = (112.0 + (maxItems * 44.0)).clamp(240.0, 780.0);
+
     return SizedBox(
-      height: 580,
+      height: listHeight,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
         children: [
           _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
@@ -6274,67 +6271,138 @@ class _LivingMapPageState extends State<LivingMapPage>
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
                         itemCount: places.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 8),
+                        separatorBuilder: (context, index) => const SizedBox(height: 6),
                         itemBuilder: (context, index) {
                           final place = places[index];
                           final distKm = _getAccurateDistanceM(place) / 1000.0;
-                          final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()} m' : '${distKm.toStringAsFixed(1)} km';
+                          final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()}m' : '${distKm.toStringAsFixed(1)}km';
                           final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
+                          final ratingVal = place.rating;
 
-                          return GestureDetector(
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => AttractionDetailPage(
-                                    id: place.id,
-                                    name: place.name,
-                                    category: place.categoryName ?? 'Gem',
-                                    rating: place.rating,
-                                    distance: distStr,
-                                    emoji: '📍',
-                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                                    latitude: place.latitude,
-                                    longitude: place.longitude,
-                                  ),
-                                ),
-                              );
-                            },
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    place.name,
-                                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  distStr,
-                                  style: const TextStyle(color: Colors.black87, fontSize: 11.5, fontWeight: FontWeight.w500),
-                                ),
-                                const SizedBox(width: 6),
-                                Container(
-                                  width: 32,
-                                  height: 18,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: themeColor.withOpacity(0.12),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(
-                                      color: themeColor.withOpacity(0.20),
-                                      width: 0.8,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    direction,
-                                    style: const TextStyle(color: Colors.black, fontSize: 9, fontWeight: FontWeight.w900),
-                                  ),
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.92),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: themeColor.withOpacity(0.18),
+                                width: 0.8,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.03),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
                                 ),
                               ],
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => AttractionDetailPage(
+                                        id: place.id,
+                                        name: place.name,
+                                        category: place.categoryName ?? 'Gem',
+                                        rating: place.rating,
+                                        distance: distStr,
+                                        emoji: '📍',
+                                        imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                        latitude: place.latitude,
+                                        longitude: place.longitude,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          place.name,
+                                          style: const TextStyle(
+                                            color: Color(0xFF1E293B),
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      if (ratingVal != null && ratingVal > 0) ...[
+                                        Icon(
+                                          Icons.star_rounded,
+                                          size: 13,
+                                          color: AppColors.warning,
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          ratingVal.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                            color: Color(0xFF334155),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        const Text(
+                                          '•',
+                                          style: TextStyle(
+                                            color: Color(0xFF94A3B8),
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      Text(
+                                        distStr,
+                                        style: TextStyle(
+                                          color: themeColor.withOpacity(0.9),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: themeColor.withOpacity(0.12),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: themeColor.withOpacity(0.20),
+                                            width: 0.7,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              direction,
+                                              style: TextStyle(
+                                                color: themeColor,
+                                                fontSize: 9,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 2),
+                                            Icon(
+                                              Icons.chevron_right_rounded,
+                                              size: 11,
+                                              color: themeColor,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
                             ),
                           );
                         },
