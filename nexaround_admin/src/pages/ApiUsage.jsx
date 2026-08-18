@@ -166,6 +166,8 @@ export default function ApiUsage() {
   const [routes, setRoutes] = useState([]);
   const [tokens, setTokens] = useState({ usage: [], total_tokens: 0 });
   const [coverage, setCoverage] = useState([]);
+  const [recon, setRecon] = useState(null);
+  const [uploading, setUploading] = useState(false);
   // Drill-downs. Null = closed; the modal renders whichever is set.
   const [reqDetail, setReqDetail] = useState(null);
   const [userDetail, setUserDetail] = useState(null);
@@ -194,7 +196,7 @@ export default function ApiUsage() {
       const q = `from=${from.toISOString()}&to=${to.toISOString()}`
         + `${provider ? `&provider=${provider}` : ''}${ingest ? `&ingest=${ingest}` : ''}`;
       try {
-        const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv] = await Promise.all([
+        const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv, rc] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
           apiGet(`/admin/telemetry/timeseries?${q}&group_by=served_from`),
           apiGet(`/admin/telemetry/funnel?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
@@ -209,6 +211,7 @@ export default function ApiUsage() {
           apiGet(`/admin/telemetry/routes?${q}${userFilter ? `&user_id=${userFilter}` : ''}`),
           apiGet(`/admin/telemetry/tokens?${q}`),
           apiGet('/admin/telemetry/coverage'),
+          apiGet(`/admin/telemetry/billing/reconcile?${q}`),
         ]);
         if (cancelled) return;
         setSummary(s); setSeries(ts); setFunnel(f.operations || []);
@@ -216,6 +219,7 @@ export default function ApiUsage() {
         setHealth(h); setEvents(ev.events || []); setPipeline(pl);
         setAlerts(al); setSpend(sp);
         setRoutes(rt.routes || []); setTokens(tk); setCoverage(cv.sources || []);
+        setRecon(rc);
       } catch (e) {
         if (!cancelled) setErr(e.message || 'Could not load telemetry.');
       } finally {
@@ -253,6 +257,31 @@ export default function ApiUsage() {
         `/admin/telemetry/user/${uid}?from=${from.toISOString()}&to=${to.toISOString()}`));
     } catch (e) { setErr(e.message || 'Could not load user detail.'); }
     finally { setDetailLoading(false); }
+  };
+
+  const uploadBilling = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true); setErr('');
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const res = await fetch(`${API_BASE}/admin/telemetry/billing/import?currency=INR`, {
+        method: 'POST', body,
+        headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail || 'Import failed');
+      // Rates are re-derived from what Google actually charged, so the estimate
+      // stops being a guess the moment real data lands.
+      await apiPost('/admin/telemetry/billing/calibrate');
+      refresh();
+    } catch (e2) {
+      setErr(e2.message || 'Could not import billing CSV.');
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   };
 
   const ackAlert = async (id) => {
@@ -333,6 +362,69 @@ export default function ApiUsage() {
           ))}
         </div>
       )}
+
+      {/* ── Billing reconciliation ───────────────────────────────── */}
+      <div className="card" style={{ marginBottom: '20px',
+        borderLeft: `4px solid ${recon?.configured ? 'var(--accent)' : 'var(--danger)'}` }}>
+        <div className="card-header">
+          <div className="card-title">Estimated cost vs actual bill</div>
+          <label className="btn btn-ghost" style={{ padding: '8px 14px', cursor: 'pointer', margin: 0 }}>
+            {uploading ? 'Importing…' : 'Import billing CSV'}
+            <input type="file" accept=".csv" onChange={uploadBilling} style={{ display: 'none' }} />
+          </label>
+        </div>
+
+        {!recon?.configured ? (
+          <>
+            <p style={{ color: 'var(--danger)', fontSize: '13.5px', fontWeight: 600 }}>
+              Cost figures on this page are unverified estimates.
+            </p>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13.5px', marginTop: '8px' }}>
+              They come from per-call rates that nothing has checked against a real invoice.
+              In Google Cloud Console go to <strong>Billing → Reports</strong>, group by
+              <strong> SKU</strong> (not Service — a service total has no usage column, and
+              without usage there is no way to derive a rate), then Download CSV and import it
+              here. Rates are recalculated from what you were actually charged.
+            </p>
+          </>
+        ) : (
+          <>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '14px' }}>
+              {num(recon.imported_rows)} billing rows imported, covering {recon.coverage.from} → {recon.coverage.to}.
+              Converted at {recon.fx_to_usd} per USD. A ratio far from 1.0 means the rate for that
+              operation is wrong, and every figure derived from it with it.
+            </p>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>Operation</th><th>Our calls</th><th>Billed units</th><th>Estimated</th><th>Actual</th><th>Over by</th><th>Real cost / unit</th></tr>
+                </thead>
+                <tbody>
+                  {(recon.operations || []).slice(0, 10).map((o, i) => (
+                    <tr key={i}>
+                      <td style={{ fontWeight: 600, fontSize: '12.5px' }}>{o.operation || '—'}</td>
+                      <td>{num(o.our_calls)}</td>
+                      <td>{o.billed_usage ? num(o.billed_usage) : '—'}</td>
+                      <td>{usd(o.estimated)}</td>
+                      <td style={{ fontWeight: 700 }}>{usd(o.actual_gross_usd)}</td>
+                      <td>
+                        {o.ratio == null ? '—' : (
+                          <span className={`badge ${o.ratio > 2 || o.ratio < 0.5 ? 'badge-red' : 'badge-green'}`}>
+                            {o.ratio}×
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '11.5px' }}>
+                        {o.actual_unit_cost_usd != null ? `$${o.actual_unit_cost_usd.toFixed(8)}` : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
 
       {/* ── Data coverage ────────────────────────────────────────── */}
       {coverage.some((c) => c.ingest === 'legacy' && c.rows > 0) && (

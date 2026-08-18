@@ -14,7 +14,7 @@ import io
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import text
@@ -22,7 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.v1.admin import verify_admin_token
-from app.services import telemetry, telemetry_rollup, telemetry_alerts, spend_guard
+from app.services import (telemetry, telemetry_rollup, telemetry_alerts,
+                          spend_guard, billing_import)
 
 router = APIRouter(prefix="/admin/telemetry", tags=["Admin Telemetry"])
 
@@ -942,3 +943,159 @@ async def data_coverage(
             "has_dedup_data": r["with_cache_key"] > 0,
         } for r in rows
     ]}
+
+
+# ── Billing reconciliation ──────────────────────────────────────────────────
+
+@router.post("/billing/import")
+async def import_billing_csv(
+    file: UploadFile = File(...),
+    currency: str = Query("INR"),
+    _=Depends(verify_admin_token),
+):
+    """Load a Billing → Reports or Cost table CSV export.
+
+    Works retroactively, which the BigQuery export cannot — it only carries data
+    from the day it is switched on. Export grouped by SKU, not by Service: a
+    service-level total gives cost without usage, and cost without usage cannot
+    produce a rate.
+    """
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(400, "Expected a .csv export")
+    content = await file.read()
+    if len(content) > 25 * 1024 * 1024:
+        raise HTTPException(400, "File exceeds 25 MB")
+    result = await billing_import.import_csv(content, default_currency=currency)
+    if result["imported"] == 0:
+        raise HTTPException(
+            400,
+            "No rows recognised. Export from Billing → Reports grouped by SKU, "
+            "or use the Cost table view, and include the usage amount column.",
+        )
+    return result
+
+
+@router.post("/billing/sync")
+async def sync_billing(days: int = Query(35, ge=1, le=400),
+                       _=Depends(verify_admin_token)):
+    """Pull the BigQuery detailed usage export."""
+    return await billing_import.sync_bigquery(days=days)
+
+
+@router.post("/billing/calibrate")
+async def calibrate(_=Depends(verify_admin_token)):
+    """Re-derive per-call rates from actual billed cost."""
+    return await billing_import.calibrate_rates()
+
+
+@router.get("/billing/reconcile")
+async def reconcile(
+    frm: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = None,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    """Estimated cost against actual billed cost, per day and per operation.
+
+    This is the panel that would have caught the estimate being 15x high and
+    pointing at the wrong provider. If `ratio` drifts from 1.0, the rates are
+    wrong and every figure derived from them is too.
+    """
+    start, end = _window(frm, to)
+    p = {"start": start, "end": end}
+
+    # Estimates are in USD, Google bills in the account's own currency. A ratio
+    # across the two is meaningless without conversion — comparing $18 to ₹131
+    # and calling it 7x was the shape of the original mistake, not a fix for it.
+    fx = float((await db.execute(text(
+        "SELECT value FROM system_settings WHERE key='billing_fx_to_usd'"
+    ))).scalar() or 1.0) or 1.0
+
+    have = (await db.execute(text(
+        "SELECT count(*), min(usage_date), max(usage_date) FROM api_billing_actual"
+    ))).first()
+    if not have or not have[0]:
+        return {"configured": False, "days": [], "operations": [],
+                "hint": "No billing data imported yet. Upload a SKU-level CSV "
+                        "export, or enable the BigQuery billing export."}
+
+    daily = (await db.execute(text("""
+        WITH est AS (
+            SELECT ts::date d, COALESCE(sum(est_cost_usd),0) est
+            FROM api_events WHERE ts >= :start AND ts < :end GROUP BY 1
+        ),
+        act AS (
+            SELECT usage_date d, sum(cost) gross, sum(credits) credits,
+                   sum(cost) + sum(credits) net, max(currency) cur
+            FROM api_billing_actual
+            WHERE usage_date >= CAST(:start AS date)
+              AND usage_date <= CAST(:end AS date)
+            GROUP BY 1
+        )
+        SELECT COALESCE(est.d, act.d) d, COALESCE(est.est,0) estimated,
+               COALESCE(act.gross,0) actual_gross,
+               COALESCE(act.credits,0) credits,
+               COALESCE(act.net,0) actual_net, act.cur currency
+        FROM est FULL OUTER JOIN act ON est.d = act.d
+        ORDER BY 1
+    """), p)).mappings().all()
+
+    by_op = (await db.execute(text("""
+        WITH est AS (
+            SELECT operation op, count(*) calls, COALESCE(sum(est_cost_usd),0) est
+            FROM api_events WHERE ts >= :start AND ts < :end
+              AND served_from = 'upstream' GROUP BY 1
+        ),
+        act AS (
+            SELECT mapped_operation op, sum(usage_amount) usage,
+                   sum(cost) gross, sum(credits) credits, max(currency) cur
+            FROM api_billing_actual
+            WHERE usage_date >= CAST(:start AS date)
+              AND usage_date <= CAST(:end AS date)
+              AND mapped_operation IS NOT NULL
+            GROUP BY 1
+        )
+        SELECT COALESCE(est.op, act.op) operation,
+               COALESCE(est.calls,0) our_calls, COALESCE(est.est,0) estimated,
+               act.usage billed_usage, COALESCE(act.gross,0) actual_gross,
+               COALESCE(act.credits,0) credits, act.cur currency
+        FROM est FULL OUTER JOIN act ON est.op = act.op
+        ORDER BY COALESCE(act.gross,0) DESC, estimated DESC
+    """), p)).mappings().all()
+
+    def to_usd(amount) -> float:
+        return float(amount or 0) / fx
+
+    def ratio(estimated, actual_native):
+        """How many times our estimate exceeds the real bill, like for like."""
+        a = to_usd(actual_native)
+        return round(float(estimated or 0) / a, 2) if a else None
+
+    return {
+        "configured": True,
+        "imported_rows": have[0],
+        "coverage": {"from": str(have[1]), "to": str(have[2])},
+        "fx_to_usd": fx,
+        "days": [dict(r) | {
+            "estimated": float(r["estimated"]),
+            "actual_gross": float(r["actual_gross"]),
+            "credits": float(r["credits"]),
+            "actual_net": float(r["actual_net"]),
+            "actual_gross_usd": round(to_usd(r["actual_gross"]), 4),
+            "actual_net_usd": round(to_usd(r["actual_net"]), 4),
+            "ratio": ratio(r["estimated"], r["actual_gross"]),
+        } for r in daily],
+        "operations": [dict(r) | {
+            "estimated": float(r["estimated"]),
+            "actual_gross": float(r["actual_gross"]),
+            "credits": float(r["credits"]),
+            "billed_usage": float(r["billed_usage"] or 0),
+            "actual_gross_usd": round(to_usd(r["actual_gross"]), 4),
+            "ratio": ratio(r["estimated"], r["actual_gross"]),
+            # Cost per unit as Google actually charged it, which is the number
+            # our seeded rate should have been.
+            # What our seeded rate should have been, in USD per unit.
+            "actual_unit_cost_usd": (round(to_usd(r["actual_gross"]) / float(r["billed_usage"]), 8)
+                                     if r["billed_usage"] else None),
+        } for r in by_op],
+    }
