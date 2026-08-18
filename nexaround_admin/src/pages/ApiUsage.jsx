@@ -146,6 +146,7 @@ function Detail({ title, subtitle, onClose, children }) {
 export default function ApiUsage() {
   const [range, setRange] = useState('7d');
   const [provider, setProvider] = useState('');
+  const [ingest, setIngest] = useState('');
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
 
@@ -189,7 +190,8 @@ export default function ApiUsage() {
       setErr('');
       const to = new Date();
       const from = new Date(to.getTime() - hours * 3600 * 1000);
-      const q = `from=${from.toISOString()}&to=${to.toISOString()}${provider ? `&provider=${provider}` : ''}`;
+      const q = `from=${from.toISOString()}&to=${to.toISOString()}`
+        + `${provider ? `&provider=${provider}` : ''}${ingest ? `&ingest=${ingest}` : ''}`;
       try {
         const [s, ts, f, b, d, u, h, ev, pl, al, sp, rt, tk, cv] = await Promise.all([
           apiGet(`/admin/telemetry/summary?${q}`),
@@ -221,7 +223,7 @@ export default function ApiUsage() {
     })();
 
     return () => { cancelled = true; };
-  }, [activeRange.hours, provider, tailFilter, reloadToken]);
+  }, [activeRange.hours, provider, ingest, tailFilter, reloadToken]);
 
   // Only the 24-hour view is worth polling; re-running the 90-day rollup
   // queries every half minute would be churn for no new information.
@@ -337,7 +339,7 @@ export default function ApiUsage() {
           <div className="card-header"><div className="card-title">What this data can tell you</div></div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Source</th><th>Rows</th><th>Period</th><th>Cache tier</th><th>Cost</th></tr></thead>
+              <thead><tr><th>Source</th><th>Rows</th><th>Period</th><th>Cost basis</th><th>Cache tier</th><th>Tokens</th><th>Dedup</th></tr></thead>
               <tbody>
                 {coverage.map((c) => (
                   <tr key={c.ingest}>
@@ -346,8 +348,10 @@ export default function ApiUsage() {
                     <td style={{ fontSize: '12px' }}>
                       {c.lo ? new Date(c.lo).toLocaleDateString() : '—'} → {c.hi ? new Date(c.hi).toLocaleDateString() : '—'}
                     </td>
+                    <td style={{ fontSize: '12.5px' }}>{c.cost_basis}</td>
                     <td>{c.has_cache_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
-                    <td>{c.has_cost_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
+                    <td>{c.has_token_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
+                    <td>{c.has_dedup_data ? 'recorded' : <span style={{ color: 'var(--text-muted)' }}>not recorded</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -355,9 +359,12 @@ export default function ApiUsage() {
           </div>
           <p style={{ marginTop: '12px', fontSize: '13px', color: 'var(--text-secondary)' }}>
             Legacy rows were reconstructed from the old request log, which was written
-            <em> before</em> each call was made and never saw a cache hit. Their volume is real;
-            their cost and cache columns read zero because that data was never captured, not
-            because it was free. Only <strong>live</strong> rows carry a measured cost.
+            <em> before</em> each call was made and never recorded the outcome. Their volume is
+            real. Their cost is <strong>every attempt priced at list</strong> — an upper bound,
+            since failed calls were not billed and the free tier is applied separately. Cache
+            keys and token counts were never captured, so the dedup and AI panels stay empty for
+            that period. Switch the filter to <strong>Measured only</strong> for figures that
+            come from recorded outcomes.
           </p>
         </div>
       )}
@@ -421,6 +428,17 @@ export default function ApiUsage() {
             <option value="serpapi">SerpAPI</option>
             <option value="internal">Internal (cache/DB)</option>
           </select>
+          <select
+            className="form-input"
+            style={{ width: 'auto', minWidth: '170px' }}
+            value={ingest}
+            onChange={(e) => setIngest(e.target.value)}
+            title="Legacy rows were reconstructed from the old log and carry estimated cost"
+          >
+            <option value="">All data</option>
+            <option value="live">Measured only</option>
+            <option value="legacy">Historical only</option>
+          </select>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
             {summary && (
               <span className="badge badge-ghost" title="Wide ranges read the hourly rollup rather than raw events">
@@ -468,7 +486,9 @@ export default function ApiUsage() {
         <div className="stat-card">
           <div className="stat-icon"><DollarIcon size={24} style={{ color: 'var(--warning)' }} /></div>
           <div className="stat-value">{usd(summary?.est_cost_usd)}</div>
-          <div className="stat-label">Estimated cost</div>
+          <div className="stat-label">
+            {ingest === 'live' ? 'Measured cost' : 'Estimated cost'}
+          </div>
           {costDelta !== null && (
             <span className={`stat-change ${costDelta >= 0 ? 'down' : 'up'}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
               {costDelta >= 0 ? <TrendingUpIcon size={12} /> : <TrendingDownIcon size={12} />}
@@ -641,7 +661,9 @@ export default function ApiUsage() {
               {tokens.usage.length === 0 && (
                 <tr><td colSpan={7}>
                   <div className="empty-state">
-                    No token data yet — recorded from the next AI call onward.
+                    No token data for this period. Historical rows never captured token
+                    counts, and no AI call has succeeded since token recording went live —
+                    the Gemini key is currently invalid.
                   </div>
                 </td></tr>
               )}
@@ -678,7 +700,11 @@ export default function ApiUsage() {
             </thead>
             <tbody>
               {dupes.keys.length === 0 && (
-                <tr><td colSpan={5}><div className="empty-state">No repeat purchases — caching is holding.</div></td></tr>
+                <tr><td colSpan={5}><div className="empty-state">
+                    {ingest === 'live'
+                      ? 'No repeat purchases — caching is holding.'
+                      : 'Historical rows never captured cache keys, so repeats cannot be detected before today. This fills in as live traffic accumulates.'}
+                  </div></td></tr>
               )}
               {dupes.keys.map((k) => (
                 <tr key={`${k.operation}:${k.cache_key}`}>

@@ -90,6 +90,7 @@ async def summary(
     frm: Optional[datetime] = Query(None, alias="from"),
     to: Optional[datetime] = None,
     provider: Optional[str] = None,
+    ingest: Optional[str] = Query(None, pattern="^(live|legacy)$"),
     db: AsyncSession = Depends(get_db),
     _=Depends(verify_admin_token),
 ):
@@ -100,8 +101,14 @@ async def summary(
     params = {"start": start, "end": end, "prev_start": prev_start}
     if provider:
         params["provider"] = provider
+    # The hourly rollup does not carry `ingest`, so filtering by it has to read
+    # raw events. Acceptable: it is a deliberate, occasional comparison rather
+    # than the default view.
+    if ingest:
+        pfilter += " AND ingest = :ingest"
+        params["ingest"] = ingest
 
-    if _use_rollup(start, end):
+    if _use_rollup(start, end) and not ingest:
         sql = f"""
             SELECT COALESCE(sum(calls),0) requests,
                    COALESCE(sum(billable_calls),0) billable,
@@ -868,13 +875,20 @@ async def data_coverage(
     rows = (await db.execute(text("""
         SELECT ingest, count(*) rows, min(ts) lo, max(ts) hi,
                count(*) FILTER (WHERE served_from <> 'upstream') cached,
-               COALESCE(sum(est_cost_usd),0) cost
+               COALESCE(sum(est_cost_usd),0) cost,
+               count(cache_key) with_cache_key,
+               count(total_tokens) with_tokens
         FROM api_events GROUP BY 1
     """))).mappings().all()
     return {"sources": [
         dict(r) | {
             "cost": float(r["cost"]),
+            # Live rows record the outcome of each call. Legacy rows record
+            # only that a call was attempted, so their cost is every attempt
+            # priced at list — an upper bound, not a measurement.
+            "cost_basis": "measured" if r["ingest"] == "live" else "estimated (upper bound)",
             "has_cache_data": r["ingest"] == "live",
-            "has_cost_data": r["ingest"] == "live",
+            "has_token_data": r["with_tokens"] > 0,
+            "has_dedup_data": r["with_cache_key"] > 0,
         } for r in rows
     ]}
