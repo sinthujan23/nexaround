@@ -675,7 +675,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         final existing = stateAttractions.where((p) {
           final cat = (p.categoryName ?? '').toLowerCase();
           final name = p.name.toLowerCase();
-          return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || name.contains('park') || name.contains('temple');
+          return cat.contains('poi') || cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || cat.contains('nature') || cat.contains('beach') || name.contains('park') || name.contains('temple');
         }).take(5).toList();
         if (existing.isNotEmpty) {
           setState(() {
@@ -693,7 +693,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         latitude: lat,
         longitude: lng,
         radius: 2500,
-        categoryName: 'Attractions',
+        categoryName: 'POI',
         useLegacy: false,
       );
 
@@ -2494,7 +2494,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         ? categories
         : const [
             CategoryEntity(id: '1', name: 'Food & Drink', sortOrder: 1),
-            CategoryEntity(id: '2', name: 'Attractions', sortOrder: 2),
+            CategoryEntity(id: '2', name: 'POI', sortOrder: 2),
             CategoryEntity(id: '3', name: 'Shopping', sortOrder: 3),
             CategoryEntity(id: '4', name: 'Experiences', sortOrder: 4),
             CategoryEntity(id: '5', name: 'Medical', sortOrder: 5),
@@ -5354,7 +5354,8 @@ class _LivingMapPageState extends State<LivingMapPage>
     if (cat.contains('food')) return 'assets/images/cat_food.png';
     if (cat.contains('medical') || cat.contains('hospital'))
       return 'assets/images/cat_medical.png';
-    if (cat.contains('historic') ||
+    if (cat.contains('poi') ||
+        cat.contains('historic') ||
         cat.contains('history') ||
         cat.contains('museum') ||
         cat.contains('attraction'))
@@ -5365,8 +5366,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   Color _getCategoryColor(String category) {
     switch (category) {
       case 'Food':
+      case 'Food & Drink':
         return Colors.orange.withOpacity(0.15);
+      case 'POI':
       case 'Attractions':
+      case 'Nature':
         return Colors.teal.withOpacity(0.15);
       case 'Shopping':
         return Colors.blue.withOpacity(0.15);
@@ -5381,8 +5385,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   Color _getCategoryBorderColor(String category) {
     switch (category) {
       case 'Food':
+      case 'Food & Drink':
         return Colors.orange.withOpacity(0.40);
+      case 'POI':
       case 'Attractions':
+      case 'Nature':
         return Colors.teal.withOpacity(0.40);
       case 'Shopping':
         return Colors.blue.withOpacity(0.40);
@@ -5672,11 +5679,9 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     final Map<String, List<AttractionEntity>> grouped = {
       'Food & Drink': [],
-      'Attractions': [],
-      'Nature': [],
+      'POI': [],
       'Shopping': [],
       'Medical': [],
-      'Hospital': [],
     };
 
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
@@ -5699,23 +5704,9 @@ class _LivingMapPageState extends State<LivingMapPage>
       final tags = place.tags.map((t) => t.toString().toLowerCase()).toList();
 
       bool matchesFood = false;
-      bool matchesAttraction = false;
+      bool matchesPOI = false;
       bool matchesShopping = false;
       bool matchesMedical = false;
-      bool matchesHospital = false;
-      bool matchesNature = false;
-
-      // 6. Nature matching logic (parks, beaches, lakes, gardens, etc.)
-      if (catName.contains('nature') || catName.contains('beach') || catName.contains('park') || 
-          catName.contains('garden') || catName.contains('lake') || catName.contains('river') ||
-          catName.contains('waterfall') || catName.contains('forest') ||
-          name.contains('beach') || name.contains('park') || name.contains('lake') || 
-          name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
-          tags.contains('park') || tags.contains('beach') || tags.contains('natural_feature') ||
-          tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('nature_reserve') ||
-          tags.contains('botanical_garden')) {
-        matchesNature = true;
-      }
 
       // 1. Food & Drink matching logic
       if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') || 
@@ -5723,16 +5714,22 @@ class _LivingMapPageState extends State<LivingMapPage>
         matchesFood = true;
       }
 
-      // 2. Attractions matching logic (exclude nature if matched there, to keep it clean)
-      if (!matchesNature && (catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
+      // 2. POI matching logic (Attractions + Nature combined)
+      if (catName.contains('poi') || catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
           catName.contains('experience') || catName.contains('landmark') || catName.contains('culture') ||
           catName.contains('temple') || catName.contains('art') || catName.contains('zoo') ||
-          name.contains('temple') || name.contains('park') || name.contains('museum'))) {
-        matchesAttraction = true;
+          catName.contains('nature') || catName.contains('beach') || catName.contains('garden') ||
+          catName.contains('lake') || catName.contains('river') || catName.contains('waterfall') || catName.contains('forest') ||
+          name.contains('temple') || name.contains('park') || name.contains('museum') || name.contains('beach') ||
+          name.contains('lake') || name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
+          tags.contains('park') || tags.contains('beach') || tags.contains('natural_feature') ||
+          tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('nature_reserve') ||
+          tags.contains('botanical_garden') || tags.contains('tourist_attraction') || tags.contains('historical_landmark')) {
+        matchesPOI = true;
       }
 
-      // Exclusion checks for Attractions category to filter out play schools, surgeries, salons, etc.
-      if (matchesAttraction) {
+      // Exclusion checks for POI category to filter out play schools, surgeries, salons, etc.
+      if (matchesPOI) {
         final attractionExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
           'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
@@ -5747,7 +5744,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         ];
         if (attractionExclusions.any((kw) => name.contains(kw)) ||
             tags.any((t) => attractionExcludeTags.contains(t))) {
-          matchesAttraction = false;
+          matchesPOI = false;
         }
       }
 
@@ -5757,7 +5754,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         matchesShopping = true;
       }
 
-      // Exclusion checks for Shopping category to filter out clinical or school businesses
+      // Exclusion checks for Shopping category
       if (matchesShopping) {
         final shoppingExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
@@ -5772,15 +5769,19 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
-      // 4. Medical matching logic
+      // 4. Medical matching logic (Medical + Hospital combined)
       final bool hasMedicalSignal =
           catName == 'medical' ||
+          catName == 'hospital' ||
           name.contains('medical') ||
+          name.contains('hospital') ||
           name.contains('clinic') ||
           name.contains('pharmacy') ||
           name.contains('dispensary') ||
           name.contains('health centre') ||
           name.contains('health center') ||
+          tags.contains('hospital') ||
+          tags.contains('multi_speciality_hospital') ||
           tags.contains('pharmacy') ||
           tags.contains('doctor') ||
           tags.contains('dentist') ||
@@ -5806,28 +5807,6 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
-      // 5. Hospital matching logic
-      final bool hasHospitalSignal =
-          catName == 'hospital' ||
-          name.contains('hospital') ||
-          tags.contains('hospital') ||
-          tags.contains('multi_speciality_hospital');
-
-      if (hasHospitalSignal) {
-        const nonHospitalTags = [
-          'school', 'university', 'secondary_school', 'primary_school',
-          'bank', 'finance', 'accounting', 'atm',
-          'food', 'restaurant', 'bakery', 'cafe', 'bar',
-          'store', 'shopping_mall', 'grocery_or_supermarket',
-          'lodging', 'real_estate_agency',
-          'transit_station', 'bus_station', 'train_station',
-        ];
-        final bool isNonHospital = tags.any((t) => nonHospitalTags.contains(t));
-        if (!isNonHospital) {
-          matchesHospital = true;
-        }
-      }
-
       double filterDistKm = distKm;
       if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
         filterDistKm = geo.Geolocator.distanceBetween(
@@ -5840,14 +5819,9 @@ class _LivingMapPageState extends State<LivingMapPage>
           grouped['Food & Drink']!.add(place);
         }
       }
-      if (matchesAttraction && filterDistKm <= 50.0) {
-        if (!grouped['Attractions']!.any((x) => x.id == place.id)) {
-          grouped['Attractions']!.add(place);
-        }
-      }
-      if (matchesNature && filterDistKm <= 50.0) {
-        if (!grouped['Nature']!.any((x) => x.id == place.id)) {
-          grouped['Nature']!.add(place);
+      if (matchesPOI && filterDistKm <= 50.0) {
+        if (!grouped['POI']!.any((x) => x.id == place.id)) {
+          grouped['POI']!.add(place);
         }
       }
       if (matchesShopping && filterDistKm <= 15.0) {
@@ -5858,11 +5832,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       if (matchesMedical && filterDistKm <= 50.0) {
         if (!grouped['Medical']!.any((x) => x.id == place.id)) {
           grouped['Medical']!.add(place);
-        }
-      }
-      if (matchesHospital && filterDistKm <= 50.0) {
-        if (!grouped['Hospital']!.any((x) => x.id == place.id)) {
-          grouped['Hospital']!.add(place);
         }
       }
     }
@@ -5976,7 +5945,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         r1 = 1.0;
         r2 = 5.0;
         r3 = 15.0;
-      } else if (cat == 'Attractions' || cat == 'Nature' || cat == 'Medical' || cat == 'Hospital') {
+      } else if (cat == 'POI' || cat == 'Medical') {
         r1 = 2.0;
         r2 = 10.0;
         r3 = 50.0;
@@ -6010,15 +5979,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         children: [
           _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
-          _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Nature', grouped['Nature']!, status),
+          _buildCategoryPanel('POI', grouped['POI']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Medical', grouped['Medical']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Hospital', grouped['Hospital']!, status),
         ],
       ),
     );
@@ -6032,25 +5997,20 @@ class _LivingMapPageState extends State<LivingMapPage>
         themeColor = Colors.orange;
         lightTint = const Color(0xFFFFF3E0);
         break;
+      case 'POI':
       case 'Attractions':
+      case 'Nature':
         themeColor = Colors.teal;
         lightTint = const Color(0xFFE0F2F1);
-        break;
-      case 'Nature':
-        themeColor = Colors.green;
-        lightTint = const Color(0xFFE8F5E9);
         break;
       case 'Shopping':
         themeColor = Colors.blue;
         lightTint = const Color(0xFFE3F2FD);
         break;
       case 'Medical':
+      case 'Hospital':
         themeColor = const Color(0xFFE53935);
         lightTint = const Color(0xFFFFEBEE);
-        break;
-      case 'Hospital':
-        themeColor = const Color(0xFF7B1FA2);
-        lightTint = const Color(0xFFF3E5F5);
         break;
       default:
         themeColor = Colors.grey;

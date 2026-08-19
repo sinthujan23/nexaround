@@ -17,13 +17,21 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # Expanded Google Place types map to retrieve a much wider and richer set of places
 # for each application category, resolving the issue of sparse results.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
+    "POI": [
+        "tourist_attraction", "museum", "art_gallery", "historical_landmark",
+        "cultural_center", "monument", "castle", "visitor_center", "observation_deck",
+        "place_of_worship", "hindu_temple", "church", "mosque", "buddhist_temple",
+        "park", "national_park", "nature_reserve", "hiking_area", "beach",
+        "botanical_garden", "scenic_viewpoint", "waterfall", "lake", "river",
+        "zoo", "aquarium", "marina", "amusement_park"
+    ],
     "Attractions": [
-        "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
-        "amusement_park", "national_park", "hiking_area", "beach",
-        "historical_landmark", "place_of_worship", "hindu_temple", "church", 
-        "mosque", "buddhist_temple", "cultural_center", "marina", "visitor_center",
-        "observation_deck", "nature_reserve", "scenic_point", "waterfall", 
-        "monument", "castle"
+        "tourist_attraction", "museum", "art_gallery", "historical_landmark",
+        "cultural_center", "monument", "castle", "visitor_center", "observation_deck",
+        "place_of_worship", "hindu_temple", "church", "mosque", "buddhist_temple",
+        "park", "national_park", "nature_reserve", "hiking_area", "beach",
+        "botanical_garden", "scenic_viewpoint", "waterfall", "lake", "river",
+        "zoo", "aquarium", "marina", "amusement_park"
     ],
     "Food & Drink": [
         "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food",
@@ -62,6 +70,7 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
 }
 
 CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
+    "POI": "tourist_attraction",
     "Attractions": "tourist_attraction",
     "Food & Drink": "restaurant",
     "Hotels": "lodging",
@@ -91,16 +100,31 @@ _CATEGORY_ALIASES: dict[str, str] = {
     "restaurants": "Food & Drink",
     "shop": "Shopping",
     "shops": "Shopping",
-    "historical": "Attractions",
-    "historical sites": "Attractions",
-    "history": "Attractions",
-    "attraction": "Attractions",
+    "poi": "POI",
+    "pois": "POI",
+    "point of interest": "POI",
+    "points of interest": "POI",
+    "historical": "POI",
+    "historical sites": "POI",
+    "history": "POI",
+    "attraction": "POI",
+    "attractions": "POI",
+    "nature": "POI",
+    "natural": "POI",
+    "parks": "POI",
+    "park": "POI",
     "hotel": "Hotels",
     "stay": "Hotels",
     "lodging": "Hotels",
     "service": "Experiences",
     "services": "Experiences",
     "experience": "Experiences",
+    "medical": "Medical",
+    "hospital": "Medical",
+    "hospitals": "Medical",
+    "health": "Medical",
+    "clinic": "Medical",
+    "pharmacy": "Medical",
 }
 
 

@@ -20,7 +20,7 @@ class AttractionRemoteDatasource {
     // If categoryName is provided directly, use it. Otherwise fallback to heuristic.
     String? resolvedCategoryName = categoryName;
     if (resolvedCategoryName == null && categoryId != null) {
-      if (categoryId.contains('1')) resolvedCategoryName = 'Attractions';
+      if (categoryId.contains('1')) resolvedCategoryName = 'POI';
       else if (categoryId.contains('2')) resolvedCategoryName = 'Food & Drink';
       else if (categoryId.contains('3')) resolvedCategoryName = 'Hotels';
       else if (categoryId.contains('4')) resolvedCategoryName = 'Shopping';

@@ -66,7 +66,11 @@ class _PostStorySheetState extends State<PostStorySheet> {
         _suggestions = [];
         _isLoadingSuggestions = false;
       });
+      return;
     }
+    _debounceTimer = Timer(const Duration(milliseconds: 200), () {
+      _fetchSuggestions(query);
+    });
   }
 
   Future<void> _fetchSuggestions(String input) async {

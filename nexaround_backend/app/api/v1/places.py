@@ -12,7 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User
-from app.schemas.place import PlacesNearbyResponse, TrendingExperiencesResponse
+from app.schemas.place import (
+    PlacesNearbyResponse,
+    TrendingExperiencesResponse,
+    PlacesNearbyBatchRequest,
+    PlacesNearbyBatchResponse,
+)
 from app.services import places_service, photo_cache_service, telemetry
 
 router = APIRouter(prefix="/places", tags=["places"])
@@ -40,6 +45,23 @@ async def get_nearby_places(
         max_photos=max_photos,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.post("/nearby/batch", response_model=PlacesNearbyBatchResponse)
+async def get_nearby_places_batch(
+    req: PlacesNearbyBatchRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Return Google Places for multiple categories in a single unified operation."""
+    return await places_service.get_nearby_batch(
+        latitude=req.latitude,
+        longitude=req.longitude,
+        categories=req.categories,
+        radius=req.radius,
+        use_legacy=req.use_legacy,
+        max_photos=req.max_photos,
+        limit=req.limit,
     )
 
 

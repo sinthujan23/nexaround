@@ -3591,8 +3591,8 @@ class _ArCameraPageState extends State<ArCameraPage>
       });
       return;
     }
-    // Debounce: wait 500ms after user stops typing, then fetch autocomplete suggestions
-    _searchDebounceTimer = Timer(const Duration(milliseconds: 500), () {
+    // Debounce: 200ms for fast Google Maps-like typing response
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
       _performGoogleSearch(query.trim());
     });
   }
@@ -3694,17 +3694,16 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
     }
 
-      updateState(() {
-        _selectedLandmark = _landmarks.indexOf(found!);
-        _showInfoCard = true;
-        _isNavigating = false;
-        _isIdentifying = false;
-        _isSearching = false;
-        _searchController.clear();
-        _searchResults.clear();
-      });
-      FocusScope.of(context).unfocus();
-    }
+    updateState(() {
+      _selectedLandmark = _landmarks.indexOf(found);
+      _showInfoCard = true;
+      _isNavigating = false;
+      _isIdentifying = false;
+      _isSearching = false;
+      _searchController.clear();
+      _searchResults.clear();
+    });
+    FocusScope.of(context).unfocus();
   }
 
   Future<void> _startVoiceSearch() async {

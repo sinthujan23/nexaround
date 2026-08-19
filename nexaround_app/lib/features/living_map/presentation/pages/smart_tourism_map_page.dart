@@ -98,7 +98,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   final List<String> _categories = [
     'All',
-    'Attractions',
+    'POI',
     'Food & Drink',
     'Hotels',
     'Shopping',
@@ -253,7 +253,25 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   // ─── Fetch driving route from Mapbox Directions API via backend proxy ───
   Future<void> _fetchRoute() async {
-    if (_userLat == null || _userLng == null) return;
+    if (_destLat == 0.0 || _destLng == 0.0) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+    if (_userLat == null || _userLng == null) {
+      try {
+        final pos = await geo.Geolocator.getCurrentPosition(
+          desiredAccuracy: geo.LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 3),
+        );
+        _userLat = pos.latitude;
+        _userLng = pos.longitude;
+      } catch (_) {}
+    }
+    if (_userLat == null || _userLng == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
       // Google Directions (via the secure proxy) so the distance/route matches
       // Google Maps instead of Mapbox's longer, less-accurate local routing.
@@ -272,49 +290,56 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           (data['routes'] as List).isNotEmpty) {
         final route = data['routes'][0] as Map;
         final legsList = route['legs'] as List?;
-        if (legsList == null || legsList.isEmpty) return;
-        final leg = legsList[0] as Map;
+        if (legsList != null && legsList.isNotEmpty) {
+          final leg = legsList[0] as Map;
 
-        final durationSec =
-            ((leg['duration'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
-        final distanceM =
-            ((leg['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+          final durationSec =
+              ((leg['duration'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
+          final distanceM =
+              ((leg['distance'] as Map?)?['value'] as num?)?.toDouble() ?? 0.0;
 
-        final encoded = (route['overview_polyline'] as Map?)?['points'] as String?;
-        final coords = (encoded != null && encoded.isNotEmpty)
-            ? _decodePolylineLngLat(encoded)
-            : <List<double>>[];
+          final encoded = (route['overview_polyline'] as Map?)?['points'] as String?;
+          final coords = (encoded != null && encoded.isNotEmpty)
+              ? _decodePolylineLngLat(encoded)
+              : <List<double>>[];
 
-        final List<String> parsedSteps = [];
-        final stepsRaw = leg['steps'] as List?;
-        if (stepsRaw != null) {
-          for (final step in stepsRaw) {
-            final html = (step as Map)['html_instructions'] as String?;
-            if (html != null && html.isNotEmpty) {
-              parsedSteps.add(_stripHtml(html));
+          final List<String> parsedSteps = [];
+          final stepsRaw = leg['steps'] as List?;
+          if (stepsRaw != null) {
+            for (final step in stepsRaw) {
+              final html = (step as Map)['html_instructions'] as String?;
+              if (html != null && html.isNotEmpty) {
+                parsedSteps.add(_stripHtml(html));
+              }
             }
           }
-        }
 
-        if (mounted) {
-          setState(() {
-            _duration = durationSec < 3600
-                ? '${(durationSec / 60).ceil()} min'
-                : '${(durationSec / 3600).toStringAsFixed(1)} hr';
-            _distance = distanceM < 1000
-                ? '${distanceM.toInt()} m'
-                : '${(distanceM / 1000).toStringAsFixed(1)} km';
-            _routeCoordinates = coords;
-            _navigationSteps = parsedSteps;
-            _currentStepIndex = 0;
-            _routeLoaded = true;
-          });
-          _drawRoute();
-          _addMarkers();
+          if (mounted) {
+            setState(() {
+              _duration = durationSec < 3600
+                  ? '${(durationSec / 60).ceil()} min'
+                  : '${(durationSec / 3600).toStringAsFixed(1)} hr';
+              _distance = distanceM < 1000
+                  ? '${distanceM.toInt()} m'
+                  : '${(distanceM / 1000).toStringAsFixed(1)} km';
+              _routeCoordinates = coords;
+              _navigationSteps = parsedSteps;
+              _currentStepIndex = 0;
+              _routeLoaded = true;
+              _isLoading = false;
+            });
+            _drawRoute();
+            _addMarkers();
+            return;
+          }
         }
       }
     } catch (e) {
       debugPrint('Route fetch error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -2093,8 +2118,8 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       setState(() => _suggestions = []);
       return;
     }
-    // Debounce: wait 500ms after user stops typing, then fetch autocomplete
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+    // Debounce: 200ms for fast Google Maps-like typing response
+    _debounceTimer = Timer(const Duration(milliseconds: 200), () async {
       try {
         final results = await GooglePlacesService.getAutocompleteSuggestions(
           input: text.trim(),
@@ -2116,14 +2141,26 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       _suggestions = [];
       _isLoading = true;
     });
-    final placeId = suggestion['place_id'] as String;
-    final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
-    if (placeDetails != null) {
+    final placeId = suggestion['place_id'] as String? ?? '';
+    double? lat = (suggestion['latitude'] as num?)?.toDouble();
+    double? lng = (suggestion['longitude'] as num?)?.toDouble();
+    String name = suggestion['main_text'] ?? suggestion['description'] ?? 'Destination';
+
+    if ((lat == null || lng == null || lat == 0.0 || lng == 0.0) && placeId.isNotEmpty) {
+      final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
+      if (placeDetails != null && placeDetails.latitude != 0.0 && placeDetails.longitude != 0.0) {
+        lat = placeDetails.latitude;
+        lng = placeDetails.longitude;
+        name = placeDetails.name;
+      }
+    }
+
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
       setState(() {
-        _destLat = placeDetails.latitude;
-        _destLng = placeDetails.longitude;
-        _destinationNameOverride = placeDetails.name;
-        _searchController.text = placeDetails.name;
+        _destLat = lat!;
+        _destLng = lng!;
+        _destinationNameOverride = name;
+        _searchController.text = name;
         _places = [];
       });
       await _fetchRoute();
@@ -2131,6 +2168,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       _addMarkers();
     } else {
       setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not locate coordinates for "$name"'),
+            backgroundColor: Colors.black87,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -2250,7 +2296,9 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                 overflow: TextOverflow.ellipsis,
               ),
               subtitle: Text(
-                item['description'] ?? '',
+                (item['secondary_text'] != null && (item['secondary_text'] as String).isNotEmpty)
+                    ? item['secondary_text']!
+                    : (item['description'] ?? ''),
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 11),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

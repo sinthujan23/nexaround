@@ -1,11 +1,18 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:dio/dio.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:shimmer/shimmer.dart';
 
 class LocationSearchModal extends StatefulWidget {
-  const LocationSearchModal({super.key});
+  final double? currentLatitude;
+  final double? currentLongitude;
+
+  const LocationSearchModal({
+    super.key,
+    this.currentLatitude,
+    this.currentLongitude,
+  });
 
   @override
   State<LocationSearchModal> createState() => _LocationSearchModalState();
@@ -45,13 +52,14 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       return;
     }
 
-    _debounce = Timer(const Duration(milliseconds: 500), () {
+    _debounce = Timer(const Duration(milliseconds: 200), () {
       _executeSearch(query);
     });
   }
 
   Future<void> _executeSearch(String query) async {
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       setState(() {
         _suggestions = [];
         _isLoading = false;
@@ -62,47 +70,26 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await Dio().get(
-        'https://nominatim.openstreetmap.org/search',
-        queryParameters: {
-          'q': query,
-          'format': 'jsonv2',
-          'addressdetails': 1,
-          'limit': 5,
-          'featuretype': 'city', // Prefer cities/districts for global search
-          'accept-language': 'en',
-        },
-        options: Options(
-          headers: {
-            'User-Agent': 'NexAroundApp/1.0',
-            'Accept-Language': 'en',
-          },
-        ),
+      final results = await GooglePlacesService.getAutocompleteSuggestions(
+        input: trimmed,
+        latitude: widget.currentLatitude ?? 6.9271,
+        longitude: widget.currentLongitude ?? 79.8612,
       );
 
-      if (response.statusCode == 200) {
-        final List<dynamic> data = response.data;
-        final List<Map<String, dynamic>> results = data.map((item) {
-          final addr = item['address'] as Map<String, dynamic>?;
-          final city = addr?['city'] ?? addr?['town'] ?? addr?['village'] ?? item['name'] ?? item['display_name']?.split(',')[0] ?? 'Unknown';
-          final country = addr?['country'];
-          final displayName = country != null ? '$city, $country' : city;
-
-          return {
-            'latitude': double.tryParse(item['lat'] ?? '0') ?? 0.0,
-            'longitude': double.tryParse(item['lon'] ?? '0') ?? 0.0,
-            'name': displayName,
-            'address': item['display_name'] ?? '',
-            'district': addr?['county'] ?? addr?['state_district'] ?? addr?['city'] ?? item['name'],
-          };
-        }).toList();
-
-        if (mounted) {
-          setState(() {
-            _suggestions = results;
-            _isLoading = false;
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _suggestions = results.map((item) {
+            return {
+              'place_id': item['place_id'] ?? '',
+              'name': item['main_text'] ?? item['description'] ?? '',
+              'address': item['secondary_text'] ?? item['description'] ?? '',
+              'district': item['secondary_text'] ?? 'Nearby',
+              'latitude': 0.0,
+              'longitude': 0.0,
+            };
+          }).toList();
+          _isLoading = false;
+        });
       }
     } catch (e) {
       debugPrint('Location search error: $e');
@@ -115,13 +102,29 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     }
   }
 
-  void _onSuggestionTapped(Map<String, dynamic> suggestion) {
-    Navigator.pop(context, {
-      'latitude': suggestion['latitude'] as double,
-      'longitude': suggestion['longitude'] as double,
-      'name': suggestion['name'], // Display name from suggestion
-      'district': suggestion['district'] ?? 'Nearby',
-    });
+  Future<void> _onSuggestionTapped(Map<String, dynamic> suggestion) async {
+    final placeId = suggestion['place_id'] as String?;
+    double lat = (suggestion['latitude'] as num?)?.toDouble() ?? 0.0;
+    double lng = (suggestion['longitude'] as num?)?.toDouble() ?? 0.0;
+    String name = suggestion['name'] as String? ?? 'Location';
+
+    if ((lat == 0.0 || lng == 0.0) && placeId != null && placeId.isNotEmpty) {
+      final details = await GooglePlacesService.getPlaceDetails(placeId);
+      if (details != null) {
+        lat = details.latitude;
+        lng = details.longitude;
+        name = details.name;
+      }
+    }
+
+    if (mounted) {
+      Navigator.pop(context, {
+        'latitude': lat,
+        'longitude': lng,
+        'name': name,
+        'district': suggestion['district'] ?? 'Nearby',
+      });
+    }
   }
 
   @override

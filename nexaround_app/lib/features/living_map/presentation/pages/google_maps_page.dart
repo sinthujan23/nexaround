@@ -400,6 +400,17 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
   }
 
   Future<void> _fetchRoute() async {
+    if (_destLat == 0.0 || _destLng == 0.0) return;
+    if (_userLat == null || _userLng == null) {
+      try {
+        final pos = await geo.Geolocator.getCurrentPosition(
+          desiredAccuracy: geo.LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 3),
+        );
+        _userLat = pos.latitude;
+        _userLng = pos.longitude;
+      } catch (_) {}
+    }
     if (_userLat == null || _userLng == null) return;
 
     try {
@@ -944,8 +955,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       setState(() => _suggestions = []);
       return;
     }
-    // Debounce: wait 400ms after user stops typing, then fetch autocomplete
-    _debounceTimer = Timer(const Duration(milliseconds: 400), () async {
+    // Debounce: 200ms for fast Google Maps-like typing response
+    _debounceTimer = Timer(const Duration(milliseconds: 200), () async {
       try {
         final results = await GooglePlacesService.getAutocompleteSuggestions(
           input: text.trim(),
@@ -973,16 +984,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     double? lng = (suggestion['longitude'] as num?)?.toDouble();
     String name = suggestion['main_text'] ?? suggestion['description'] ?? 'Destination';
 
-    if ((lat == null || lng == null) && placeId != null && placeId.isNotEmpty) {
+    if ((lat == null || lng == null || lat == 0.0 || lng == 0.0) && placeId != null && placeId.isNotEmpty) {
       final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
-      if (placeDetails != null) {
+      if (placeDetails != null && placeDetails.latitude != 0.0 && placeDetails.longitude != 0.0) {
         lat = placeDetails.latitude;
         lng = placeDetails.longitude;
         name = placeDetails.name;
       }
     }
 
-    if (lat != null && lng != null) {
+    if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
       setState(() {
         _destLat = lat!;
         _destLng = lng!;
@@ -990,8 +1001,18 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
         _searchController.text = name;
       });
       _addDestinationMarker();
-      await _fetchRoute();
       _animateCameraToDestination();
+      await _fetchRoute();
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not locate coordinates for "$name"'),
+            backgroundColor: Colors.black87,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -1132,8 +1153,10 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                           style: const TextStyle(color: Color(0xFF202124), fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                         subtitle: Text(
-                          item['description'] ?? '',
-                          style: TextStyle(color: const Color(0xFF5F6368), fontSize: 11),
+                          (item['secondary_text'] != null && (item['secondary_text'] as String).isNotEmpty)
+                              ? item['secondary_text']!
+                              : (item['description'] ?? ''),
+                          style: const TextStyle(color: Color(0xFF5F6368), fontSize: 11),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
