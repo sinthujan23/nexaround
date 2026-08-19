@@ -98,7 +98,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
   final List<String> _categories = [
     'All',
-    'POI',
+    'Attractions',
     'Food & Drink',
     'Hotels',
     'Shopping',

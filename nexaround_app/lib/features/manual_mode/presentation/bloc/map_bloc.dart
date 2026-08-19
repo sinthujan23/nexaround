@@ -34,11 +34,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     if (filterName == 'hotels') {
       return catName.contains('hotel') || catName.contains('lodging') || catName.contains('resort') || catName.contains('motel');
     }
-    if (filterName == 'medical' || filterName == 'hospital') {
+    if (filterName == 'medical') {
       return catName.contains('medical') || catName.contains('hospital') || catName.contains('pharmacy') || catName.contains('doctor') || catName.contains('clinic') || catName.contains('health');
     }
-    if (filterName == 'poi' || filterName == 'attractions' || filterName == 'historical' || filterName == 'nature') {
-      return catName.contains('poi') || catName.contains('attraction') || catName.contains('museum') || catName.contains('temple') || catName.contains('historic') || catName.contains('monument') || catName.contains('landmark') || catName.contains('nature') || catName.contains('park') || catName.contains('beach') || catName.contains('lake') || catName.contains('garden');
+    if (filterName == 'attractions' || filterName == 'historical') {
+      return catName.contains('attraction') || catName.contains('museum') || catName.contains('temple') || catName.contains('historic') || catName.contains('monument') || catName.contains('landmark');
     }
     if (filterName == 'experiences') {
       return catName.contains('experience') || catName.contains('amusement') || catName.contains('park') || catName.contains('entertainment') || catName.contains('zoo');
@@ -186,71 +186,182 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         allAttractions: const [],
       ));
 
-      const categoriesToFetch = [
-        'POI',
+      final categoriesToFetch = [
+        'Attractions',
         'Food & Drink',
+        'Hotels',
         'Shopping',
         'Medical',
+        'Hospital',
+        'Nature',
       ];
 
       final Map<String, AttractionEntity> uniqueAttractions = {};
 
       try {
-        // --- PRIMARY: Single Unified Batch Fetch (1 Network Call for all 4 Categories) ---
-        List<AttractionEntity> fetched = [];
-        final batchMap = await GooglePlacesService.fetchNearbyPlacesBatch(
-          latitude: event.latitude,
-          longitude: event.longitude,
-          categories: categoriesToFetch,
-          radius: 50000,
-          useLegacy: event.useLegacy,
-        );
-
-        if (batchMap.isNotEmpty && batchMap.values.any((l) => l.isNotEmpty)) {
-          for (final entry in batchMap.entries) {
-            final cat = entry.key;
-            for (final p in entry.value) {
-              fetched.add(AttractionModel(
-                id: p.id,
-                name: p.name,
-                description: p.description,
-                history: p.history,
-                latitude: p.latitude,
-                longitude: p.longitude,
-                categoryId: p.categoryId,
-                categoryName: cat,
-                address: p.address,
-                openingHours: p.openingHours,
-                entryFee: p.entryFee,
-                currency: p.currency,
-                rating: p.rating,
-                reviewCount: p.reviewCount,
-                photoUrls: p.photoUrls,
-                tags: p.tags,
-                geofenceRadiusM: p.geofenceRadiusM,
-                distanceM: p.distanceM,
-                isActive: p.isActive,
-                createdAt: p.createdAt,
-              ));
-            }
-          }
-        } else {
-          // --- FALLBACK: Query 4 categories from repository ---
-          final mainFutures = categoriesToFetch.map((cat) async {
-            final double radius = (cat == 'Medical' || cat == 'POI') ? 50000.0 : 15000.0;
-            final repoRes = await _repository.getNearbyAttractions(
+        final mainFutures = categoriesToFetch.map((cat) async {
+          final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
+          
+          if (targetCategories.contains(cat)) {
+            // --- LAYER 1: Backend Database & Cache (Primary — 0 AI cost on hit) ---
+            final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
+            var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
               radius: radius,
               categoryName: cat,
               useLegacy: event.useLegacy,
             );
-            return repoRes.fold((_) => <AttractionEntity>[], (r) => r);
-          }).toList();
+            var repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
 
-          final results = await Future.wait(mainFutures);
-          fetched = results.expand((x) => x).toList();
-        }
+            if (repoList.isEmpty && !event.useLegacy) {
+              repoRes = await _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: radius,
+                categoryName: cat,
+                useLegacy: true,
+              );
+              repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            }
+
+            var mergedList = repoList;
+            final Map<String, AttractionEntity> mergedMap = {};
+            void addPlaceToMerged(AttractionEntity p) {
+              final normName = p.name.trim().toLowerCase();
+              final placeId = p.id.trim();
+              String targetKey = normName.isNotEmpty ? normName : placeId;
+              for (final existingKey in mergedMap.keys) {
+                final item = mergedMap[existingKey]!;
+                if ((normName.isNotEmpty && item.name.trim().toLowerCase() == normName) ||
+                    (placeId.isNotEmpty && item.id.trim() == placeId)) {
+                  targetKey = existingKey;
+                  break;
+                }
+              }
+              mergedMap[targetKey] = p;
+            }
+
+            for (final p in repoList) {
+              addPlaceToMerged(p);
+            }
+
+            // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
+            if (mergedList.length < 15) {
+              final discoveryRadius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000 : 15000;
+              final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
+
+              // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)
+              try {
+                print('🔄 Primary method returned only ${mergedList.length} results for $cat. Falling back to fetchNearbyPlaces...');
+                final discoveryFallback = await GooglePlacesService.fetchNearbyPlaces(
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                  categoryName: discoveryCategory,
+                  radius: discoveryRadius,
+                );
+                for (final p in discoveryFallback) {
+                  // Force category name match for UI
+                  final correctedP = AttractionModel(
+                    id: p.id, name: p.name, description: p.description, history: p.history,
+                    latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                    categoryName: cat, address: p.address, openingHours: p.openingHours, 
+                    entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                    photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                  );
+                  addPlaceToMerged(correctedP);
+                }
+                mergedList = mergedMap.values.toList();
+                print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
+              } catch (e) {
+                print('⚠️ fetchNearbyPlaces fallback failed for $cat: $e');
+              }
+
+              // Fallback 2: Direct Google Nearby Search legacy API if still under 15
+              if (mergedList.length < 15) {
+                try {
+                  print('🔄 Still only ${mergedList.length} results for $cat. Falling back to Google legacy Nearby Search...');
+                  final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
+                    latitude: event.latitude,
+                    longitude: event.longitude,
+                    categoryName: discoveryCategory,
+                    radius: discoveryRadius,
+                  );
+                  for (final p in legacyFallback) {
+                    final correctedP = AttractionModel(
+                      id: p.id, name: p.name, description: p.description, history: p.history,
+                      latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                      categoryName: cat, address: p.address, openingHours: p.openingHours, 
+                      entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                      photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                      distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                    );
+                    addPlaceToMerged(correctedP);
+                  }
+                  mergedList = mergedMap.values.toList();
+                  print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
+                } catch (e) {
+                  print('⚠️ Google legacy fallback also failed for $cat: $e');
+                }
+              }
+
+              // Recalculate distances and sort by proximity
+              mergedList = mergedList.map((p) {
+                final distM = geo.Geolocator.distanceBetween(
+                  event.latitude, event.longitude,
+                  p.latitude, p.longitude,
+                );
+                return AttractionModel(
+                  id: p.id, name: p.name, description: p.description, history: p.history,
+                  latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                  categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
+                  entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                  photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                  distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
+                );
+              }).toList();
+              mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+              print('✅ Final: ${mergedList.length} results for $cat (sorted by distance)');
+            }
+
+            if (cat == 'Nature' && mergedList.isNotEmpty) {
+              mergedList = mergedList.where((p) => _isValidPlace(p.name, cat)).toList();
+              print('🛡️ Exclusion Filter applied for Nature: retained ${mergedList.length} places');
+            }
+
+            if (mergedList.isNotEmpty) {
+              return mergedList;
+            }
+            return <AttractionEntity>[];
+          } else {
+            var repoRes = await _repository.getNearbyAttractions(
+              latitude: event.latitude,
+              longitude: event.longitude,
+              radius: 15000.0,
+              categoryName: cat,
+              useLegacy: event.useLegacy,
+            );
+            var list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+
+            if (list.isEmpty && !event.useLegacy) {
+              print('⚠️ Fallback list empty for $cat. Retrying with useLegacy=true');
+              repoRes = await _repository.getNearbyAttractions(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                radius: 15000.0,
+                categoryName: cat,
+                useLegacy: true,
+              );
+              list = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
+            }
+            return list;
+          }
+        }).toList();
+
+        final results = await Future.wait(mainFutures);
+
+        final fetched = results.expand((x) => x).toList();
         for (final a in fetched) {
           // Use a composite key of name + categoryName so that the same physical
           // place fetched under different categories is stored separately, each

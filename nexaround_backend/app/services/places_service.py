@@ -111,7 +111,7 @@ def _enforce_distance_distribution(places: list[dict], radius_m: int, category: 
             is_mall = "shopping_mall" in tags
             return (0 if is_mall else 1, p.get("distance_m", 0))
         selected.sort(key=sort_key)
-    elif category in ("Attractions", "POI"):
+    elif category == "Attractions":
         # Prioritize beaches, parks, museums, and historical landmarks, then sort by distance
         def sort_key(p):
             tags = set(p.get("tags") or [])
@@ -307,7 +307,7 @@ async def seed_places_from_google_bg(
                 if not p_name or plat is None or plng is None:
                     continue
 
-                if category in ("Attractions", "POI"):
+                if category == "Attractions":
                     exclude_tags = {
                         "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
                         "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
@@ -502,7 +502,7 @@ async def get_nearby(
             for attr, dist in nearby_db_attractions
         ]
 
-        if category in ("Attractions", "POI"):
+        if category == "Attractions":
             exclude_tags = {
                 "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
                 "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
@@ -677,7 +677,7 @@ async def get_nearby(
             for p in raw_places
         ]
 
-    if category in ("Attractions", "POI"):
+    if category == "Attractions":
         exclude_tags = {
             "spa", "beauty_salon", "hair_care", "hair_salon", "nail_salon", "massage",
             "school", "primary_school", "secondary_school", "preschool", "kindergarten", "university",
@@ -1297,66 +1297,4 @@ async def get_place_details(place_id: str) -> Optional[dict]:
 
     details["cached"] = False
     return details
-
-
-async def get_nearby_batch(
-    *,
-    latitude: float,
-    longitude: float,
-    categories: list[str],
-    radius: int = 50000,
-    use_legacy: bool = False,
-    max_photos: int = 1,
-    limit: int = 20,
-) -> dict:
-    """Fetch nearby places for multiple categories in a single unified operation."""
-    import asyncio
-
-    canonical_cats = []
-    seen = set()
-    for cat in categories:
-        c = google_places_client.canonical_category(cat)
-        if c and c not in seen:
-            seen.add(c)
-            canonical_cats.append(c)
-
-    if not canonical_cats:
-        canonical_cats = ["POI", "Food & Drink", "Shopping", "Medical"]
-
-    async def fetch_category(cat: str):
-        try:
-            res = await get_nearby(
-                latitude=latitude,
-                longitude=longitude,
-                category=cat,
-                radius=radius,
-                use_legacy=use_legacy,
-                max_photos=max_photos,
-                limit=limit,
-            )
-            return cat, [p.model_dump() for p in res.places]
-        except Exception as e:
-            print(f"⚠️ Batch fetch error for {cat}: {e}")
-            return cat, []
-
-    results = await asyncio.gather(*(fetch_category(c) for c in canonical_cats))
-    
-    places_by_cat = {}
-    all_places = []
-    seen_ids = set()
-
-    for cat, places in results:
-        places_by_cat[cat] = places
-        for p in places:
-            pid = p.get("id")
-            if pid and pid not in seen_ids:
-                seen_ids.add(pid)
-                all_places.append(p)
-
-    return {
-        "categories": canonical_cats,
-        "places_by_category": places_by_cat,
-        "all_places": all_places,
-        "total": len(all_places),
-    }
 

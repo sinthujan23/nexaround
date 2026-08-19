@@ -45,20 +45,3 @@ class TrendingExperiencesResponse(BaseModel):
     places: list[PlaceResponse]
     cached: bool = False
 
-
-class PlacesNearbyBatchRequest(BaseModel):
-    latitude: float = Field(..., ge=-90.0, le=90.0)
-    longitude: float = Field(..., ge=-180.0, le=180.0)
-    categories: list[str] = Field(default=["POI", "Food & Drink", "Shopping", "Medical"])
-    radius: int = Field(default=50000, ge=100, le=50000)
-    use_legacy: bool = False
-    max_photos: int = Field(default=1, ge=1, le=10)
-    limit: int = Field(default=20, ge=1, le=100)
-
-
-class PlacesNearbyBatchResponse(BaseModel):
-    categories: list[str]
-    places_by_category: dict[str, list[PlaceResponse]]
-    all_places: list[PlaceResponse]
-    total: int
-

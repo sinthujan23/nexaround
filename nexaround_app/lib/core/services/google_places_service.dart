@@ -360,75 +360,12 @@ class GooglePlacesService {
   static String _resolveCategoryFromTypes(List<String> types) {
     final t = types.map((s) => s.toLowerCase()).join(' ');
     
-    if (t.contains('hospital') || t.contains('clinic') || t.contains('pharmacy') || t.contains('doctor') || t.contains('medical') || t.contains('health')) return 'Medical';
-    if (t.contains('mall') || t.contains('market') || t.contains('shop') || t.contains('store')) return 'Shopping';
+    if (t.contains('hospital')) return 'Hospital';
+    if (t.contains('clinic') || t.contains('pharmacy') || t.contains('doctor') || t.contains('medical')) return 'Medical';
+    if (t.contains('mall') || t.contains('market') || t.contains('shop')) return 'Shopping';
     if (t.contains('restaurant') || t.contains('cafe') || t.contains('bakery') || t.contains('hotel') || t.contains('bar') || t.contains('lodging') || t.contains('food')) return 'Food & Drink';
     
-    return 'POI';
-  }
-
-  /// Fetch nearby places for multiple categories in a single unified network request.
-  static Future<Map<String, List<AttractionEntity>>> fetchNearbyPlacesBatch({
-    required double latitude,
-    required double longitude,
-    List<String> categories = const ['POI', 'Food & Drink', 'Shopping', 'Medical'],
-    int radius = 50000,
-    bool useLegacy = false,
-  }) async {
-    final sLat = latitude.toStringAsFixed(2);
-    final sLng = longitude.toStringAsFixed(2);
-    final cacheKey = 'batch:$sLat:$sLng:${categories.join(",")}:$radius:$useLegacy';
-    final now = DateTime.now();
-
-    if (_clientCache.containsKey(cacheKey) && _clientCacheExpiry.containsKey(cacheKey)) {
-      if (now.isBefore(_clientCacheExpiry[cacheKey]!)) {
-        debugPrint('⚡ Returning client-cached batch places for $cacheKey');
-        final cachedPlaces = _clientCache[cacheKey]!;
-        final Map<String, List<AttractionEntity>> grouped = {};
-        for (final cat in categories) {
-          grouped[cat] = cachedPlaces.where((p) => (p.categoryName ?? '').toLowerCase() == cat.toLowerCase()).toList();
-        }
-        return grouped;
-      }
-    }
-
-    try {
-      final response = await ApiClient.instance.post(
-        '${ApiConstants.apiVersion}/places/nearby/batch',
-        data: {
-          'latitude': latitude,
-          'longitude': longitude,
-          'categories': categories,
-          'radius': radius,
-          'use_legacy': useLegacy,
-        },
-      );
-
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final Map<String, dynamic> rawByCat = data['places_by_category'] as Map<String, dynamic>? ?? {};
-        final Map<String, List<AttractionEntity>> result = {};
-        final List<AttractionEntity> allBatchPlaces = [];
-
-        rawByCat.forEach((cat, list) {
-          final pList = (list as List? ?? [])
-              .map((p) => AttractionModel.fromJson(p))
-              .toList();
-          result[cat] = pList;
-          allBatchPlaces.addAll(pList);
-        });
-
-        _clientCache[cacheKey] = allBatchPlaces;
-        _clientCacheExpiry[cacheKey] = now.add(const Duration(minutes: 10));
-
-        debugPrint('✅ Batch places fetched successfully: ${allBatchPlaces.length} total across ${result.keys.length} categories');
-        return result;
-      }
-      return {};
-    } catch (e) {
-      debugPrint('⚠️ Error fetching nearby places batch: $e');
-      return {};
-    }
+    return 'Attractions';
   }
 
   /// Get driving directions between two coordinates.
