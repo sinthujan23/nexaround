@@ -40,6 +40,27 @@ class PlacesNearbyResponse(BaseModel):
     source: str = Field("google", description="google | cache")
 
 
+class PlaceBand(BaseModel):
+    """One distance band of an Around You / Discovery section."""
+    index: int
+    min_m: float
+    max_m: float
+    label: str = Field(..., description="Human-readable range, e.g. '10–25 km'")
+    places: list[PlaceResponse]
+
+
+class BandedPlacesResponse(BaseModel):
+    category: str
+    bands: list[PlaceBand]
+    places: list[PlaceResponse] = Field(
+        ...,
+        description="All bands flattened, nearest first — for clients that "
+                    "render one list and don't care about band boundaries.",
+    )
+    cached: bool = False
+    source: str = Field("database", description="cache | database | google")
+
+
 class TrendingExperiencesResponse(BaseModel):
     markdown: str
     places: list[PlaceResponse]

@@ -81,6 +81,20 @@ async def set_cached(key: str, places: list[dict]) -> None:
         pass
 
 
+async def delete_cached(key: str) -> None:
+    """Drop an entry from both tiers.
+
+    Used when a background job has seeded new places behind a cached payload:
+    retiring the entry is better than letting the thinner list serve out the
+    remaining TTL.
+    """
+    _mem_cache.pop(key, None)
+    try:
+        await _get_client().delete(key)
+    except Exception as e:
+        print(f"⚠️ Redis DEL error: {e}")
+
+
 async def get_raw(key: str) -> Optional[str]:
     """Return the raw cached string value or None on miss."""
     try:

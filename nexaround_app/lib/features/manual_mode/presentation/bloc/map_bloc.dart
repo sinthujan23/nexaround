@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+import 'package:nexaround_app/core/constants/place_bands.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
@@ -13,6 +14,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
   MapBloc(this._repository) : super(const MapState()) {
     on<FetchNearbyAttractions>(_onFetchNearbyAttractions);
+    on<FetchBandedPlaces>(_onFetchBandedPlaces);
     on<FetchCategories>(_onFetchCategories);
     on<UpdateMapType>(_onUpdateMapType);
     on<SelectAttraction>(_onSelectAttraction);
@@ -134,6 +136,65 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     }
   }
 
+  /// Fetch radius for a category, taken from the band table where one applies.
+  ///
+  /// 'Attractions' and 'Nature' were folded into POI, and 'Hospital' into
+  /// Medical, so they inherit those ranges.
+  static double _radiusForCategory(String category) {
+    switch (category) {
+      case 'Food & Drink':
+      case 'Food':
+        return PlaceBands.maxMetresFor('Food & Drink');
+      case 'Shopping':
+        return PlaceBands.maxMetresFor('Shopping');
+      case 'Medical':
+      case 'Hospital':
+        return PlaceBands.maxMetresFor('Medical');
+      default:
+        return PlaceBands.maxMetresFor('POI');
+    }
+  }
+
+  /// The four sections shown by Around You and the Discovery tabs.
+  static const List<String> bandedCategories = [
+    'Food & Drink',
+    'POI',
+    'Shopping',
+    'Medical',
+  ];
+
+  Future<void> _onFetchBandedPlaces(
+    FetchBandedPlaces event,
+    Emitter<MapState> emit,
+  ) async {
+    emit(state.copyWith(isLoadingBands: true));
+
+    // All four in parallel: they hit independent cache keys on the backend and
+    // one slow category should not hold up the other three.
+    final results = await Future.wait(
+      bandedCategories.map((cat) async {
+        final bands = await GooglePlacesService.fetchBandedPlaces(
+          latitude: event.latitude,
+          longitude: event.longitude,
+          categoryName: cat,
+          forceRefresh: event.forceRefresh,
+        );
+        return MapEntry(cat, bands);
+      }),
+    );
+
+    // A category that returned nothing keeps whatever it had rather than
+    // blanking the section — a transient failure should not empty the UI.
+    final merged = Map<String, List<List<AttractionEntity>>>.from(
+      state.bandedPlaces,
+    );
+    for (final entry in results) {
+      if (entry.value.isNotEmpty) merged[entry.key] = entry.value;
+    }
+
+    emit(state.copyWith(bandedPlaces: merged, isLoadingBands: false));
+  }
+
   Future<void> _onFetchNearbyAttractions(
     FetchNearbyAttractions event,
     Emitter<MapState> emit,
@@ -203,7 +264,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           
           if (targetCategories.contains(cat)) {
             // --- LAYER 1: Backend Database & Cache (Primary — 0 AI cost on hit) ---
-            final double radius = (cat == 'POI' || cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
+            // Radius comes from the band table so the map fetch and the section
+            // fetch agree on how far each category reaches. Food & Drink used to
+            // be queried at 15 km and then filtered to 12 in the UI, neither of
+            // which matched its actual 5 km range.
+            final double radius = _radiusForCategory(cat);
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,
@@ -247,7 +312,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
             // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
             if (mergedList.length < 15) {
-              final discoveryRadius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000 : 15000;
+              // POI was missing from this list, so its Google fallback searched
+              // 15 km while the primary query searched 50 — the outer band had
+              // nothing to draw on whenever the fallback was the path taken.
+              final discoveryRadius = _radiusForCategory(cat).round();
               final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
 
               // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)

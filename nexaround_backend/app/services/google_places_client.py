@@ -16,50 +16,73 @@ _BASE = "https://maps.googleapis.com/maps/api"
 
 # Expanded Google Place types map to retrieve a much wider and richer set of places
 # for each application category, resolving the issue of sparse results.
+#
+# Every type here is verified against Places API (New). That matters for cost,
+# not just correctness: the API rejects the WHOLE request with 400 if a single
+# includedType is unsupported, and the self-heal loop below then re-issues it —
+# a second billed request on every call. These eight legacy types used to sit in
+# the map and were doing exactly that to POI, Food & Drink and Medical:
+#
+#   food, health, nature_reserve, place_of_worship, resort, scenic_point,
+#   scenic_viewpoint, waterfall
+#
+# Replacements below are drawn only from types the API confirmed it accepts
+# (wildlife_refuge/wildlife_park for nature_reserve, the individual worship
+# types for place_of_worship, observation_deck for scenic_viewpoint, and so on).
+# To re-audit after Google changes its type list, probe includedTypes with a
+# deliberately invalid sentinel type appended: the 400 names every unsupported
+# type in the batch, and a 400 is not billed.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "POI": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
-        "amusement_park", "national_park", "hiking_area", "beach",
-        "historical_landmark", "place_of_worship", "hindu_temple", "church", 
-        "mosque", "buddhist_temple", "cultural_center", "marina", "visitor_center",
-        "observation_deck", "nature_reserve", "scenic_point", "waterfall", 
-        "monument", "castle", "scenic_viewpoint", "lake", "river", "botanical_garden"
+        "amusement_park", "national_park", "state_park", "hiking_area", "beach",
+        "historical_landmark", "historical_place", "cultural_landmark",
+        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
+        "cultural_center", "marina", "visitor_center", "observation_deck",
+        "wildlife_refuge", "wildlife_park", "monument", "castle", "sculpture",
+        "lake", "river", "botanical_garden", "garden"
     ],
     "Attractions": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
         "amusement_park", "national_park", "hiking_area", "beach",
-        "historical_landmark", "place_of_worship", "hindu_temple", "church", 
-        "mosque", "buddhist_temple", "cultural_center", "marina", "visitor_center",
-        "observation_deck", "nature_reserve", "scenic_point", "waterfall", 
-        "monument", "castle"
+        "historical_landmark", "historical_place", "cultural_landmark",
+        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
+        "cultural_center", "marina", "visitor_center", "observation_deck",
+        "wildlife_refuge", "monument", "castle"
     ],
     "Food & Drink": [
-        "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food",
-        "bar", "night_club", "ice_cream_shop", "coffee_shop"
+        "restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery",
+        "bar", "night_club", "ice_cream_shop", "coffee_shop", "tea_house",
+        "fast_food_restaurant", "dessert_shop", "food_court"
     ],
     "Hotels": [
-        "lodging", "hotel", "motel", "resort", "bed_and_breakfast", "hostel",
-        "guest_house", "campground"
+        "lodging", "hotel", "motel", "resort_hotel", "bed_and_breakfast",
+        "hostel", "guest_house", "campground", "inn", "cottage"
     ],
     "Shopping": [
         "shopping_mall", "supermarket", "store", "department_store",
         "convenience_store", "clothing_store", "electronics_store", "market",
-        "grocery_store", "pharmacy"
+        "grocery_store", "pharmacy", "gift_shop", "book_store", "jewelry_store",
+        "shoe_store", "sporting_goods_store", "home_goods_store"
     ],
     "Experiences": [
         "amusement_park", "aquarium", "zoo", "museum", "art_gallery",
-        "bowling_alley", "movie_theater", "spa", "casino", "golf_course"
+        "bowling_alley", "movie_theater", "spa", "casino", "golf_course",
+        "water_park", "planetarium", "performing_arts_theater"
     ],
     "Transport": [
-        "transit_station", "airport", "bus_station", "train_station", "taxi_stand"
+        "transit_station", "airport", "bus_station", "train_station", "taxi_stand",
+        "subway_station", "ferry_terminal", "light_rail_station"
     ],
     "Medical": [
-        "hospital", "pharmacy", "doctor", "dentist", "health", "physiotherapist",
+        "hospital", "pharmacy", "drugstore", "doctor", "dentist",
+        "dental_clinic", "physiotherapist", "chiropractor", "medical_lab",
         "veterinary_care", "medical_clinic"
     ],
     "Nature": [
-        "beach", "national_park", "hiking_area", "nature_reserve",
-        "scenic_viewpoint", "waterfall", "lake", "river", "botanical_garden"
+        "beach", "national_park", "state_park", "hiking_area", "wildlife_refuge",
+        "wildlife_park", "observation_deck", "lake", "river", "botanical_garden",
+        "garden", "picnic_ground"
     ],
     "Beach": [
         "park", "tourist_attraction", "beach"
@@ -187,17 +210,28 @@ async def nearby_search(
     longitude: float,
     category: Optional[str],
     radius: int,
+    included_types_override: Optional[list[str]] = None,
+    type_group: Optional[str] = None,
 ) -> list[dict]:
-    """Call Google Nearby Search (New). Returns the raw places list (unfiltered)."""
+    """Call Google Nearby Search (New). Returns the raw places list (unfiltered).
+
+    `included_types_override` narrows the search to a subset of the category's
+    types — used by the banded fetch to give each POI sub-group its own request,
+    so the 20-result cap is competed for within one theme instead of across all
+    of them. `type_group` only labels the telemetry row.
+    """
     # Cap radius between 1 and 50000 meters for the new Places API
     eff_radius = float(min(max(radius, 1), 50000))
 
     # Normalize any UI label (e.g. AR tile 'food') to a canonical key so the
     # type filter is actually applied instead of silently searching everything.
     category = canonical_category(category)
-    included_types = []
-    if category and category in CATEGORY_TYPES_MAP:
+    if included_types_override is not None:
+        included_types = included_types_override
+    elif category and category in CATEGORY_TYPES_MAP:
         included_types = CATEGORY_TYPES_MAP[category]
+    else:
+        included_types = []
 
     async with async_session() as db:
         settings_service = SettingsService(db)
@@ -251,7 +285,10 @@ async def nearby_search(
             async with telemetry.track(
                 "google_maps", "nearby_search",
                 sku="nearby_search_new",
-                cache_key=f"nb:{latitude:.4f}:{longitude:.4f}:{category}:{radius}",
+                cache_key=(
+                    f"nb:{latitude:.4f}:{longitude:.4f}:{category}"
+                    f"{':' + type_group if type_group else ''}:{radius}"
+                ),
                 params=body,
             ) as t:
                 resp = await client.post(

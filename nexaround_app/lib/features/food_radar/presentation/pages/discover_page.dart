@@ -172,6 +172,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         categoryName: category,
         useLegacy: _tabs[index] == 'POI',
       ));
+      // Around You is the quick-access surface for these same tabs, so both
+      // read the same band-aware result rather than each deriving its own.
+      context.read<MapBloc>().add(FetchBandedPlaces(
+        latitude: lat,
+        longitude: lng,
+      ));
     }
   }
 
@@ -391,7 +397,19 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     final isLoading = _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
                     
                     // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
-                    final rawMasterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
+                    final baseList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
+
+                    // The banded fetch goes looking for places in the outer
+                    // distance bands, which a radius query centred on the user
+                    // never returns — Google ranks its twenty results by
+                    // prominence around the centre. Merging them in means the
+                    // Discovery tabs list the same far-out places Around You
+                    // shows, instead of stopping where the map data stops.
+                    final bandedPlaces = state.bandedPlaces.values
+                        .expand((bands) => bands.expand((band) => band))
+                        .toList();
+
+                    final rawMasterList = [...baseList, ...bandedPlaces];
                     final masterList = _deduplicateAttractions(rawMasterList);
                     
                     // Filter POI List (Points of Interest: Merges Attractions, Nature, Experiences, Landmarks, Heritage, Culture, Beaches, Parks, Waterfalls)

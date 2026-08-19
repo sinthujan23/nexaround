@@ -12,8 +12,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.api.deps import get_current_user, get_current_user_optional
 from app.models.user import User
-from app.schemas.place import PlacesNearbyResponse, TrendingExperiencesResponse
-from app.services import places_service, photo_cache_service, telemetry
+from app.schemas.place import (
+    BandedPlacesResponse,
+    PlacesNearbyResponse,
+    TrendingExperiencesResponse,
+)
+from app.services import (
+    banded_places_service,
+    places_service,
+    photo_cache_service,
+    telemetry,
+)
 
 router = APIRouter(prefix="/places", tags=["places"])
 
@@ -42,6 +51,36 @@ async def get_nearby_places(
         offset=offset,
     )
 
+
+
+@router.get("/nearby/banded", response_model=BandedPlacesResponse)
+async def get_nearby_places_banded(
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+    category: str = Query(..., description="Food & Drink | POI | Shopping | Medical"),
+    max_photos: int = Query(1, ge=1, le=10, description="Max photos per place"),
+    force_refresh: bool = Query(False, description="Bypass the Redis entry"),
+    current_user: User = Depends(get_current_user),
+):
+    """Places for one Around You / Discovery section, split into distance bands.
+
+    Returns fifteen places — five from each of three bands whose widths are set
+    per category (see `place_bands.CATEGORY_BANDS`) — so the section reads as a
+    progression outward instead of fifteen near-identical nearby results. Bands
+    the database cannot fill are backfilled nearest-first, so the count holds up
+    in sparse areas.
+
+    Kept separate from `/nearby` deliberately: the AR ring, the emergency card
+    and text search all want a flat radius query, and should not inherit band
+    semantics or the extra Google requests that filling an outer band can cost.
+    """
+    return await banded_places_service.get_nearby_banded(
+        latitude=lat,
+        longitude=lng,
+        category=category,
+        max_photos=max_photos,
+        force_refresh=force_refresh,
+    )
 
 
 @router.get("/search", response_model=PlacesNearbyResponse)

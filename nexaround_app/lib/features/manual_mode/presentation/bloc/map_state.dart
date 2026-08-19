@@ -13,6 +13,13 @@ class MapState extends Equatable {
   final String? errorMessage;
   final bool isSatellite;
 
+  /// Around You / Discovery sections, keyed by category name. The inner lists
+  /// are the three distance bands, in order, each holding up to five places.
+  /// Empty until [FetchBandedPlaces] completes; the sections fall back to
+  /// grouping [allAttractions] themselves until then.
+  final Map<String, List<List<AttractionEntity>>> bandedPlaces;
+  final bool isLoadingBands;
+
   const MapState({
     this.status = MapStatus.initial,
     this.attractions = const [],
@@ -22,6 +29,8 @@ class MapState extends Equatable {
     this.selectedCategoryId,
     this.errorMessage,
     this.isSatellite = false,
+    this.bandedPlaces = const {},
+    this.isLoadingBands = false,
   });
 
   MapState copyWith({
@@ -33,6 +42,8 @@ class MapState extends Equatable {
     String? selectedCategoryId,
     String? errorMessage,
     bool? isSatellite,
+    Map<String, List<List<AttractionEntity>>>? bandedPlaces,
+    bool? isLoadingBands,
   }) {
     return MapState(
       status: status ?? this.status,
@@ -43,6 +54,8 @@ class MapState extends Equatable {
       selectedCategoryId: selectedCategoryId ?? this.selectedCategoryId,
       errorMessage: errorMessage ?? this.errorMessage,
       isSatellite: isSatellite ?? this.isSatellite,
+      bandedPlaces: bandedPlaces ?? this.bandedPlaces,
+      isLoadingBands: isLoadingBands ?? this.isLoadingBands,
     );
   }
 
@@ -53,8 +66,10 @@ class MapState extends Equatable {
     allAttractions,
     categories, 
     selectedAttraction,
-    selectedCategoryId, 
+    selectedCategoryId,
     errorMessage,
-    isSatellite
+    isSatellite,
+    bandedPlaces,
+    isLoadingBands
   ];
 }

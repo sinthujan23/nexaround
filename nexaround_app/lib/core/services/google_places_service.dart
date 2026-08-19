@@ -135,6 +135,74 @@ class GooglePlacesService {
   }
 
   /// Fetch nearby places from backend cached Places API
+  /// Fetch one Around You / Discovery section, already split into distance
+  /// bands by the backend.
+  ///
+  /// Returns fifteen places — five per band, backfilled nearest-first when a
+  /// band is genuinely empty. Prefer this over [fetchNearbyPlaces] for the
+  /// category sections: a plain radius query returns whatever is closest, and
+  /// the outer bands stay empty however large the radius, because Google ranks
+  /// its twenty results by prominence around the centre.
+  static Future<List<List<AttractionEntity>>> fetchBandedPlaces({
+    required double latitude,
+    required double longitude,
+    required String categoryName,
+    bool forceRefresh = false,
+  }) async {
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/nearby/banded',
+        queryParameters: {
+          'lat': latitude,
+          'lng': longitude,
+          'category': categoryName,
+          if (forceRefresh) 'force_refresh': true,
+        },
+      );
+
+      if (response.statusCode != 200) return const [];
+
+      final data = response.data;
+      final bands = (data['bands'] as List? ?? [])
+          .map((b) => ((b as Map)['places'] as List? ?? [])
+              .map((p) => AttractionModel.fromJson(p) as AttractionEntity)
+              .toList())
+          .toList();
+
+      final total = bands.fold<int>(0, (sum, b) => sum + b.length);
+      debugPrint(
+        '✅ Banded places for $categoryName: $total across ${bands.length} bands '
+        '(${bands.map((b) => b.length).join('/')}) source=${data['source']}',
+      );
+      return bands;
+    } on DioException catch (e) {
+      final msg = 'status=${e.response?.statusCode} body=${e.response?.data}';
+      debugPrint('❌ Banded places fetch failed for $categoryName: $msg');
+      _recordCategoryError(categoryName, 'Could not load $categoryName nearby.');
+      return const [];
+    } catch (e) {
+      debugPrint('❌ Banded places fetch error for $categoryName: $e');
+      return const [];
+    }
+  }
+
+  static void _recordCategoryError(String categoryName, String message) {
+    switch (categoryName) {
+      case 'Medical':
+        lastMedicalError = message;
+        break;
+      case 'Food & Drink':
+        lastFoodError = message;
+        break;
+      case 'Shopping':
+        lastShoppingError = message;
+        break;
+      case 'POI':
+        lastAttractionsError = message;
+        break;
+    }
+  }
+
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
     required double longitude,

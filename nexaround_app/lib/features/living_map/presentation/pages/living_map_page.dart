@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/constants/place_bands.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
@@ -274,6 +275,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
             _fetchMiniTourPlaces(position.latitude, position.longitude);
             _preFetchArPlaces(position.latitude, position.longitude);
+            _fetchBandedSections(position.latitude, position.longitude);
           }
         });
   }
@@ -587,6 +589,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         context.read<MapBloc>().add(const FetchCategories());
         _fetchMiniTourPlaces(position.latitude, position.longitude);
         _preFetchArPlaces(position.latitude, position.longitude);
+        _fetchBandedSections(position.latitude, position.longitude);
       }
     } catch (e) {
       debugPrint('Error fetching location: $e');
@@ -617,6 +620,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       context.read<MapBloc>().add(const FetchCategories());
       _fetchMiniTourPlaces(6.9271, 79.8612);
       _preFetchArPlaces(6.9271, 79.8612);
+      _fetchBandedSections(6.9271, 79.8612);
     }
   }
 
@@ -665,9 +669,25 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
+  /// Load the four Around You / Discovery sections, banded by distance.
+  ///
+  /// Runs alongside [FetchNearbyAttractions] rather than replacing it: that
+  /// query feeds the map and its markers and wants everything nearby, while the
+  /// sections want fifteen places spread deliberately across distance.
+  void _fetchBandedSections(double lat, double lng, {bool forceRefresh = false}) {
+    if (!mounted) return;
+    context.read<MapBloc>().add(
+      FetchBandedPlaces(
+        latitude: lat,
+        longitude: lng,
+        forceRefresh: forceRefresh,
+      ),
+    );
+  }
+
   Future<void> _fetchMiniTourPlaces(double lat, double lng) async {
     if (_loadingMiniTour) return;
-    
+
     // Check MapBloc state first — if attractions are already loaded, use them (0 network calls)
     try {
       final stateAttractions = context.read<MapBloc>().state.attractions;
@@ -1484,7 +1504,10 @@ class _LivingMapPageState extends State<LivingMapPage>
           _lastFetchedLatitude = lat;
           _lastFetchedLongitude = lng;
           _fetchMiniTourPlaces(lat, lng);
-          
+          // The user picked a different location outright, so the cached
+          // sections are for somewhere else — refetch rather than show them.
+          _fetchBandedSections(lat, lng, forceRefresh: true);
+
           // Re-fetch "Around You" map places from Database / Redis
           context.read<MapBloc>().add(
             FetchNearbyAttractions(
@@ -1538,6 +1561,9 @@ class _LivingMapPageState extends State<LivingMapPage>
             GooglePlacesService.clearErrors();
             
             _fetchMiniTourPlaces(position.latitude, position.longitude);
+            _fetchBandedSections(
+              position.latitude, position.longitude, forceRefresh: true,
+            );
             context.read<MapBloc>().add(
               FetchNearbyAttractions(
                 latitude: position.latitude,
@@ -5804,44 +5830,54 @@ class _LivingMapPageState extends State<LivingMapPage>
         ) / 1000.0;
       }
 
-      if (matchesFood && filterDistKm <= 12.0) {
+      // Each category reaches exactly as far as its outermost band. These used
+      // to be independent numbers (food filtered at 12 km against a 5 km tier
+      // table, shopping at 20 against 15), which let places into the pool that
+      // no band could ever display.
+      if (matchesFood && filterDistKm <= PlaceBands.maxKmFor('Food & Drink')) {
         if (!grouped['Food & Drink']!.any((x) => x.id == place.id)) {
           grouped['Food & Drink']!.add(place);
         }
       }
-      if (matchesPOI && filterDistKm <= 50.0) {
+      if (matchesPOI && filterDistKm <= PlaceBands.maxKmFor('POI')) {
         if (!grouped['POI']!.any((x) => x.id == place.id)) {
           grouped['POI']!.add(place);
         }
       }
-      if (matchesShopping && filterDistKm <= 20.0) {
+      if (matchesShopping && filterDistKm <= PlaceBands.maxKmFor('Shopping')) {
         if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
           grouped['Shopping']!.add(place);
         }
       }
-      if (matchesMedical && filterDistKm <= 50.0) {
+      if (matchesMedical && filterDistKm <= PlaceBands.maxKmFor('Medical')) {
         if (!grouped['Medical']!.any((x) => x.id == place.id)) {
           grouped['Medical']!.add(place);
         }
       }
     }
 
-    // ── 5-Tier Progressive Distance Distribution Algorithm ─────────────────
-    // Selects strictly 5 places from 5 different progressive distance tiers (highest-rated in each tier)
-    List<AttractionEntity> selectStratified5Places({
+    // ── Distance-band selection ────────────────────────────────────────────
+    // Fifteen places per section: five from each of the category's three bands,
+    // so the list reads as a progression outward instead of fifteen variations
+    // on whatever happens to be closest.
+    //
+    // This is the fallback path, used until the backend's banded fetch lands
+    // (and if it fails). It can only band what the map already loaded, so the
+    // outer bands may be thin here — the backend can go and fetch for a band
+    // that is short, and this cannot.
+    List<AttractionEntity> selectBandedPlaces({
       required List<AttractionEntity> allPlaces,
-      required double t1,
-      required double t2,
-      required double t3,
-      required double t4,
-      required double t5,
       required String category,
     }) {
       if (allPlaces.isEmpty) return [];
 
-      // 1. Filter places to prioritize rating >= 4.0 stars
-      List<AttractionEntity> candidatePool = allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
-      if (candidatePool.length < 5) {
+      final bands = PlaceBands.forCategory(category);
+
+      // Prefer well-rated places, but only while enough of them remain to fill
+      // the section — in a sparse area a 3.8 is better than a blank card.
+      List<AttractionEntity> candidatePool =
+          allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
+      if (candidatePool.length < PlaceBands.totalPerCategory) {
         candidatePool = List.from(allPlaces);
       }
 
@@ -5861,104 +5897,77 @@ class _LivingMapPageState extends State<LivingMapPage>
         return compareDistanceAndRating(a, b);
       });
 
-      // 2. Partition candidate places into 5 progressive distance tiers
-      final List<AttractionEntity> tier1 = []; // [0, t1]
-      final List<AttractionEntity> tier2 = []; // (t1, t2]
-      final List<AttractionEntity> tier3 = []; // (t2, t3]
-      final List<AttractionEntity> tier4 = []; // (t3, t4]
-      final List<AttractionEntity> tier5 = []; // (t4, t5]
+      // Partition into the category's bands.
+      final List<List<AttractionEntity>> banded =
+          List.generate(bands.length, (_) => <AttractionEntity>[]);
+      final List<AttractionEntity> leftovers = [];
 
       for (final p in candidatePool) {
         final distKm = _getAccurateDistanceM(p) / 1000.0;
-        if (distKm <= t1) {
-          tier1.add(p);
-        } else if (distKm <= t2) {
-          tier2.add(p);
-        } else if (distKm <= t3) {
-          tier3.add(p);
-        } else if (distKm <= t4) {
-          tier4.add(p);
-        } else if (distKm <= t5) {
-          tier5.add(p);
+        final idx = bands.indexWhere((b) => b.contains(distKm));
+        if (idx >= 0) {
+          banded[idx].add(p);
+        } else {
+          leftovers.add(p);
         }
       }
 
       final List<AttractionEntity> selected = [];
       final Set<String> addedIds = {};
 
-      void addBestFromTier(List<AttractionEntity> tierList) {
-        for (final p in tierList) {
-          if (!addedIds.contains(p.id)) {
-            selected.add(p);
-            addedIds.add(p.id);
-            break;
-          }
+      for (final bandList in banded) {
+        var taken = 0;
+        for (final p in bandList) {
+          if (addedIds.contains(p.id)) continue;
+          selected.add(p);
+          addedIds.add(p.id);
+          if (++taken >= PlaceBands.placesPerBand) break;
         }
       }
 
-      // Pick the #1 best place from each of the 5 progressive distance tiers
-      addBestFromTier(tier1);
-      addBestFromTier(tier2);
-      addBestFromTier(tier3);
-      addBestFromTier(tier4);
-      addBestFromTier(tier5);
-
-      // If fewer than 5 (due to empty tiers in remote areas), fill remaining slots from closest unused places
-      if (selected.length < 5) {
-        for (final p in candidatePool) {
-          if (!addedIds.contains(p.id)) {
-            selected.add(p);
-            addedIds.add(p.id);
-            if (selected.length >= 5) break;
-          }
+      // Backfill nearest-first when a band is genuinely empty — no hospital
+      // within 25–50 km is a real answer, and the honest substitute is another
+      // close place rather than a short section.
+      if (selected.length < PlaceBands.totalPerCategory) {
+        final spare = [...banded.expand((b) => b), ...leftovers]
+          ..sort((a, b) =>
+              _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+        for (final p in spare) {
+          if (addedIds.contains(p.id)) continue;
+          selected.add(p);
+          addedIds.add(p.id);
+          if (selected.length >= PlaceBands.totalPerCategory) break;
         }
       }
 
-      // Sort final 5 places by distance ascending for a clear progressive journey view
-      selected.sort((a, b) => _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
-      return selected.take(5).toList();
+      selected.sort((a, b) =>
+          _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+      return selected.take(PlaceBands.totalPerCategory).toList();
     }
 
-    // Apply 5-tier progressive distance buckets for each category
-    grouped['Food & Drink'] = selectStratified5Places(
-      allPlaces: grouped['Food & Drink'] ?? [],
-      t1: 0.5,
-      t2: 1.0,
-      t3: 2.0,
-      t4: 3.5,
-      t5: 5.0,
-      category: 'Food & Drink',
-    );
+    // Fill each section with fifteen places across its three distance bands.
+    //
+    // The backend's banded result is preferred where it has arrived: it can
+    // issue extra Google requests aimed at a band that came up short, which
+    // this screen cannot — a circle centred on the user never reaches a
+    // 25–50 km band however wide the radius. Where it hasn't arrived yet, the
+    // map's own places are banded locally so the section still fills.
+    final bandedFromBackend = context.read<MapBloc>().state.bandedPlaces;
 
-    grouped['POI'] = selectStratified5Places(
-      allPlaces: grouped['POI'] ?? [],
-      t1: 2.5,
-      t2: 6.0,
-      t3: 15.0,
-      t4: 30.0,
-      t5: 50.0,
-      category: 'POI',
-    );
-
-    grouped['Shopping'] = selectStratified5Places(
-      allPlaces: grouped['Shopping'] ?? [],
-      t1: 1.0,
-      t2: 3.0,
-      t3: 6.0,
-      t4: 10.0,
-      t5: 15.0,
-      category: 'Shopping',
-    );
-
-    grouped['Medical'] = selectStratified5Places(
-      allPlaces: grouped['Medical'] ?? [],
-      t1: 2.0,
-      t2: 5.0,
-      t3: 15.0,
-      t4: 30.0,
-      t5: 50.0,
-      category: 'Medical',
-    );
+    for (final category in const ['Food & Drink', 'POI', 'Shopping', 'Medical']) {
+      final fromBackend = bandedFromBackend[category];
+      if (fromBackend != null && fromBackend.isNotEmpty) {
+        final flattened = fromBackend.expand((band) => band).toList();
+        if (flattened.isNotEmpty) {
+          grouped[category] = flattened;
+          continue;
+        }
+      }
+      grouped[category] = selectBandedPlaces(
+        allPlaces: grouped[category] ?? [],
+        category: category,
+      );
+    }
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
     if (allGroupedPlaces.isNotEmpty && !_isFetchingRouteDistances) {

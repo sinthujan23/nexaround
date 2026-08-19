@@ -92,7 +92,8 @@ class AttractionRepository:
         limit: int = 50,
         sort_by_away: bool = False,
         is_active: Optional[bool] = None,
-        min_radius_m: Optional[float] = None
+        min_radius_m: Optional[float] = None,
+        category_ids: Optional[List[uuid.UUID]] = None
     ) -> List[Tuple[Attraction, float]]:
         """Get attractions within a certain radius, with distance calculation."""
         center_point = create_point(latitude, longitude)
@@ -121,7 +122,14 @@ class AttractionRepository:
             
         if category_id:
             query = query.where(Attraction.category_id == category_id)
-            
+
+        # POI absorbed the older 'Attractions'/'Nature'/'Experiences' categories,
+        # so a band query has to match every name a place may have been seeded
+        # under or most of the existing rows stay invisible to it.
+        if category_ids:
+            query = query.where(Attraction.category_id.in_(category_ids))
+
+
         if min_radius_m is not None:
             query = query.order_by(desc(Attraction.rating), desc("distance") if sort_by_away else "distance")
         else:
