@@ -119,7 +119,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 # When BACKEND_CORS_ORIGINS is configured, allow credentials only for those
 # specific origins. When empty (local development), allow all origins but
 # WITHOUT credentials to prevent CSRF attacks.
-_cors_origins = [str(o) for o in settings.BACKEND_CORS_ORIGINS] if settings.BACKEND_CORS_ORIGINS else []
+_cors_origins = [str(o).rstrip('/') for o in settings.BACKEND_CORS_ORIGINS] if settings.BACKEND_CORS_ORIGINS else []
 if _cors_origins:
     app.add_middleware(
         CORSMiddleware,
