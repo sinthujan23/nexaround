@@ -17,6 +17,14 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # Expanded Google Place types map to retrieve a much wider and richer set of places
 # for each application category, resolving the issue of sparse results.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
+    "POI": [
+        "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
+        "amusement_park", "national_park", "hiking_area", "beach",
+        "historical_landmark", "place_of_worship", "hindu_temple", "church", 
+        "mosque", "buddhist_temple", "cultural_center", "marina", "visitor_center",
+        "observation_deck", "nature_reserve", "scenic_point", "waterfall", 
+        "monument", "castle", "scenic_viewpoint", "lake", "river", "botanical_garden"
+    ],
     "Attractions": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
         "amusement_park", "national_park", "hiking_area", "beach",
@@ -57,11 +65,12 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "park", "tourist_attraction", "beach"
     ],
     "Hospital": [
-        "hospital"
+        "hospital", "medical_clinic"
     ],
 }
 
 CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
+    "POI": "tourist_attraction",
     "Attractions": "tourist_attraction",
     "Food & Drink": "restaurant",
     "Hotels": "lodging",
@@ -83,6 +92,16 @@ CATEGORY_LEGACY_TYPE_MAP: dict[str, str] = {
 # to an UNFILTERED nearby search — that's how banks/ATMs ended up under "Food".
 # Keys here MUST be lowercase (lookup is done on category.lower()).
 _CATEGORY_ALIASES: dict[str, str] = {
+    "poi": "POI",
+    "point of interest": "POI",
+    "points of interest": "POI",
+    "attraction": "POI",
+    "attractions": "POI",
+    "nature": "POI",
+    "experience": "POI",
+    "experiences": "POI",
+    "sight": "POI",
+    "sights": "POI",
     "food": "Food & Drink",
     "food & drink": "Food & Drink",
     "food and drink": "Food & Drink",
@@ -91,16 +110,25 @@ _CATEGORY_ALIASES: dict[str, str] = {
     "restaurants": "Food & Drink",
     "shop": "Shopping",
     "shops": "Shopping",
-    "historical": "Attractions",
-    "historical sites": "Attractions",
-    "history": "Attractions",
-    "attraction": "Attractions",
+    "shopping": "Shopping",
+    "mall": "Shopping",
+    "malls": "Shopping",
+    "historical": "POI",
+    "historical sites": "POI",
+    "history": "POI",
     "hotel": "Hotels",
     "stay": "Hotels",
     "lodging": "Hotels",
-    "service": "Experiences",
-    "services": "Experiences",
-    "experience": "Experiences",
+    "service": "POI",
+    "services": "POI",
+    "medical": "Medical",
+    "hospital": "Medical",
+    "hospitals": "Medical",
+    "clinic": "Medical",
+    "clinics": "Medical",
+    "pharmacy": "Medical",
+    "pharmacies": "Medical",
+    "doctor": "Medical",
 }
 
 

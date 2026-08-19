@@ -57,12 +57,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   final ScrollController _tabScrollController = ScrollController();
   Position? _currentPosition;
 
+  List<AttractionEntity> _poiList = [];
   List<AttractionEntity> _foodList = [];
-  List<AttractionEntity> _experienceList = [];
   List<AttractionEntity> _shoppingList = [];
   List<AttractionEntity> _medicalList = [];
-  List<AttractionEntity> _hospitalList = [];
-  List<AttractionEntity> _natureList = [];
 
   // Emergency tab state
   List<Map<String, dynamic>> _nearbyHospitals = [];
@@ -70,19 +68,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   bool _isLoadingEmergency = false;
 
   // Selected sub-categories for filtering
+  String? _selectedPoiCategory;
   String? _selectedFoodCategory;
-  String? _selectedExperienceCategory;
   String? _selectedShoppingCategory;
   String? _selectedMedicalCategory;
-  String? _selectedHospitalCategory;
-  String? _selectedNatureCategory;
 
-  final List<String> _tabs = ['Experiences', 'Food', 'Shopping', 'Medical', 'Hospital', 'Nature', 'Emergency'];
+  final List<String> _tabs = ['POI', 'Food', 'Shopping', 'Medical', 'Emergency'];
 
   @override
   void initState() {
     super.initState();
-    _selectedTab = widget.initialTab;
+    _selectedTab = widget.initialTab.clamp(0, _tabs.length - 1);
     _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
     _loadEmergencyCache();
     context.read<BudgetBloc>().add(FetchBudget());
@@ -102,13 +98,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     super.didUpdateWidget(oldWidget);
     if (widget.initialTab != oldWidget.initialTab || widget.requestCount != oldWidget.requestCount) {
       setState(() {
-        _selectedTab = widget.initialTab;
+        _selectedTab = widget.initialTab.clamp(0, _tabs.length - 1);
+        _selectedPoiCategory = null;
         _selectedFoodCategory = null;
-        _selectedExperienceCategory = null;
         _selectedShoppingCategory = null;
         _selectedMedicalCategory = null;
-        _selectedHospitalCategory = null;
-        _selectedNatureCategory = null;
       });
       _fetchForTab(_selectedTab);
       if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
@@ -166,19 +160,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     if (lat == null || lng == null) return;
 
     String? category;
+    if (_tabs[index] == 'POI') category = 'POI';
     if (_tabs[index] == 'Food') category = 'Food & Drink';
-    if (_tabs[index] == 'Experiences') category = 'Attractions';
     if (_tabs[index] == 'Shopping') category = 'Shopping';
     if (_tabs[index] == 'Medical') category = 'Medical';
-    if (_tabs[index] == 'Hospital') category = 'Hospital';
-    if (_tabs[index] == 'Nature') category = 'Nature';
 
     if (category != null) {
       context.read<MapBloc>().add(FetchNearbyAttractions(
         latitude: lat,
         longitude: lng,
         categoryName: category,
-        useLegacy: _tabs[index] == 'Experiences',
+        useLegacy: _tabs[index] == 'POI',
       ));
     }
   }
@@ -355,15 +347,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         onTap: () {
                           setState(() {
                             _selectedTab = index;
+                            _selectedPoiCategory = null;
                             _selectedFoodCategory = null;
-                            _selectedExperienceCategory = null;
                             _selectedShoppingCategory = null;
-                            _selectedNatureCategory = null;
+                            _selectedMedicalCategory = null;
                           });
                           _fetchForTab(index);
-                          if (_tabs[index] == 'Budget') {
-                            context.read<BudgetBloc>().add(FetchBudget());
-                          }
                           if (_tabs[index] == 'Emergency') _fetchEmergencyData();
                         },
                         child: AnimatedContainer(
@@ -399,12 +388,67 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               Expanded(
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
-                    final isLoading = _tabs[_selectedTab] != 'Budget' && _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
+                    final isLoading = _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
                     
                     // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
                     final rawMasterList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
                     final masterList = _deduplicateAttractions(rawMasterList);
                     
+                    // Filter POI List (Points of Interest: Merges Attractions, Nature, Experiences, Landmarks, Heritage, Culture, Beaches, Parks, Waterfalls)
+                    _poiList = masterList.where((a) {
+                      final cat = (a.categoryName ?? '').toLowerCase();
+                      final name = a.name.toLowerCase();
+                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
+
+                      // Exclude private residences/stays
+                      if (name.contains('homestay') || name.contains('bedroom') || name.contains('apartment') ||
+                          name.contains('villa') || name.contains('guest house') || name.contains('hotel') || name.contains('resort')) {
+                        return false;
+                      }
+
+                      return cat.contains('poi') || cat.contains('attraction') || cat.contains('nature') || cat.contains('park') ||
+                             cat.contains('beach') || cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
+                             cat.contains('waterfall') || cat.contains('forest') || cat.contains('museum') || cat.contains('experience') ||
+                             cat.contains('landmark') || cat.contains('culture') || cat.contains('temple') || cat.contains('art') ||
+                             cat.contains('zoo') || name.contains('beach') || name.contains('park') || name.contains('lake') ||
+                             name.contains('waterfall') || name.contains('garden') || name.contains('forest') || name.contains('temple') ||
+                             name.contains('museum') || tags.contains('tourist_attraction') || tags.contains('natural_feature') ||
+                             tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('park') || tags.contains('beach') ||
+                             tags.contains('nature_reserve') || tags.contains('botanical_garden') || tags.contains('museum') ||
+                             tags.contains('hindu_temple') || tags.contains('place_of_worship');
+                    }).toList();
+
+                    if (_selectedPoiCategory != null) {
+                      _poiList = _poiList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
+                        if (_selectedPoiCategory == 'Landmarks') {
+                          return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
+                        } else if (_selectedPoiCategory == 'Culture') {
+                          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
+                        } else if (_selectedPoiCategory == 'Nature') {
+                          return cat.contains('nature') || cat.contains('mountain') || cat.contains('lake') || cat.contains('river') || cat.contains('forest') || cat.contains('waterfall') || name.contains('lake') || name.contains('river') || name.contains('waterfall') || name.contains('nature') || name.contains('mountain') || tags.contains('natural_feature');
+                        } else if (_selectedPoiCategory == 'Beaches') {
+                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
+                        } else if (_selectedPoiCategory == 'Museums') {
+                          return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
+                        } else if (_selectedPoiCategory == 'Attractions') {
+                          return cat.contains('attraction') || cat.contains('amusement') || cat.contains('zoo') || cat.contains('theme park') || name.contains('zoo') || name.contains('aquarium') || name.contains('fun') || tags.contains('tourist_attraction');
+                        } else if (_selectedPoiCategory == 'Parks') {
+                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('botanical_garden');
+                        } else if (_selectedPoiCategory == 'Waterfalls') {
+                          return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _poiList.sort((a, b) {
+                      int ratingComp = b.rating.compareTo(a.rating);
+                      if (ratingComp != 0) return ratingComp;
+                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                    });
+
                     // Filter Food List
                     _foodList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
@@ -429,43 +473,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
-                    // Filter Experiences List
-                    _experienceList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-                      return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || 
-                             cat.contains('experience') || cat.contains('landmark') || cat.contains('culture') ||
-                             cat.contains('temple') || cat.contains('art') || cat.contains('zoo') ||
-                             name.contains('temple') || name.contains('park') || name.contains('museum');
-                    }).toList();
-                    if (_selectedExperienceCategory != null) {
-                      _experienceList = _experienceList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        if (_selectedExperienceCategory == 'Museums') {
-                          return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery');
-                        } else if (_selectedExperienceCategory == 'Parks') {
-                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden');
-                        } else if (_selectedExperienceCategory == 'Culture') {
-                          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument');
-                        } else if (_selectedExperienceCategory == 'Landmarks') {
-                          return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || cat.contains('tourist attraction') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
-                        } else if (_selectedExperienceCategory == 'Nature') {
-                          return cat.contains('nature') || cat.contains('mountain') || cat.contains('lake') || cat.contains('river') || cat.contains('forest') || cat.contains('waterfall') || name.contains('lake') || name.contains('river') || name.contains('waterfall') || name.contains('nature') || name.contains('mountain');
-                        } else if (_selectedExperienceCategory == 'Beaches') {
-                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay');
-                        } else if (_selectedExperienceCategory == 'Attractions') {
-                          return cat.contains('attraction') || cat.contains('amusement') || cat.contains('zoo') || cat.contains('theme park') || name.contains('zoo') || name.contains('aquarium') || name.contains('park') || name.contains('fun');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _experienceList.sort((a, b) {
-                      int ratingComp = b.rating.compareTo(a.rating);
-                      if (ratingComp != 0) return ratingComp;
-                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                    });
-
                     // Filter Shopping List
                     _shoppingList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
@@ -488,37 +495,27 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
-                    // Filter Medical List
-                    // Uses a strict allowlist: a place must have a positive medical signal
-                    // in its Google Places tags OR name/category, AND must not have a
-                    // tag that clearly marks it as a non-medical business (school, bank, etc.).
+                    // Filter Medical List (Merges Medical & Hospitals)
                     _medicalList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
                       final name = a.name.toLowerCase();
                       final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
 
-                      // Must have at least one positive medical signal
                       final bool hasMedicalSignal =
-                          cat == 'medical' ||
-                          name.contains('medical') ||
-                          name.contains('clinic') ||
-                          name.contains('pharmacy') ||
-                          name.contains('dispensary') ||
-                          name.contains('health centre') ||
-                          name.contains('health center') ||
-                          tags.contains('pharmacy') ||
-                          tags.contains('doctor') ||
-                          tags.contains('dentist') ||
-                          tags.contains('physiotherapist') ||
-                          tags.contains('veterinary_care') ||
-                          tags.contains('health') ||
-                          tags.contains('medical_center') ||
-                          (cat.contains('medical') || cat.contains('clinic') ||
-                           cat.contains('pharmacy') || cat.contains('doctor'));
+                          cat == 'medical' || cat == 'hospital' ||
+                          name.contains('medical') || name.contains('hospital') ||
+                          name.contains('clinic') || name.contains('pharmacy') ||
+                          name.contains('dispensary') || name.contains('health centre') ||
+                          name.contains('health center') || tags.contains('hospital') ||
+                          tags.contains('pharmacy') || tags.contains('doctor') ||
+                          tags.contains('dentist') || tags.contains('physiotherapist') ||
+                          tags.contains('veterinary_care') || tags.contains('health') ||
+                          tags.contains('medical_center') || tags.contains('medical_clinic') ||
+                          (cat.contains('medical') || cat.contains('hospital') ||
+                           cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor'));
 
                       if (!hasMedicalSignal) return false;
 
-                      // Exclude places whose Google tags clearly mark them as non-medical
                       const nonMedicalTags = [
                         'school', 'university', 'secondary_school', 'primary_school',
                         'bank', 'finance', 'accounting', 'atm',
@@ -527,119 +524,29 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         'lodging', 'real_estate_agency',
                         'transit_station', 'bus_station', 'train_station',
                       ];
-                      final bool isNonMedical =
-                          tags.any((t) => nonMedicalTags.contains(t));
-
-                      return !isNonMedical;
+                      return !tags.any((t) => nonMedicalTags.contains(t));
                     }).toList();
                     if (_selectedMedicalCategory != null) {
                       _medicalList = _medicalList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
                         final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
-                        if (_selectedMedicalCategory == 'Pharmacy') {
+                        if (_selectedMedicalCategory == 'Hospitals') {
+                          return cat.contains('hospital') || name.contains('hospital') || tags.contains('hospital');
+                        } else if (_selectedMedicalCategory == 'Clinics') {
+                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('dentist') || tags.contains('medical_clinic');
+                        } else if (_selectedMedicalCategory == 'Pharmacies') {
                           return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy');
-                        } else if (_selectedMedicalCategory == 'Clinic') {
-                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('dentist');
                         }
                         return true;
                       }).toList();
                     }
                     _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
-                    // Filter Hospital List
-                    // Uses a strict allowlist: a place must have a positive hospital signal
-                    // in its Google Places tags OR name/category, AND must not have a
-                    // tag that clearly marks it as a non-hospital establishment.
-                    _hospitalList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
-
-                      // Must have at least one positive hospital signal
-                      final bool hasHospitalSignal =
-                          cat == 'hospital' ||
-                          name.contains('hospital') ||
-                          tags.contains('hospital') ||
-                          tags.contains('multi_speciality_hospital');
-
-                      if (!hasHospitalSignal) return false;
-
-                      // Exclude places whose Google tags clearly mark them as non-hospital
-                      const nonHospitalTags = [
-                        'school', 'university', 'secondary_school', 'primary_school',
-                        'bank', 'finance', 'accounting', 'atm',
-                        'food', 'restaurant', 'bakery', 'cafe', 'bar',
-                        'store', 'shopping_mall', 'grocery_or_supermarket',
-                        'lodging', 'real_estate_agency',
-                        'transit_station', 'bus_station', 'train_station',
-                      ];
-                      final bool isNonHospital =
-                          tags.any((t) => nonHospitalTags.contains(t));
-
-                      return !isNonHospital;
-                    }).toList();
-                    _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-                    // Filter Nature List
-                    _natureList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-
-                      // Exclude items with no reviews
-                      if (a.reviewCount <= 0) {
-                        return false;
-                      }
-
-                      // Exclude non-nature keywords (homestays, apartments, bedrooms, villas, stays, etc.)
-                      if (name.contains('homestay') ||
-                          name.contains('bedroom') ||
-                          name.contains('apartment') ||
-                          name.contains('villa') ||
-                          name.contains('room') ||
-                          name.contains('lodge') ||
-                          name.contains('stay') ||
-                          name.contains('guest house') ||
-                          name.contains('bed & breakfast') ||
-                          name.contains('bed and breakfast') ||
-                          name.contains('resort') ||
-                          name.contains('hotel') ||
-                          name.contains('inn')) {
-                        return false;
-                      }
-
-                      return cat.contains('nature') || cat.contains('park') || cat.contains('beach') || 
-                             cat.contains('hiking') || cat.contains('waterfall') || cat.contains('lake') || 
-                             cat.contains('river') || cat.contains('garden') || name.contains('beach') ||
-                             name.contains('park') || name.contains('lake') || name.contains('river') ||
-                             name.contains('waterfall') || name.contains('garden') || name.contains('forest');
-                    }).toList();
-                    if (_selectedNatureCategory != null) {
-                      _natureList = _natureList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        if (_selectedNatureCategory == 'Beaches') {
-                          return cat.contains('beach') || name.contains('beach');
-                        } else if (_selectedNatureCategory == 'Parks') {
-                          return cat.contains('park') || name.contains('park');
-                        } else if (_selectedNatureCategory == 'Waterfalls') {
-                          return cat.contains('waterfall') || name.contains('waterfall');
-                        } else if (_selectedNatureCategory == 'Hiking') {
-                          return cat.contains('hiking') || cat.contains('trail') || name.contains('hiking') || name.contains('trail');
-                        } else if (_selectedNatureCategory == 'Gardens') {
-                          return cat.contains('garden') || name.contains('garden');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _natureList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
+                    _poiList = _deduplicateAttractions(_poiList);
                     _foodList = _deduplicateAttractions(_foodList);
-                    _experienceList = _deduplicateAttractions(_experienceList);
                     _shoppingList = _deduplicateAttractions(_shoppingList);
                     _medicalList = _deduplicateAttractions(_medicalList);
-                    _hospitalList = _deduplicateAttractions(_hospitalList);
-                    _natureList = _deduplicateAttractions(_natureList);
 
                     return Column(
                       children: [
@@ -681,15 +588,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   Widget _buildTabContent(bool isLoading) {
     switch (_tabs[_selectedTab]) {
+      case 'POI': return _buildPoiTab(isLoading);
       case 'Food': return _buildFoodTab(isLoading);
-      case 'Experiences': return _buildExperiencesTab(isLoading);
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
-      case 'Hospital': return _buildHospitalTab(isLoading);
-      case 'Nature': return _buildNatureTab(isLoading);
-      // case 'Budget': return _buildBudgetTab();
       case 'Emergency': return _buildEmergencyTab();
-      default: return _buildFoodTab(isLoading);
+      default: return _buildPoiTab(isLoading);
     }
   }
 
@@ -1274,20 +1178,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildExperiencesTab(bool isLoading) {
+  Widget _buildPoiTab(bool isLoading) {
     if (isLoading) {
       return Column(
         children: List.generate(5, (index) => _buildShimmerItemCard()),
       );
     }
 
-    final experiences = _experienceList;
+    final pois = _poiList;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Interests/Categories
-        const Text('Browse by Interest', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Explore Points of Interest', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         SizedBox(
           height: 80,
@@ -1298,63 +1202,72 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               _buildExperienceCategoryItem(
                 '🗼',
                 'Landmarks',
-                _selectedExperienceCategory == 'Landmarks',
+                _selectedPoiCategory == 'Landmarks',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Landmarks' ? null : 'Landmarks';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Landmarks' ? null : 'Landmarks';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🗿',
                 'Culture',
-                _selectedExperienceCategory == 'Culture',
+                _selectedPoiCategory == 'Culture',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Culture' ? null : 'Culture';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Culture' ? null : 'Culture';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🌲',
                 'Nature',
-                _selectedExperienceCategory == 'Nature',
+                _selectedPoiCategory == 'Nature',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Nature' ? null : 'Nature';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Nature' ? null : 'Nature';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🏖',
                 'Beaches',
-                _selectedExperienceCategory == 'Beaches',
+                _selectedPoiCategory == 'Beaches',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Beaches' ? null : 'Beaches';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Beaches' ? null : 'Beaches';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🏛',
                 'Museums',
-                _selectedExperienceCategory == 'Museums',
+                _selectedPoiCategory == 'Museums',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Museums' ? null : 'Museums';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Museums' ? null : 'Museums';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🎡',
                 'Attractions',
-                _selectedExperienceCategory == 'Attractions',
+                _selectedPoiCategory == 'Attractions',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Attractions' ? null : 'Attractions';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Attractions' ? null : 'Attractions';
                 }),
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '🌳',
                 'Parks',
-                _selectedExperienceCategory == 'Parks',
+                _selectedPoiCategory == 'Parks',
                 () => setState(() {
-                  _selectedExperienceCategory = _selectedExperienceCategory == 'Parks' ? null : 'Parks';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Parks' ? null : 'Parks';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌊',
+                'Waterfalls',
+                _selectedPoiCategory == 'Waterfalls',
+                () => setState(() {
+                  _selectedPoiCategory = _selectedPoiCategory == 'Waterfalls' ? null : 'Waterfalls';
                 }),
               ),
             ],
@@ -1363,15 +1276,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         const SizedBox(height: 32),
 
         // Curated List
-        const Text('Curated for You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Points of Interest Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (experiences.isEmpty)
+        if (pois.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No experiences found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+            child: Center(child: Text('No points of interest found nearby.', style: TextStyle(color: AppColors.textTertiary))),
           )
         else
-          ...experiences.asMap().entries.map((e) {
+          ...pois.asMap().entries.map((e) {
             final a = e.value;
             return _buildExperienceCard(a, e.key);
           }),
@@ -1781,39 +1694,48 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Explore Medical Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Explore Medical & Health Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _buildExperienceCategoryItem(
-              '💊',
-              'Pharmacy',
-              _selectedMedicalCategory == 'Pharmacy',
+              '🏥',
+              'Hospitals',
+              _selectedMedicalCategory == 'Hospitals',
               () => setState(() {
-                _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacy' ? null : 'Pharmacy';
+                _selectedMedicalCategory = _selectedMedicalCategory == 'Hospitals' ? null : 'Hospitals';
               }),
             ),
-            const SizedBox(width: 24),
+            const SizedBox(width: 16),
             _buildExperienceCategoryItem(
               '🩺',
-              'Clinic',
-              _selectedMedicalCategory == 'Clinic',
+              'Clinics',
+              _selectedMedicalCategory == 'Clinics',
               () => setState(() {
-                _selectedMedicalCategory = _selectedMedicalCategory == 'Clinic' ? null : 'Clinic';
+                _selectedMedicalCategory = _selectedMedicalCategory == 'Clinics' ? null : 'Clinics';
+              }),
+            ),
+            const SizedBox(width: 16),
+            _buildExperienceCategoryItem(
+              '💊',
+              'Pharmacies',
+              _selectedMedicalCategory == 'Pharmacies',
+              () => setState(() {
+                _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacies' ? null : 'Pharmacies';
               }),
             ),
           ],
         ),
         const SizedBox(height: 28),
-        const Text('Pharmacies & Clinics', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Hospitals, Clinics & Pharmacies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
           ...List.generate(5, (index) => _buildShimmerItemCard())
         else if (_medicalList.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No medical services found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+            child: Center(child: Text('No medical facilities found nearby.', style: TextStyle(color: AppColors.textTertiary))),
           )
         else
           ..._medicalList.asMap().entries.map((e) {
@@ -1886,30 +1808,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  // ═══════════════════════════════════════
-  // HOSPITAL TAB
-  // ═══════════════════════════════════════
-  Widget _buildHospitalTab(bool isLoading) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Hospitals & Care Centers', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_hospitalList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No hospitals found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._hospitalList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildHospitalItem(a, e.key);
-          }),
-      ],
-    );
-  }
+
 
   Widget _buildHospitalItem(AttractionEntity item, int index) {
     final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
@@ -3198,86 +3097,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
-  // ═══════════════════════════════════════
-  // NATURE TAB
-  // ═══════════════════════════════════════
-  Widget _buildNatureTab(bool isLoading) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Explore Nature Spots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        SizedBox(
-          height: 80,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            clipBehavior: Clip.none,
-            children: [
-              _buildExperienceCategoryItem(
-                '🏖',
-                'Beaches',
-                _selectedNatureCategory == 'Beaches',
-                () => setState(() {
-                  _selectedNatureCategory = _selectedNatureCategory == 'Beaches' ? null : 'Beaches';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🏞',
-                'Parks',
-                _selectedNatureCategory == 'Parks',
-                () => setState(() {
-                  _selectedNatureCategory = _selectedNatureCategory == 'Parks' ? null : 'Parks';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🌊',
-                'Waterfalls',
-                _selectedNatureCategory == 'Waterfalls',
-                () => setState(() {
-                  _selectedNatureCategory = _selectedNatureCategory == 'Waterfalls' ? null : 'Waterfalls';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🥾',
-                'Hiking',
-                _selectedNatureCategory == 'Hiking',
-                () => setState(() {
-                  _selectedNatureCategory = _selectedNatureCategory == 'Hiking' ? null : 'Hiking';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🏡',
-                'Gardens',
-                _selectedNatureCategory == 'Gardens',
-                () => setState(() {
-                  _selectedNatureCategory = _selectedNatureCategory == 'Gardens' ? null : 'Gardens';
-                }),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 28),
-        const Text('Nature & Scenic Spots', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_natureList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No nature spots found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._natureList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildNatureItem(a, e.key);
-          }),
-      ],
-    );
-  }
+
 
   Widget _buildNatureItem(AttractionEntity item, int index) {
     final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);

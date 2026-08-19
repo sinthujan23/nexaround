@@ -187,12 +187,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       ));
 
       final categoriesToFetch = [
+        'POI',
         'Attractions',
         'Food & Drink',
-        'Hotels',
         'Shopping',
         'Medical',
-        'Hospital',
         'Nature',
       ];
 
@@ -200,11 +199,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
       try {
         final mainFutures = categoriesToFetch.map((cat) async {
-          final targetCategories = ['Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
+          final targetCategories = ['POI', 'Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
           
           if (targetCategories.contains(cat)) {
             // --- LAYER 1: Backend Database & Cache (Primary — 0 AI cost on hit) ---
-            final double radius = (cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
+            final double radius = (cat == 'POI' || cat == 'Medical' || cat == 'Hospital' || cat == 'Attractions' || cat == 'Nature') ? 50000.0 : 15000.0;
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
               longitude: event.longitude,

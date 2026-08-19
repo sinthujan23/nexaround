@@ -843,7 +843,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               onTap: () {
                                 final homeState = context.findAncestorStateOfType<HomePageState>();
                                 if (homeState != null) {
-                                  homeState.switchToDiscover(initialTab: 6);
+                                  homeState.switchToDiscover(initialTab: 4);
                                 }
                               },
                             ),
@@ -942,7 +942,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 12, bottom: 4),
+                            padding: const EdgeInsets.only(top: 4, bottom: 0),
                             child: _buildMuseumBanner(),
                           ),
                         ),
@@ -1075,7 +1075,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 12, bottom: 4),
+                          padding: const EdgeInsets.only(top: 4, bottom: 0),
                           child: _buildMuseumBanner(),
                         ),
                       ),
@@ -1214,7 +1214,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ];
                   }(),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 75)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 125)),
                 ],
               ),
               
@@ -5347,34 +5347,39 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   String _getCategoryImagePath(String category) {
     final cat = category.toLowerCase();
-    if (cat.contains('nature')) return 'assets/images/cat_nature.png';
+    if (cat.contains('poi') ||
+        cat.contains('historic') ||
+        cat.contains('history') ||
+        cat.contains('museum') ||
+        cat.contains('attraction') ||
+        cat.contains('nature')) {
+      return 'assets/images/cat_historical.png';
+    }
     if (cat.contains('hotel') || cat.contains('stay'))
       return 'assets/images/cat_hotels.png';
     if (cat.contains('shop')) return 'assets/images/cat_shopping.png';
     if (cat.contains('food')) return 'assets/images/cat_food.png';
     if (cat.contains('medical') || cat.contains('hospital'))
       return 'assets/images/cat_medical.png';
-    if (cat.contains('historic') ||
-        cat.contains('history') ||
-        cat.contains('museum') ||
-        cat.contains('attraction'))
-      return 'assets/images/cat_historical.png';
     return 'assets/images/cat_nature.png'; // default
   }
 
   Color _getCategoryColor(String category) {
     switch (category) {
       case 'Food':
+      case 'Food & Drink':
         return Colors.orange.withOpacity(0.15);
+      case 'POI':
       case 'Attractions':
-        return Colors.teal.withOpacity(0.15);
+      case 'Nature':
+        return const Color(0xFF00BFA5).withOpacity(0.15);
       case 'Shopping':
         return Colors.blue.withOpacity(0.15);
       case 'Medical':
       case 'Hospital':
         return Colors.red.withOpacity(0.15);
       default:
-        return Colors.white.withOpacity(0.10);
+        return Colors.grey.withOpacity(0.15);
     }
   }
 
@@ -5670,13 +5675,12 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions, MapStatus status) {
     if (attractions.isEmpty) return const SizedBox.shrink();
 
+    // 4 Unified Categories (POI merges Attractions & Nature; Medical merges Medical & Hospital)
     final Map<String, List<AttractionEntity>> grouped = {
       'Food & Drink': [],
-      'Attractions': [],
-      'Nature': [],
+      'POI': [],
       'Shopping': [],
       'Medical': [],
-      'Hospital': [],
     };
 
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
@@ -5699,66 +5703,58 @@ class _LivingMapPageState extends State<LivingMapPage>
       final tags = place.tags.map((t) => t.toString().toLowerCase()).toList();
 
       bool matchesFood = false;
-      bool matchesAttraction = false;
+      bool matchesPOI = false;
       bool matchesShopping = false;
       bool matchesMedical = false;
-      bool matchesHospital = false;
-      bool matchesNature = false;
-
-      // 6. Nature matching logic (parks, beaches, lakes, gardens, etc.)
-      if (catName.contains('nature') || catName.contains('beach') || catName.contains('park') || 
-          catName.contains('garden') || catName.contains('lake') || catName.contains('river') ||
-          catName.contains('waterfall') || catName.contains('forest') ||
-          name.contains('beach') || name.contains('park') || name.contains('lake') || 
-          name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
-          tags.contains('park') || tags.contains('beach') || tags.contains('natural_feature') ||
-          tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('nature_reserve') ||
-          tags.contains('botanical_garden')) {
-        matchesNature = true;
-      }
 
       // 1. Food & Drink matching logic
       if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') || 
-          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') || name.contains('cafe')) {
+          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') || 
+          name.contains('cafe') || name.contains('dining') || name.contains('bakery') || name.contains('bistro')) {
         matchesFood = true;
       }
 
-      // 2. Attractions matching logic (exclude nature if matched there, to keep it clean)
-      if (!matchesNature && (catName.contains('attraction') || catName.contains('museum') || catName.contains('park') || 
-          catName.contains('experience') || catName.contains('landmark') || catName.contains('culture') ||
-          catName.contains('temple') || catName.contains('art') || catName.contains('zoo') ||
-          name.contains('temple') || name.contains('park') || name.contains('museum'))) {
-        matchesAttraction = true;
-      }
+      // 2. POI (Points of Interest: Merges Attractions, Nature, Experiences, Culture, Heritage, Beaches, Waterfalls, etc.)
+      final bool hasPoiSignal =
+          catName.contains('poi') || catName.contains('attraction') || catName.contains('nature') ||
+          catName.contains('beach') || catName.contains('park') || catName.contains('garden') ||
+          catName.contains('lake') || catName.contains('river') || catName.contains('waterfall') ||
+          catName.contains('forest') || catName.contains('museum') || catName.contains('experience') ||
+          catName.contains('landmark') || catName.contains('culture') || catName.contains('temple') ||
+          catName.contains('art') || catName.contains('zoo') || catName.contains('wildlife') ||
+          name.contains('beach') || name.contains('park') || name.contains('lake') || 
+          name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
+          name.contains('temple') || name.contains('museum') || name.contains('fort') ||
+          name.contains('monument') || name.contains('sanctuary') ||
+          tags.contains('tourist_attraction') || tags.contains('park') || tags.contains('beach') ||
+          tags.contains('natural_feature') || tags.contains('national_park') || tags.contains('hiking_area') ||
+          tags.contains('nature_reserve') || tags.contains('botanical_garden') || tags.contains('museum') ||
+          tags.contains('place_of_worship') || tags.contains('hindu_temple') || tags.contains('church') ||
+          tags.contains('buddhist_temple');
 
-      // Exclusion checks for Attractions category to filter out play schools, surgeries, salons, etc.
-      if (matchesAttraction) {
-        final attractionExclusions = [
+      if (hasPoiSignal) {
+        final poiExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
           'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
           'spa', 'salon', 'wellness', 'massage', 'beauty', 'hair', 'nail',
           'bank', 'atm', 'store', 'shop', 'office', 'pharmacy', 'supermarket',
-          'grocery', 'gas station'
+          'grocery', 'gas station', 'homestay', 'guest house', 'apartment', 'villa'
         ];
-        final attractionExcludeTags = [
+        final poiExcludeTags = [
           'spa', 'beauty_salon', 'hair_care', 'doctor', 'dentist', 'hospital', 
           'medical_clinic', 'pharmacy', 'school', 'university', 'bank', 'atm', 
-          'gas_station', 'store', 'shopping_mall'
+          'gas_station', 'store', 'shopping_mall', 'real_estate_agency'
         ];
-        if (attractionExclusions.any((kw) => name.contains(kw)) ||
-            tags.any((t) => attractionExcludeTags.contains(t))) {
-          matchesAttraction = false;
+        if (!poiExclusions.any((kw) => name.contains(kw)) &&
+            !tags.any((t) => poiExcludeTags.contains(t))) {
+          matchesPOI = true;
         }
       }
 
       // 3. Shopping matching logic
       if (catName.contains('shop') || catName.contains('mall') || catName.contains('market') || 
-          catName.contains('store') || catName.contains('fashion')) {
-        matchesShopping = true;
-      }
-
-      // Exclusion checks for Shopping category to filter out clinical or school businesses
-      if (matchesShopping) {
+          catName.contains('store') || catName.contains('fashion') || tags.contains('shopping_mall') ||
+          tags.contains('department_store')) {
         final shoppingExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
           'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist'
@@ -5766,30 +5762,25 @@ class _LivingMapPageState extends State<LivingMapPage>
         final shoppingExcludeTags = [
           'school', 'university', 'hospital', 'doctor', 'dentist'
         ];
-        if (shoppingExclusions.any((kw) => name.contains(kw)) ||
-            tags.any((t) => shoppingExcludeTags.contains(t))) {
-          matchesShopping = false;
+        if (!shoppingExclusions.any((kw) => name.contains(kw)) &&
+            !tags.any((t) => shoppingExcludeTags.contains(t))) {
+          matchesShopping = true;
         }
       }
 
-      // 4. Medical matching logic
+      // 4. Medical matching logic (Merges Medical & Hospitals)
       final bool hasMedicalSignal =
-          catName == 'medical' ||
-          name.contains('medical') ||
-          name.contains('clinic') ||
-          name.contains('pharmacy') ||
-          name.contains('dispensary') ||
-          name.contains('health centre') ||
-          name.contains('health center') ||
-          tags.contains('pharmacy') ||
-          tags.contains('doctor') ||
-          tags.contains('dentist') ||
-          tags.contains('physiotherapist') ||
-          tags.contains('veterinary_care') ||
-          tags.contains('health') ||
-          tags.contains('medical_center') ||
-          (catName.contains('medical') || catName.contains('clinic') ||
-           catName.contains('pharmacy') || catName.contains('doctor'));
+          catName == 'medical' || catName == 'hospital' ||
+          name.contains('medical') || name.contains('hospital') ||
+          name.contains('clinic') || name.contains('pharmacy') ||
+          name.contains('dispensary') || name.contains('health centre') ||
+          name.contains('health center') || tags.contains('hospital') ||
+          tags.contains('pharmacy') || tags.contains('doctor') ||
+          tags.contains('dentist') || tags.contains('physiotherapist') ||
+          tags.contains('veterinary_care') || tags.contains('health') ||
+          tags.contains('medical_center') || tags.contains('medical_clinic') ||
+          (catName.contains('medical') || catName.contains('hospital') ||
+           catName.contains('clinic') || catName.contains('pharmacy') || catName.contains('doctor'));
 
       if (hasMedicalSignal) {
         const nonMedicalTags = [
@@ -5806,28 +5797,6 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
-      // 5. Hospital matching logic
-      final bool hasHospitalSignal =
-          catName == 'hospital' ||
-          name.contains('hospital') ||
-          tags.contains('hospital') ||
-          tags.contains('multi_speciality_hospital');
-
-      if (hasHospitalSignal) {
-        const nonHospitalTags = [
-          'school', 'university', 'secondary_school', 'primary_school',
-          'bank', 'finance', 'accounting', 'atm',
-          'food', 'restaurant', 'bakery', 'cafe', 'bar',
-          'store', 'shopping_mall', 'grocery_or_supermarket',
-          'lodging', 'real_estate_agency',
-          'transit_station', 'bus_station', 'train_station',
-        ];
-        final bool isNonHospital = tags.any((t) => nonHospitalTags.contains(t));
-        if (!isNonHospital) {
-          matchesHospital = true;
-        }
-      }
-
       double filterDistKm = distKm;
       if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
         filterDistKm = geo.Geolocator.distanceBetween(
@@ -5835,22 +5804,17 @@ class _LivingMapPageState extends State<LivingMapPage>
         ) / 1000.0;
       }
 
-      if (matchesFood && filterDistKm <= 5.0) {
+      if (matchesFood && filterDistKm <= 12.0) {
         if (!grouped['Food & Drink']!.any((x) => x.id == place.id)) {
           grouped['Food & Drink']!.add(place);
         }
       }
-      if (matchesAttraction && filterDistKm <= 50.0) {
-        if (!grouped['Attractions']!.any((x) => x.id == place.id)) {
-          grouped['Attractions']!.add(place);
+      if (matchesPOI && filterDistKm <= 50.0) {
+        if (!grouped['POI']!.any((x) => x.id == place.id)) {
+          grouped['POI']!.add(place);
         }
       }
-      if (matchesNature && filterDistKm <= 50.0) {
-        if (!grouped['Nature']!.any((x) => x.id == place.id)) {
-          grouped['Nature']!.add(place);
-        }
-      }
-      if (matchesShopping && filterDistKm <= 15.0) {
+      if (matchesShopping && filterDistKm <= 20.0) {
         if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
           grouped['Shopping']!.add(place);
         }
@@ -5860,25 +5824,25 @@ class _LivingMapPageState extends State<LivingMapPage>
           grouped['Medical']!.add(place);
         }
       }
-      if (matchesHospital && filterDistKm <= 50.0) {
-        if (!grouped['Hospital']!.any((x) => x.id == place.id)) {
-          grouped['Hospital']!.add(place);
-        }
-      }
     }
 
-    List<AttractionEntity> selectBalancedPlaces({
+    // ── 5-Tier Progressive Distance Distribution Algorithm ─────────────────
+    // Selects strictly 5 places from 5 different progressive distance tiers (highest-rated in each tier)
+    List<AttractionEntity> selectStratified5Places({
       required List<AttractionEntity> allPlaces,
-      required double r1,
-      required double r2,
-      required double r3,
+      required double t1,
+      required double t2,
+      required double t3,
+      required double t4,
+      required double t5,
       required String category,
     }) {
-      // 1. Filter places to only show rating >= 4.0 stars (client request)
-      List<AttractionEntity> filteredPlaces = allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
-      // Fallback if empty to avoid completely blank panels
-      if (filteredPlaces.isEmpty) {
-        filteredPlaces = allPlaces;
+      if (allPlaces.isEmpty) return [];
+
+      // 1. Filter places to prioritize rating >= 4.0 stars
+      List<AttractionEntity> candidatePool = allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
+      if (candidatePool.length < 5) {
+        candidatePool = List.from(allPlaces);
       }
 
       bool isMall(AttractionEntity p) {
@@ -5887,7 +5851,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         return lowerName.contains('mall') || lowerTags.contains('shopping_mall');
       }
 
-      filteredPlaces.sort((a, b) {
+      candidatePool.sort((a, b) {
         if (category == 'Shopping') {
           final aMall = isMall(a);
           final bMall = isMall(b);
@@ -5897,128 +5861,126 @@ class _LivingMapPageState extends State<LivingMapPage>
         return compareDistanceAndRating(a, b);
       });
 
-      final List<AttractionEntity> nearList = [];
-      final List<AttractionEntity> midList = [];
-      final List<AttractionEntity> farList = [];
+      // 2. Partition candidate places into 5 progressive distance tiers
+      final List<AttractionEntity> tier1 = []; // [0, t1]
+      final List<AttractionEntity> tier2 = []; // (t1, t2]
+      final List<AttractionEntity> tier3 = []; // (t2, t3]
+      final List<AttractionEntity> tier4 = []; // (t3, t4]
+      final List<AttractionEntity> tier5 = []; // (t4, t5]
 
-      for (final p in filteredPlaces) {
+      for (final p in candidatePool) {
         final distKm = _getAccurateDistanceM(p) / 1000.0;
-        if (distKm < r1) {
-          nearList.add(p);
-        } else if (distKm < r2) {
-          midList.add(p);
-        } else if (distKm <= r3) {
-          farList.add(p);
-        }
-      }
-
-      int nearTaken = nearList.length < 5 ? nearList.length : 5;
-      int midTaken = midList.length < 5 ? midList.length : 5;
-      int farTaken = farList.length < 5 ? farList.length : 5;
-
-      int totalTaken = nearTaken + midTaken + farTaken;
-      int remainingSlots = 15 - totalTaken;
-
-      if (remainingSlots > 0) {
-        final extraNear = nearList.length - nearTaken;
-        if (extraNear > 0) {
-          final toTake = extraNear < remainingSlots ? extraNear : remainingSlots;
-          nearTaken += toTake;
-          remainingSlots -= toTake;
-        }
-      }
-
-      if (remainingSlots > 0) {
-        final extraMid = midList.length - midTaken;
-        if (extraMid > 0) {
-          final toTake = extraMid < remainingSlots ? extraMid : remainingSlots;
-          midTaken += toTake;
-          remainingSlots -= toTake;
-        }
-      }
-
-      if (remainingSlots > 0) {
-        final extraFar = farList.length - farTaken;
-        if (extraFar > 0) {
-          final toTake = extraFar < remainingSlots ? extraFar : remainingSlots;
-          farTaken += toTake;
-          remainingSlots -= toTake;
+        if (distKm <= t1) {
+          tier1.add(p);
+        } else if (distKm <= t2) {
+          tier2.add(p);
+        } else if (distKm <= t3) {
+          tier3.add(p);
+        } else if (distKm <= t4) {
+          tier4.add(p);
+        } else if (distKm <= t5) {
+          tier5.add(p);
         }
       }
 
       final List<AttractionEntity> selected = [];
-      selected.addAll(nearList.take(nearTaken));
-      selected.addAll(midList.take(midTaken));
-      selected.addAll(farList.take(farTaken));
+      final Set<String> addedIds = {};
 
-      selected.sort((a, b) {
-        if (category == 'Shopping') {
-          final aMall = isMall(a);
-          final bMall = isMall(b);
-          if (aMall && !bMall) return -1;
-          if (!aMall && bMall) return 1;
+      void addBestFromTier(List<AttractionEntity> tierList) {
+        for (final p in tierList) {
+          if (!addedIds.contains(p.id)) {
+            selected.add(p);
+            addedIds.add(p.id);
+            break;
+          }
         }
-        return compareDistanceAndRating(a, b);
-      });
-      return selected;
-    }
-
-    for (final cat in grouped.keys) {
-      double r1 = 2.0;
-      double r2 = 10.0;
-      double r3 = 50.0;
-
-      if (cat == 'Food & Drink') {
-        r1 = 1.0;
-        r2 = 3.0;
-        r3 = 5.0;
-      } else if (cat == 'Shopping') {
-        r1 = 1.0;
-        r2 = 5.0;
-        r3 = 15.0;
-      } else if (cat == 'Attractions' || cat == 'Nature' || cat == 'Medical' || cat == 'Hospital') {
-        r1 = 2.0;
-        r2 = 10.0;
-        r3 = 50.0;
       }
 
-      grouped[cat] = selectBalancedPlaces(
-        allPlaces: grouped[cat] ?? [],
-        r1: r1,
-        r2: r2,
-        r3: r3,
-        category: cat,
-      );
+      // Pick the #1 best place from each of the 5 progressive distance tiers
+      addBestFromTier(tier1);
+      addBestFromTier(tier2);
+      addBestFromTier(tier3);
+      addBestFromTier(tier4);
+      addBestFromTier(tier5);
+
+      // If fewer than 5 (due to empty tiers in remote areas), fill remaining slots from closest unused places
+      if (selected.length < 5) {
+        for (final p in candidatePool) {
+          if (!addedIds.contains(p.id)) {
+            selected.add(p);
+            addedIds.add(p.id);
+            if (selected.length >= 5) break;
+          }
+        }
+      }
+
+      // Sort final 5 places by distance ascending for a clear progressive journey view
+      selected.sort((a, b) => _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+      return selected.take(5).toList();
     }
+
+    // Apply 5-tier progressive distance buckets for each category
+    grouped['Food & Drink'] = selectStratified5Places(
+      allPlaces: grouped['Food & Drink'] ?? [],
+      t1: 0.5,
+      t2: 1.0,
+      t3: 2.0,
+      t4: 3.5,
+      t5: 5.0,
+      category: 'Food & Drink',
+    );
+
+    grouped['POI'] = selectStratified5Places(
+      allPlaces: grouped['POI'] ?? [],
+      t1: 2.5,
+      t2: 6.0,
+      t3: 15.0,
+      t4: 30.0,
+      t5: 50.0,
+      category: 'POI',
+    );
+
+    grouped['Shopping'] = selectStratified5Places(
+      allPlaces: grouped['Shopping'] ?? [],
+      t1: 1.0,
+      t2: 3.0,
+      t3: 6.0,
+      t4: 10.0,
+      t5: 15.0,
+      category: 'Shopping',
+    );
+
+    grouped['Medical'] = selectStratified5Places(
+      allPlaces: grouped['Medical'] ?? [],
+      t1: 2.0,
+      t2: 5.0,
+      t3: 15.0,
+      t4: 30.0,
+      t5: 50.0,
+      category: 'Medical',
+    );
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
     if (allGroupedPlaces.isNotEmpty && !_isFetchingRouteDistances) {
-      // Schedule after build to avoid triggering rebuilds during build
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _batchFetchRouteDistances(allGroupedPlaces);
       });
     }
 
-    final maxItems = grouped.values.map((l) => l.length).fold(0, (max, v) => v > max ? v : max);
-    final double listHeight = (112.0 + (maxItems * 44.0)).clamp(240.0, 780.0);
-
+    // 4 Streamlined Cards
     return SizedBox(
-      height: listHeight,
+      height: 330.0,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+        padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
         children: [
           _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
           const SizedBox(width: 16),
-          _buildCategoryPanel('Attractions', grouped['Attractions']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Nature', grouped['Nature']!, status),
+          _buildCategoryPanel('POI', grouped['POI']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
           const SizedBox(width: 16),
           _buildCategoryPanel('Medical', grouped['Medical']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Hospital', grouped['Hospital']!, status),
         ],
       ),
     );
@@ -6027,41 +5989,45 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildCategoryPanel(String categoryName, List<AttractionEntity> places, MapStatus status) {
     Color themeColor;
     Color lightTint;
+    String displayTitle = categoryName;
+
     switch (categoryName) {
       case 'Food & Drink':
         themeColor = Colors.orange;
         lightTint = const Color(0xFFFFF3E0);
         break;
-      case 'Attractions':
-        themeColor = Colors.teal;
+      case 'POI':
+        displayTitle = 'POI - Point of Interest';
+        themeColor = const Color(0xFF00BFA5);
         lightTint = const Color(0xFFE0F2F1);
         break;
-      case 'Nature':
-        themeColor = Colors.green;
-        lightTint = const Color(0xFFE8F5E9);
-        break;
       case 'Shopping':
-        themeColor = Colors.blue;
+        themeColor = const Color(0xFF2979FF);
         lightTint = const Color(0xFFE3F2FD);
         break;
       case 'Medical':
         themeColor = const Color(0xFFE53935);
         lightTint = const Color(0xFFFFEBEE);
         break;
-      case 'Hospital':
-        themeColor = const Color(0xFF7B1FA2);
-        lightTint = const Color(0xFFF3E5F5);
-        break;
       default:
         themeColor = Colors.grey;
         lightTint = const Color(0xFFF5F5F5);
     }
+
+    final int targetDiscoverTab = (categoryName == 'POI')
+        ? 0
+        : (categoryName == 'Food & Drink')
+            ? 1
+            : (categoryName == 'Shopping')
+                ? 2
+                : 3; // Medical
 
     if (status == MapStatus.loading) {
       return Align(
         alignment: Alignment.topCenter,
         child: Container(
           width: 320,
+          height: 310,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -6082,15 +6048,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
             ],
           ),
           child: Center(child: CircularProgressIndicator(color: themeColor)),
-          ),
+        ),
       );
     }
     
@@ -6099,6 +6060,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         alignment: Alignment.topCenter,
         child: Container(
           width: 320,
+          height: 310,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -6118,11 +6080,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                 color: Colors.black.withOpacity(0.05),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
-              ),
-              BoxShadow(
-                color: Colors.black.withOpacity(0.02),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -6141,10 +6098,12 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final String maxRange;
-    if (categoryName == 'Attractions' || categoryName == 'Hospital') {
+    if (categoryName == 'POI' || categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
       maxRange = '0-50 kms';
     } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
       maxRange = '0-5 kms';
+    } else if (categoryName == 'Shopping') {
+      maxRange = '0-15 kms';
     } else {
       maxRange = '0-15 kms';
     }
@@ -6179,239 +6138,244 @@ class _LivingMapPageState extends State<LivingMapPage>
               Colors.white.withOpacity(0.80),
             ],
           ),
-          ),
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                top: -14,
-                right: -6,
-                child: Opacity(
-                  opacity: 0.85,
-                  child: Image.asset(
-                    _getCategoryImagePath(categoryName),
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.contain,
-                  ),
+        ),
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              top: -14,
+              right: -6,
+              child: Opacity(
+                opacity: 0.85,
+                child: Image.asset(
+                  _getCategoryImagePath(categoryName),
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.contain,
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Flexible(
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: GestureDetector(
+                          onTap: () {
+                            HomePage.homeKey.currentState?.switchToDiscover(initialTab: targetDiscoverTab);
+                          },
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: themeColor.withOpacity(0.08),
                               borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: themeColor.withOpacity(0.20), width: 0.8),
                             ),
                             child: Text(
-                              categoryName,
-                              style: TextStyle(color: themeColor, fontSize: 16, fontWeight: FontWeight.w800),
+                              displayTitle,
+                              style: TextStyle(color: themeColor, fontSize: 13.5, fontWeight: FontWeight.w800),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: 14,
-                              height: 14,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: themeColor.withOpacity(0.35),
-                                  width: 1.2,
-                                ),
+                      ),
+                      const SizedBox(width: 8),
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: themeColor.withOpacity(0.35),
+                                width: 1.2,
                               ),
                             ),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: themeColor.withOpacity(0.60),
-                                  width: 1.0,
-                                ),
+                          ),
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: themeColor.withOpacity(0.60),
+                                width: 1.0,
                               ),
                             ),
-                            Container(
-                              width: 3,
-                              height: 3,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: themeColor,
-                              ),
+                          ),
+                          Container(
+                            width: 2.5,
+                            height: 2.5,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: themeColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        maxRange,
+                        style: TextStyle(color: themeColor.withOpacity(0.8), fontSize: 10.5, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: places.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 5),
+                    itemBuilder: (context, index) {
+                      final place = places[index];
+                      final distKm = _getAccurateDistanceM(place) / 1000.0;
+                      final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()}m' : '${distKm.toStringAsFixed(1)}km';
+                      final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
+                      final ratingVal = place.rating;
+
+                      return Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.92),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: themeColor.withOpacity(0.18),
+                            width: 0.8,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.03),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1.5),
                             ),
                           ],
                         ),
-                        const SizedBox(width: 5),
-                        Text(
-                          maxRange,
-                          style: TextStyle(color: themeColor.withOpacity(0.8), fontSize: 11, fontWeight: FontWeight.w700),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    ListView.separated(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        padding: EdgeInsets.zero,
-                        itemCount: places.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 6),
-                        itemBuilder: (context, index) {
-                          final place = places[index];
-                          final distKm = _getAccurateDistanceM(place) / 1000.0;
-                          final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()}m' : '${distKm.toStringAsFixed(1)}km';
-                          final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
-                          final ratingVal = place.rating;
-
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.92),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: themeColor.withOpacity(0.18),
-                                width: 0.8,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => AttractionDetailPage(
-                                        id: place.id,
-                                        name: place.name,
-                                        category: place.categoryName ?? 'Gem',
-                                        rating: place.rating,
-                                        distance: distStr,
-                                        emoji: '📍',
-                                        imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
-                                        latitude: place.latitude,
-                                        longitude: place.longitude,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                                  child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.center,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          place.name,
-                                          style: const TextStyle(
-                                            color: Color(0xFF1E293B),
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      if (ratingVal != null && ratingVal > 0) ...[
-                                        Icon(
-                                          Icons.star_rounded,
-                                          size: 13,
-                                          color: AppColors.warning,
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          ratingVal.toStringAsFixed(1),
-                                          style: const TextStyle(
-                                            color: Color(0xFF334155),
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                        const Text(
-                                          '•',
-                                          style: TextStyle(
-                                            color: Color(0xFF94A3B8),
-                                            fontSize: 10,
-                                          ),
-                                        ),
-                                        const SizedBox(width: 4),
-                                      ],
-                                      Text(
-                                        distStr,
-                                        style: TextStyle(
-                                          color: themeColor.withOpacity(0.9),
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: themeColor.withOpacity(0.12),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: themeColor.withOpacity(0.20),
-                                            width: 0.7,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              direction,
-                                              style: TextStyle(
-                                                color: themeColor,
-                                                fontSize: 9,
-                                                fontWeight: FontWeight.w900,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 2),
-                                            Icon(
-                                              Icons.chevron_right_rounded,
-                                              size: 11,
-                                              color: themeColor,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => AttractionDetailPage(
+                                    id: place.id,
+                                    name: place.name,
+                                    category: place.categoryName ?? (categoryName == 'POI' ? 'POI' : categoryName),
+                                    rating: place.rating,
+                                    distance: distStr,
+                                    emoji: '📍',
+                                    imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
+                                    latitude: place.latitude,
+                                    longitude: place.longitude,
                                   ),
                                 ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      place.name,
+                                      style: const TextStyle(
+                                        color: Color(0xFF1E293B),
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  if (ratingVal != null && ratingVal > 0) ...[
+                                    Icon(
+                                      Icons.star_rounded,
+                                      size: 12,
+                                      color: AppColors.warning,
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      ratingVal.toStringAsFixed(1),
+                                      style: const TextStyle(
+                                        color: Color(0xFF334155),
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      '•',
+                                      style: TextStyle(
+                                        color: Color(0xFF94A3B8),
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                  ],
+                                  Text(
+                                    distStr,
+                                    style: TextStyle(
+                                      color: themeColor.withOpacity(0.9),
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: themeColor.withOpacity(0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: themeColor.withOpacity(0.20),
+                                        width: 0.6,
+                                      ),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          direction,
+                                          style: TextStyle(
+                                            color: themeColor,
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Icon(
+                                          Icons.chevron_right_rounded,
+                                          size: 10,
+                                          color: themeColor,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          );
-                        },
-                      ),
-                  ],
-                ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
               ),
-            ],
-          ),
+            ),
+          ],
         ),
-      );
+      ),
+    );
   }
 
   Widget _buildClusterSuggestion(List<AttractionEntity> attractions) {
