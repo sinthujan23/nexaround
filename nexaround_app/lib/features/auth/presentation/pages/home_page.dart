@@ -27,7 +27,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/discovery
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
-  const HomePage({super.key});
+  HomePage({Key? key}) : super(key: key ?? homeKey);
 
   @override
   State<HomePage> createState() => HomePageState();

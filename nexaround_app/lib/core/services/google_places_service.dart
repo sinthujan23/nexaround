@@ -645,41 +645,82 @@ class GooglePlacesService {
   static Future<AttractionEntity?> getPlaceDetails(String placeId) async {
     try {
       final cleanId = placeId.replaceFirst('places/', '');
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.apiVersion}/places/$cleanId/details',
-      );
+      double lat = 0.0;
+      double lng = 0.0;
+      String name = 'Unknown';
+      String address = '';
+      double rating = 4.0;
+      int userRatingsTotal = 0;
+      List<String> photoUrls = [];
 
-      if (response.statusCode == 200) {
-        final data = response.data as Map<String, dynamic>?;
-        if (data != null) {
-          final name = data['name'] as String? ?? 'Unknown';
-          final address = data['address'] as String? ?? '';
-          final rating = (data['rating'] as num?)?.toDouble() ?? 4.0;
-          final userRatingsTotal = (data['user_ratings_total'] as num?)?.toInt() ?? 0;
-          final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
+      try {
+        final response = await ApiClient.instance.get(
+          '${ApiConstants.apiVersion}/places/$cleanId/details',
+        );
 
-          return AttractionModel(
-            id: placeId,
-            name: name,
-            description: address,
-            latitude: 0.0,
-            longitude: 0.0,
-            categoryId: null,
-            categoryName: 'Attractions',
-            address: address,
-            openingHours: const {},
-            entryFee: 0.0,
-            currency: 'USD',
-            rating: rating,
-            reviewCount: userRatingsTotal,
-            photoUrls: photoUrls,
-            tags: const [],
-            geofenceRadiusM: 100,
-            distanceM: 0,
-            isActive: true,
-            createdAt: DateTime.now(),
-          );
+        if (response.statusCode == 200) {
+          final data = response.data as Map<String, dynamic>?;
+          if (data != null) {
+            name = data['name'] as String? ?? 'Unknown';
+            address = data['address'] as String? ?? '';
+            rating = (data['rating'] as num?)?.toDouble() ?? 4.0;
+            userRatingsTotal = (data['user_ratings_total'] as num?)?.toInt() ?? 0;
+            photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
+            lat = (data['latitude'] as num?)?.toDouble() ?? 0.0;
+            lng = (data['longitude'] as num?)?.toDouble() ?? 0.0;
+          }
         }
+      } catch (_) {}
+
+      // If latitude/longitude is 0.0 (e.g. from an older cached entry), fetch coordinates from Places Details proxy
+      if (lat == 0.0 || lng == 0.0) {
+        try {
+          final proxyResp = await ApiClient.instance.get(
+            '${ApiConstants.googleMapsProxy}/place/details/json',
+            queryParameters: {
+              'place_id': cleanId,
+              'fields': 'name,geometry,rating,user_ratings_total,photos,formatted_address',
+            },
+          );
+          if (proxyResp.statusCode == 200 && proxyResp.data['result'] != null) {
+            final result = proxyResp.data['result'];
+            final geomLoc = result['geometry']?['location'];
+            if (geomLoc != null) {
+              lat = (geomLoc['lat'] as num?)?.toDouble() ?? lat;
+              lng = (geomLoc['lng'] as num?)?.toDouble() ?? lng;
+            }
+            if (name == 'Unknown' && result['name'] != null) {
+              name = result['name'] as String;
+            }
+            if (address.isEmpty && result['formatted_address'] != null) {
+              address = result['formatted_address'] as String;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (name != 'Unknown' || lat != 0.0) {
+        return AttractionModel(
+          id: placeId,
+          name: name,
+          description: address,
+          latitude: lat,
+          longitude: lng,
+          categoryId: null,
+          categoryName: 'Attractions',
+          address: address,
+          openingHours: const {},
+          entryFee: 0.0,
+          currency: 'USD',
+          rating: rating,
+          reviewCount: userRatingsTotal,
+          photoUrls: photoUrls,
+          tags: const [],
+          geofenceRadiusM: 100,
+          distanceM: 0,
+          isActive: true,
+          createdAt: DateTime.now(),
+        );
       }
       return null;
     } catch (e) {

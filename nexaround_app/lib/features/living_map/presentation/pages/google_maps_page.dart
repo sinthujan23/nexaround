@@ -85,9 +85,6 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     _destLng = widget.initialLng;
     _destName = widget.destinationName;
     _searchController = TextEditingController(text: widget.destinationName ?? '');
-    _searchController.addListener(() {
-      if (mounted) setState(() {});
-    });
     _searchFocusNode = FocusNode();
     _searchFocusNode.addListener(() {
       if (mounted) setState(() {});
@@ -899,47 +896,45 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
 
   Future<void> _onSearchSubmitted(String query) async {
     _searchFocusNode.unfocus();
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       _clearDestinationAndRoute();
       return;
     }
+    // If suggestions are already loaded, let the user tap their preferred one
+    if (_suggestions.isNotEmpty) return;
+
     try {
       final results = await GooglePlacesService.searchPlaces(
-        query: query,
+        query: trimmed,
         latitude: _userLat ?? _destLat,
         longitude: _userLng ?? _destLng,
       );
       if (results.isNotEmpty) {
-        final place = results.first;
-        setState(() {
-          _destLat = place.latitude;
-          _destLng = place.longitude;
-          _destName = place.name;
-          _searchController.text = place.name;
-        });
-        _addDestinationMarker();
-        await _fetchRoute();
-        _animateCameraToDestination();
+        if (mounted) {
+          setState(() {
+            _suggestions = results.map((place) => {
+              'place_id': place.id,
+              'main_text': place.name,
+              'description': place.address ?? place.categoryName ?? '',
+              'latitude': place.latitude,
+              'longitude': place.longitude,
+            }).toList();
+          });
+        }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('No results found for "$query"'),
-              backgroundColor: Colors.redAccent,
+              content: Text('No places found for "$trimmed"'),
+              backgroundColor: Colors.black87,
+              duration: const Duration(seconds: 2),
             ),
           );
         }
       }
     } catch (e) {
       debugPrint('Google Maps Search error: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error searching for location'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
     }
   }
 
@@ -949,8 +944,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       setState(() => _suggestions = []);
       return;
     }
-    // Debounce: wait 500ms after user stops typing, then fetch autocomplete
-    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+    // Debounce: wait 400ms after user stops typing, then fetch autocomplete
+    _debounceTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
         final results = await GooglePlacesService.getAutocompleteSuggestions(
           input: text.trim(),
@@ -972,14 +967,27 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       _suggestions = [];
       _routeLoaded = false;
     });
-    final placeId = suggestion['place_id'] as String;
-    final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
-    if (placeDetails != null) {
+
+    final placeId = suggestion['place_id'] as String?;
+    double? lat = (suggestion['latitude'] as num?)?.toDouble();
+    double? lng = (suggestion['longitude'] as num?)?.toDouble();
+    String name = suggestion['main_text'] ?? suggestion['description'] ?? 'Destination';
+
+    if ((lat == null || lng == null) && placeId != null && placeId.isNotEmpty) {
+      final placeDetails = await GooglePlacesService.getPlaceDetails(placeId);
+      if (placeDetails != null) {
+        lat = placeDetails.latitude;
+        lng = placeDetails.longitude;
+        name = placeDetails.name;
+      }
+    }
+
+    if (lat != null && lng != null) {
       setState(() {
-        _destLat = placeDetails.latitude;
-        _destLng = placeDetails.longitude;
-        _destName = placeDetails.name;
-        _searchController.text = placeDetails.name;
+        _destLat = lat!;
+        _destLng = lng!;
+        _destName = name;
+        _searchController.text = name;
       });
       _addDestinationMarker();
       await _fetchRoute();
@@ -1059,6 +1067,9 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                           border: InputBorder.none,
                           enabledBorder: InputBorder.none,
                           focusedBorder: InputBorder.none,
+                          errorBorder: InputBorder.none,
+                          focusedErrorBorder: InputBorder.none,
+                          disabledBorder: InputBorder.none,
                           isDense: true,
                           contentPadding: EdgeInsets.zero,
                           filled: false,
@@ -1067,22 +1078,27 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
                         onSubmitted: _onSearchSubmitted,
                       ),
                     ),
-                    if (_searchController.text.isNotEmpty)
-                      GestureDetector(
-                        onTap: () {
-                          _searchController.clear();
-                          setState(() => _suggestions = []);
-                          _clearDestinationAndRoute();
-                        },
-                        child: const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 4),
-                          child: Icon(
-                            Icons.close_rounded,
-                            color: Color(0xFF5F6368),
-                            size: 16,
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _searchController,
+                      builder: (context, value, child) {
+                        if (value.text.isEmpty) return const SizedBox.shrink();
+                        return GestureDetector(
+                          onTap: () {
+                            _searchController.clear();
+                            setState(() => _suggestions = []);
+                            _clearDestinationAndRoute();
+                          },
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 4),
+                            child: Icon(
+                              Icons.close_rounded,
+                              color: Color(0xFF5F6368),
+                              size: 16,
+                            ),
                           ),
-                        ),
-                      ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

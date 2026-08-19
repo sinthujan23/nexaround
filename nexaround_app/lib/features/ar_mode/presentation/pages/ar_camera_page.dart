@@ -3304,7 +3304,7 @@ class _ArCameraPageState extends State<ArCameraPage>
         if (Navigator.of(context).canPop()) {
           Navigator.of(context).popUntil((route) => route.isFirst);
         }
-        HomePage.homeKey.currentState?.switchToExplore();
+        (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToExplore();
       },
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -3636,47 +3636,63 @@ class _ArCameraPageState extends State<ArCameraPage>
     });
 
     final placeId = suggestion['place_id'] as String?;
-    if (placeId == null) return;
+    double? sugLat = (suggestion['latitude'] as num?)?.toDouble();
+    double? sugLng = (suggestion['longitude'] as num?)?.toDouble();
 
-    final details = await GooglePlacesService.getPlaceDetails(placeId);
-    if (details != null) {
-      // Find or create landmark
-      _ArLandmark? found;
-      try {
-        found = _landmarks.firstWhere((l) => l.name == details.name);
-      } catch (_) {
-        double calcDist = details.distanceM ?? 0.0;
-        if (_currentPosition != null &&
-            details.latitude != null &&
-            details.longitude != null) {
-          calcDist = geo.Geolocator.distanceBetween(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-            details.latitude!,
-            details.longitude!,
-          );
-        }
-        found = _ArLandmark(
-          details.name,
-          details.photoUrls.isNotEmpty ? details.photoUrls.first : '',
-          details.rating ?? 4.0,
-          '${(calcDist / 1000).toStringAsFixed(1)} km',
-          0.0, // Default bearing, will be updated if it enters view
-          details.description ?? '',
-          details.categoryName ?? 'Attractions',
-          calcDist,
-          details.latitude,
-          details.longitude,
-          details.tags,
-        );
-      }
+    final details = placeId != null ? await GooglePlacesService.getPlaceDetails(placeId) : null;
+    final lat = (details != null && details.latitude != 0.0) ? details.latitude : sugLat;
+    final lng = (details != null && details.longitude != 0.0) ? details.longitude : sugLng;
+    final name = details?.name ?? suggestion['main_text'] ?? 'Destination';
+    final address = details?.address ?? suggestion['description'] ?? '';
+    final rating = details?.rating ?? 4.0;
+    final photoUrls = details?.photoUrls ?? [];
 
-      // If it wasn't in the local list, add it temporarily so it renders
-      if (!_landmarks.any((l) => l.name == found!.name)) {
-        updateState(() {
-          _landmarks.add(found!);
-        });
+    double calcDist = 0.0;
+    double bearing = 0.0;
+    if (_currentPosition != null && lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+      calcDist = geo.Geolocator.distanceBetween(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        lat,
+        lng,
+      );
+      bearing = _calculateBearing(
+        _currentPosition!.latitude,
+        _currentPosition!.longitude,
+        lat,
+        lng,
+      );
+    }
+    final distKm = calcDist / 1000;
+    final distStr = (calcDist > 0 && calcDist < 1000)
+        ? '${calcDist.toInt()} m'
+        : (calcDist >= 1000 ? '${distKm.toStringAsFixed(1)} km' : 'Nearby');
+
+    final found = _ArLandmark(
+      name,
+      photoUrls.isNotEmpty ? photoUrls.first : '',
+      rating,
+      distStr,
+      bearing,
+      address.isNotEmpty ? address : 'Selected Destination',
+      details?.categoryName ?? 'Attractions',
+      calcDist,
+      lat,
+      lng,
+      details?.tags ?? const [],
+    );
+
+    // If it wasn't in the local list, add it temporarily so it renders
+    if (!_landmarks.any((l) => l.name == found.name)) {
+      updateState(() {
+        _landmarks.add(found);
+      });
+    } else {
+      final existingIdx = _landmarks.indexWhere((l) => l.name == found.name);
+      if (existingIdx != -1) {
+        _landmarks[existingIdx] = found;
       }
+    }
 
       updateState(() {
         _selectedLandmark = _landmarks.indexOf(found!);
@@ -3743,16 +3759,14 @@ class _ArCameraPageState extends State<ArCameraPage>
             return;
           }
 
-          if (widget.initialPlace != null) {
-            if (Navigator.of(context).canPop()) {
-              Navigator.of(context).pop();
-            }
-            HomePage.homeKey.currentState?.switchToAr();
+          if (Navigator.of(context).canPop()) {
+            Navigator.of(context).pop();
           } else {
             setState(() {
               _isIdentifying = true;
             });
-            HomePage.homeKey.currentState?.switchToExplore();
+            final homeState = context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState;
+            homeState?.switchToExplore();
           }
         },
         child: ClipRRect(
@@ -10124,8 +10138,12 @@ HOW TO FORMAT EVERY REPLY:
                   const SizedBox(height: 24),
 
                   TextButton(
-                    onPressed: () =>
-                        HomePage.homeKey.currentState?.switchToExplore(),
+                    onPressed: () {
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.of(context).pop();
+                      }
+                      (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToExplore();
+                    },
                     child: Text(
                       'BACK TO MAP',
                       style: TextStyle(

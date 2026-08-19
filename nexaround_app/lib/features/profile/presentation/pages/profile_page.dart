@@ -543,6 +543,7 @@ class _ProfilePageState extends State<ProfilePage> {
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      showDragHandle: false,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) {
           final filtered = CurrencyService.supportedCurrencies.where((c) {
@@ -572,18 +573,9 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Select Currency',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: AppColors.textTertiary),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                const Text(
+                  'Select Currency',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 16),
                 TextField(

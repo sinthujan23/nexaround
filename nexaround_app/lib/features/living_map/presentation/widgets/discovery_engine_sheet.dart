@@ -112,37 +112,33 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                 topRight: Radius.circular(24),
               ),
       ),
-      child: SafeArea(
-        top: isResult,
-        bottom: false,
-        child: Stack(
-          children: [
-            if (_sheetState == SheetState.input)
-              _buildInputView()
-            else if (_sheetState == SheetState.loading)
-              _buildLoadingView()
-            else if (_sheetState == SheetState.result)
-              _buildResultView(),
-              
-            // Close / drag handle on input and loading sheets
-            if (!isResult)
-              Positioned(
-                top: 10,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: AppColors.textSecondary.withValues(alpha: 0.3),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+      child: Stack(
+        children: [
+          if (_sheetState == SheetState.input)
+            _buildInputView()
+          else if (_sheetState == SheetState.loading)
+            _buildLoadingView()
+          else if (_sheetState == SheetState.result)
+            _buildResultView(),
+            
+          // Close / drag handle on input and loading sheets
+          if (!isResult)
+            Positioned(
+              top: 10,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textSecondary.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     ).animate().slideY(begin: 1, end: 0, duration: 400.ms, curve: Curves.easeOutCubic);
   }
@@ -281,11 +277,30 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
   
   Widget _buildResultView() {
+    double topPadding = 0;
+    try {
+      final view = View.of(context);
+      topPadding = view.viewPadding.top / view.devicePixelRatio;
+    } catch (_) {
+      topPadding = MediaQuery.of(context).padding.top;
+    }
+    if (topPadding <= 0) {
+      topPadding = MediaQuery.viewPaddingOf(context).top;
+    }
+    if (topPadding <= 0) {
+      topPadding = 36.0; // Fail-safe status bar height so it never overlaps
+    }
+
     return Column(
       children: [
         // ── Top Navigation Bar with Back Button ──
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: EdgeInsets.only(
+            left: 12,
+            right: 16,
+            top: topPadding + 6,
+            bottom: 12,
+          ),
           decoration: BoxDecoration(
             color: AppColors.surface,
             border: Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.8), width: 1.0)),
@@ -318,7 +333,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                     const Text(
                       "Where to Go Plan",
                       style: TextStyle(
-                        fontSize: 16.5,
+                        fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: AppColors.textPrimary,
                         letterSpacing: -0.3,
@@ -330,25 +345,13 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11.5,
+                          fontSize: 12,
                           fontWeight: FontWeight.w600,
                           color: AppColors.brandGreen,
                         ),
                       ),
                   ],
                 ),
-              ),
-              // History button
-              IconButton(
-                icon: const Icon(Icons.history_rounded, color: AppColors.brandGreen, size: 22),
-                onPressed: _showHistorySheet,
-                tooltip: 'History',
-              ),
-              // Close button
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary, size: 24),
-                onPressed: () => Navigator.pop(context),
-                tooltip: 'Close to Map',
               ),
             ],
           ),

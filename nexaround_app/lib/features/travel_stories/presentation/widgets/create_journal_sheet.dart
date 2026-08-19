@@ -8,7 +8,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
-import 'package:nexaround_app/core/constants/countries.dart';
+import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 
 class CreateJournalSheet extends StatefulWidget {
   final Function(TravelStory) onJournalSubmitted;
@@ -193,30 +193,40 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
             // Country Selection
             const Text('Select Country', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
             const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(4),
-                border: Border.all(color: Colors.grey),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _selectedCountry,
-                  isExpanded: true,
-                  hint: const Text('Select Country', style: TextStyle(fontSize: 14)),
-                  icon: const Icon(Icons.arrow_drop_down),
-                  style: const TextStyle(color: Colors.black87, fontSize: 14),
-                  onChanged: (String? newValue) {
-                    setState(() {
-                      _selectedCountry = newValue;
-                    });
-                  },
-                  items: countriesList.map<DropdownMenuItem<String>>((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
+            InkWell(
+              onTap: () async {
+                final picked = await showCountryPickerSheet(
+                  context,
+                  selectedCountry: _selectedCountry,
+                  includeGlobal: false,
+                  title: 'Select Country',
+                );
+                if (picked != null) {
+                  setState(() {
+                    _selectedCountry = picked;
+                  });
+                }
+              },
+              borderRadius: BorderRadius.circular(4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: Colors.grey.shade400),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _selectedCountry ?? 'Select Country',
+                      style: TextStyle(
+                        color: _selectedCountry != null ? Colors.black87 : Colors.grey.shade600,
+                        fontSize: 14,
+                        fontWeight: _selectedCountry != null ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down, color: Colors.black54),
+                  ],
                 ),
               ),
             ),

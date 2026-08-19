@@ -13,7 +13,7 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
-import 'package:nexaround_app/core/constants/countries.dart';
+import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 
 class TravelJournalPage extends StatefulWidget {
   const TravelJournalPage({Key? key}) : super(key: key);
@@ -100,47 +100,58 @@ class _TravelJournalPageState extends State<TravelJournalPage> {
       body: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
               color: Colors.white,
               border: Border(
                 bottom: BorderSide(color: Colors.grey.shade200, width: 1.0),
               ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Filter by Country',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black54,
-                  ),
+            child: InkWell(
+              onTap: () async {
+                final picked = await showCountryPickerSheet(
+                  context,
+                  selectedCountry: _selectedCountryFilter,
+                  includeGlobal: true,
+                  title: 'Filter by Country',
+                );
+                if (picked != null) {
+                  setState(() {
+                    _selectedCountryFilter = picked;
+                  });
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Filter by Country',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          _selectedCountryFilter == 'Global'
+                              ? '🌐 Global'
+                              : _selectedCountryFilter,
+                          style: const TextStyle(
+                            color: AppColors.brandGreen,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.brandGreen, size: 18),
+                      ],
+                    ),
+                  ],
                 ),
-                DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedCountryFilter,
-                    dropdownColor: Colors.white,
-                    icon: const Icon(Icons.arrow_drop_down, color: Colors.black54),
-                    style: const TextStyle(color: Colors.black, fontSize: 13, fontWeight: FontWeight.w600),
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        setState(() {
-                          _selectedCountryFilter = newValue;
-                        });
-                      }
-                    },
-                    items: <String>['Global', ...countriesList]
-                        .map<DropdownMenuItem<String>>((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value == 'Global' ? '🌐 Global' : value),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           Expanded(

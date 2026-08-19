@@ -11,7 +11,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import '../../../../core/services/google_places_service.dart';
 import '../../data/datasources/travel_stories_service.dart';
-import '../../../../core/constants/countries.dart';
+import '../../../../core/widgets/country_picker_sheet.dart';
 
 class PostStorySheet extends StatefulWidget {
   final Function(TravelStory) onStorySubmitted;
@@ -367,27 +367,16 @@ class _PostStorySheetState extends State<PostStorySheet> {
             ),
 
             // Header
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+            const Padding(
+              padding: EdgeInsets.only(left: 20, right: 20, top: 4, bottom: 12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Expanded(
-                    child: Text(
-                      'Share your travel story',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(
-                      Icons.close,
-                      color: Colors.black54,
-                      size: 22,
+                  Text(
+                    'Share your travel story',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black87,
                     ),
                   ),
                 ],
@@ -685,34 +674,41 @@ class _PostStorySheetState extends State<PostStorySheet> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[50],
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.grey[300]!),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedCountry,
-                          isExpanded: true,
-                          hint: Text(
-                            'Select Country',
-                            style: TextStyle(color: Colors.grey[400], fontSize: 13.5),
-                          ),
-                          icon: const Icon(Icons.arrow_drop_down, color: Colors.grey),
-                          style: const TextStyle(color: Colors.black87, fontSize: 13.5),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedCountry = newValue;
-                            });
-                          },
-                          items: countriesList.map<DropdownMenuItem<String>>((String value) {
-                            return DropdownMenuItem<String>(
-                              value: value,
-                              child: Text(value),
-                            );
-                          }).toList(),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showCountryPickerSheet(
+                          context,
+                          selectedCountry: _selectedCountry,
+                          includeGlobal: false,
+                          title: 'Select Country',
+                        );
+                        if (picked != null) {
+                          setState(() {
+                            _selectedCountry = picked;
+                          });
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50],
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _selectedCountry ?? 'Select Country',
+                              style: TextStyle(
+                                color: _selectedCountry != null ? Colors.black87 : Colors.grey[400],
+                                fontSize: 13.5,
+                                fontWeight: _selectedCountry != null ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                            const Icon(Icons.arrow_drop_down, color: Colors.grey),
+                          ],
                         ),
                       ),
                     ),

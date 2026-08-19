@@ -115,6 +115,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) => const LocationSearchModal(),
     ).then((result) {

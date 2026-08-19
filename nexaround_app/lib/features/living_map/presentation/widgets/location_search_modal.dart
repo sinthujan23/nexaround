@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:shimmer/shimmer.dart';
 
 class LocationSearchModal extends StatefulWidget {
@@ -130,129 +129,150 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: const BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Drag Handle
+          // Single Clean Drag Handle
           Center(
             child: Container(
-              margin: const EdgeInsets.only(top: 12, bottom: 20),
-              height: 4,
+              margin: const EdgeInsets.only(top: 12, bottom: 12),
+              height: 5,
               width: 40,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
           ),
           
           // Header
           const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
+            padding: EdgeInsets.only(left: 20, right: 20, top: 2, bottom: 14),
             child: Text(
               'Explore Anywhere',
               style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87,
+                letterSpacing: -0.3,
               ),
             ),
           ),
-          const SizedBox(height: 16),
           
-          // Search Bar
+          // Floating Search Bar Card with Inline GPS Action
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: Colors.grey.shade200, width: 1.2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => _executeSearch(_searchController.text),
-                    child: const Icon(Icons.search, color: AppColors.textSecondary),
+                  IconButton(
+                    icon: const Icon(Icons.search_rounded, color: AppColors.brandGreen, size: 22),
+                    onPressed: () => _executeSearch(_searchController.text),
+                    tooltip: 'Search',
                   ),
-                  const SizedBox(width: 12),
                   Expanded(
-                    child: Theme(
-                      data: Theme.of(context).copyWith(
-                        textSelectionTheme: const TextSelectionThemeData(
-                          cursorColor: Color(0xFF00E5FF),
-                          selectionColor: Color(0x5500E5FF),
-                          selectionHandleColor: Color(0xFF00E5FF),
-                        ),
+                    child: TextField(
+                      controller: _searchController,
+                      focusNode: _focusNode,
+                      cursorColor: AppColors.brandGreen,
+                      textInputAction: TextInputAction.search,
+                      onChanged: _onSearchChanged,
+                      onSubmitted: (query) => _executeSearch(query),
+                      decoration: const InputDecoration(
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        errorBorder: InputBorder.none,
+                        focusedErrorBorder: InputBorder.none,
+                        disabledBorder: InputBorder.none,
+                        filled: false,
+                        fillColor: Colors.transparent,
+                        hintText: 'Search city, area, or country...',
+                        hintStyle: TextStyle(color: Color(0xFF9E9E9E), fontSize: 14),
+                        contentPadding: EdgeInsets.symmetric(vertical: 14),
                       ),
-                      child: TextField(
-                        controller: _searchController,
-                        focusNode: _focusNode,
-                        cursorColor: const Color(0xFF00E5FF),
-                        cursorWidth: 2.0,
-                        cursorRadius: const Radius.circular(2.0),
-                        textInputAction: TextInputAction.search,
-                        onChanged: _onSearchChanged,
-                        onSubmitted: (query) => _executeSearch(query),
-                        decoration: const InputDecoration(
-                          border: InputBorder.none,
-                          hintText: 'Search for a city, area, or country...',
-                          hintStyle: TextStyle(color: AppColors.textSecondary),
-                        ),
-                        style: const TextStyle(color: AppColors.textPrimary),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ),
                   if (_searchController.text.isNotEmpty)
-                    GestureDetector(
-                      onTap: () {
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.black38, size: 18),
+                      onPressed: () {
                         _searchController.clear();
                         _onSearchChanged('');
                       },
-                      child: const Icon(
-                        Icons.close,
-                        color: AppColors.textSecondary,
-                        size: 20,
-                      ),
+                      tooltip: 'Clear',
                     ),
+                  Container(
+                    height: 24,
+                    width: 1,
+                    color: Colors.grey.shade200,
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.my_location_rounded, color: AppColors.brandGreen, size: 20),
+                    onPressed: () {
+                      Navigator.pop(context, 'clear_override');
+                    },
+                    tooltip: 'Use Current Location',
+                  ),
+                  const SizedBox(width: 4),
                 ],
               ),
             ),
           ),
           
-          const SizedBox(height: 16),
-          
-          // Use Current Location Button
-          ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: AppColors.brandGreen.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.my_location,
-                color: AppColors.brandGreen,
-                size: 20,
+          // Current Location Quick Chip
+          Padding(
+            padding: const EdgeInsets.only(left: 20, right: 20, top: 12, bottom: 8),
+            child: InkWell(
+              onTap: () => Navigator.pop(context, 'clear_override'),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.near_me_rounded, size: 14, color: AppColors.brandGreen),
+                    SizedBox(width: 6),
+                    Text(
+                      'Use Current Location',
+                      style: TextStyle(
+                        color: AppColors.brandGreen,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            title: const Text(
-              'Use Current Location',
-              style: TextStyle(
-                color: AppColors.brandGreen,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 24),
-            onTap: () {
-              Navigator.pop(context, 'clear_override');
-            },
           ),
           
-          const Divider(height: 1),
+          const Divider(height: 1, color: AppColors.border),
           
           // Results
           Expanded(

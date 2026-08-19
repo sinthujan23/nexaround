@@ -610,7 +610,7 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
     url = f"https://places.googleapis.com/v1/places/{raw_id}"
     
     field_mask = (
-        "id,displayName,formattedAddress,rating,userRatingCount,"
+        "id,displayName,formattedAddress,location,rating,userRatingCount,"
         "reviews,regularOpeningHours,photos,internationalPhoneNumber,"
         "websiteUri,editorialSummary,priceLevel"
     )
@@ -637,6 +637,9 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
         # Parse Places API (New) response into normalized dict
         display_name = data.get("displayName", {}).get("text") or "Unknown"
         formatted_address = data.get("formattedAddress") or ""
+        loc_data = data.get("location") or {}
+        latitude = float(loc_data.get("latitude") or 0.0)
+        longitude = float(loc_data.get("longitude") or 0.0)
         rating = float(data.get("rating") or 4.0)
         user_ratings_total = int(data.get("userRatingCount") or 0)
         
@@ -692,6 +695,8 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
             "id": data.get("id") or place_id,
             "name": display_name,
             "address": formatted_address,
+            "latitude": latitude,
+            "longitude": longitude,
             "rating": rating,
             "user_ratings_total": user_ratings_total,
             "reviews": reviews,

@@ -385,7 +385,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
   int get _visitedCount => _stops.where((s) => s.visited).length;
   bool _isFinal(int i) => i == _stops.length - 1;
   String _emoji(int i, _TourStop s) {
-    if (s.visited) return '✅';
+    if (s.visited) return 'visited';
     if (_isFinal(i)) return '🏁';
     return '${i + 1}';
   }
@@ -595,10 +595,9 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
     await _markers!.createMulti(opts);
   }
 
-  /// Mapbox's label font has no color-emoji glyphs, so a 🚩/🏁/✅ set via
-  /// `textField` renders blank. We instead paint the emoji into a small PNG
-  /// with Flutter's text engine (which supports emoji) and attach it as the
-  /// marker `image`. Cached per-emoji since there are only three.
+  /// Mapbox's label font has no color-emoji glyphs, so a 🚩/🏁/visited set via
+  /// `textField` renders blank. We instead paint the icon into a small PNG
+  /// with Flutter's text engine and attach it as the marker `image`.
   final Map<String, Uint8List> _iconCache = {};
 
   Future<Uint8List> _markerImage(String emoji) async {
@@ -620,57 +619,84 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         ..color = Colors.black.withValues(alpha: 0.25)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
     );
-    // White disc + colored ring (red for unvisited index numbers, brandGreen for visited/checkered flags)
-    final isNumber = RegExp(r'^\d+$').hasMatch(emoji);
-    canvas.drawCircle(center, radius, Paint()..color = Colors.white);
-    canvas.drawCircle(
-      center,
-      radius,
-      Paint()
+
+    if (emoji == 'visited' || emoji == '✅') {
+      // Solid emerald green disc
+      canvas.drawCircle(center, radius, Paint()..color = AppColors.brandGreen);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5
+          ..color = Colors.white.withValues(alpha: 0.85),
+      );
+
+      // Clean vector checkmark path
+      final path = Path();
+      path.moveTo(33, 49);
+      path.lineTo(43, 59);
+      path.lineTo(63, 37);
+
+      final checkPaint = Paint()
+        ..color = Colors.white
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 3
-        ..color = isNumber ? Colors.red : AppColors.brandGreen,
-    );
+        ..strokeWidth = 6.0
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
 
-    // Draw text index or emoji centered
-    if (isNumber) {
-      // Draw flag emoji 🚩 slightly left-offset
-      final flagPainter = TextPainter(
-        text: const TextSpan(
-          text: '🚩',
-          style: TextStyle(fontSize: 28),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      flagPainter.paint(canvas, const Offset(14, 28));
-
-      // Draw number index slightly right-offset, bold
-      final numPainter = TextPainter(
-        text: TextSpan(
-          text: emoji,
-          style: const TextStyle(
-            fontSize: 26,
-            fontWeight: FontWeight.w900,
-            color: Colors.red,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      numPainter.paint(canvas, const Offset(52, 32));
+      canvas.drawPath(path, checkPaint);
     } else {
-      final isEmoji = emoji == '✅' || emoji == '🏁';
-      final tp = TextPainter(
-        text: TextSpan(
-          text: emoji,
-          style: TextStyle(
-            fontSize: isEmoji ? 44 : 40,
-            fontWeight: FontWeight.w900,
-            color: isEmoji ? AppColors.brandGreen : Colors.red,
+      // White disc + colored ring (red for unvisited index numbers, brandGreen for visited/checkered flags)
+      final isNumber = RegExp(r'^\d+$').hasMatch(emoji);
+      canvas.drawCircle(center, radius, Paint()..color = Colors.white);
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3
+          ..color = isNumber ? Colors.red : AppColors.brandGreen,
+      );
+
+      // Draw text index or emoji centered
+      if (isNumber) {
+        // Draw flag emoji 🚩 slightly left-offset
+        final flagPainter = TextPainter(
+          text: const TextSpan(
+            text: '🚩',
+            style: TextStyle(fontSize: 28),
           ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2 - (isEmoji ? 0 : 2)));
+          textDirection: TextDirection.ltr,
+        )..layout();
+        flagPainter.paint(canvas, const Offset(14, 28));
+
+        // Draw number index slightly right-offset, bold
+        final numPainter = TextPainter(
+          text: TextSpan(
+            text: emoji,
+            style: const TextStyle(
+              fontSize: 26,
+              fontWeight: FontWeight.w900,
+              color: Colors.red,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        numPainter.paint(canvas, const Offset(52, 32));
+      } else {
+        final tp = TextPainter(
+          text: TextSpan(
+            text: emoji,
+            style: const TextStyle(
+              fontSize: 44,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+      }
     }
 
     final img =
@@ -1206,7 +1232,7 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         ),
         child: Row(
           children: [
-            Text(_emoji(i, s), style: const TextStyle(fontSize: 20)),
+            _buildStopIcon(i, s),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -1318,6 +1344,59 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStopIcon(int i, _TourStop s) {
+    if (s.visited) {
+      return Container(
+        width: 26,
+        height: 26,
+        decoration: BoxDecoration(
+          color: AppColors.brandGreen,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandGreen.withValues(alpha: 0.35),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Icon(
+          Icons.check_rounded,
+          color: Colors.white,
+          size: 16,
+        ),
+      );
+    }
+
+    if (_isFinal(i)) {
+      return Container(
+        width: 26,
+        height: 26,
+        alignment: Alignment.center,
+        child: const Text('🏁', style: TextStyle(fontSize: 18)),
+      );
+    }
+
+    return Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.grey.shade300, width: 1.2),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '${i + 1}',
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Colors.black87,
         ),
       ),
     );

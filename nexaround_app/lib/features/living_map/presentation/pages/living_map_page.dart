@@ -1449,6 +1449,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) => const LocationSearchModal(),
     ).then((result) async {
@@ -1731,7 +1732,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// floating place-detail cards, pins, and distance markers.
   Widget _buildArSpotlight() {
     return GestureDetector(
-      onTap: () => HomePage.homeKey.currentState?.switchToAr(),
+      onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToAr(),
       child: Container(
         width: double.infinity,
         height: 200,
@@ -2400,7 +2401,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             // Its own tap handler so it doesn't trigger the card's "build" action.
             GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => HomePage.homeKey.currentState?.switchToPlans(),
+              onTap: () => (context.findAncestorStateOfType<HomePageState>() ?? HomePage.homeKey.currentState)?.switchToPlans(),
               child: Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 10),
@@ -2593,6 +2594,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return StatefulBuilder(
@@ -2615,21 +2617,16 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ),
                   ),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    padding: const EdgeInsets.only(left: 20, right: 20, top: 4, bottom: 12),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
+                      children: const [
+                        Text(
                           'Filter by Country',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                             color: Colors.black87,
                           ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.black54, size: 22),
                         ),
                       ],
                     ),
@@ -2794,6 +2791,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
         return PostStorySheet(
