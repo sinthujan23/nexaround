@@ -819,53 +819,75 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         // Categories
         const Text('Explore Food & Dining', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildExperienceCategoryItem(
-              '🍜',
-              'Street Food',
-              _selectedFoodCategory == 'Street Food',
-              () => setState(() {
-                _selectedFoodCategory = _selectedFoodCategory == 'Street Food' ? null : 'Street Food';
-              }),
-            ),
-            const SizedBox(width: 16),
-            _buildExperienceCategoryItem(
-              '🍽',
-              'Fine Dining',
-              _selectedFoodCategory == 'Fine Dining',
-              () => setState(() {
-                _selectedFoodCategory = _selectedFoodCategory == 'Fine Dining' ? null : 'Fine Dining';
-              }),
-            ),
-            const SizedBox(width: 16),
-            _buildExperienceCategoryItem(
-              '☕',
-              'Cafés',
-              _selectedFoodCategory == 'Cafés',
-              () => setState(() {
-                _selectedFoodCategory = _selectedFoodCategory == 'Cafés' ? null : 'Cafés';
-              }),
-            ),
-          ],
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🍜',
+                'Street Food',
+                _selectedFoodCategory == 'Street Food',
+                () => setState(() {
+                  _selectedFoodCategory = _selectedFoodCategory == 'Street Food' ? null : 'Street Food';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🍽',
+                'Fine Dining',
+                _selectedFoodCategory == 'Fine Dining',
+                () => setState(() {
+                  _selectedFoodCategory = _selectedFoodCategory == 'Fine Dining' ? null : 'Fine Dining';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '☕',
+                'Cafés',
+                _selectedFoodCategory == 'Cafés',
+                () => setState(() {
+                  _selectedFoodCategory = _selectedFoodCategory == 'Cafés' ? null : 'Cafés';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🍕',
+                'Fast Food',
+                _selectedFoodCategory == 'Fast Food',
+                () => setState(() {
+                  _selectedFoodCategory = _selectedFoodCategory == 'Fast Food' ? null : 'Fast Food';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🥐',
+                'Bakeries',
+                _selectedFoodCategory == 'Bakeries',
+                () => setState(() {
+                  _selectedFoodCategory = _selectedFoodCategory == 'Bakeries' ? null : 'Bakeries';
+                }),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 28),
 
         // Restaurant list
-        const Text('Top Picks', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Food & Dining Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
           ...List.generate(5, (index) => _buildShimmerItemCard())
         else if (_foodList.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No real food places found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+            child: Center(child: Text('No food places found nearby.', style: TextStyle(color: AppColors.textTertiary))),
           )
         else
           ..._foodList.asMap().entries.map((e) {
             final a = e.value;
-            return _buildRestaurantCard(a, e.key);
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Food & Drink', emoji: '🍽');
           }),
       ],
     );
@@ -1000,13 +1022,54 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   IconData _getExperienceIcon(String category, String name, int index) {
     final cat = category.toLowerCase();
     final nm = name.toLowerCase();
+    
+    // Food & Dining
+    if (cat.contains('food') || cat.contains('restaurant') || nm.contains('restaurant') || nm.contains('kitchen') || nm.contains('bistro')) {
+      return Icons.restaurant_rounded;
+    }
+    if (cat.contains('cafe') || cat.contains('coffee') || nm.contains('cafe') || nm.contains('coffee')) {
+      return Icons.local_cafe_rounded;
+    }
+    if (cat.contains('bar') || cat.contains('bakery') || nm.contains('bakery') || nm.contains('sweet')) {
+      return Icons.bakery_dining_rounded;
+    }
+
+    // Shopping
+    if (cat.contains('clothing') || cat.contains('fashion') || nm.contains('fashion') || nm.contains('boutique')) {
+      return Icons.shopping_bag_rounded;
+    }
+    if (cat.contains('market') || cat.contains('local') || nm.contains('market') || nm.contains('bazaar') || nm.contains('mall')) {
+      return Icons.storefront_rounded;
+    }
+    if (cat.contains('shopping') || cat.contains('store') || nm.contains('store') || nm.contains('shop')) {
+      return Icons.shopping_cart_rounded;
+    }
+
+    // Medical
+    if (cat.contains('hospital') || nm.contains('hospital')) {
+      return Icons.local_hospital_rounded;
+    }
+    if (cat.contains('pharmacy') || nm.contains('pharmacy') || nm.contains('drug') || nm.contains('chemist')) {
+      return Icons.medication_rounded;
+    }
+    if (cat.contains('clinic') || cat.contains('medical') || cat.contains('dental') || nm.contains('clinic') || nm.contains('dental') || nm.contains('doctor')) {
+      return Icons.medical_services_rounded;
+    }
+
+    // POI / Attractions / Nature
+    if (cat.contains('beach') || nm.contains('beach')) {
+      return Icons.beach_access_rounded;
+    }
     if (cat.contains('museum') || cat.contains('gallery') || nm.contains('museum') || nm.contains('gallery')) {
       return Icons.museum_rounded;
     }
     if (cat.contains('park') || cat.contains('garden') || nm.contains('park') || nm.contains('garden')) {
       return Icons.park_rounded;
     }
-    return Icons.attractions_rounded;
+    if (cat.contains('temple') || cat.contains('church') || cat.contains('mosque') || nm.contains('temple') || nm.contains('kovil') || nm.contains('mosque')) {
+      return Icons.account_balance_rounded;
+    }
+    return Icons.place_rounded;
   }
 
   IconData _getShoppingIcon(String category, String name, int index) {
@@ -1134,67 +1197,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     ).animate(onPlay: (controller) => controller.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
   }
 
-  Widget _buildRestaurantCard(AttractionEntity a, int index) {
-    final dist = ((a.distanceM ?? 0) / 1000).toStringAsFixed(1);
-    
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: a.id,
-          name: a.name,
-          category: a.categoryName ?? 'Restaurant',
-          rating: a.rating,
-          distance: '$dist km',
-          emoji: '🍽',
-          imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
-          latitude: a.latitude,
-          longitude: a.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                a.name,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                const SizedBox(width: 3),
-                Text('${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                const SizedBox(width: 12),
-                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-              ],
-            ),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: () async {
-                await CacheService.toggleFavoritePlace((a as AttractionModel).toJson());
-                setState(() {}); // Refresh UI
-              },
-              child: Icon(
-                CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildPoiTab(bool isLoading) {
     if (isLoading) {
@@ -1456,17 +1459,26 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 );
   }
 
-  Widget _buildExperienceCard(AttractionEntity a, int index) {
+  Widget _buildExperienceCard(
+    AttractionEntity a,
+    int index, {
+    String defaultCategory = 'Attraction',
+    String emoji = '📍',
+  }) {
+    final catName = (a.categoryName != null && a.categoryName!.isNotEmpty)
+        ? a.categoryName!
+        : defaultCategory;
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(builder: (_) => AttractionDetailPage(
           id: a.id,
           name: a.name,
-          category: a.categoryName ?? 'Attraction',
+          category: catName,
           rating: a.rating,
           distance: '${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-          emoji: '📍',
+          emoji: emoji,
           imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
           latitude: a.latitude,
           longitude: a.longitude,
@@ -1474,114 +1486,117 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       ),
       child: GlassCard(
         margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
-      child: Row(
-        children: [
-          // Thumbnail (Network Image / Fallback Icon Container)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: a.photoUrls.isNotEmpty
-                ? CachedNetworkImage(
-                    imageUrl: a.photoUrls.first.startsWith('/')
-                        ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
-                        : a.photoUrls.first,
-                    width: 90,
-                    height: 90,
-                    fit: BoxFit.cover,
-                    placeholder: (_, __) => Container(
+        padding: const EdgeInsets.all(12),
+        glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
+        child: Row(
+          children: [
+            // Thumbnail (Network Image / Fallback Icon Container)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: a.photoUrls.isNotEmpty
+                  ? CachedNetworkImage(
+                      imageUrl: a.photoUrls.first.startsWith('/')
+                          ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
+                          : a.photoUrls.first,
                       width: 90,
                       height: 90,
-                      color: AppColors.surfaceVariant,
-                      child: const Icon(Icons.image_rounded, size: 24, color: AppColors.textMuted),
-                    ),
-                    errorWidget: (_, __, ___) => Container(
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        width: 90,
+                        height: 90,
+                        color: AppColors.surfaceVariant,
+                        child: const Icon(Icons.image_rounded, size: 24, color: AppColors.textMuted),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        width: 90,
+                        height: 90,
+                        color: AppColors.secondary.withOpacity(0.1),
+                        child: Center(
+                          child: Icon(
+                            _getExperienceIcon(catName, a.name, index),
+                            color: AppColors.secondary,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    )
+                  : Container(
                       width: 90,
                       height: 90,
-                      color: AppColors.secondary.withOpacity(0.1),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
+                      ),
                       child: Center(
                         child: Icon(
-                          _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
+                          _getExperienceIcon(catName, a.name, index),
                           color: AppColors.secondary,
                           size: 36,
                         ),
                       ),
                     ),
-                  )
-                : Container(
-                    width: 90,
-                    height: 90,
-                    decoration: BoxDecoration(
-                      color: AppColors.secondary.withOpacity(0.1),
-                      border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        _getExperienceIcon(a.categoryName ?? 'Attraction', a.name, index),
-                        color: AppColors.secondary,
-                        size: 36,
-                      ),
-                    ),
-                  ),
-          ),
-          const SizedBox(width: 16),
-          
-          // Details
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      a.categoryName?.toUpperCase() ?? 'ATTRACTION',
-                      style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
-                    ),
-                    GestureDetector(
-                      onTap: () async {
-                        await CacheService.toggleFavoritePlace((a as AttractionModel).toJson());
-                        setState(() {});
-                      },
-                      child: Icon(
-                        CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                        color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
-                        size: 20,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  a.name,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                    Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                    const SizedBox(width: 10),
-                    Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
-                    Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  a.description ?? 'Discover this unique location near you.',
-                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
             ),
-          ),
-        ],
+            const SizedBox(width: 16),
+            
+            // Details
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        catName.toUpperCase(),
+                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
+                      ),
+                      GestureDetector(
+                        onTap: () async {
+                          if (a is AttractionModel) {
+                            await CacheService.toggleFavoritePlace(a.toJson());
+                          }
+                          setState(() {});
+                        },
+                        child: Icon(
+                          CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                          color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    a.name,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                      Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                      const SizedBox(width: 10),
+                      const Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
+                      Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    a.description ?? 'Discover this unique location near you.',
+                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
-      ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index)).slideY(begin: 0.05, end: 0);
+    ).animate().fade(delay: Duration(milliseconds: 50 * (index % 10))).slideY(begin: 0.05, end: 0);
   }
 
   // ═══════════════════════════════════════
@@ -1594,114 +1609,75 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         // Quick categories for shopping
         const Text('Explore Retail', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            _buildFoodCategory(
-              '👕',
-              'Fashion',
-              _selectedShoppingCategory == 'Fashion',
-              () => setState(() {
-                _selectedShoppingCategory = _selectedShoppingCategory == 'Fashion' ? null : 'Fashion';
-              }),
-            ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
-              '💻',
-              'Tech',
-              _selectedShoppingCategory == 'Tech',
-              () => setState(() {
-                _selectedShoppingCategory = _selectedShoppingCategory == 'Tech' ? null : 'Tech';
-              }),
-            ),
-            const SizedBox(width: 10),
-            _buildFoodCategory(
-              '🏺',
-              'Local',
-              _selectedShoppingCategory == 'Local',
-              () => setState(() {
-                _selectedShoppingCategory = _selectedShoppingCategory == 'Local' ? null : 'Local';
-              }),
-            ),
-          ],
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '👕',
+                'Fashion',
+                _selectedShoppingCategory == 'Fashion',
+                () => setState(() {
+                  _selectedShoppingCategory = _selectedShoppingCategory == 'Fashion' ? null : 'Fashion';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '💻',
+                'Tech',
+                _selectedShoppingCategory == 'Tech',
+                () => setState(() {
+                  _selectedShoppingCategory = _selectedShoppingCategory == 'Tech' ? null : 'Tech';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏺',
+                'Local',
+                _selectedShoppingCategory == 'Local',
+                () => setState(() {
+                  _selectedShoppingCategory = _selectedShoppingCategory == 'Local' ? null : 'Local';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏬',
+                'Malls',
+                _selectedShoppingCategory == 'Malls',
+                () => setState(() {
+                  _selectedShoppingCategory = _selectedShoppingCategory == 'Malls' ? null : 'Malls';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🛒',
+                'Supermarkets',
+                _selectedShoppingCategory == 'Supermarkets',
+                () => setState(() {
+                  _selectedShoppingCategory = _selectedShoppingCategory == 'Supermarkets' ? null : 'Supermarkets';
+                }),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 28),
-        const Text('Markets & Shops', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Markets & Shops Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
           ...List.generate(5, (index) => _buildShimmerItemCard())
         else if (_shoppingList.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No real shops found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+            child: Center(child: Text('No shops found nearby.', style: TextStyle(color: AppColors.textTertiary))),
           )
         else
           ..._shoppingList.asMap().entries.map((e) {
             final a = e.value;
-            return _buildShopItem(a, e.key);
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Shopping', emoji: '🛍');
           }),
       ],
-    );
-  }
-
-  Widget _buildShopItem(AttractionEntity shop, int index) {
-    final dist = ((shop.distanceM ?? 0) / 1000).toStringAsFixed(1);
-    
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: shop.id,
-          name: shop.name,
-          category: shop.categoryName ?? 'Shopping',
-          rating: shop.rating,
-          distance: '$dist km',
-          emoji: '🛍',
-          imageUrl: shop.photoUrls.isNotEmpty ? shop.photoUrls.first : null,
-          latitude: shop.latitude,
-          longitude: shop.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                shop.name,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                const SizedBox(width: 3),
-                Text('${shop.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                const SizedBox(width: 12),
-                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-              ],
-            ),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: () async {
-                await CacheService.toggleFavoritePlace((shop as AttractionModel).toJson());
-                setState(() {});
-              },
-              child: Icon(
-                CacheService.isPlaceFavorite(shop.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceFavorite(shop.id) ? AppColors.primary : AppColors.textTertiary,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -1714,39 +1690,52 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
       children: [
         const Text('Explore Medical & Health Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            _buildExperienceCategoryItem(
-              '🏥',
-              'Hospitals',
-              _selectedMedicalCategory == 'Hospitals',
-              () => setState(() {
-                _selectedMedicalCategory = _selectedMedicalCategory == 'Hospitals' ? null : 'Hospitals';
-              }),
-            ),
-            const SizedBox(width: 16),
-            _buildExperienceCategoryItem(
-              '🩺',
-              'Clinics',
-              _selectedMedicalCategory == 'Clinics',
-              () => setState(() {
-                _selectedMedicalCategory = _selectedMedicalCategory == 'Clinics' ? null : 'Clinics';
-              }),
-            ),
-            const SizedBox(width: 16),
-            _buildExperienceCategoryItem(
-              '💊',
-              'Pharmacies',
-              _selectedMedicalCategory == 'Pharmacies',
-              () => setState(() {
-                _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacies' ? null : 'Pharmacies';
-              }),
-            ),
-          ],
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🏥',
+                'Hospitals',
+                _selectedMedicalCategory == 'Hospitals',
+                () => setState(() {
+                  _selectedMedicalCategory = _selectedMedicalCategory == 'Hospitals' ? null : 'Hospitals';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🩺',
+                'Clinics',
+                _selectedMedicalCategory == 'Clinics',
+                () => setState(() {
+                  _selectedMedicalCategory = _selectedMedicalCategory == 'Clinics' ? null : 'Clinics';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '💊',
+                'Pharmacies',
+                _selectedMedicalCategory == 'Pharmacies',
+                () => setState(() {
+                  _selectedMedicalCategory = _selectedMedicalCategory == 'Pharmacies' ? null : 'Pharmacies';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🦷',
+                'Dental',
+                _selectedMedicalCategory == 'Dental',
+                () => setState(() {
+                  _selectedMedicalCategory = _selectedMedicalCategory == 'Dental' ? null : 'Dental';
+                }),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 28),
-        const Text('Hospitals, Clinics & Pharmacies', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Hospitals, Clinics & Pharmacies Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
           ...List.generate(5, (index) => _buildShimmerItemCard())
@@ -1758,137 +1747,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         else
           ..._medicalList.asMap().entries.map((e) {
             final a = e.value;
-            return _buildMedicalItem(a, e.key);
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Medical', emoji: '🏥');
           }),
       ],
     );
   }
 
-  Widget _buildMedicalItem(AttractionEntity item, int index) {
-    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
-    
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: item.id,
-          name: item.name,
-          category: item.categoryName ?? 'Medical',
-          rating: item.rating,
-          distance: '$dist km',
-          emoji: '🏥',
-          imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
-          latitude: item.latitude,
-          longitude: item.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                item.name,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                const SizedBox(width: 3),
-                Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                const SizedBox(width: 12),
-                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-              ],
-            ),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: () async {
-                await CacheService.toggleFavoritePlace((item as AttractionModel).toJson());
-                setState(() {});
-              },
-              child: Icon(
-                CacheService.isPlaceFavorite(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceFavorite(item.id) ? AppColors.primary : AppColors.textTertiary,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
 
 
-  Widget _buildHospitalItem(AttractionEntity item, int index) {
-    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
-    
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: item.id,
-          name: item.name,
-          category: item.categoryName ?? 'Hospital',
-          rating: item.rating,
-          distance: '$dist km',
-          emoji: '🏥',
-          imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
-          latitude: item.latitude,
-          longitude: item.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                item.name,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                const SizedBox(width: 3),
-                Text('${item.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-                const SizedBox(width: 12),
-                Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
-                const SizedBox(width: 4),
-                Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-              ],
-            ),
-            const SizedBox(width: 16),
-            GestureDetector(
-              onTap: () async {
-                await CacheService.toggleFavoritePlace((item as AttractionModel).toJson());
-                setState(() {});
-              },
-              child: Icon(
-                CacheService.isPlaceFavorite(item.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                color: CacheService.isPlaceFavorite(item.id) ? AppColors.primary : AppColors.textTertiary,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   // ═══════════════════════════════════════
   // BUDGET TAB

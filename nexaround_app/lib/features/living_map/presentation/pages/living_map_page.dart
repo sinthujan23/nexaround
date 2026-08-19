@@ -5976,9 +5976,16 @@ class _LivingMapPageState extends State<LivingMapPage>
       });
     }
 
+    final int maxPlaces = grouped.values
+        .map((l) => l.length)
+        .fold(0, (max, len) => len > max ? len : max);
+    final double cardHeight = maxPlaces == 0
+        ? 330.0
+        : (90.0 + maxPlaces * 38.5).clamp(330.0, 720.0);
+
     // 4 Streamlined Cards
     return SizedBox(
-      height: 330.0,
+      height: cardHeight,
       child: ListView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),

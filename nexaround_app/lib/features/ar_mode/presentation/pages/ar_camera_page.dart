@@ -230,14 +230,10 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   int _maxRangeForCategory(String filter) {
-    if (filter == 'All' || filter == 'Others') return 2;
     return 10;
   }
 
   List<int> _rangeStepsForCategory(String filter) {
-    if (filter == 'All' || filter == 'Others') {
-      return const [2];
-    }
     return const [2, 10];
   }
 
@@ -247,10 +243,8 @@ class _ArCameraPageState extends State<ArCameraPage>
   int _maxPlacesForRange(int km) => _maxVisibleMarkers;
 
   double _getMinRangeM(int currentRangeKm, String filter) {
-    final steps = _rangeStepsForCategory(filter);
-    final idx = steps.indexOf(currentRangeKm);
-    if (idx <= 0) return 0.0;
-    return (steps[idx - 1] * 1000).toDouble();
+    if (currentRangeKm <= 2) return 0.0;
+    return 2000.0;
   }
 
   /// Text-search query used to surface FAMOUS far-away places per category
@@ -895,8 +889,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     final double minRangeM = _getMinRangeM(_rangeKm, filter);
     final double maxRangeM = (_rangeKm * 1000).toDouble();
 
-    // Show EVERY place within the selected range interval, nearest first (capped so the
-    // view stays usable). Widening the dial genuinely reveals farther places.
+    // Show places within the selected range interval, nearest first.
     var matches =
         _landmarks
             .where(
@@ -910,6 +903,18 @@ class _ArCameraPageState extends State<ArCameraPage>
             .toList()
           ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
+    // Fallback if specific 2-10km band has no places in memory yet: show closest places within maxRangeM
+    if (matches.isEmpty && minRangeM > 0.0) {
+      matches = _landmarks
+          .where(
+            (lm) =>
+                lm.distanceM <= maxRangeM &&
+                (filter == 'All' || _displayCategoryKey(lm) == bucket),
+          )
+          .toList()
+        ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+    }
+
     final result = matches.take(_maxVisibleMarkers).toList();
     _capCache[filter] = result;
     return result;
@@ -920,7 +925,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     final bucket = _filterBucketKey[filter];
     final double minRangeM = _getMinRangeM(_rangeKm, filter);
     final double maxRangeM = (_rangeKm * 1000).toDouble();
-    return _allLandmarks
+    var count = _allLandmarks
         .where(
           (lm) =>
               (minRangeM == 0.0
@@ -930,6 +935,16 @@ class _ArCameraPageState extends State<ArCameraPage>
               (filter == 'All' || _displayCategoryKey(lm) == bucket),
         )
         .length;
+    if (count == 0 && minRangeM > 0.0) {
+      count = _allLandmarks
+          .where(
+            (lm) =>
+                lm.distanceM <= maxRangeM &&
+                (filter == 'All' || _displayCategoryKey(lm) == bucket),
+          )
+          .length;
+    }
+    return count;
   }
 
   List<_ArLandmark> get _filteredLandmarks => _placesForFilter(_selectedFilter);
@@ -1853,10 +1868,8 @@ class _ArCameraPageState extends State<ArCameraPage>
               lat,
               lng,
             );
-            // Load all cached places specifically within the selected range interval (annulus).
-            if (distanceM > maxRangeM ||
-                (minRangeM > 0.0 && distanceM <= minRangeM))
-              continue;
+            // Load all cached places within the maximum range
+            if (distanceM > maxRangeM) continue;
 
             final name = jsonMap['name'] as String? ?? 'Discovery';
             final categoryName =
@@ -1963,55 +1976,30 @@ class _ArCameraPageState extends State<ArCameraPage>
     geo.Position pos,
     List<_ArLandmark> collected,
   ) async {
-    // Offset center sampling is now performed natively on the backend server for all wide ranges.
-    // This offloads heavy multi-query fetching to the server and leverages backend Redis caching.
-    return;
+    if (_rangeKm <= 2) return;
 
-    final double minRangeM = _getMinRangeM(_rangeKm, 'All');
-    final double maxRangeM = (_rangeKm * 1000).toDouble();
-    final double midM = (minRangeM + maxRangeM) / 2;
-    // Half the ring width would cover the annulus radially, BUT it's capped at
-    // 10 km: the backend's Nearby Search (New) allows maxResultCount ≤ 20 and
-    // requests 40 for any radius > 10 km, which Google rejects (400 → surfaces
-    // as a 500), so every wider offset query was failing and the ring stayed
-    // empty. A 10 km circle at the ring mid-radius still covers the bulk of the
-    // band (≈27.5–47.5 km of the 25–50 km ring — where all the real towns sit),
-    // and live testing returns 16–27 in-band places per direction.
-    final int sampleRadius = min(((maxRangeM - minRangeM) / 2).round(), 10000);
+    const double minRangeM = 2000.0;
+    const double maxRangeM = 10000.0;
+    const double midM = 6000.0;
+    const int sampleRadius = 4000;
 
-    // Enough centres that adjacent sample circles OVERLAP all the way around the
-    // ring. A fixed count leaves angular gaps on the wider 50 km ring — its
-    // circumference grows with the radius but the circles don't, so 8 centres
-    // that overlap at 25 km no longer touch at 50 km. Scale the count with the
-    // ring; the 0.85 factor forces a little overlap so nothing slips between.
-    final int centreCount = (pi * midM / (sampleRadius * 0.85)).ceil().clamp(
-      8,
-      16,
-    );
-    final List<double> bearings = [
-      for (int i = 0; i < centreCount; i++) (360.0 / centreCount) * i,
-    ];
+    const List<double> bearings = [0.0, 90.0, 180.0, 270.0];
 
-    // Run the SAME category set the main tier-loop uses at each offset centre.
-    // The 10–25 km ring is populated almost entirely by these typed queries
-    // (its results are HISTORICAL/MEDICAL/etc. — i.e. the Attractions, Medical…
-    // buckets), not by an untyped search, which the New Places API ranks
-    // generically and returns far fewer of. Mirroring them here makes the far
-    // ring fill with the same kinds of places. Cost is intentionally high
-    // (centres × categories) — the user chose coverage over API cost.
-    const List<String?> sampleCategories = [
-      null,
-      'Food & Drink',
-      'Shopping',
-      'Attractions',
-      'Hotels',
-      'Medical',
-    ];
+    final List<String?> sampleCategories = _selectedFilter == 'All'
+        ? const [
+            null,
+            'Food & Drink',
+            'Shopping',
+            'Attractions',
+            'Hotels',
+            'Medical',
+          ]
+        : [_selectedFilter == 'Food' ? 'Food & Drink' : _selectedFilter == 'Historical' ? 'Attractions' : _selectedFilter];
 
     try {
       debugPrint(
         '🛰 AR: Far-ring sampling ${minRangeM ~/ 1000}–${maxRangeM ~/ 1000}km '
-        'across $centreCount centres × ${sampleCategories.length} categories '
+        'across ${bearings.length} centres × ${sampleCategories.length} categories '
         '(centre r=${sampleRadius}m)...',
       );
 
@@ -2458,16 +2446,27 @@ class _ArCameraPageState extends State<ArCameraPage>
         // the range — so 2 km feels light and 50 km full (a clean, viable count).
         final double minRangeM = _getMinRangeM(_rangeKm, 'All');
         final int rangeCap = _maxPlacesForRange(_rangeKm);
-        final finalCollected =
+        var inBand =
             [...nonBeaches, ...uniqueDirectionBeaches]
                 .where(
                   (l) =>
-                      l.distanceM > minRangeM && l.distanceM <= _rangeKm * 1000,
+                      (minRangeM == 0.0
+                          ? l.distanceM >= 0.0
+                          : l.distanceM > minRangeM) &&
+                      l.distanceM <= _rangeKm * 1000,
                 )
                 .toList()
               ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
-        collected = finalCollected.take(rangeCap).toList();
+        // Fallback: if inBand is empty, backfill with closest places within max radius
+        if (inBand.isEmpty) {
+          inBand = [...nonBeaches, ...uniqueDirectionBeaches]
+              .where((l) => l.distanceM <= _rangeKm * 1000)
+              .toList()
+            ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        }
+
+        collected = inBand.take(rangeCap).toList();
 
         if (mounted) {
           setState(() {
@@ -4138,16 +4137,8 @@ class _ArCameraPageState extends State<ArCameraPage>
     switch (val) {
       case 2:
         return '0-2 kms';
-      case 15:
-        return '0-15 kms';
-      case 5:
-        return '2-5 kms';
       case 10:
         return '2-10 kms';
-      case 25:
-        return '10-25 kms';
-      case 50:
-        return '25-50 kms';
       default:
         return '0-2 kms';
     }
@@ -5361,10 +5352,8 @@ class _ArCameraPageState extends State<ArCameraPage>
                                       ),
 
 
-                                      if (_selectedFilter != 'All' &&
-                                          _selectedFilter != 'Others')
-                                        // Range button
-                                        GestureDetector(
+                                      // Range button
+                                      GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () {
                                             final steps =
@@ -5553,8 +5542,99 @@ class _ArCameraPageState extends State<ArCameraPage>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-
-                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00E5FF).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(
+                                          color: const Color(0xFF00E5FF).withOpacity(0.35),
+                                          width: 0.8,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            width: 6,
+                                            height: 6,
+                                            decoration: const BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: Color(0xFF00E5FF),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            _selectedFilter == 'All'
+                                                ? 'RADAR ACTIVE'
+                                                : _selectedFilter.toUpperCase(),
+                                            style: const TextStyle(
+                                              color: Color(0xFF00E5FF),
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w900,
+                                              letterSpacing: 1.0,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    // Range tap button
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        final steps =
+                                            _rangeStepsForCategory(
+                                              _selectedFilter,
+                                            );
+                                        if (steps.length <= 1) return;
+                                        HapticFeedback.selectionClick();
+                                        final idx = steps.indexOf(_rangeKm);
+                                        setState(() {
+                                          _rangeKm =
+                                              steps[(idx + 1) %
+                                                  steps.length];
+                                          _capCache.clear();
+                                        });
+                                        _lastFetchTime = null;
+                                        _fetchLivePlaces();
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.brandGreen,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
+                                          border: Border.all(
+                                            color: Colors.white.withOpacity(
+                                              0.3,
+                                            ),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _getRangeText(
+                                            _rangeKm,
+                                          ).replaceAll(' km', 'km'),
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
                                 const Text(
                                   'Discover places',
                                   style: TextStyle(
@@ -8098,62 +8178,60 @@ HOW TO FORMAT EVERY REPLY:
                                                 ),
                                               ),
                                             ),
-                                            if (_selectedFilter != 'All' &&
-                                                _selectedFilter != 'Others')
-                                              // Range button
-                                              GestureDetector(
-                                                behavior:
-                                                    HitTestBehavior.opaque,
-                                                onTap: () {
-                                                  final steps =
-                                                      _rangeStepsForCategory(
-                                                        _selectedFilter,
-                                                      );
-                                                  if (steps.length <= 1) return;
-                                                  HapticFeedback.selectionClick();
-                                                  final idx = steps.indexOf(
-                                                    _rangeKm,
-                                                  );
-                                                  setState(() {
-                                                    _rangeKm =
-                                                        steps[(idx + 1) %
-                                                            steps.length];
-                                                    _capCache.clear();
-                                                  });
-                                                  _lastFetchTime = null;
-                                                  _fetchLivePlaces();
-                                                },
-                                                child: Container(
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 4,
+                                            // Range button
+                                            GestureDetector(
+                                              behavior:
+                                                  HitTestBehavior.opaque,
+                                              onTap: () {
+                                                final steps =
+                                                    _rangeStepsForCategory(
+                                                      _selectedFilter,
+                                                    );
+                                                if (steps.length <= 1) return;
+                                                HapticFeedback.selectionClick();
+                                                final idx = steps.indexOf(
+                                                  _rangeKm,
+                                                );
+                                                setState(() {
+                                                  _rangeKm =
+                                                      steps[(idx + 1) %
+                                                          steps.length];
+                                                  _capCache.clear();
+                                                });
+                                                _lastFetchTime = null;
+                                                _fetchLivePlaces();
+                                              },
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: AppColors.brandGreen,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        8,
                                                       ),
-                                                  decoration: BoxDecoration(
-                                                    color: AppColors.brandGreen,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          8,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: Colors.white
-                                                          .withOpacity(0.3),
-                                                      width: 0.8,
-                                                    ),
+                                                  border: Border.all(
+                                                    color: Colors.white
+                                                        .withOpacity(0.3),
+                                                    width: 0.8,
                                                   ),
-                                                  child: Text(
-                                                    _getRangeText(
-                                                      _rangeKm,
-                                                    ).replaceAll(' km', 'km'),
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w900,
-                                                    ),
+                                                ),
+                                                child: Text(
+                                                  _getRangeText(
+                                                    _rangeKm,
+                                                  ).replaceAll(' km', 'km'),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight:
+                                                        FontWeight.w900,
                                                   ),
                                                 ),
                                               ),
+                                            ),
                                           ],
                                         ),
                                         const SizedBox(height: 6),
