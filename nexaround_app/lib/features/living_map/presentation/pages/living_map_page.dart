@@ -6,6 +6,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/constants/place_bands.dart';
+import 'package:nexaround_app/core/utils/place_sections.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
@@ -5712,12 +5713,16 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions, MapStatus status) {
     if (attractions.isEmpty) return const SizedBox.shrink();
 
-    // Six sections. POI and Nature split the same pool, as do Hospital and
-    // Medical — a place must land in exactly one of each pair or it shows up
-    // twice as the user scrolls across the cards.
-    final Map<String, List<AttractionEntity>> grouped = {
-      for (final c in PlaceBands.sections) c: <AttractionEntity>[],
-    };
+    // The same split Discovery uses, over the same pool.
+    //
+    // This screen used to build its own `grouped` map from `attractions` alone,
+    // with a private copy of the section rules. That pool excluded
+    // `bandedPlaces` — the backend's distance-banded fetch — so Around You was
+    // choosing from a strictly smaller set than the Discovery tab it is meant
+    // to be a shortcut into. At Kinniya that left the Nature card with five
+    // weak places while the Nature tab listed far more, from the same server.
+    final Map<String, List<AttractionEntity>> grouped =
+        PlaceSections.sectionsFrom(context.read<MapBloc>().state);
 
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
       final distA = _getAccurateDistanceM(a);
@@ -5730,199 +5735,6 @@ class _LivingMapPageState extends State<LivingMapPage>
       return distA.compareTo(distB);
     }
 
-    // Mirrors `place_bands.py` on the backend. The same place has to land in the
-    // same section whether a card was filled by the banded fetch or by this
-    // local fallback, or the two disagree as the network comes and goes.
-    const natureTags = [
-      'park', 'national_park', 'state_park', 'beach', 'hiking_area',
-      'botanical_garden', 'garden', 'wildlife_park', 'wildlife_refuge',
-      'lake', 'river', 'marina', 'picnic_ground', 'natural_feature', 'campground',
-    ];
-    const natureWords = [
-      'beach', 'park', 'lake', 'waterfall', 'falls', 'garden', 'forest',
-      'sanctuary', 'lagoon', 'trail', 'island',
-    ];
-    // Heritage strong enough to keep a place in POI even when it also reads as
-    // nature — a museum inside a botanical garden is somewhere you go to see
-    // the museum.
-    const heritageTags = [
-      'museum', 'art_gallery', 'historical_landmark', 'historical_place',
-      'cultural_landmark', 'monument', 'castle', 'sculpture', 'cultural_center',
-      'hindu_temple', 'buddhist_temple', 'church', 'mosque', 'synagogue',
-      'place_of_worship',
-    ];
-    const heritageWords = [
-      'museum', 'temple', 'church', 'mosque', 'kovil', 'monument', 'fort',
-      'palace', 'gallery', 'memorial', 'statue',
-    ];
-    const hospitalWords = ['hospital', 'nursing home', 'infirmary'];
-
-    bool hasAny(List<String> haystack, List<String> needles) =>
-        needles.any(haystack.contains);
-    bool nameHasAny(String n, List<String> needles) =>
-        needles.any(n.contains);
-
-    for (final place in attractions) {
-      final distM = _getAccurateDistanceM(place);
-      final distKm = distM / 1000.0;
-
-      final catName = (place.categoryName ?? '').toLowerCase();
-      final name = place.name.toLowerCase();
-      final tags = place.tags.map((t) => t.toString().toLowerCase()).toList();
-
-      bool matchesFood = false;
-      bool matchesPOI = false;
-      bool matchesNature = false;
-      bool matchesShopping = false;
-      bool matchesMedical = false;
-      bool matchesHospital = false;
-
-      // 1. Food & Drink matching logic
-      if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') ||
-          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') ||
-          name.contains('cafe') || name.contains('dining') || name.contains('bakery') || name.contains('bistro')) {
-        matchesFood = true;
-      }
-
-      // 2 & 3. POI and Nature, split from one pool.
-      //
-      // A place reading as nature belongs to Nature unless it also carries real
-      // heritage, in which case POI wins it back. Anything left over that still
-      // reads as somewhere-worth-visiting stays in POI.
-      final bool hasNatureSignal = hasAny(tags, natureTags) ||
-          nameHasAny(name, natureWords) ||
-          catName.contains('beach') || catName.contains('park') ||
-          catName.contains('nature') || catName.contains('garden') ||
-          catName.contains('lake') || catName.contains('river') ||
-          catName.contains('waterfall') || catName.contains('forest');
-
-      final bool hasHeritageSignal = hasAny(tags, heritageTags) ||
-          nameHasAny(name, heritageWords) ||
-          catName.contains('museum') || catName.contains('landmark') ||
-          catName.contains('culture') || catName.contains('temple') ||
-          catName.contains('art') || catName.contains('historic');
-
-      final bool hasPoiSignal = hasHeritageSignal ||
-          catName.contains('experience') || catName.contains('zoo') ||
-          catName.contains('attraction') ||
-          hasAny(tags, const [
-            'tourist_attraction', 'zoo', 'aquarium', 'amusement_park',
-            'water_park', 'planetarium', 'performing_arts_theater',
-            'observation_deck', 'visitor_center', 'point_of_interest_landmark',
-          ]);
-
-      // Shared by both halves: neither section wants a dentist or a guest house.
-      const outdoorPoiExcludeTags = [
-        'spa', 'beauty_salon', 'hair_care', 'doctor', 'dentist', 'hospital',
-        'medical_clinic', 'pharmacy', 'school', 'university', 'bank', 'atm',
-        'gas_station', 'store', 'shopping_mall', 'real_estate_agency',
-      ];
-      const outdoorPoiExcludeWords = [
-        'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
-        'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
-        'spa', 'salon', 'wellness', 'massage', 'beauty', 'hair', 'nail',
-        'bank', 'atm', 'store', 'shop', 'office', 'pharmacy', 'supermarket',
-        'grocery', 'gas station', 'homestay', 'guest house', 'apartment', 'villa',
-      ];
-      final bool visitable = !nameHasAny(name, outdoorPoiExcludeWords) &&
-          !hasAny(tags, outdoorPoiExcludeTags);
-
-      if (visitable) {
-        if (hasNatureSignal && !hasHeritageSignal) {
-          // Resorts and safari lodges carry `beach` and `wildlife_park` next to
-          // `lodging` — they are places to sleep, not places to go.
-          if (!hasAny(tags, const [
-                'lodging', 'hotel', 'resort_hotel', 'guest_house', 'motel',
-                'hostel', 'bed_and_breakfast', 'restaurant', 'bar', 'cafe',
-              ]) &&
-              !nameHasAny(name, const ['hotel', 'resort', 'villa'])) {
-            matchesNature = true;
-          }
-        } else if (hasPoiSignal) {
-          matchesPOI = true;
-        }
-      }
-
-      // 4. Shopping matching logic
-      if (catName.contains('mall') || catName.contains('market') ||
-          catName.contains('store') || tags.contains('department_store')) {
-        final shoppingExclusions = [
-          'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
-          'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist', 'pharmacy'
-        ];
-        final shoppingExcludeTags = [
-          'school', 'university', 'hospital', 'doctor', 'dentist',
-          'pharmacy', 'drugstore', 'medical_clinic'
-        ];
-        if (!shoppingExclusions.any((kw) => name.contains(kw)) &&
-            !tags.any((t) => shoppingExcludeTags.contains(t))) {
-          matchesShopping = true;
-        }
-      }
-
-      // 5 & 6. Hospital and Medical, split from one pool.
-      //
-      // Hospital always wins: Google types most hospitals as `hospital`
-      // alongside the clinic types, and names the rest without any
-      // distinguishing type at all.
-      final bool hasMedicalSignal =
-          catName == 'medical' || catName == 'hospital' ||
-          name.contains('medical') || name.contains('hospital') ||
-          name.contains('clinic') || name.contains('pharmacy') ||
-          name.contains('dispensary') || name.contains('health centre') ||
-          name.contains('health center') || tags.contains('hospital') ||
-          tags.contains('pharmacy') || tags.contains('doctor') ||
-          tags.contains('dentist') || tags.contains('physiotherapist') ||
-          tags.contains('veterinary_care') || tags.contains('health') ||
-          tags.contains('medical_center') || tags.contains('medical_clinic') ||
-          (catName.contains('medical') || catName.contains('hospital') ||
-           catName.contains('clinic') || catName.contains('pharmacy') || catName.contains('doctor'));
-
-      if (hasMedicalSignal) {
-        const nonMedicalTags = [
-          'school', 'university', 'secondary_school', 'primary_school',
-          'bank', 'finance', 'accounting', 'atm',
-          'food', 'restaurant', 'bakery', 'cafe', 'bar',
-          'store', 'shopping_mall', 'grocery_or_supermarket',
-          'lodging', 'real_estate_agency',
-          'transit_station', 'bus_station', 'train_station',
-        ];
-        final bool isNonMedical = tags.any((t) => nonMedicalTags.contains(t));
-        if (!isNonMedical) {
-          if (tags.contains('hospital') || nameHasAny(name, hospitalWords)) {
-            matchesHospital = true;
-          } else {
-            matchesMedical = true;
-          }
-        }
-      }
-
-      double filterDistKm = distKm;
-      if (_userLatitude != null && _userLongitude != null && place.latitude != 0 && place.longitude != 0) {
-        filterDistKm = geo.Geolocator.distanceBetween(
-          _userLatitude!, _userLongitude!, place.latitude, place.longitude
-        ) / 1000.0;
-      }
-
-      // Each category reaches exactly as far as its outermost band. These used
-      // to be independent numbers (food filtered at 12 km against a 5 km tier
-      // table, shopping at 20 against 15), which let places into the pool that
-      // no band could ever display.
-      void addTo(String category, bool matches) {
-        if (!matches) return;
-        if (filterDistKm > PlaceBands.maxKmFor(category)) return;
-        final bucket = grouped[category]!;
-        if (bucket.any((x) => x.id == place.id)) return;
-        bucket.add(place);
-      }
-
-      addTo('Food & Drink', matchesFood);
-      addTo('POI', matchesPOI);
-      addTo('Nature', matchesNature);
-      addTo('Shopping', matchesShopping);
-      addTo('Medical', matchesMedical);
-      addTo('Hospital', matchesHospital);
-    }
 
     // ── Distance-band selection ────────────────────────────────────────────
     // Each section fills from the category's three distance bands on the
@@ -5930,10 +5742,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     // so the list reads as a progression outward instead of a dozen variations
     // on whatever happens to be closest.
     //
-    // This is the fallback path, used until the backend's banded fetch lands
-    // (and if it fails). It can only band what the map already loaded, so the
-    // outer bands may be thin here — the backend can go and fetch for a band
-    // that is short, and this cannot.
+    // Used when the backend's own band ordering has not arrived. The pool it
+    // works over already includes whatever banded places have landed, so this
+    // is a re-banding of the same data rather than a poorer substitute.
     List<AttractionEntity> selectBandedPlaces({
       required List<AttractionEntity> allPlaces,
       required String category,
@@ -6048,10 +5859,20 @@ class _LivingMapPageState extends State<LivingMapPage>
           continue;
         }
       }
-      grouped[category] = selectBandedPlaces(
+      // Nothing from the backend for this section. Say so in the log, with the
+      // size of the local pool standing in for it — a card quietly showing five
+      // weak places instead of the backend's ten looks like bad data rather
+      // than a fetch that never landed, and the two need telling apart.
+      final local = selectBandedPlaces(
         allPlaces: grouped[category] ?? [],
         category: category,
       );
+      debugPrint(
+        '⚠️ Around You "$category": no banded data '
+        '(loading=${context.read<MapBloc>().state.isLoadingBands}) — '
+        'falling back to ${local.length} local place(s)',
+      );
+      grouped[category] = local;
     }
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();

@@ -23,6 +23,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:nexaround_app/core/utils/place_sections.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
@@ -469,17 +470,19 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
                     final rawMasterList = [...baseList, ...bandedPlaces];
                     final masterList = _deduplicateAttractions(rawMasterList);
+                    // Same split Around You uses, so the two can't disagree.
+                    final sections = PlaceSections.sectionsFrom(state);
                     
                     // Filter POI List — built attractions: heritage, culture,
                     // worship and ticketed venues. Beaches, parks and waterfalls
                     // now belong to Nature and are excluded by _isPoi.
-                    _poiList = masterList.where(_isPoi).toList();
+                    _poiList = sections['POI']!;
 
                     if (_selectedPoiCategory != null) {
                       _poiList = _poiList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        final tags = _tagsOf(a);
+                        final tags = PlaceSections.tagsOf(a);
                         if (_selectedPoiCategory == 'Landmarks') {
                           return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
                         } else if (_selectedPoiCategory == 'Culture') {
@@ -500,13 +503,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
                     // Filter Nature List — the outdoors itself: beaches, parks,
                     // waterfalls, lakes and trails.
-                    _natureList = masterList.where(_isNature).toList();
+                    _natureList = sections['Nature']!;
 
                     if (_selectedNatureCategory != null) {
                       _natureList = _natureList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        final tags = _tagsOf(a);
+                        final tags = PlaceSections.tagsOf(a);
                         if (_selectedNatureCategory == 'Beaches') {
                           return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
                         } else if (_selectedNatureCategory == 'Parks') {
@@ -528,12 +531,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     });
 
                     // Filter Food List
-                    _foodList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-                      return cat.contains('food') || cat.contains('restaurant') || cat.contains('cafe') || 
-                             cat.contains('dining') || cat.contains('meal') || name.contains('restaurant') || name.contains('cafe');
-                    }).toList();
+                    _foodList = sections['Food & Drink']!;
                     if (_selectedFoodCategory != null) {
                       _foodList = _foodList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
@@ -552,7 +550,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Shopping List
-                    _shoppingList = masterList.where(_isShopping).toList();
+                    _shoppingList = sections['Shopping']!;
                     if (_selectedShoppingCategory != null) {
                       _shoppingList = _shoppingList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
@@ -569,12 +567,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
                     // Filter Medical List — everyday health. Hospitals are their
                     // own section now and _isMedical excludes them.
-                    _medicalList = masterList.where(_isMedical).toList();
+                    _medicalList = sections['Medical']!;
                     if (_selectedMedicalCategory != null) {
                       _medicalList = _medicalList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        final tags = _tagsOf(a);
+                        final tags = PlaceSections.tagsOf(a);
                         if (_selectedMedicalCategory == 'Clinics') {
                           return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
                         } else if (_selectedMedicalCategory == 'Pharmacies') {
@@ -590,7 +588,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Hospital List
-                    _hospitalList = masterList.where(_isHospital).toList();
+                    _hospitalList = sections['Hospital']!;
                     if (_selectedHospitalCategory != null) {
                       _hospitalList = _hospitalList.where((a) {
                         final name = a.name.toLowerCase();
@@ -641,158 +639,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   // each split a single pool, so a place lands in exactly one of each pair —
   // otherwise the same beach is listed under both POI and Nature.
 
-  static const _natureTags = [
-    'park', 'national_park', 'state_park', 'beach', 'hiking_area',
-    'botanical_garden', 'garden', 'wildlife_park', 'wildlife_refuge',
-    'lake', 'river', 'marina', 'picnic_ground', 'natural_feature', 'campground',
-  ];
-  static const _natureWords = [
-    'beach', 'park', 'lake', 'waterfall', 'falls', 'garden', 'forest',
-    'sanctuary', 'lagoon', 'trail', 'island',
-  ];
-  static const _heritageTags = [
-    'museum', 'art_gallery', 'historical_landmark', 'historical_place',
-    'cultural_landmark', 'monument', 'castle', 'sculpture', 'cultural_center',
-    'hindu_temple', 'buddhist_temple', 'church', 'mosque', 'synagogue',
-    'place_of_worship',
-  ];
-  static const _heritageWords = [
-    'museum', 'temple', 'church', 'mosque', 'kovil', 'monument', 'fort',
-    'palace', 'gallery', 'memorial', 'statue',
-  ];
-  static const _poiTags = [
-    'tourist_attraction', 'zoo', 'aquarium', 'amusement_park', 'water_park',
-    'planetarium', 'performing_arts_theater', 'observation_deck',
-    'visitor_center', 'point_of_interest_landmark',
-  ];
-  static const _hospitalWords = ['hospital', 'nursing home', 'infirmary'];
-  static const _nonMedicalTags = [
-    'school', 'university', 'secondary_school', 'primary_school',
-    'bank', 'finance', 'accounting', 'atm',
-    'food', 'restaurant', 'bakery', 'cafe', 'bar',
-    'store', 'shopping_mall', 'grocery_or_supermarket',
-    'lodging', 'real_estate_agency',
-    'transit_station', 'bus_station', 'train_station',
-  ];
-  static const _shoppingTags = [
-    'shopping_mall', 'department_store', 'supermarket', 'grocery_store',
-    'grocery_or_supermarket', 'convenience_store', 'store', 'market',
-    'clothing_store', 'electronics_store', 'shoe_store', 'jewelry_store',
-    'book_store', 'gift_shop', 'home_goods_store', 'furniture_store',
-    'hardware_store', 'sporting_goods_store', 'pet_store', 'liquor_store',
-    'bicycle_store', 'warehouse_store', 'wholesaler', 'discount_store',
-  ];
-  /// Carry `store` but belong to another section — cafés and chemists above all,
-  /// which Google files as `food_store` and `store` respectively.
-  static const _nonShoppingTags = [
-    'cafe', 'coffee_shop', 'restaurant', 'bar', 'bakery', 'ice_cream_shop',
-    'dessert_shop', 'confectionery', 'food', 'food_store', 'meal_takeaway',
-    'meal_delivery', 'pharmacy', 'drugstore', 'hospital', 'doctor', 'dentist',
-    'medical_clinic', 'school', 'university', 'bank', 'atm', 'finance',
-    'lodging', 'hotel', 'spa', 'beauty_salon', 'hair_care', 'body_art_service',
-    'real_estate_agency', 'travel_agency', 'car_repair', 'car_dealer',
-  ];
-  static const _stayWords = [
-    'homestay', 'bedroom', 'apartment', 'villa', 'guest house', 'hotel',
-    'resort',
-  ];
-
-  static List<String> _tagsOf(AttractionEntity a) =>
-      a.tags.map((t) => t.toString().toLowerCase()).toList();
-
-  static bool _hasNatureSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
-    final name = a.name.toLowerCase();
-    final tags = _tagsOf(a);
-    return _natureTags.any(tags.contains) ||
-        _natureWords.any(name.contains) ||
-        cat.contains('nature') || cat.contains('beach') || cat.contains('park') ||
-        cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
-        cat.contains('waterfall') || cat.contains('forest');
-  }
-
-  static bool _hasHeritageSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
-    final name = a.name.toLowerCase();
-    final tags = _tagsOf(a);
-    return _heritageTags.any(tags.contains) ||
-        _heritageWords.any(name.contains) ||
-        cat.contains('museum') || cat.contains('landmark') ||
-        cat.contains('culture') || cat.contains('temple') ||
-        cat.contains('art') || cat.contains('historic');
-  }
-
-  /// Somewhere outdoors, and not a place to sleep. Beach resorts and safari
-  /// lodges carry `beach` and `wildlife_park` next to `lodging`.
-  static bool _isNature(AttractionEntity a) {
-    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
-    if (_hasHeritageSignal(a)) return false;
-    if (!_hasNatureSignal(a)) return false;
-    final tags = _tagsOf(a);
-    return !const [
-      'lodging', 'hotel', 'resort_hotel', 'guest_house', 'motel', 'hostel',
-      'bed_and_breakfast', 'restaurant', 'bar', 'cafe',
-    ].any(tags.contains);
-  }
-
-  /// Something built and worth going to see. Nature wins any place that reads as
-  /// outdoors without also carrying real heritage.
-  static bool _isPoi(AttractionEntity a) {
-    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
-    if (_isNature(a)) return false;
-    final cat = (a.categoryName ?? '').toLowerCase();
-    final tags = _tagsOf(a);
-    return _hasHeritageSignal(a) ||
-        _poiTags.any(tags.contains) ||
-        cat.contains('experience') || cat.contains('zoo') ||
-        cat.contains('attraction');
-  }
-
-  static bool _hasMedicalSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
-    final name = a.name.toLowerCase();
-    final tags = _tagsOf(a);
-    final bool signal = cat == 'medical' || cat == 'hospital' ||
-        name.contains('medical') || name.contains('hospital') ||
-        name.contains('clinic') || name.contains('pharmacy') ||
-        name.contains('dispensary') || name.contains('health centre') ||
-        name.contains('health center') || tags.contains('hospital') ||
-        tags.contains('pharmacy') || tags.contains('doctor') ||
-        tags.contains('dentist') || tags.contains('physiotherapist') ||
-        tags.contains('veterinary_care') || tags.contains('health') ||
-        tags.contains('medical_center') || tags.contains('medical_clinic') ||
-        cat.contains('medical') || cat.contains('hospital') ||
-        cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor');
-    if (!signal) return false;
-    return !_nonMedicalTags.any(tags.contains);
-  }
-
-  /// Hospital always wins over Medical: Google types most hospitals as
-  /// `hospital` alongside the clinic types, and names the rest without any
-  /// distinguishing type at all.
-  static bool _isHospital(AttractionEntity a) =>
-      _hasMedicalSignal(a) &&
-      (_tagsOf(a).contains('hospital') ||
-          _hospitalWords.any(a.name.toLowerCase().contains));
-
-  static bool _isMedical(AttractionEntity a) =>
-      _hasMedicalSignal(a) && !_isHospital(a);
-
-  /// Somewhere you go to buy something that is not food or medicine.
-  ///
-  /// Matched on Google types, like every other section. The previous filter
-  /// tested `categoryName` for 'mall'/'market'/'store' — but categoryName is the
-  /// literal string 'Shopping', which contains none of those, so the tab matched
-  /// nothing and rendered empty while Around You showed the same places fine.
-  static bool _isShopping(AttractionEntity a) {
-    final tags = _tagsOf(a);
-    if (_nonShoppingTags.any(tags.contains)) return false;
-    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
-    if (_shoppingTags.any(tags.contains)) return true;
-    final cat = (a.categoryName ?? '').toLowerCase();
-    return cat.contains('shopping') || cat.contains('mall') ||
-        cat.contains('market') || cat.contains('store');
-  }
 
   List<AttractionEntity> _deduplicateAttractions(List<AttractionEntity> list) {
     final seenKeys = <String>{};
