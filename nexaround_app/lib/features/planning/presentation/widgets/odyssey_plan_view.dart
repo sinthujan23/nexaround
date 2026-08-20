@@ -14,15 +14,36 @@ import 'package:nexaround_app/features/living_map/presentation/pages/smart_touri
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
 /// planner's result step and the saved-odyssey detail page.
-class OdysseyPlanView extends StatelessWidget {
+/// One row of the flattened itinerary.
+///
+/// Dragging a place into a different day means every place and every day
+/// heading has to live in one list: Flutter's reorderable lists move items
+/// within a single list only, so keeping a list per day would have confined a
+/// drag to the day it started in.
+sealed class _PlanRow {
+  const _PlanRow();
+}
+
+class _DayHeadingRow extends _PlanRow {
+  final int dayIndex;
+  const _DayHeadingRow(this.dayIndex);
+}
+
+class _ActivityPlanRow extends _PlanRow {
+  final int dayIndex;
+  final int activityIndex;
+  final bool isLastOfDay;
+  const _ActivityPlanRow(this.dayIndex, this.activityIndex, this.isLastOfDay);
+}
+
+class OdysseyPlanView extends StatefulWidget {
   final Odyssey odyssey;
   final EdgeInsetsGeometry padding;
 
-  /// When provided, each activity shows an edit button that asks the AI to swap
-  /// that place. Called with the zero-based (dayIndex, activityIndex). When
-  /// null the plan is read-only (e.g. the planner preview).
-  final void Function(int dayIndex, int activityIndex)? onSwapActivity;
-  final String? swappingKey;
+  /// Called when a place is dragged to a new position, possibly into another
+  /// day. Indices are the source and destination positions within their days.
+  final void Function(int fromDay, int fromIndex, int toDay, int toIndex)?
+      onReorderActivity;
   final void Function(int dayIndex, int activityIndex)? onToggleVisited;
 
   /// When provided, each dynamic booking partner shows an edit/swap button
@@ -39,23 +60,44 @@ class OdysseyPlanView extends StatelessWidget {
     super.key,
     required this.odyssey,
     this.padding = const EdgeInsets.fromLTRB(20, 16, 20, 24),
-    this.onSwapActivity,
-    this.swappingKey,
+    this.onReorderActivity,
     this.onToggleVisited,
     this.onSwapPartner,
     this.swappingPartnerName,
     this.onActualCostChanged,
   });
 
+  @override
+  State<OdysseyPlanView> createState() => _OdysseyPlanViewState();
+}
+
+class _OdysseyPlanViewState extends State<OdysseyPlanView> {
+  /// Places whose details are showing. Collapsed is the default: a day reads as
+  /// a scannable list of names, and the price, tip, booking button and cost
+  /// field appear only for the one being looked at.
+  final Set<String> _expanded = <String>{};
+
+  static String _key(int dayIndex, int activityIndex) => '$dayIndex:$activityIndex';
+
+  bool _isExpanded(int dayIndex, int activityIndex) =>
+      _expanded.contains(_key(dayIndex, activityIndex));
+
+  void _toggleExpanded(int dayIndex, int activityIndex) {
+    setState(() {
+      final key = _key(dayIndex, activityIndex);
+      if (!_expanded.remove(key)) _expanded.add(key);
+    });
+  }
+
 
   @override
   Widget build(BuildContext context) {
-    final bool hasFlights = odyssey.flightStrategies.isNotEmpty ||
-        odyssey.flightGeneralTips.isNotEmpty ||
-        odyssey.flightBestMonths.isNotEmpty;
-    final bool hasHotels = odyssey.hotelStrategies.isNotEmpty ||
-        odyssey.hotelGeneralTips.isNotEmpty ||
-        odyssey.hotelBestAreas.isNotEmpty;
+    final bool hasFlights = widget.odyssey.flightStrategies.isNotEmpty ||
+        widget.odyssey.flightGeneralTips.isNotEmpty ||
+        widget.odyssey.flightBestMonths.isNotEmpty;
+    final bool hasHotels = widget.odyssey.hotelStrategies.isNotEmpty ||
+        widget.odyssey.hotelGeneralTips.isNotEmpty ||
+        widget.odyssey.hotelBestAreas.isNotEmpty;
 
     Widget buildTabItem({required IconData icon, required String label}) {
       return Tab(
@@ -164,8 +206,8 @@ class OdysseyPlanView extends StatelessWidget {
   }
 
   Widget _buildCinematicHeroCard(BuildContext context) {
-    final hasImage = odyssey.coverUrl != null && odyssey.coverUrl!.isNotEmpty;
-    final gradient = _getThemedGradient(odyssey.destination);
+    final hasImage = widget.odyssey.coverUrl != null && widget.odyssey.coverUrl!.isNotEmpty;
+    final gradient = _getThemedGradient(widget.odyssey.destination);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 20),
@@ -188,7 +230,7 @@ class OdysseyPlanView extends StatelessWidget {
             Positioned.fill(
               child: hasImage
                   ? CachedNetworkImage(
-                      imageUrl: odyssey.coverUrl!,
+                      imageUrl: widget.odyssey.coverUrl!,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
                         color: const Color(0xFF0F172A),
@@ -240,7 +282,7 @@ class OdysseyPlanView extends StatelessWidget {
                   // Top Badges Row (Destination & Duration Chips)
                   Row(
                     children: [
-                      if (odyssey.destination.isNotEmpty)
+                      if (widget.odyssey.destination.isNotEmpty)
                         Flexible(
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
@@ -259,7 +301,7 @@ class OdysseyPlanView extends StatelessWidget {
                                 const SizedBox(width: 4),
                                 Flexible(
                                   child: Text(
-                                    odyssey.destination,
+                                    widget.odyssey.destination,
                                     style: const TextStyle(
                                       color: Colors.white,
                                       fontSize: 11.5,
@@ -285,8 +327,8 @@ class OdysseyPlanView extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
-                          '${odyssey.nights > 0 ? ' • ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+                          '${widget.odyssey.actualDays} ${widget.odyssey.actualDays == 1 ? 'Day' : 'Days'}'
+                          '${widget.odyssey.nights > 0 ? ' • ${widget.odyssey.nights} ${widget.odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 11.5,
@@ -299,7 +341,7 @@ class OdysseyPlanView extends StatelessWidget {
                   const SizedBox(height: 28),
 
                   // Mood Tag
-                  if (odyssey.mood.isNotEmpty)
+                  if (widget.odyssey.mood.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 6),
                       child: Container(
@@ -313,7 +355,7 @@ class OdysseyPlanView extends StatelessWidget {
                           ),
                         ),
                         child: Text(
-                          odyssey.mood.toUpperCase(),
+                          widget.odyssey.mood.toUpperCase(),
                           style: const TextStyle(
                             color: Color(0xFF00E5FF),
                             fontSize: 10,
@@ -326,7 +368,7 @@ class OdysseyPlanView extends StatelessWidget {
 
                   // Title (Full text visible)
                   Text(
-                    odyssey.title,
+                    widget.odyssey.title,
                     style: const TextStyle(
                       fontSize: 21,
                       fontWeight: FontWeight.w900,
@@ -349,7 +391,7 @@ class OdysseyPlanView extends StatelessWidget {
                   ),
 
                   // AI Intro / Summary (Fully visible, wraps across lines without ellipsis)
-                  if (odyssey.summary.isNotEmpty) ...[
+                  if (widget.odyssey.summary.isNotEmpty) ...[
                     const SizedBox(height: 10),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -375,7 +417,7 @@ class OdysseyPlanView extends StatelessWidget {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              odyssey.summary,
+                              widget.odyssey.summary,
                               style: const TextStyle(
                                 fontSize: 13,
                                 height: 1.4,
@@ -399,45 +441,45 @@ class OdysseyPlanView extends StatelessWidget {
 
   Widget _buildOverviewTab(BuildContext context) {
     return SingleChildScrollView(
-      padding: padding,
+      padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildCinematicHeroCard(context),
-          if (odyssey.formattedDateRange.isNotEmpty) ...[
+          if (widget.odyssey.formattedDateRange.isNotEmpty) ...[
             _infoCard(
               'Trip Dates',
-              odyssey.formattedDateRange,
+              widget.odyssey.formattedDateRange,
               Icons.calendar_month_rounded,
             ),
             _infoCard(
               'Duration',
-              '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
-                  '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+              '${widget.odyssey.actualDays} ${widget.odyssey.actualDays == 1 ? 'Day' : 'Days'}'
+                  '${widget.odyssey.nights > 0 ? ' / ${widget.odyssey.nights} ${widget.odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
               Icons.wb_sunny_rounded,
             ),
           ] else
             _infoCard(
               'Duration',
-              '${odyssey.actualDays} ${odyssey.actualDays == 1 ? 'Day' : 'Days'}'
-                  '${odyssey.nights > 0 ? ' / ${odyssey.nights} ${odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
+              '${widget.odyssey.actualDays} ${widget.odyssey.actualDays == 1 ? 'Day' : 'Days'}'
+                  '${widget.odyssey.nights > 0 ? ' / ${widget.odyssey.nights} ${widget.odyssey.nights == 1 ? 'Night' : 'Nights'}' : ''}',
               Icons.wb_sunny_rounded,
             ),
-          if (odyssey.travelers > 0)
+          if (widget.odyssey.travelers > 0)
             _infoCard(
               'Travelers / Group Size',
-              '${odyssey.travelers} ${odyssey.travelers == 1 ? 'Traveler (1 Pax)' : 'Travelers (${odyssey.travelers} Pax)'}',
+              '${widget.odyssey.travelers} ${widget.odyssey.travelers == 1 ? 'Traveler (1 Pax)' : 'Travelers (${widget.odyssey.travelers} Pax)'}',
               Icons.people_rounded,
             ),
-          if (odyssey.destination.isNotEmpty)
-            _infoCard('Destination', odyssey.destination, Icons.place_rounded),
-          if (odyssey.visa.isNotEmpty)
-            _infoCard('Visa / Entry', odyssey.visa, Icons.description_rounded),
-          if (odyssey.budgetSplit.isNotEmpty)
-            _infoCard('Budget Summary', odyssey.budgetSplit, Icons.pie_chart_rounded),
-          if (odyssey.budget > 0)
+          if (widget.odyssey.destination.isNotEmpty)
+            _infoCard('Destination', widget.odyssey.destination, Icons.place_rounded),
+          if (widget.odyssey.visa.isNotEmpty)
+            _infoCard('Visa / Entry', widget.odyssey.visa, Icons.description_rounded),
+          if (widget.odyssey.budgetSplit.isNotEmpty)
+            _infoCard('Budget Summary', widget.odyssey.budgetSplit, Icons.pie_chart_rounded),
+          if (widget.odyssey.budget > 0)
             _budgetBreakdownCard(context),
-          if (odyssey.budgetAdvisory.isNotEmpty)
+          if (widget.odyssey.budgetAdvisory.isNotEmpty)
             _budgetAdvisoryCard(context),
         ],
       ),
@@ -446,23 +488,23 @@ class OdysseyPlanView extends StatelessWidget {
 
   Widget _buildFlightsTab(BuildContext context) {
     return SingleChildScrollView(
-      padding: padding,
+      padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          FlightStrategiesSection(odyssey: odyssey),
+          FlightStrategiesSection(odyssey: widget.odyssey),
         ],
       ),
     );
   }
 
   List<OdysseyBookingPartner> get _dynamicPartners {
-    final List<OdysseyBookingPartner> partners = List.from(odyssey.bookingPartners);
+    final List<OdysseyBookingPartner> partners = List.from(widget.odyssey.bookingPartners);
     final existingNames = partners.map((p) => p.name.toLowerCase()).toSet();
-    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
+    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : 'Anywhere';
 
     // Extract dynamic transit app partners mentioned in activities/tips if not already included
-    for (final day in odyssey.dayPlans) {
+    for (final day in widget.odyssey.dayPlans) {
       for (final act in day.activities) {
         final text = '${act.name} ${act.tip}'.toLowerCase();
 
@@ -499,11 +541,11 @@ class OdysseyPlanView extends StatelessWidget {
   Widget _buildStaysTab(BuildContext context) {
     final partners = _dynamicPartners;
     return SingleChildScrollView(
-      padding: padding,
+      padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          HotelStrategiesSection(odyssey: odyssey),
+          HotelStrategiesSection(odyssey: widget.odyssey),
           if (partners.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text(
@@ -524,60 +566,113 @@ class OdysseyPlanView extends StatelessWidget {
   }
 
   Widget _buildItineraryTab(BuildContext context) {
-    return SingleChildScrollView(
-      padding: padding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (odyssey.dayPlans.isNotEmpty) ...[
-            const Text(
-              'DAY-BY-DAY ITINERARY',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-              ),
+    final rows = _planRows();
+    final pad = widget.padding.resolve(Directionality.of(context));
+
+    // A CustomScrollView rather than a SingleChildScrollView so the places can
+    // sit in a SliverReorderableList. A shrink-wrapped reorderable list inside a
+    // scroll view cannot auto-scroll while dragging, which would make moving a
+    // place from day one to day five impossible on anything but a short plan.
+    return CustomScrollView(
+      slivers: [
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 0),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.odyssey.dayPlans.isNotEmpty) ...[
+                  const Text(
+                    'DAY-BY-DAY ITINERARY',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  if (widget.onToggleVisited != null) _buildProgress(),
+                  const SizedBox(height: 12),
+                ],
+              ],
             ),
-            if (onToggleVisited != null) _buildProgress(),
-            const SizedBox(height: 12),
-            ...odyssey.dayPlans.asMap().entries.map(
-                  (e) => _dayCard(e.key, e.value)
-                      .animate()
-                      .fade(delay: (80 * e.key).ms)
-                      .slideY(begin: 0.1, end: 0),
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.symmetric(horizontal: pad.left),
+          sliver: SliverReorderableList(
+            itemCount: rows.length,
+            onReorder: _onReorder,
+            // Places carry their own handle; a day heading is not draggable, so
+            // the default handles are off and added per row instead.
+            itemBuilder: (context, index) {
+              final row = rows[index];
+              if (row is _DayHeadingRow) {
+                final day = widget.odyssey.dayPlans[row.dayIndex];
+                return Column(
+                  key: ValueKey('day-${row.dayIndex}'),
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (row.dayIndex > 0) const SizedBox(height: 16),
+                    _dayHeadingRow(row.dayIndex, day),
+                    if (day.activities.isEmpty) _emptyDayFooter(),
+                  ],
+                );
+              }
+              final place = row as _ActivityPlanRow;
+              final act = widget.odyssey.dayPlans[place.dayIndex]
+                  .activities[place.activityIndex];
+              return _activityRow(
+                place.dayIndex,
+                place.activityIndex,
+                act,
+                isLastOfDay: place.isLastOfDay,
+                key: ValueKey(
+                  'act-${place.dayIndex}-${place.activityIndex}-${act.name}',
                 ),
-          ],
-          if (odyssey.logistics.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            const Text(
-              'LOGISTICS BLUEPRINT',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
-              ),
+              );
+            },
+          ),
+        ),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, pad.bottom),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.odyssey.logistics.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Text(
+                    'LOGISTICS BLUEPRINT',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Text(
+                      widget.odyssey.logistics,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.6,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-            const SizedBox(height: 12),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.black12),
-              ),
-              child: Text(
-                odyssey.logistics,
-                style: const TextStyle(
-                  fontSize: 14,
-                  height: 1.6,
-                  color: Colors.black87,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -623,9 +718,9 @@ class OdysseyPlanView extends StatelessWidget {
   }
 
   Widget _budgetBreakdownCard(BuildContext context) {
-    final bd = odyssey.budgetBreakdown;
-    final currency = odyssey.currency;
-    final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : odyssey.budget;
+    final bd = widget.odyssey.budgetBreakdown;
+    final currency = widget.odyssey.currency;
+    final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : widget.odyssey.budget;
 
     // Default category estimates if breakdown dictionary is empty
     final stay = bd['stay'] ?? (total * 0.35);
@@ -787,60 +882,145 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  Widget _dayCard(int dayIndex, OdysseyDay day) {
+  /// The itinerary flattened into one list: a heading per day, then its places.
+  ///
+  /// Rebuilt on every use rather than cached — it is a few dozen small objects
+  /// and a stale copy would send a drag to the wrong day.
+  List<_PlanRow> _planRows() {
+    final rows = <_PlanRow>[];
+    for (var d = 0; d < widget.odyssey.dayPlans.length; d++) {
+      rows.add(_DayHeadingRow(d));
+      final acts = widget.odyssey.dayPlans[d].activities;
+      for (var a = 0; a < acts.length; a++) {
+        rows.add(_ActivityPlanRow(d, a, a == acts.length - 1));
+      }
+    }
+    return rows;
+  }
+
+  /// Position of a place in the flattened list, which is the index
+  /// ReorderableDragStartListener needs.
+  int _rowIndexOf(int dayIndex, int activityIndex) {
+    var index = 0;
+    for (var d = 0; d < dayIndex; d++) {
+      index += 1 + widget.odyssey.dayPlans[d].activities.length;
+    }
+    return index + 1 + activityIndex;
+  }
+
+  /// Translate a move in the flattened list back into "this place, from this
+  /// day and position, to that day and position".
+  ///
+  /// Done by simulating the move on the flattened list and then reading the
+  /// result, rather than by arithmetic on the indices: dropping onto a day
+  /// heading, above the first heading, or past the last place are all ordinary
+  /// outcomes of the simulation, where each would be a separate special case.
+  void _onReorder(int oldIndex, int newIndex) {
+    final reorder = widget.onReorderActivity;
+    if (reorder == null) return;
+
+    final rows = _planRows();
+    if (oldIndex < 0 || oldIndex >= rows.length) return;
+    final moved = rows[oldIndex];
+    if (moved is! _ActivityPlanRow) return;
+
+    // Flutter reports the destination as if the dragged row were still present.
+    if (newIndex > oldIndex) newIndex -= 1;
+    newIndex = newIndex.clamp(0, rows.length - 1);
+
+    rows.removeAt(oldIndex);
+    rows.insert(newIndex, moved);
+
+    var currentDay = -1;
+    var positionInDay = 0;
+    for (final row in rows) {
+      if (row is _DayHeadingRow) {
+        currentDay = row.dayIndex;
+        positionInDay = 0;
+        continue;
+      }
+      if (identical(row, moved)) break;
+      positionInDay++;
+    }
+
+    // Dropped above the first heading: treat it as the start of day one.
+    if (currentDay < 0) {
+      currentDay = 0;
+      positionInDay = 0;
+    }
+
+    if (currentDay == moved.dayIndex && positionInDay == moved.activityIndex) {
+      return; // nothing actually moved
+    }
+    reorder(moved.dayIndex, moved.activityIndex, currentDay, positionInDay);
+  }
+
+  /// The "DAY n — theme" strip that opens each day's block.
+  Widget _dayHeadingRow(int dayIndex, OdysseyDay day) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black12),
+        border: Border(
+          top: BorderSide(color: Colors.black12),
+          left: BorderSide(color: Colors.black12),
+          right: BorderSide(color: Colors.black12),
+        ),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 12),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'DAY ${day.day}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'DAY ${day.day}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  day.theme,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 16),
-          ...day.activities.asMap().entries.map(
-                (a) => _activityRow(dayIndex, a.key, a.value),
-              ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              day.theme,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+            ),
+          ),
         ],
       ),
     );
   }
 
+  /// An empty day still needs a floor, or its heading has no bottom edge.
+  Widget _emptyDayFooter() => Container(
+        height: 18,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            left: BorderSide(color: Colors.black12),
+            right: BorderSide(color: Colors.black12),
+            bottom: BorderSide(color: Colors.black12),
+          ),
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(24),
+            bottomRight: Radius.circular(24),
+          ),
+        ),
+      );
+
   Widget _buildProgress() {
-    final total = odyssey.totalActivities;
-    final done = odyssey.visitedActivities;
+    final total = widget.odyssey.totalActivities;
+    final done = widget.odyssey.visitedActivities;
     final pct = total == 0 ? 0.0 : done / total;
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -850,13 +1030,13 @@ class OdysseyPlanView extends StatelessWidget {
           Row(
             children: [
               Text(
-                odyssey.isComplete
+                widget.odyssey.isComplete
                     ? 'Trip complete 🎉'
                     : 'Tick off each place as you go',
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: odyssey.isComplete
+                  color: widget.odyssey.isComplete
                       ? AppColors.neonGreen
                       : Colors.black54,
                 ),
@@ -878,7 +1058,7 @@ class OdysseyPlanView extends StatelessWidget {
               value: pct,
               minHeight: 7,
               backgroundColor: Colors.black12,
-              color: odyssey.isComplete
+              color: widget.odyssey.isComplete
                   ? AppColors.neonGreen
                   : AppColors.actionTeal,
             ),
@@ -888,130 +1068,150 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  Widget _activityRow(int dayIndex, int activityIndex, OdysseyActivity act) {
-    final bool isCompleted = odyssey.status == 'completed';
-    final bool editable = onSwapActivity != null && !isCompleted;
-    final bool checkable = onToggleVisited != null;
-    final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
+  Widget _activityRow(
+    int dayIndex,
+    int activityIndex,
+    OdysseyActivity act, {
+    bool isLastOfDay = false,
+    Key? key,
+  }) {
+    final bool isCompleted = widget.odyssey.status == 'completed';
+    final bool checkable = widget.onToggleVisited != null;
+    final bool reorderable = widget.onReorderActivity != null && !isCompleted;
+    final bool open = _isExpanded(dayIndex, activityIndex);
+
+    // The time each place was scheduled for is deliberately not shown. Places
+    // can now be dragged into any order and into other days, and a fixed
+    // "09:00" sitting on a place the traveller just moved to the end of day 3
+    // states something the plan no longer means.
     return Builder(
-      builder: (context) => Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: Row(
+      key: key,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            left: const BorderSide(color: Colors.black12),
+            right: const BorderSide(color: Colors.black12),
+            bottom: isLastOfDay
+                ? const BorderSide(color: Colors.black12)
+                : BorderSide(color: Colors.black.withValues(alpha: 0.04)),
+          ),
+          borderRadius: isLastOfDay
+              ? const BorderRadius.only(
+                  bottomLeft: Radius.circular(24),
+                  bottomRight: Radius.circular(24),
+                )
+              : null,
+        ),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Checkbox column (fixed width for alignment)
-            if (checkable)
-              GestureDetector(
-                onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 1, right: 8),
-                  child: Icon(
-                    act.visited
-                        ? Icons.check_circle_rounded
-                        : Icons.radio_button_unchecked_rounded,
-                    size: 22,
-                    color: act.visited ? AppColors.neonGreen : Colors.black26,
-                  ),
-                ),
-              ),
-            // Time column (fixed width for consistent alignment)
-            SizedBox(
-              width: 56,
-              child: Text(
-                act.time,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: act.visited ? Colors.black26 : AppColors.actionTeal,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Main content column
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Name
-                  Text(
-                    act.name,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: act.visited ? Colors.black38 : Colors.black,
-                      decoration: act.visited ? TextDecoration.lineThrough : null,
+            // Collapsed header — the whole strip toggles, so the tap target is
+            // the row rather than the small chevron.
+            InkWell(
+              onTap: () => _toggleExpanded(dayIndex, activityIndex),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (checkable)
+                      GestureDetector(
+                        onTap: isCompleted
+                            ? null
+                            : () => widget.onToggleVisited!(dayIndex, activityIndex),
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: Icon(
+                            act.visited
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_unchecked_rounded,
+                            size: 22,
+                            color: act.visited ? AppColors.neonGreen : Colors.black26,
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: Text(
+                        act.name,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: act.visited ? Colors.black38 : Colors.black,
+                          decoration:
+                              act.visited ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
                     ),
-                  ),
-                  // Price badge (below name)
-                  if (act.cost.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        _buildPriceWithSource(context, act),
-                      ],
+                    // Price stays visible while collapsed: it is the thing most
+                    // worth comparing between places without opening each one.
+                    if (act.cost.isNotEmpty && !open) ...[
+                      const SizedBox(width: 8),
+                      _buildPriceWithSource(context, act),
+                    ],
+                    Icon(
+                      open
+                          ? Icons.keyboard_arrow_up_rounded
+                          : Icons.keyboard_arrow_down_rounded,
+                      size: 22,
+                      color: Colors.black38,
                     ),
+                    if (reorderable)
+                      ReorderableDragStartListener(
+                        index: _rowIndexOf(dayIndex, activityIndex),
+                        child: const Padding(
+                          padding: EdgeInsets.only(left: 2, right: 4),
+                          child: Icon(Icons.drag_indicator_rounded,
+                              size: 20, color: Colors.black26),
+                        ),
+                      ),
                   ],
-                // Action button always on its own line for consistent alignment
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Align(
-                    alignment: Alignment.centerRight,
-                    child: _buildActionButton(act, dayIndex, activityIndex),
-                  ),
                 ),
-                if (act.tip.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    act.tip,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      height: 1.35,
-                      color: Colors.black54,
-                    ),
-                  ),
-                ],
-                // Actual cost input when activity is visited
-                if (act.visited && onActualCostChanged != null) ...[
-                  const SizedBox(height: 6),
-                  _buildActualCostInput(dayIndex, activityIndex, act),
-                ],
-              ],
+              ),
             ),
-          ),
-          // Swap button column (fixed width for alignment)
-          if (editable) ...[
-            const SizedBox(width: 4),
-            SizedBox(
-              width: 32,
-              height: 32,
-              child: isSwapping
-                  ? const Padding(
-                      padding: EdgeInsets.all(8),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppColors.actionTeal,
+            // Details, shown only while open.
+            if (open)
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  checkable ? 48 : 16,
+                  0,
+                  16,
+                  14,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (act.cost.isNotEmpty) ...[
+                      _buildPriceWithSource(context, act),
+                      const SizedBox(height: 6),
+                    ],
+                    if (act.tip.isNotEmpty) ...[
+                      Text(
+                        act.tip,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          height: 1.35,
+                          color: Colors.black54,
+                        ),
                       ),
-                    )
-                  : IconButton(
-                      padding: EdgeInsets.zero,
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Swap this place',
-                      icon: const Icon(
-                        Icons.swap_horiz_rounded,
-                        size: 20,
-                        color: AppColors.actionTeal,
-                      ),
-                      onPressed: swappingKey != null
-                          ? null
-                          : () => onSwapActivity!(dayIndex, activityIndex),
+                      const SizedBox(height: 6),
+                    ],
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: _buildActionButton(act, dayIndex, activityIndex),
                     ),
-            ),
+                    if (act.visited && widget.onActualCostChanged != null) ...[
+                      const SizedBox(height: 8),
+                      _buildActualCostInput(dayIndex, activityIndex, act),
+                    ],
+                  ],
+                ),
+              ),
           ],
-        ],
+        ),
       ),
-    ),
-  );
+    );
   }
 
   /// Builds the type-specific action button for an activity.
@@ -1039,7 +1239,7 @@ class OdysseyPlanView extends StatelessWidget {
       onTap: () async {
         // Strip directional prefix and append destination for accurate geocoding
         final placeName = act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim();
-        final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+        final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
         final fullAddress = dest.isNotEmpty ? '$placeName, $dest' : placeName;
         final destination = Uri.encodeComponent(fullAddress);
         final uberUri = Uri.parse('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
@@ -1063,7 +1263,7 @@ class OdysseyPlanView extends StatelessWidget {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
-        final dest = odyssey.destination.isNotEmpty ? ' ${odyssey.destination}' : '';
+        final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
         final query = Uri.encodeComponent('${act.name} tickets$dest');
         final url = Uri.parse('https://www.headout.com/search/?q=$query');
         if (await canLaunchUrl(url)) {
@@ -1084,7 +1284,7 @@ class OdysseyPlanView extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () async {
         final hotelName = act.name.replaceAll(RegExp(r'^(Check into|Check in|Hotel Check-out & Transfer to|Hotel Check-out)\s+', caseSensitive: false), '').trim();
-        final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+        final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
         final query = hotelName.isNotEmpty ? (dest.isNotEmpty ? '$hotelName, $dest' : hotelName) : dest;
         final url = Uri.parse('https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(query)}');
         if (await canLaunchUrl(url)) {
@@ -1142,7 +1342,7 @@ class OdysseyPlanView extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       onTap: () async {
         final placeName = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
-        final dest = odyssey.destination.isNotEmpty ? ' ${odyssey.destination}' : '';
+        final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
         final query = Uri.encodeComponent('$placeName guided tour$dest');
         final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
         if (await canLaunchUrl(url)) {
@@ -1175,8 +1375,8 @@ class OdysseyPlanView extends StatelessWidget {
           Expanded(
             child: _ActualCostInputField(
               initialValue: act.actualCost,
-              currency: odyssey.currency,
-              onSaved: (val) => onActualCostChanged?.call(dayIndex, activityIndex, val),
+              currency: widget.odyssey.currency,
+              onSaved: (val) => widget.onActualCostChanged?.call(dayIndex, activityIndex, val),
             ),
           ),
         ],
@@ -1199,8 +1399,8 @@ class OdysseyPlanView extends StatelessWidget {
     String displayCost = rawCost;
     if (!isFree && displayCost.isNotEmpty) {
       final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
-      if (!hasCurrency && odyssey.currency.isNotEmpty) {
-        displayCost = '${odyssey.currency} $displayCost';
+      if (!hasCurrency && widget.odyssey.currency.isNotEmpty) {
+        displayCost = '${widget.odyssey.currency} $displayCost';
       }
     }
 
@@ -1482,7 +1682,7 @@ class OdysseyPlanView extends StatelessWidget {
     OdysseyActivity act,
     String sourceTag,
   ) {
-    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
     final q = Uri.encodeComponent('${act.name} $dest'.trim());
     final destQ = Uri.encodeComponent(dest);
     final nameQ = Uri.encodeComponent(act.name);
@@ -1965,7 +2165,7 @@ class OdysseyPlanView extends StatelessWidget {
 
   /// Geocodes a place name and navigates to the Smart Tourism Map.
   void _navigateToSmartMap(BuildContext context, String placeName) async {
-    final dest = odyssey.destination;
+    final dest = widget.odyssey.destination;
     final searchQuery = dest.isNotEmpty ? '$placeName, $dest' : placeName;
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2016,7 +2216,7 @@ class OdysseyPlanView extends StatelessWidget {
   }
 
   Widget _budgetAdvisoryCard(BuildContext context) {
-    if (odyssey.budgetAdvisory.isEmpty) return const SizedBox.shrink();
+    if (widget.odyssey.budgetAdvisory.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(18),
@@ -2067,7 +2267,7 @@ class OdysseyPlanView extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  odyssey.budgetAdvisory,
+                  widget.odyssey.budgetAdvisory,
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -2112,7 +2312,7 @@ class OdysseyPlanView extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : 'Anywhere';
+    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : 'Anywhere';
 
     return Column(
       children: partners.map((bp) {
@@ -2186,9 +2386,9 @@ class OdysseyPlanView extends StatelessWidget {
             providerName: bp.name,
             hotelName: '',
             destination: dest,
-            checkInDate: odyssey.startDate ?? '',
-            checkOutDate: odyssey.endDate ?? '',
-            travelers: odyssey.travelers,
+            checkInDate: widget.odyssey.startDate ?? '',
+            checkOutDate: widget.odyssey.endDate ?? '',
+            travelers: widget.odyssey.travelers,
           );
         } else if (isFlightCategory) {
           resolvedUrl = BookingUrlHelper.buildFlightUrl(
@@ -2196,10 +2396,10 @@ class OdysseyPlanView extends StatelessWidget {
             providerName: bp.name,
             strategyTitle: '',
             destination: dest,
-            departureCity: odyssey.departureCity,
-            startDate: odyssey.startDate ?? '',
-            endDate: odyssey.endDate ?? '',
-            travelers: odyssey.travelers,
+            departureCity: widget.odyssey.departureCity,
+            startDate: widget.odyssey.startDate ?? '',
+            endDate: widget.odyssey.endDate ?? '',
+            travelers: widget.odyssey.travelers,
           );
         } else if (isTourCategory) {
           resolvedUrl = BookingUrlHelper.buildToursUrl(
@@ -2212,9 +2412,9 @@ class OdysseyPlanView extends StatelessWidget {
           if (nameLower.contains('viator') || nameLower.contains('getyourguide') || nameLower.contains('klook')) {
             resolvedUrl = BookingUrlHelper.buildToursUrl(rawUrl: bp.url, providerName: bp.name, destination: dest);
           } else if (nameLower.contains('skyscanner') || nameLower.contains('aviasales') || nameLower.contains('kayak')) {
-            resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: odyssey.departureCity, startDate: odyssey.startDate ?? '', endDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+            resolvedUrl = BookingUrlHelper.buildFlightUrl(rawUrl: bp.url, providerName: bp.name, strategyTitle: '', destination: dest, departureCity: widget.odyssey.departureCity, startDate: widget.odyssey.startDate ?? '', endDate: widget.odyssey.endDate ?? '', travelers: widget.odyssey.travelers);
           } else if (nameLower.contains('booking') || nameLower.contains('agoda')) {
-            resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: odyssey.startDate ?? '', checkOutDate: odyssey.endDate ?? '', travelers: odyssey.travelers);
+            resolvedUrl = BookingUrlHelper.buildHotelUrl(rawUrl: bp.url, providerName: bp.name, hotelName: '', destination: dest, checkInDate: widget.odyssey.startDate ?? '', checkOutDate: widget.odyssey.endDate ?? '', travelers: widget.odyssey.travelers);
           }
         }
 
@@ -2245,7 +2445,7 @@ class OdysseyPlanView extends StatelessWidget {
     bool isAiGenerated = false,
     String? logoPath,
   }) {
-    final isSwapping = isAiGenerated && swappingPartnerName == title;
+    final isSwapping = isAiGenerated && widget.swappingPartnerName == title;
     final bool isBookingLogo = logoPath != null && logoPath.contains('booking_logo');
     final bool isHeadoutLogo = logoPath != null && logoPath.contains('headout');
     final bool isGYGLogo = logoPath != null && logoPath.contains('getyourguide');
@@ -2357,10 +2557,10 @@ class OdysseyPlanView extends StatelessWidget {
                       color: AppColors.brandGreen,
                     ),
                   )
-                else if (isAiGenerated && onSwapPartner != null)
+                else if (isAiGenerated && widget.onSwapPartner != null)
                   IconButton(
                     icon: const Icon(Icons.swap_horiz_rounded, size: 20, color: AppColors.actionTeal),
-                    onPressed: () => onSwapPartner!(title),
+                    onPressed: () => widget.onSwapPartner!(title),
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     visualDensity: VisualDensity.compact,

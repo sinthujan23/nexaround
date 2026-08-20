@@ -27,7 +27,6 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   late Odyssey _odyssey = widget.odyssey;
 
   /// "dayIndex:activityIndex" of the activity being swapped, or null.
-  String? _swappingKey;
 
   /// Name of the partner currently being swapped, or null.
   String? _swappingPartnerName;
@@ -101,37 +100,51 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     });
   }
 
-  Future<void> _swapActivity(int dayIndex, int activityIndex) async {
-    final id = _odyssey.id;
-    if (id == null) return;
-    final act = _odyssey.dayPlans[dayIndex].activities[activityIndex];
+  /// Move a place to a new position, possibly into a different day.
+  ///
+  /// Saves through the same path as ticking a place off: optimistic update,
+  /// persist, revert on failure. Reordering rewrites `dayPlans`, which is
+  /// already what gets stored, so no schema or endpoint change is involved.
+  Future<void> _reorderActivity(
+    int fromDay,
+    int fromIndex,
+    int toDay,
+    int toIndex,
+  ) async {
+    final before = _odyssey;
+    final days = List<OdysseyDay>.from(before.dayPlans);
+    if (fromDay < 0 || fromDay >= days.length) return;
+    if (toDay < 0 || toDay >= days.length) return;
 
-    final reason = await _askReason(act.name);
-    if (reason == null || !mounted) return; // cancelled
+    final source = List<OdysseyActivity>.from(days[fromDay].activities);
+    if (fromIndex < 0 || fromIndex >= source.length) return;
+    final moved = source.removeAt(fromIndex);
 
-    setState(() => _swappingKey = '$dayIndex:$activityIndex');
+    // Within one day the destination is read against the list the place has
+    // already left, so it needs no adjustment; across days the target list is
+    // untouched and the index applies directly.
+    if (toDay == fromDay) {
+      days[fromDay] = days[fromDay].copyWith(
+        activities: source..insert(toIndex.clamp(0, source.length), moved),
+      );
+    } else {
+      final target = List<OdysseyActivity>.from(days[toDay].activities);
+      target.insert(toIndex.clamp(0, target.length), moved);
+      days[fromDay] = days[fromDay].copyWith(activities: source);
+      days[toDay] = days[toDay].copyWith(activities: target);
+    }
+
+    final updated = before.copyWith(dayPlans: days);
+    setState(() => _odyssey = updated); // optimistic
     try {
-      final updated = await _repo.swapActivity(
-        itineraryId: id,
-        dayIndex: dayIndex,
-        activityIndex: activityIndex,
-        reason: reason,
-      );
+      final saved = await _repo.updateOdyssey(updated);
       if (!mounted) return;
-      final newName =
-          updated.dayPlans[dayIndex].activities[activityIndex].name;
-      setState(() {
-        _odyssey = updated;
-        _swappingKey = null;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Swapped in: $newName')),
-      );
+      setState(() => _odyssey = saved);
     } catch (e) {
       if (!mounted) return;
-      setState(() => _swappingKey = null);
+      setState(() => _odyssey = before); // revert on failure
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not swap this place. Try again.')),
+        const SnackBar(content: Text('Could not save the new order. Try again.')),
       );
     }
   }
@@ -678,8 +691,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
             )
           : OdysseyPlanView(
               odyssey: _odyssey,
-              onSwapActivity: _swapActivity,
-              swappingKey: _swappingKey,
+              onReorderActivity: _reorderActivity,
               onToggleVisited: _toggleVisited,
               onSwapPartner: _swapPartner,
               swappingPartnerName: _swappingPartnerName,

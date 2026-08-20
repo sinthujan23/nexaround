@@ -142,28 +142,6 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
-  /// Ask the AI to replace a single activity (the user already visited it or
-  /// isn't interested). Returns the full updated Odyssey with the new place in
-  /// place of the old one. [dayIndex]/[activityIndex] are zero-based positions.
-  Future<Odyssey> swapActivity({
-    required String itineraryId,
-    required int dayIndex,
-    required int activityIndex,
-    String reason = '',
-  }) async {
-    final response = await _dio.post(
-      '${ApiConstants.itineraries}/$itineraryId/odyssey/swap',
-      data: {
-        'day_index': dayIndex,
-        'activity_index': activityIndex,
-        'reason': reason,
-      },
-    );
-    revision.value++;
-    final json = (response.data as Map).cast<String, dynamic>();
-    return Odyssey.fromItinerary(json);
-  }
-
   /// Request the AI to replace a single booking partner. Returns the updated Odyssey.
   Future<Odyssey> swapPartner({
     required String itineraryId,
