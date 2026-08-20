@@ -141,9 +141,27 @@ FLOOR_DART = (APP / "constants" / "trip_cost_floor.dart") if APP else Path("miss
 
 
 def _dart_map(source: str, name: str) -> dict[str, str]:
+    """Read a `static const Map<String, String> name = {...}` out of Dart.
+
+    Handles escaped apostrophes: "cote d'ivoire" has to be written `d\\'ivoire`
+    in a single-quoted Dart literal, and an unescaped one is a compile error
+    rather than a mismatch — which is why this comparison is worth running.
+    """
     match = re.search(rf"{name}\s*=\s*\{{(.*?)\n  \}};", source, re.S)
     assert match, f"could not find `{name}` in the Dart source"
-    return dict(re.findall(r"'([^']+)':\s*'?([^,'\n]+)'?,", match.group(1)))
+    # Values are quoted in the string maps and bare in the numeric ones.
+    pair = re.compile(
+        r"'((?:[^'\\]|\\.)*)'\s*:\s*(?:'((?:[^'\\]|\\.)*)'|([^,\s}]+))"
+    )
+
+    def unescape(text: str) -> str:
+        return text.replace("\\'", "'").replace("\\\\", "\\")
+
+    return {
+        # re.findall yields '' for a group that did not participate, not None.
+        unescape(key): unescape(quoted or bare)
+        for key, quoted, bare in pair.findall(match.group(1))
+    }
 
 
 def test_daily_floors_match():
