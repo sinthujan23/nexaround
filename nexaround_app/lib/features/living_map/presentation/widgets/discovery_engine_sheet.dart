@@ -7,7 +7,6 @@ import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 enum SheetState { input, loading, result }
 
@@ -496,16 +495,12 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
 
   Widget _buildParsedResult(String text) {
-    // Strip out any legacy "Estimated Cost" or "Estimated Budget" lines
-    final cleanedText = text
-        .split('\n')
-        .where((line) {
-          final trimmed = line.trim().toLowerCase();
-          return !trimmed.contains('estimated cost') && 
-                 !trimmed.contains('estimated budget') &&
-                 !trimmed.contains('💰 estimated');
-        })
-        .join('\n');
+    // Strip out Estimated Cost / Budget lines completely
+    String cleanedText = text
+        .replaceAll(RegExp(r'^\s*[*•-]\s*\*\*Estimated Cost:\*\*.*$', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s*[*•-]\s*Estimated Cost:.*$', multiLine: true, caseSensitive: false), '')
+        .replaceAll(RegExp(r'\|\s*💰\s*Estimated Budget[^|\n]*', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\n{3,}', multiLine: true), '\n\n');
 
     final markdownText = cleanedText.replaceAllMapped(
       RegExp(r'\[\[(.*?)\]\]'), 
@@ -532,22 +527,12 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
           decoration: TextDecoration.underline,
         ),
       ),
-      onTapLink: (text, href, title) async {
-        if (href != null) {
-          if (href.startsWith('place:')) {
-            final encodedPlace = href.substring(6);
-            final placeName = Uri.decodeComponent(encodedPlace);
-            if (widget.onPlaceSelected != null) {
-              widget.onPlaceSelected!(placeName);
-            }
-          } else if (href.startsWith('web:')) {
-            final query = href.substring(4);
-            final cleanQuery = query.replaceAll('[[', '').replaceAll(']]', '');
-            final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent('$cleanQuery menu official website')}');
-            await launchUrl(url, mode: LaunchMode.externalApplication);
-          } else if (href.startsWith('http://') || href.startsWith('https://')) {
-            final url = Uri.parse(href);
-            await launchUrl(url, mode: LaunchMode.externalApplication);
+      onTapLink: (text, href, title) {
+        if (href != null && href.startsWith('place:')) {
+          final encodedPlace = href.substring(6);
+          final placeName = Uri.decodeComponent(encodedPlace);
+          if (widget.onPlaceSelected != null) {
+            widget.onPlaceSelected!(placeName);
           }
         }
       },

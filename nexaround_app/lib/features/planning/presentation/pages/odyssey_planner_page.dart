@@ -796,7 +796,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade(),
           const SizedBox(height: 12),
           const Text(
-            'AI will optimize the odyssey based on this per-person budget.',
+            'Your odyssey will be personalized and optimized based on this per-person budget.',
             style: TextStyle(color: Colors.black54),
           ),
           const Spacer(),
