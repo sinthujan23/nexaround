@@ -173,22 +173,24 @@ Your Journey
 ### **Stop N: [[Place Name]]**
 * **Time:** [Arrival]
 * **Time to Spend:** [Duration]
-* **Estimated Cost:** [Cost]
+* **Menu / Highlights:** [Signature dish, specialty, or key highlight]
+* **Website / Menu:** [Official website URL if known (e.g. [Official Website](https://...)), or [View Menu / Info](web:[[Place Name]])]
 * **Travel Time from Previous Stop:** [Travel Time]
 * **Why You'll Love It:** [Short explanation]
 * **Don't Miss:** [Unique tip]
-* **Nearby Food:** [One recommendation]
+* **Nearby Food / Cafe:** [One recommendation]
 
 Before You Go
 - 🍽 Must-Try Food | ☕ Best Coffee | 📸 Best Photo Spot
-- 🌅 Best Sunset | 💰 Estimated Budget | 🚗 Total Distance | ⏳ Total Travel Time
+- 🌅 Best Sunset | 🚗 Total Distance | ⏳ Total Travel Time
 
 If rain/traffic/closure: suggest alternatives inline.
 
 ## Rules
 - Use REAL places findable on Google Maps — do NOT invent places
-- Wrap place names in [[double brackets]] for app linking
-- Do NOT include Google Maps URLs or HTTP links
+- Wrap place names in [[double brackets]] for in-app map navigation
+- Provide official website / menu link if known
+- Do NOT mention estimated prices, currencies, or price tiers
 - Write conversationally, not like a generic travel blog
 """
 

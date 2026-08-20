@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 enum SheetState { input, loading, result }
 
@@ -495,7 +496,18 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
 
   Widget _buildParsedResult(String text) {
-    final markdownText = text.replaceAllMapped(
+    // Strip out any legacy "Estimated Cost" or "Estimated Budget" lines
+    final cleanedText = text
+        .split('\n')
+        .where((line) {
+          final trimmed = line.trim().toLowerCase();
+          return !trimmed.contains('estimated cost') && 
+                 !trimmed.contains('estimated budget') &&
+                 !trimmed.contains('💰 estimated');
+        })
+        .join('\n');
+
+    final markdownText = cleanedText.replaceAllMapped(
       RegExp(r'\[\[(.*?)\]\]'), 
       (match) {
         final placeName = match.group(1) ?? '';
@@ -520,12 +532,22 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
           decoration: TextDecoration.underline,
         ),
       ),
-      onTapLink: (text, href, title) {
-        if (href != null && href.startsWith('place:')) {
-          final encodedPlace = href.substring(6);
-          final placeName = Uri.decodeComponent(encodedPlace);
-          if (widget.onPlaceSelected != null) {
-            widget.onPlaceSelected!(placeName);
+      onTapLink: (text, href, title) async {
+        if (href != null) {
+          if (href.startsWith('place:')) {
+            final encodedPlace = href.substring(6);
+            final placeName = Uri.decodeComponent(encodedPlace);
+            if (widget.onPlaceSelected != null) {
+              widget.onPlaceSelected!(placeName);
+            }
+          } else if (href.startsWith('web:')) {
+            final query = href.substring(4);
+            final cleanQuery = query.replaceAll('[[', '').replaceAll(']]', '');
+            final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent('$cleanQuery menu official website')}');
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+          } else if (href.startsWith('http://') || href.startsWith('https://')) {
+            final url = Uri.parse(href);
+            await launchUrl(url, mode: LaunchMode.externalApplication);
           }
         }
       },
@@ -1014,111 +1036,121 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   }
 
   void _showHistorySheet() {
+    List<Map<String, dynamic>> history = DiscoveryHistoryService.getCachedHistory();
+    bool isLoadingFresh = history.isEmpty;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: const BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-        child: Column(
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.textSecondary.withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(2),
-              ),
+      builder: (modalContext) => StatefulBuilder(
+        builder: (modalContext, setModalState) {
+          // Trigger background fetch
+          DiscoveryHistoryService.fetchHistory().then((fresh) {
+            if (modalContext.mounted) {
+              setModalState(() {
+                history = fresh;
+                isLoadingFresh = false;
+              });
+            }
+          });
+
+          return Container(
+            height: MediaQuery.of(modalContext).size.height * 0.7,
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Search History',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 16),
-            Expanded(
-              child: FutureBuilder<List<Map<String, dynamic>>>(
-                future: DiscoveryHistoryService.fetchHistory(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: AppColors.brandGreen),
-                    );
-                  }
-                  if (snapshot.hasError || !snapshot.hasData) {
-                    return const Center(
-                      child: Text('Error loading history', style: TextStyle(color: AppColors.textSecondary)),
-                    );
-                  }
-                  final history = snapshot.data!;
-                  if (history.isEmpty) {
-                    return const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.history_rounded, size: 48, color: AppColors.textTertiary),
-                          SizedBox(height: 12),
-                          Text('No past itineraries found', style: TextStyle(color: AppColors.textSecondary)),
-                        ],
-                      ),
-                    );
-                  }
-                  return ListView.separated(
-                    itemCount: history.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.border),
-                    itemBuilder: (context, index) {
-                      final item = history[index];
-                      final createdStr = item['created_at'] as String? ?? '';
-                      String dateDisplay = '';
-                      try {
-                        if (createdStr.isNotEmpty) {
-                          final parsed = DateTime.parse(createdStr).toLocal();
-                          dateDisplay = '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
-                        }
-                      } catch (_) {
-                        dateDisplay = createdStr;
+            padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+            child: Column(
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.textSecondary.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Search History',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: Builder(
+                    builder: (_) {
+                      if (isLoadingFresh && history.isEmpty) {
+                        return const Center(
+                          child: CircularProgressIndicator(color: AppColors.brandGreen),
+                        );
                       }
-
-                      final location = item['location'] as String? ?? 'Unknown Location';
-                      final mode = item['mode'] as String? ?? 'Explore';
-                      final result = item['result'] as String? ?? '';
-
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                        title: Text(
-                          location,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            'Mode: $mode • $dateDisplay',
-                            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                      if (history.isEmpty) {
+                        return const Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.history_rounded, size: 48, color: AppColors.textTertiary),
+                              SizedBox(height: 12),
+                              Text('No past itineraries found', style: TextStyle(color: AppColors.textSecondary)),
+                            ],
                           ),
-                        ),
-                        trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
-                        onTap: () {
-                          // Close history modal
-                          Navigator.pop(context);
-                          // Show results
-                          setState(() {
-                            _aiResult = result;
-                            _sheetState = SheetState.result;
-                          });
+                        );
+                      }
+                      return ListView.separated(
+                        itemCount: history.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1, color: AppColors.border),
+                        itemBuilder: (context, index) {
+                          final item = history[index];
+                          final createdStr = item['created_at'] as String? ?? '';
+                          String dateDisplay = '';
+                          try {
+                            if (createdStr.isNotEmpty) {
+                              final parsed = DateTime.parse(createdStr).toLocal();
+                              dateDisplay = '${parsed.year}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')} ${parsed.hour.toString().padLeft(2, '0')}:${parsed.minute.toString().padLeft(2, '0')}';
+                            }
+                          } catch (_) {
+                            dateDisplay = createdStr;
+                          }
+
+                          final location = item['location'] as String? ?? 'Unknown Location';
+                          final mode = item['mode'] as String? ?? 'Explore';
+                          final result = item['result'] as String? ?? '';
+
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                            title: Text(
+                              location,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textPrimary),
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'Mode: $mode • $dateDisplay',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                              ),
+                            ),
+                            trailing: const Icon(Icons.chevron_right_rounded, color: AppColors.textTertiary),
+                            onTap: () {
+                              // Close history modal
+                              Navigator.pop(modalContext);
+                              // Show results
+                              setState(() {
+                                _aiResult = result;
+                                _sheetState = SheetState.result;
+                              });
+                            },
+                          );
                         },
                       );
                     },
-                  );
-                },
-              ),
+                  ),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }

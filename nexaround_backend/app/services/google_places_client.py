@@ -34,12 +34,12 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # type in the batch, and a 400 is not billed.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     "POI": [
-        "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
+        "museum", "park", "zoo", "aquarium", "art_gallery",
         "amusement_park", "national_park", "state_park", "hiking_area", "beach",
         "historical_landmark", "historical_place", "cultural_landmark",
         "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
         "cultural_center", "marina", "visitor_center", "observation_deck",
-        "wildlife_refuge", "wildlife_park", "monument", "castle", "sculpture",
+        "monument", "castle", "sculpture",
         "lake", "river", "botanical_garden", "garden"
     ],
     "Attractions": [
@@ -60,10 +60,10 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "hostel", "guest_house", "campground", "inn", "cottage"
     ],
     "Shopping": [
-        "shopping_mall", "supermarket", "store", "department_store",
-        "convenience_store", "clothing_store", "electronics_store", "market",
-        "grocery_store", "pharmacy", "gift_shop", "book_store", "jewelry_store",
-        "shoe_store", "sporting_goods_store", "home_goods_store"
+        "supermarket", "store", "department_store",
+        "convenience_store", "electronics_store", "market",
+        "grocery_store", "pharmacy", "home_goods_store",
+        "hardware_store"
     ],
     "Experiences": [
         "amusement_park", "aquarium", "zoo", "museum", "art_gallery",

@@ -424,15 +424,15 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         return false;
                       }
 
-                      return cat.contains('poi') || cat.contains('attraction') || cat.contains('nature') || cat.contains('park') ||
+                      return cat.contains('park') ||
                              cat.contains('beach') || cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
                              cat.contains('waterfall') || cat.contains('forest') || cat.contains('museum') || cat.contains('experience') ||
                              cat.contains('landmark') || cat.contains('culture') || cat.contains('temple') || cat.contains('art') ||
                              cat.contains('zoo') || name.contains('beach') || name.contains('park') || name.contains('lake') ||
                              name.contains('waterfall') || name.contains('garden') || name.contains('forest') || name.contains('temple') ||
-                             name.contains('museum') || tags.contains('tourist_attraction') || tags.contains('natural_feature') ||
+                             name.contains('museum') ||
                              tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('park') || tags.contains('beach') ||
-                             tags.contains('nature_reserve') || tags.contains('botanical_garden') || tags.contains('museum') ||
+                             tags.contains('botanical_garden') || tags.contains('museum') ||
                              tags.contains('hindu_temple') || tags.contains('place_of_worship');
                     }).toList();
 
@@ -445,14 +445,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                           return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
                         } else if (_selectedPoiCategory == 'Culture') {
                           return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
-                        } else if (_selectedPoiCategory == 'Nature') {
-                          return cat.contains('nature') || cat.contains('mountain') || cat.contains('lake') || cat.contains('river') || cat.contains('forest') || cat.contains('waterfall') || name.contains('lake') || name.contains('river') || name.contains('waterfall') || name.contains('nature') || name.contains('mountain') || tags.contains('natural_feature');
                         } else if (_selectedPoiCategory == 'Beaches') {
                           return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
                         } else if (_selectedPoiCategory == 'Museums') {
                           return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
-                        } else if (_selectedPoiCategory == 'Attractions') {
-                          return cat.contains('attraction') || cat.contains('amusement') || cat.contains('zoo') || cat.contains('theme park') || name.contains('zoo') || name.contains('aquarium') || name.contains('fun') || tags.contains('tourist_attraction');
                         } else if (_selectedPoiCategory == 'Parks') {
                           return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('botanical_garden');
                         } else if (_selectedPoiCategory == 'Waterfalls') {
@@ -494,16 +490,14 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     // Filter Shopping List
                     _shoppingList = masterList.where((a) {
                       final cat = (a.categoryName ?? '').toLowerCase();
-                      return cat.contains('shop') || cat.contains('mall') || cat.contains('market') || 
-                             cat.contains('store') || cat.contains('fashion');
+                      return cat.contains('mall') || cat.contains('market') || 
+                             cat.contains('store');
                     }).toList();
                     if (_selectedShoppingCategory != null) {
                       _shoppingList = _shoppingList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        if (_selectedShoppingCategory == 'Fashion') {
-                          return cat.contains('clothing') || cat.contains('fashion') || cat.contains('shoe') || cat.contains('apparel') || cat.contains('boutique') || name.contains('fashion') || name.contains('clothing') || name.contains('store');
-                        } else if (_selectedShoppingCategory == 'Tech') {
+                        if (_selectedShoppingCategory == 'Tech') {
                           return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
                         } else if (_selectedShoppingCategory == 'Local') {
                           return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
@@ -1239,15 +1233,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
-                '🌲',
-                'Nature',
-                _selectedPoiCategory == 'Nature',
-                () => setState(() {
-                  _selectedPoiCategory = _selectedPoiCategory == 'Nature' ? null : 'Nature';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
                 '🏖',
                 'Beaches',
                 _selectedPoiCategory == 'Beaches',
@@ -1262,15 +1247,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 _selectedPoiCategory == 'Museums',
                 () => setState(() {
                   _selectedPoiCategory = _selectedPoiCategory == 'Museums' ? null : 'Museums';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🎡',
-                'Attractions',
-                _selectedPoiCategory == 'Attractions',
-                () => setState(() {
-                  _selectedPoiCategory = _selectedPoiCategory == 'Attractions' ? null : 'Attractions';
                 }),
               ),
               const SizedBox(width: 10),
@@ -1615,15 +1591,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             children: [
-              _buildExperienceCategoryItem(
-                '👕',
-                'Fashion',
-                _selectedShoppingCategory == 'Fashion',
-                () => setState(() {
-                  _selectedShoppingCategory = _selectedShoppingCategory == 'Fashion' ? null : 'Fashion';
-                }),
-              ),
-              const SizedBox(width: 10),
               _buildExperienceCategoryItem(
                 '💻',
                 'Tech',

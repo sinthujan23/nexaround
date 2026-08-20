@@ -5740,21 +5740,20 @@ class _LivingMapPageState extends State<LivingMapPage>
         matchesFood = true;
       }
 
-      // 2. POI (Points of Interest: Merges Attractions, Nature, Experiences, Culture, Heritage, Beaches, Waterfalls, etc.)
+      // 2. POI (Points of Interest: Culture, Heritage, Beaches, Waterfalls, Parks, Museums, etc.)
       final bool hasPoiSignal =
-          catName.contains('poi') || catName.contains('attraction') || catName.contains('nature') ||
           catName.contains('beach') || catName.contains('park') || catName.contains('garden') ||
           catName.contains('lake') || catName.contains('river') || catName.contains('waterfall') ||
           catName.contains('forest') || catName.contains('museum') || catName.contains('experience') ||
           catName.contains('landmark') || catName.contains('culture') || catName.contains('temple') ||
-          catName.contains('art') || catName.contains('zoo') || catName.contains('wildlife') ||
+          catName.contains('art') || catName.contains('zoo') ||
           name.contains('beach') || name.contains('park') || name.contains('lake') || 
           name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
           name.contains('temple') || name.contains('museum') || name.contains('fort') ||
           name.contains('monument') || name.contains('sanctuary') ||
-          tags.contains('tourist_attraction') || tags.contains('park') || tags.contains('beach') ||
-          tags.contains('natural_feature') || tags.contains('national_park') || tags.contains('hiking_area') ||
-          tags.contains('nature_reserve') || tags.contains('botanical_garden') || tags.contains('museum') ||
+          tags.contains('park') || tags.contains('beach') ||
+          tags.contains('national_park') || tags.contains('hiking_area') ||
+          tags.contains('botanical_garden') || tags.contains('museum') ||
           tags.contains('place_of_worship') || tags.contains('hindu_temple') || tags.contains('church') ||
           tags.contains('buddhist_temple');
 
@@ -5778,9 +5777,8 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
 
       // 3. Shopping matching logic
-      if (catName.contains('shop') || catName.contains('mall') || catName.contains('market') || 
-          catName.contains('store') || catName.contains('fashion') || tags.contains('shopping_mall') ||
-          tags.contains('department_store')) {
+      if (catName.contains('mall') || catName.contains('market') || 
+          catName.contains('store') || tags.contains('department_store')) {
         final shoppingExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
           'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist'

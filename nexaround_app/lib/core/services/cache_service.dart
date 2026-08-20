@@ -23,6 +23,7 @@ class CacheService {
     await _prefs.remove('mini_tour_history');
     await _prefs.remove('notifications');
     await _prefs.remove('odysseys_cache');
+    await _prefs.remove('discovery_history_cache');
 
     savedPlacesNotifier.value++;
     favoritePlacesNotifier.value++;
@@ -477,6 +478,30 @@ class CacheService {
 
   static List<Map<String, dynamic>> getCachedOdysseysRaw() {
     final list = _prefs.getStringList('odysseys_cache') ?? [];
+    return list
+        .map((s) {
+          try {
+            return json.decode(s) as Map<String, dynamic>;
+          } catch (_) {
+            return <String, dynamic>{};
+          }
+        })
+        .where((m) => m.isNotEmpty)
+        .toList();
+  }
+
+  // ── Discovery Engine History cache ("Where should I go today?") ─────────
+  static Future<void> cacheDiscoveryHistory(List<Map<String, dynamic>> raw) async {
+    if (_prefsOrNull == null) return;
+    await _prefs.setStringList(
+      'discovery_history_cache',
+      raw.map((e) => json.encode(e)).toList(),
+    );
+  }
+
+  static List<Map<String, dynamic>> getCachedDiscoveryHistory() {
+    if (_prefsOrNull == null) return [];
+    final list = _prefs.getStringList('discovery_history_cache') ?? [];
     return list
         .map((s) {
           try {

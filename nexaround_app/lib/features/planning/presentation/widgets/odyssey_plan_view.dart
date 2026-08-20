@@ -8,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -931,27 +933,25 @@ class OdysseyPlanView extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Name + cost row
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          act.name,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: act.visited ? Colors.black38 : Colors.black,
-                            decoration: act.visited ? TextDecoration.lineThrough : null,
-                          ),
-                        ),
-                      ),
-                      if (act.cost.isNotEmpty) ...[
-                        const SizedBox(width: 8),
+                  // Name
+                  Text(
+                    act.name,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: act.visited ? Colors.black38 : Colors.black,
+                      decoration: act.visited ? TextDecoration.lineThrough : null,
+                    ),
+                  ),
+                  // Price badge (below name)
+                  if (act.cost.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
                         _buildPriceWithSource(context, act),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 // Action button always on its own line for consistent alignment
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -1184,61 +1184,249 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  /// Builds the price pill with contextual source attribution tag and tap-to-inspect info.
-  Widget _buildPriceWithSource(BuildContext context, OdysseyActivity act) {
-    final cleanCost = act.cost.trim().toLowerCase();
-    final bool isFree = cleanCost == 'free' ||
-        cleanCost == '0' ||
-        cleanCost == '\$0' ||
-        cleanCost.endsWith(' 0') ||
-        cleanCost.endsWith(' 0.00');
+  /// Resolves rich, context-aware source tag, detailed explanation, and matching category icon.
+  (String sourceTag, String sourceDetail, IconData icon, bool isFree, Color iconBgColor, Color iconColor, String displayCost)
+      _resolvePriceContext(OdysseyActivity act) {
+    String rawCost = act.cost.trim();
+    final lowerCost = rawCost.toLowerCase();
+    final bool isFree = lowerCost == 'free' ||
+        rawCost == '0' ||
+        rawCost == '\$0' ||
+        lowerCost.endsWith(' 0') ||
+        lowerCost.endsWith(' 0.00');
 
-    String sourceTag;
-    String sourceDetail;
-
-    if (act.priceSource.isNotEmpty) {
-      sourceTag = act.priceSource;
-      sourceDetail = act.priceBasis.isNotEmpty
-          ? act.priceBasis
-          : 'Estimated price baseline derived from travel intelligence and regional pricing data.';
-    } else if (isFree) {
-      sourceTag = 'Public';
-      sourceDetail =
-          'Public access landmark, scenic viewpoint, or self-guided exploration spot with zero entrance fee.';
-    } else {
-      switch (act.type) {
-        case ActivityType.attraction:
-          sourceTag = 'Est. Ticket';
-          sourceDetail =
-              'Estimated admission price derived from standard venue ticketing rates and travel partner booking baselines.';
-          break;
-        case ActivityType.transport:
-          sourceTag = 'Est. Fare';
-          sourceDetail =
-              'Estimated ride-hail / transit fare benchmarked from standard local distance averages.';
-          break;
-        case ActivityType.dining:
-          sourceTag = 'Avg. Meal';
-          sourceDetail =
-              'Average meal cost estimate based on local restaurant menu price tiers in this destination.';
-          break;
-        case ActivityType.accommodation:
-          sourceTag = 'Est. Stay';
-          sourceDetail =
-              'Estimated accommodation allocation calculated from destination lodging averages.';
-          break;
-        case ActivityType.exploration:
-        case ActivityType.other:
-          sourceTag = 'Est. Rate';
-          sourceDetail =
-              'Estimated rate benchmarked from regional travel and destination pricing data.';
-          break;
+    // Format displayCost: e.g. "1500" -> "LKR 1,500"
+    String displayCost = rawCost;
+    if (!isFree && displayCost.isNotEmpty) {
+      final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
+      if (!hasCurrency && odyssey.currency.isNotEmpty) {
+        displayCost = '${odyssey.currency} $displayCost';
       }
     }
 
+    final lowerName = act.name.toLowerCase();
+    final lowerTip = act.tip.toLowerCase();
+
+    // 1. Explicit AI-provided source & basis from Gemini
+    if (act.priceSource.isNotEmpty) {
+      final detail = act.priceBasis.isNotEmpty
+          ? act.priceBasis
+          : 'Estimated price baseline derived from travel intelligence and regional pricing data.';
+      IconData icon = Icons.price_change_outlined;
+      Color iconBg = const Color(0xFFEFF6FF);
+      Color iconColor = const Color(0xFF2563EB);
+
+      if (act.type == ActivityType.accommodation || lowerName.contains('hotel') || lowerName.contains('check-in')) {
+        icon = Icons.hotel_outlined;
+        iconBg = const Color(0xFFF3E8FF);
+        iconColor = const Color(0xFF9333EA);
+      } else if (act.type == ActivityType.transport || lowerName.contains('airport') || lowerName.contains('taxi')) {
+        icon = Icons.directions_car_outlined;
+        iconBg = const Color(0xFFFEF3C7);
+        iconColor = const Color(0xFFD97706);
+      } else if (act.type == ActivityType.dining || lowerName.contains('lunch') || lowerName.contains('dinner')) {
+        icon = Icons.restaurant_rounded;
+        iconBg = const Color(0xFFFFEDD5);
+        iconColor = const Color(0xFFEA580C);
+      } else if (act.type == ActivityType.attraction) {
+        icon = Icons.confirmation_number_outlined;
+        iconBg = const Color(0xFFE0F2FE);
+        iconColor = const Color(0xFF0284C7);
+      } else if (isFree) {
+        iconBg = const Color(0xFFDCFCE7);
+        iconColor = const Color(0xFF16A34A);
+      }
+
+      return (act.priceSource, detail, icon, isFree, iconBg, iconColor, displayCost);
+    }
+
+    // 2. Accommodation (Hotel check-in / check-out / freshen up)
+    if (act.type == ActivityType.accommodation ||
+        lowerName.contains('hotel') ||
+        lowerName.contains('check-in') ||
+        lowerName.contains('check in') ||
+        lowerName.contains('check-out') ||
+        lowerName.contains('check out') ||
+        lowerName.contains('freshen up') ||
+        lowerName.contains('resort') ||
+        lowerName.contains('hostel') ||
+        lowerName.contains('villa') ||
+        lowerName.contains('guest house')) {
+      return (
+        'Included in Stay',
+        'Hotel check-in, room access, and luggage drop are included in your accommodation reservation.',
+        Icons.hotel_outlined,
+        true,
+        const Color(0xFFF3E8FF),
+        const Color(0xFF9333EA),
+        'Free',
+      );
+    }
+
+    // 3. Transport & Airport Transfers (Airport arrival, PickMe, Uber, Grab, taxi, bus, train)
+    if (act.type == ActivityType.transport ||
+        lowerName.contains('arrival') ||
+        lowerName.contains('airport') ||
+        lowerName.contains('flight') ||
+        lowerName.contains('transfer') ||
+        lowerName.contains('taxi') ||
+        lowerName.contains('drive to') ||
+        lowerName.contains('travel to') ||
+        lowerName.contains('train') ||
+        lowerName.contains('bus') ||
+        lowerName.contains('ferry') ||
+        lowerTip.contains('pickme') ||
+        lowerTip.contains('uber') ||
+        lowerTip.contains('grab') ||
+        lowerTip.contains('taxi') ||
+        lowerTip.contains('bus') ||
+        lowerTip.contains('train')) {
+      String tag = 'Est. Fare';
+      if (lowerTip.contains('pickme') || lowerName.contains('pickme')) {
+        tag = 'PickMe / Taxi';
+      } else if (lowerTip.contains('uber') || lowerName.contains('uber')) {
+        tag = 'Uber / Taxi';
+      } else if (lowerTip.contains('grab') || lowerName.contains('grab')) {
+        tag = 'Grab / Taxi';
+      } else if (lowerTip.contains('bus') || lowerName.contains('bus')) {
+        tag = 'Bus / Transit';
+      } else if (lowerTip.contains('train') || lowerName.contains('train')) {
+        tag = 'Train Fare';
+      }
+
+      String detail = 'Estimated local transit / ride-hail fare calculated from standard route distance rates.';
+      if (lowerName.contains('airport') || lowerName.contains('arrival')) {
+        detail = 'Estimated airport transfer fare based on standard local taxi / ride-hail metered distance rates.';
+      }
+      return (
+        tag,
+        detail,
+        Icons.directions_car_outlined,
+        isFree,
+        const Color(0xFFFEF3C7),
+        const Color(0xFFD97706),
+        displayCost,
+      );
+    }
+
+    // 4. Dining (Breakfast, Lunch, Dinner, Cafe, Restaurant)
+    if (act.type == ActivityType.dining ||
+        lowerName.startsWith('lunch') ||
+        lowerName.startsWith('dinner') ||
+        lowerName.startsWith('breakfast') ||
+        lowerName.startsWith('brunch') ||
+        lowerName.contains('restaurant') ||
+        lowerName.contains('dining') ||
+        lowerName.contains('food tour') ||
+        lowerName.contains('street food') ||
+        lowerName.contains('cafe') ||
+        lowerName.contains('coffee')) {
+      return (
+        'Avg. Meal',
+        'Average meal cost estimate based on local restaurant menu price tiers in this destination.',
+        Icons.restaurant_rounded,
+        isFree,
+        const Color(0xFFFFEDD5),
+        const Color(0xFFEA580C),
+        displayCost,
+      );
+    }
+
+    // 5. Exploration & Public Sights (Walking, beach, markets, viewpoints)
+    if (act.type == ActivityType.exploration ||
+        lowerName.startsWith('explore') ||
+        lowerName.startsWith('wander') ||
+        lowerName.startsWith('stroll') ||
+        lowerName.contains('walking tour') ||
+        lowerName.contains('street market') ||
+        lowerName.contains('market') ||
+        lowerName.contains('bazaar') ||
+        lowerName.contains('beach') ||
+        lowerName.contains('promenade') ||
+        lowerName.contains('sunset view') ||
+        lowerName.contains('viewpoint')) {
+      return (
+        'Free Access',
+        'Public scenic area, open street market, or self-guided walk with zero admission charge.',
+        Icons.directions_walk_rounded,
+        true,
+        const Color(0xFFDCFCE7),
+        const Color(0xFF16A34A),
+        'Free',
+      );
+    }
+
+    // 6. Attractions & Heritage (Museums, temples, forts, galleries, national parks)
+    if (act.type == ActivityType.attraction ||
+        lowerName.contains('museum') ||
+        lowerName.contains('temple') ||
+        lowerName.contains('fort') ||
+        lowerName.contains('palace') ||
+        lowerName.contains('cathedral') ||
+        lowerName.contains('church') ||
+        lowerName.contains('castle') ||
+        lowerName.contains('gallery') ||
+        lowerName.contains('park') ||
+        lowerName.contains('sanctuary') ||
+        lowerName.contains('garden')) {
+      if (isFree) {
+        return (
+          'Free Entry',
+          'Open heritage grounds, public park, or free admission landmark.',
+          Icons.museum_outlined,
+          true,
+          const Color(0xFFDCFCE7),
+          const Color(0xFF16A34A),
+          'Free',
+        );
+      } else {
+        return (
+          'Est. Ticket',
+          'Estimated admission ticket fee based on official venue pricing and tour partner guides.',
+          Icons.confirmation_number_outlined,
+          false,
+          const Color(0xFFE0F2FE),
+          const Color(0xFF0284C7),
+          displayCost,
+        );
+      }
+    }
+
+    // 7. General fallback
+    if (isFree) {
+      return (
+        'Free',
+        'Complimentary activity with zero admission fees.',
+        Icons.check_circle_outline_rounded,
+        true,
+        const Color(0xFFDCFCE7),
+        const Color(0xFF16A34A),
+        'Free',
+      );
+    }
+
+    return (
+      'Est. Rate',
+      'Estimated regional cost baseline derived from destination travel data.',
+      Icons.price_change_outlined,
+      false,
+      const Color(0xFFF1F5F9),
+      const Color(0xFF475569),
+      displayCost,
+    );
+  }
+
+  /// Builds the price pill with contextual source attribution tag and tap-to-inspect info.
+  Widget _buildPriceWithSource(BuildContext context, OdysseyActivity act) {
+    final ctx = _resolvePriceContext(act);
+    final sourceTag = ctx.$1;
+    final sourceDetail = ctx.$2;
+    final isFree = ctx.$4;
+    final displayCost = ctx.$7;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => _showPriceSourceInfo(context, act, sourceTag, sourceDetail),
+      onTap: () => _showPriceSourceInfo(context, act),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
@@ -1254,7 +1442,7 @@ class OdysseyPlanView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              act.cost,
+              displayCost,
               style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
@@ -1288,19 +1476,114 @@ class OdysseyPlanView extends StatelessWidget {
     );
   }
 
-  /// Bottom sheet detailing the source basis for an activity's estimated price.
-  void _showPriceSourceInfo(
-    BuildContext context,
+  /// Returns a list of (label, url, icon, color) verification link tuples
+  /// based on the activity type and destination.
+  List<(String label, String url, IconData icon, Color color)> _getVerifyLinks(
     OdysseyActivity act,
     String sourceTag,
-    String sourceDetail,
   ) {
-    final cleanCost = act.cost.trim().toLowerCase();
-    final isFree = cleanCost == 'free' ||
-        cleanCost == '0' ||
-        cleanCost == '\$0' ||
-        cleanCost.endsWith(' 0') ||
-        cleanCost.endsWith(' 0.00');
+    final dest = odyssey.destination.isNotEmpty ? odyssey.destination : '';
+    final q = Uri.encodeComponent('${act.name} $dest'.trim());
+    final destQ = Uri.encodeComponent(dest);
+    final nameQ = Uri.encodeComponent(act.name);
+    final lowerName = act.name.toLowerCase();
+
+    // Google Maps is universal for all types
+    final gmapsUrl = 'https://www.google.com/maps/search/$q';
+
+    // Accommodation
+    if (act.type == ActivityType.accommodation ||
+        lowerName.contains('hotel') ||
+        lowerName.contains('check-in') ||
+        lowerName.contains('check in') ||
+        lowerName.contains('resort') ||
+        lowerName.contains('hostel') ||
+        lowerName.contains('villa') ||
+        lowerName.contains('guest house')) {
+      return [
+        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
+        ('Booking.com', 'https://www.booking.com/searchresults.html?ss=$q', Icons.hotel_outlined, const Color(0xFF003580)),
+        ('Agoda', 'https://www.agoda.com/search?q=$q', Icons.bed_outlined, const Color(0xFFAB1F2A)),
+      ];
+    }
+
+    // Transport & Airport
+    if (act.type == ActivityType.transport ||
+        lowerName.contains('airport') ||
+        lowerName.contains('arrival') ||
+        lowerName.contains('taxi') ||
+        lowerName.contains('transfer') ||
+        lowerName.contains('drive to') ||
+        lowerName.contains('travel to')) {
+      final links = <(String, String, IconData, Color)>[
+        ('Google Maps', 'https://www.google.com/maps/dir/$destQ/$nameQ', Icons.map_outlined, const Color(0xFF4285F4)),
+      ];
+      // Add ride-hail link
+      if (act.tip.toLowerCase().contains('uber') || lowerName.contains('uber')) {
+        links.add(('Uber', 'https://m.uber.com/looking?pickup=$destQ', Icons.local_taxi_outlined, const Color(0xFF000000)));
+      } else if (act.tip.toLowerCase().contains('pickme') || lowerName.contains('pickme')) {
+        links.add(('PickMe', 'https://pickme.lk', Icons.local_taxi_outlined, const Color(0xFF00A651)));
+      } else if (act.tip.toLowerCase().contains('grab') || lowerName.contains('grab')) {
+        links.add(('Grab', 'https://www.grab.com', Icons.local_taxi_outlined, const Color(0xFF00B14F)));
+      } else {
+        links.add(('Uber', 'https://m.uber.com/looking?pickup=$destQ', Icons.local_taxi_outlined, const Color(0xFF000000)));
+      }
+      return links;
+    }
+
+    // Dining
+    if (act.type == ActivityType.dining ||
+        lowerName.startsWith('lunch') ||
+        lowerName.startsWith('dinner') ||
+        lowerName.startsWith('breakfast') ||
+        lowerName.contains('restaurant') ||
+        lowerName.contains('cafe') ||
+        lowerName.contains('food')) {
+      return [
+        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
+        ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
+      ];
+    }
+
+    // Attractions & Heritage
+    if (act.type == ActivityType.attraction ||
+        lowerName.contains('museum') ||
+        lowerName.contains('temple') ||
+        lowerName.contains('fort') ||
+        lowerName.contains('palace') ||
+        lowerName.contains('cathedral') ||
+        lowerName.contains('church') ||
+        lowerName.contains('castle') ||
+        lowerName.contains('gallery') ||
+        lowerName.contains('park') ||
+        lowerName.contains('sanctuary') ||
+        lowerName.contains('garden')) {
+      return [
+        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
+        ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
+        ('GetYourGuide', 'https://www.getyourguide.com/s/?q=$q', Icons.confirmation_number_outlined, const Color(0xFFFF5533)),
+      ];
+    }
+
+    // Exploration / generic — just Google Maps + TripAdvisor
+    return [
+      ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
+      ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
+    ];
+  }
+
+  /// Bottom sheet detailing the source basis for an activity's estimated price
+  /// with clickable verification links to real booking & pricing platforms.
+  void _showPriceSourceInfo(BuildContext context, OdysseyActivity act) {
+    final ctx = _resolvePriceContext(act);
+    final sourceTag = ctx.$1;
+    final icon = ctx.$3;
+    final isFree = ctx.$4;
+    final iconBg = ctx.$5;
+    final iconColor = ctx.$6;
+    final displayCost = ctx.$7;
+
+    final verifyLinks = _getVerifyLinks(act, sourceTag);
 
     showModalBottomSheet(
       context: context,
@@ -1310,17 +1593,18 @@ class OdysseyPlanView extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Padding(
+      builder: (ctxModal) => Padding(
         padding: EdgeInsets.only(
           left: 20,
           right: 20,
           top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          bottom: MediaQuery.of(ctxModal).viewInsets.bottom + 24,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ── Drag handle ──
             Center(
               child: Container(
                 width: 40,
@@ -1332,23 +1616,16 @@ class OdysseyPlanView extends StatelessWidget {
                 ),
               ),
             ),
+            // ── Header: icon + title + activity name ──
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: isFree
-                        ? const Color(0xFFE8F5E9)
-                        : const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10),
+                    color: iconBg,
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(
-                    isFree ? Icons.park_outlined : Icons.price_change_outlined,
-                    size: 20,
-                    color: isFree
-                        ? const Color(0xFF2E7D32)
-                        : const Color(0xFF2563EB),
-                  ),
+                  child: Icon(icon, size: 22, color: iconColor),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1363,6 +1640,7 @@ class OdysseyPlanView extends StatelessWidget {
                           letterSpacing: -0.3,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
                         act.name,
                         maxLines: 1,
@@ -1370,6 +1648,7 @@ class OdysseyPlanView extends StatelessWidget {
                         style: const TextStyle(
                           fontSize: 12.5,
                           color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                     ],
@@ -1378,6 +1657,7 @@ class OdysseyPlanView extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            // ── Rate + Source Tag card ──
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1409,7 +1689,7 @@ class OdysseyPlanView extends StatelessWidget {
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          act.cost,
+                          displayCost,
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
@@ -1425,36 +1705,15 @@ class OdysseyPlanView extends StatelessWidget {
                   const Divider(height: 1, color: Color(0xFFE2E8F0)),
                   const SizedBox(height: 10),
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.analytics_outlined,
-                        size: 16,
-                        color: Color(0xFF64748B),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Source Basis ($sourceTag)',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.black87,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              sourceDetail,
-                              style: const TextStyle(
-                                fontSize: 12,
-                                height: 1.4,
-                                color: Colors.black54,
-                              ),
-                            ),
-                          ],
+                      Icon(icon, size: 15, color: iconColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Source: $sourceTag',
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
                         ),
                       ),
                     ],
@@ -1462,7 +1721,68 @@ class OdysseyPlanView extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 14),
+            // ── Verify on: clickable platform links ──
+            const Text(
+              '🔍  Verify price on',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 10),
+            ...verifyLinks.map((link) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    onTap: () async {
+                      final uri = Uri.parse(link.$2);
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border:
+                            Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              color: link.$4.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Icon(link.$3, size: 18, color: link.$4),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              link.$1,
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                          Icon(
+                            Icons.open_in_new_rounded,
+                            size: 16,
+                            color: link.$4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )),
+            const SizedBox(height: 6),
+            // ── Disclaimer banner ──
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -1481,7 +1801,7 @@ class OdysseyPlanView extends StatelessWidget {
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Live prices in the real world can vary due to seasonal demand, local exchange rates, peak hours, and vendor policy updates. Always check official booking channels or onsite counters for exact rates.',
+                      'Prices may vary due to seasonal demand, exchange rates & vendor updates. Verify on the platforms above for live rates.',
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.35,
@@ -1493,11 +1813,12 @@ class OdysseyPlanView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
+            // ── Close button ──
             SizedBox(
               width: double.infinity,
               height: 42,
               child: ElevatedButton(
-                onPressed: () => Navigator.of(ctx).pop(),
+                onPressed: () => Navigator.of(ctxModal).pop(),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,
                   foregroundColor: Colors.white,
@@ -1567,54 +1888,72 @@ class OdysseyPlanView extends StatelessWidget {
               style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 16),
-            ...act.restaurants.map((r) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8F8F8),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          r.name,
-                          style: const TextStyle(
-                            fontSize: 14, fontWeight: FontWeight.w700,
+            ...act.restaurants.map((r) => InkWell(
+              onTap: () => _navigateToSmartMap(context, r.name),
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8F8F8),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            r.name,
+                            style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                      ),
-                      if (r.rating.isNotEmpty) ...[
-                        const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                        const SizedBox(width: 2),
-                        Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        if (r.rating.isNotEmpty) ...[
+                          const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                          const SizedBox(width: 2),
+                          Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                        ],
+                        const SizedBox(width: 6),
+                        const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),
                       ],
+                    ),
+                    if (r.cuisine.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
                     ],
-                  ),
-                  if (r.cuisine.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
-                  ],
-                  if (r.priceRange.isNotEmpty) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      r.priceRange,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.actionTeal,
+                    if (r.priceRange.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        r.priceRange,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.actionTeal,
+                        ),
                       ),
+                    ],
+                    if (r.tip.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                    ],
+                    const SizedBox(height: 6),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Icon(Icons.touch_app_outlined, size: 12, color: Colors.black26),
+                        SizedBox(width: 4),
+                        Text(
+                          'Tap to view on map',
+                          style: TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w500),
+                        ),
+                      ],
                     ),
                   ],
-                  if (r.tip.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                  ],
-                ],
+                ),
               ),
             )),
             const SizedBox(height: 8),
@@ -1622,6 +1961,58 @@ class OdysseyPlanView extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Geocodes a place name and navigates to the Smart Tourism Map.
+  void _navigateToSmartMap(BuildContext context, String placeName) async {
+    final dest = odyssey.destination;
+    final searchQuery = dest.isNotEmpty ? '$placeName, $dest' : placeName;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Locating $placeName...'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    // Close the bottom sheet first
+    Navigator.of(context).pop();
+
+    try {
+      final results = await GooglePlacesService.searchPlaces(
+        query: searchQuery,
+        // Use a default location bias (will be overridden by searchPlaces if destination is clear)
+        latitude: 6.9271,
+        longitude: 79.8612,
+      );
+
+      if (!context.mounted) return;
+
+      if (results.isNotEmpty) {
+        final place = results.first;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SmartTourismMapPage(
+              initialLat: place.latitude,
+              initialLng: place.longitude,
+              destinationName: place.name,
+            ),
+          ),
+        );
+      } else {
+        // Fallback: open Google Maps search in browser
+        final query = Uri.encodeComponent(searchQuery);
+        final url = Uri.parse('https://www.google.com/maps/search/$query');
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+      // Fallback: open Google Maps search in browser
+      final query = Uri.encodeComponent(searchQuery);
+      final url = Uri.parse('https://www.google.com/maps/search/$query');
+      launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 
   Widget _budgetAdvisoryCard(BuildContext context) {
