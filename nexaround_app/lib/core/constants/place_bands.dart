@@ -89,6 +89,21 @@ class PlaceBands {
     ],
   };
 
+  /// A rating shrunk toward the mean by how little backs it up.
+  ///
+  /// Mirrors `place_bands.quality_score` on the backend. A raw rating sort puts
+  /// a 5.0 from one review above a 4.4 from 1,795 — which is how a nameless
+  /// "Trincomalee" outranked Marble Beach. With few reviews the score sits near
+  /// the prior; only real volume moves it.
+  static double qualityScore(double? rating, int? reviewCount) {
+    final r = rating ?? 0.0;
+    if (r <= 0.0) return 0.0;
+    final v = (reviewCount ?? 0).toDouble();
+    const priorWeight = 30.0;
+    const priorMean = 4.0;
+    return (v * r + priorWeight * priorMean) / (v + priorWeight);
+  }
+
   static List<PlaceBand> forCategory(String category) =>
       byCategory[category] ?? byCategory['POI']!;
 

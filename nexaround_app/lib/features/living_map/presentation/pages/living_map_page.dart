@@ -5942,10 +5942,13 @@ class _LivingMapPageState extends State<LivingMapPage>
 
       final bands = PlaceBands.forCategory(category);
 
-      // Prefer well-rated places, but only while enough of them remain to fill
+      // Prefer well-backed places, but only while enough of them remain to fill
       // the section — in a sparse area a 3.8 is better than a blank card.
-      List<AttractionEntity> candidatePool =
-          allPlaces.where((p) => (p.rating ?? 0.0) >= 4.0).toList();
+      // Filtering on the raw rating let unreviewed 5.0s through and dropped
+      // genuinely popular 3.9s, so the threshold is on the weighted score.
+      List<AttractionEntity> candidatePool = allPlaces
+          .where((p) => PlaceBands.qualityScore(p.rating, p.reviewCount) >= 4.0)
+          .toList();
       if (candidatePool.length < PlaceBands.totalPerCategory) {
         candidatePool = List.from(allPlaces);
       }
@@ -5963,6 +5966,11 @@ class _LivingMapPageState extends State<LivingMapPage>
           if (aMall && !bMall) return -1;
           if (!aMall && bMall) return 1;
         }
+        // Within a band the best-backed place should lead, matching how the
+        // backend orders the list this is standing in for.
+        final qa = PlaceBands.qualityScore(a.rating, a.reviewCount);
+        final qb = PlaceBands.qualityScore(b.rating, b.reviewCount);
+        if ((qa - qb).abs() > 0.01) return qb.compareTo(qa);
         return compareDistanceAndRating(a, b);
       });
 
