@@ -1,8 +1,8 @@
 """Band-aware place discovery for the Around You / Discovery sections.
 
-The sections show fifteen places per category, five from each of three distance
-bands, so the list reads as a progression outward rather than fifteen variations
-on "the nearest thing".
+The sections show ten places per category, drawn from three distance bands on
+the quotas in `place_bands.BAND_QUOTAS`, so the list reads as a progression
+outward rather than ten variations on "the nearest thing".
 
 The awkward part is the outer bands. Google's Nearby Search takes a *circle*,
 not a ring, and returns at most 20 results ranked by prominence — so a circle
@@ -53,7 +53,9 @@ _RING_BEARINGS = (0.0, 120.0, 240.0)
 _BEARING_PHASE_PER_BAND = 40.0
 
 # How many DB rows to pull per band before selection. Comfortably more than the
-# five we show, so the rating sort has something to choose between.
+# handful we show, so the rating sort has something to choose between — and more
+# so now that six categories are drawn from four overlapping pools, where a
+# band's rows are shared with its sibling and thinned by the relevance gate.
 _DB_LIMIT_PER_BAND = 40
 
 # Cache keys with a fill already running. Without this, every request arriving
@@ -267,7 +269,7 @@ async def get_nearby_banded(
     max_photos: int = 1,
     force_refresh: bool = False,
 ) -> BandedPlacesResponse:
-    """Fifteen places for a category, five per distance band, backfilled."""
+    """Ten places for a category, split across its distance bands, backfilled."""
     category = google_places_client.canonical_category(category)
     bands = place_bands.bands_for(category)
     key = _cache_key(latitude, longitude, category)
@@ -319,7 +321,7 @@ async def get_nearby_banded(
     short_bands = [
         i for i, (bmin, bmax) in enumerate(bands)
         if sum(1 for p in pool if bmin <= (p.get("distance_m") or 0) <= bmax)
-        < place_bands.PLACES_PER_BAND
+        < place_bands.quota_for_band(i)
     ]
 
     source = "database"
@@ -330,7 +332,7 @@ async def get_nearby_banded(
         allowed, reason = await spend_guard.allowed(None)
         if not allowed:
             print(f"skipping banded Google fill: {reason}")
-        elif len(pool) < place_bands.PLACES_PER_BAND:
+        elif len(pool) < place_bands.quota_for_band(0):
             # Nothing worth showing yet — fill inline so this caller gets a
             # populated section rather than an empty one.
             _active_fills.add(key)
@@ -440,18 +442,18 @@ def _assemble(
     cached_flag: bool,
     source: str,
 ) -> BandedPlacesResponse:
-    """Pick five per band, then backfill to fifteen from whatever is left.
+    """Fill each band to its quota, then backfill to ten from whatever is left.
 
     Backfill is nearest-first: when a band is genuinely empty — no hospital
     within 25–50 km — the honest substitute is another close place, not a
     padded-out band boundary.
     """
-    per_band = place_bands.PLACES_PER_BAND
     remaining = sorted(pool, key=_rank_for_selection)
     chosen: list[list[dict]] = []
     taken_ids: set[str] = set()
 
-    for band_min, band_max in bands:
+    for i, (band_min, band_max) in enumerate(bands):
+        quota = place_bands.quota_for_band(i)
         picks = []
         for p in remaining:
             pid = str(p.get("id") or "")
@@ -461,7 +463,7 @@ def _assemble(
             if band_min <= dist <= band_max:
                 picks.append(p)
                 taken_ids.add(pid)
-                if len(picks) >= per_band:
+                if len(picks) >= quota:
                     break
         picks.sort(key=lambda p: p.get("distance_m") or 0.0)
         chosen.append(picks)

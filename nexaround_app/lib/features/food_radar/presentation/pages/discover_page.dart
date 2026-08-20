@@ -47,6 +47,48 @@ class DiscoverPage extends StatefulWidget {
     this.requestCount = 0,
   });
 
+  /// The Discovery tabs, in order. The six place sections come first and
+  /// Emergency sits apart at the end — it is the panic surface, not a category.
+  static const List<String> tabs = [
+    'POI',
+    'Nature',
+    'Food',
+    'Shopping',
+    'Medical',
+    'Hospital',
+    'Emergency',
+  ];
+
+  static final int emergencyTabIndex = tabs.indexOf('Emergency');
+
+  /// Tab index for an Around You section name.
+  ///
+  /// Around You and Discovery order their categories differently, and the two
+  /// used to be bridged by a nested ternary of literal indices — which silently
+  /// pointed at the wrong tab the moment a category was inserted.
+  static int tabIndexFor(String category) {
+    switch (category) {
+      case 'Food':
+      case 'Food & Drink':
+        return tabs.indexOf('Food');
+      case 'POI':
+      case 'Attractions':
+      case 'Experiences':
+        return tabs.indexOf('POI');
+      case 'Nature':
+      case 'Beach':
+        return tabs.indexOf('Nature');
+      case 'Shopping':
+        return tabs.indexOf('Shopping');
+      case 'Medical':
+        return tabs.indexOf('Medical');
+      case 'Hospital':
+        return tabs.indexOf('Hospital');
+      default:
+        return 0;
+    }
+  }
+
   @override
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
@@ -58,9 +100,11 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   Position? _currentPosition;
 
   List<AttractionEntity> _poiList = [];
+  List<AttractionEntity> _natureList = [];
   List<AttractionEntity> _foodList = [];
   List<AttractionEntity> _shoppingList = [];
   List<AttractionEntity> _medicalList = [];
+  List<AttractionEntity> _hospitalList = [];
 
   // Emergency tab state
   List<Map<String, dynamic>> _nearbyHospitals = [];
@@ -69,11 +113,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   // Selected sub-categories for filtering
   String? _selectedPoiCategory;
+  String? _selectedNatureCategory;
   String? _selectedFoodCategory;
   String? _selectedShoppingCategory;
   String? _selectedMedicalCategory;
+  String? _selectedHospitalCategory;
 
-  final List<String> _tabs = ['POI', 'Food', 'Shopping', 'Medical', 'Emergency'];
+  List<String> get _tabs => DiscoverPage.tabs;
 
   @override
   void initState() {
@@ -99,10 +145,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     if (widget.initialTab != oldWidget.initialTab || widget.requestCount != oldWidget.requestCount) {
       setState(() {
         _selectedTab = widget.initialTab.clamp(0, _tabs.length - 1);
-        _selectedPoiCategory = null;
-        _selectedFoodCategory = null;
-        _selectedShoppingCategory = null;
-        _selectedMedicalCategory = null;
+        _clearSubCategories();
       });
       _fetchForTab(_selectedTab);
       if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
@@ -111,6 +154,18 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     if (widget.isActive && !oldWidget.isActive) {
       _initLocationAndFetch();
     }
+  }
+
+  /// Drop every sub-category chip. Called whenever the tab changes: a chip left
+  /// selected on a tab the user has navigated away from silently filters that
+  /// tab's list the next time they come back to it.
+  void _clearSubCategories() {
+    _selectedPoiCategory = null;
+    _selectedNatureCategory = null;
+    _selectedFoodCategory = null;
+    _selectedShoppingCategory = null;
+    _selectedMedicalCategory = null;
+    _selectedHospitalCategory = null;
   }
 
   void _scrollToTab(int index) {
@@ -159,11 +214,17 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     final lng = CacheService.getLastFetchLng() ?? _currentPosition?.longitude;
     if (lat == null || lng == null) return;
 
-    String? category;
-    if (_tabs[index] == 'POI') category = 'POI';
-    if (_tabs[index] == 'Food') category = 'Food & Drink';
-    if (_tabs[index] == 'Shopping') category = 'Shopping';
-    if (_tabs[index] == 'Medical') category = 'Medical';
+    // Tab label to the canonical category the API expects. Emergency has no
+    // entry: it runs its own hospital lookup with its own radius.
+    const tabCategories = {
+      'POI': 'POI',
+      'Nature': 'Nature',
+      'Food': 'Food & Drink',
+      'Shopping': 'Shopping',
+      'Medical': 'Medical',
+      'Hospital': 'Hospital',
+    };
+    final String? category = tabCategories[_tabs[index]];
 
     if (category != null) {
       context.read<MapBloc>().add(FetchNearbyAttractions(
@@ -353,10 +414,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                         onTap: () {
                           setState(() {
                             _selectedTab = index;
-                            _selectedPoiCategory = null;
-                            _selectedFoodCategory = null;
-                            _selectedShoppingCategory = null;
-                            _selectedMedicalCategory = null;
+                            _clearSubCategories();
                           });
                           _fetchForTab(index);
                           if (_tabs[index] == 'Emergency') _fetchEmergencyData();
@@ -412,52 +470,58 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     final rawMasterList = [...baseList, ...bandedPlaces];
                     final masterList = _deduplicateAttractions(rawMasterList);
                     
-                    // Filter POI List (Points of Interest: Merges Attractions, Nature, Experiences, Landmarks, Heritage, Culture, Beaches, Parks, Waterfalls)
-                    _poiList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
-
-                      // Exclude private residences/stays
-                      if (name.contains('homestay') || name.contains('bedroom') || name.contains('apartment') ||
-                          name.contains('villa') || name.contains('guest house') || name.contains('hotel') || name.contains('resort')) {
-                        return false;
-                      }
-
-                      return cat.contains('park') ||
-                             cat.contains('beach') || cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
-                             cat.contains('waterfall') || cat.contains('forest') || cat.contains('museum') || cat.contains('experience') ||
-                             cat.contains('landmark') || cat.contains('culture') || cat.contains('temple') || cat.contains('art') ||
-                             cat.contains('zoo') || name.contains('beach') || name.contains('park') || name.contains('lake') ||
-                             name.contains('waterfall') || name.contains('garden') || name.contains('forest') || name.contains('temple') ||
-                             name.contains('museum') ||
-                             tags.contains('national_park') || tags.contains('hiking_area') || tags.contains('park') || tags.contains('beach') ||
-                             tags.contains('botanical_garden') || tags.contains('museum') ||
-                             tags.contains('hindu_temple') || tags.contains('place_of_worship');
-                    }).toList();
+                    // Filter POI List — built attractions: heritage, culture,
+                    // worship and ticketed venues. Beaches, parks and waterfalls
+                    // now belong to Nature and are excluded by _isPoi.
+                    _poiList = masterList.where(_isPoi).toList();
 
                     if (_selectedPoiCategory != null) {
                       _poiList = _poiList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
+                        final tags = _tagsOf(a);
                         if (_selectedPoiCategory == 'Landmarks') {
                           return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
                         } else if (_selectedPoiCategory == 'Culture') {
                           return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
-                        } else if (_selectedPoiCategory == 'Beaches') {
-                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
                         } else if (_selectedPoiCategory == 'Museums') {
                           return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
-                        } else if (_selectedPoiCategory == 'Parks') {
-                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('botanical_garden');
-                        } else if (_selectedPoiCategory == 'Waterfalls') {
-                          return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
+                        } else if (_selectedPoiCategory == 'Leisure') {
+                          return tags.contains('zoo') || tags.contains('aquarium') || tags.contains('amusement_park') || tags.contains('water_park') || tags.contains('planetarium') || tags.contains('performing_arts_theater') || cat.contains('zoo') || cat.contains('experience') || name.contains('zoo') || name.contains('aquarium') || name.contains('theatre') || name.contains('theater');
                         }
                         return true;
                       }).toList();
                     }
                     _poiList.sort((a, b) {
+                      int ratingComp = b.rating.compareTo(a.rating);
+                      if (ratingComp != 0) return ratingComp;
+                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                    });
+
+                    // Filter Nature List — the outdoors itself: beaches, parks,
+                    // waterfalls, lakes and trails.
+                    _natureList = masterList.where(_isNature).toList();
+
+                    if (_selectedNatureCategory != null) {
+                      _natureList = _natureList.where((a) {
+                        final cat = (a.categoryName ?? '').toLowerCase();
+                        final name = a.name.toLowerCase();
+                        final tags = _tagsOf(a);
+                        if (_selectedNatureCategory == 'Beaches') {
+                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
+                        } else if (_selectedNatureCategory == 'Parks') {
+                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('national_park') || tags.contains('botanical_garden') || tags.contains('garden');
+                        } else if (_selectedNatureCategory == 'Waterfalls') {
+                          return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
+                        } else if (_selectedNatureCategory == 'Lakes') {
+                          return cat.contains('lake') || cat.contains('river') || name.contains('lake') || name.contains('river') || name.contains('lagoon') || name.contains('reservoir') || tags.contains('lake') || tags.contains('river');
+                        } else if (_selectedNatureCategory == 'Wildlife') {
+                          return name.contains('sanctuary') || name.contains('safari') || name.contains('wildlife') || tags.contains('wildlife_park') || tags.contains('wildlife_refuge') || tags.contains('hiking_area');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _natureList.sort((a, b) {
                       int ratingComp = b.rating.compareTo(a.rating);
                       if (ratingComp != 0) return ratingComp;
                       return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
@@ -507,58 +571,53 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     }
                     _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
-                    // Filter Medical List (Merges Medical & Hospitals)
-                    _medicalList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      final name = a.name.toLowerCase();
-                      final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
-
-                      final bool hasMedicalSignal =
-                          cat == 'medical' || cat == 'hospital' ||
-                          name.contains('medical') || name.contains('hospital') ||
-                          name.contains('clinic') || name.contains('pharmacy') ||
-                          name.contains('dispensary') || name.contains('health centre') ||
-                          name.contains('health center') || tags.contains('hospital') ||
-                          tags.contains('pharmacy') || tags.contains('doctor') ||
-                          tags.contains('dentist') || tags.contains('physiotherapist') ||
-                          tags.contains('veterinary_care') || tags.contains('health') ||
-                          tags.contains('medical_center') || tags.contains('medical_clinic') ||
-                          (cat.contains('medical') || cat.contains('hospital') ||
-                           cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor'));
-
-                      if (!hasMedicalSignal) return false;
-
-                      const nonMedicalTags = [
-                        'school', 'university', 'secondary_school', 'primary_school',
-                        'bank', 'finance', 'accounting', 'atm',
-                        'food', 'restaurant', 'bakery', 'cafe', 'bar',
-                        'store', 'shopping_mall', 'grocery_or_supermarket',
-                        'lodging', 'real_estate_agency',
-                        'transit_station', 'bus_station', 'train_station',
-                      ];
-                      return !tags.any((t) => nonMedicalTags.contains(t));
-                    }).toList();
+                    // Filter Medical List — everyday health. Hospitals are their
+                    // own section now and _isMedical excludes them.
+                    _medicalList = masterList.where(_isMedical).toList();
                     if (_selectedMedicalCategory != null) {
                       _medicalList = _medicalList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
                         final name = a.name.toLowerCase();
-                        final tags = (a.tags).map((t) => t.toString().toLowerCase()).toList();
-                        if (_selectedMedicalCategory == 'Hospitals') {
-                          return cat.contains('hospital') || name.contains('hospital') || tags.contains('hospital');
-                        } else if (_selectedMedicalCategory == 'Clinics') {
-                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('dentist') || tags.contains('medical_clinic');
+                        final tags = _tagsOf(a);
+                        if (_selectedMedicalCategory == 'Clinics') {
+                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
                         } else if (_selectedMedicalCategory == 'Pharmacies') {
-                          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy');
+                          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
+                        } else if (_selectedMedicalCategory == 'Dental') {
+                          return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
+                        } else if (_selectedMedicalCategory == 'Labs') {
+                          return name.contains('laborator') || name.contains('lab ') || name.contains('scan') || tags.contains('medical_lab') || tags.contains('physiotherapist');
                         }
                         return true;
                       }).toList();
                     }
                     _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
+                    // Filter Hospital List
+                    _hospitalList = masterList.where(_isHospital).toList();
+                    if (_selectedHospitalCategory != null) {
+                      _hospitalList = _hospitalList.where((a) {
+                        final name = a.name.toLowerCase();
+                        if (_selectedHospitalCategory == 'Government') {
+                          return name.contains('general') || name.contains('base ') || name.contains('district') ||
+                                 name.contains('teaching') || name.contains('national') || name.contains('government');
+                        } else if (_selectedHospitalCategory == 'Private') {
+                          return !(name.contains('general') || name.contains('base ') || name.contains('district') ||
+                                   name.contains('teaching') || name.contains('national') || name.contains('government'));
+                        } else if (_selectedHospitalCategory == 'Maternity') {
+                          return name.contains('maternity') || name.contains('children') || name.contains('women');
+                        }
+                        return true;
+                      }).toList();
+                    }
+                    _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+
                     _poiList = _deduplicateAttractions(_poiList);
+                    _natureList = _deduplicateAttractions(_natureList);
                     _foodList = _deduplicateAttractions(_foodList);
                     _shoppingList = _deduplicateAttractions(_shoppingList);
                     _medicalList = _deduplicateAttractions(_medicalList);
+                    _hospitalList = _deduplicateAttractions(_hospitalList);
 
                     return Column(
                       children: [
@@ -581,6 +640,130 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     );
   }
 
+  // ── Section membership ──────────────────────────────────────────────────
+  // Mirrors `place_bands.py` on the backend. POI/Nature and Hospital/Medical
+  // each split a single pool, so a place lands in exactly one of each pair —
+  // otherwise the same beach is listed under both POI and Nature.
+
+  static const _natureTags = [
+    'park', 'national_park', 'state_park', 'beach', 'hiking_area',
+    'botanical_garden', 'garden', 'wildlife_park', 'wildlife_refuge',
+    'lake', 'river', 'marina', 'picnic_ground', 'natural_feature', 'campground',
+  ];
+  static const _natureWords = [
+    'beach', 'park', 'lake', 'waterfall', 'falls', 'garden', 'forest',
+    'sanctuary', 'lagoon', 'trail', 'island',
+  ];
+  static const _heritageTags = [
+    'museum', 'art_gallery', 'historical_landmark', 'historical_place',
+    'cultural_landmark', 'monument', 'castle', 'sculpture', 'cultural_center',
+    'hindu_temple', 'buddhist_temple', 'church', 'mosque', 'synagogue',
+    'place_of_worship',
+  ];
+  static const _heritageWords = [
+    'museum', 'temple', 'church', 'mosque', 'kovil', 'monument', 'fort',
+    'palace', 'gallery', 'memorial', 'statue',
+  ];
+  static const _poiTags = [
+    'tourist_attraction', 'zoo', 'aquarium', 'amusement_park', 'water_park',
+    'planetarium', 'performing_arts_theater', 'observation_deck',
+    'visitor_center', 'point_of_interest_landmark',
+  ];
+  static const _hospitalWords = ['hospital', 'nursing home', 'infirmary'];
+  static const _nonMedicalTags = [
+    'school', 'university', 'secondary_school', 'primary_school',
+    'bank', 'finance', 'accounting', 'atm',
+    'food', 'restaurant', 'bakery', 'cafe', 'bar',
+    'store', 'shopping_mall', 'grocery_or_supermarket',
+    'lodging', 'real_estate_agency',
+    'transit_station', 'bus_station', 'train_station',
+  ];
+  static const _stayWords = [
+    'homestay', 'bedroom', 'apartment', 'villa', 'guest house', 'hotel',
+    'resort',
+  ];
+
+  static List<String> _tagsOf(AttractionEntity a) =>
+      a.tags.map((t) => t.toString().toLowerCase()).toList();
+
+  static bool _hasNatureSignal(AttractionEntity a) {
+    final cat = (a.categoryName ?? '').toLowerCase();
+    final name = a.name.toLowerCase();
+    final tags = _tagsOf(a);
+    return _natureTags.any(tags.contains) ||
+        _natureWords.any(name.contains) ||
+        cat.contains('nature') || cat.contains('beach') || cat.contains('park') ||
+        cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
+        cat.contains('waterfall') || cat.contains('forest');
+  }
+
+  static bool _hasHeritageSignal(AttractionEntity a) {
+    final cat = (a.categoryName ?? '').toLowerCase();
+    final name = a.name.toLowerCase();
+    final tags = _tagsOf(a);
+    return _heritageTags.any(tags.contains) ||
+        _heritageWords.any(name.contains) ||
+        cat.contains('museum') || cat.contains('landmark') ||
+        cat.contains('culture') || cat.contains('temple') ||
+        cat.contains('art') || cat.contains('historic');
+  }
+
+  /// Somewhere outdoors, and not a place to sleep. Beach resorts and safari
+  /// lodges carry `beach` and `wildlife_park` next to `lodging`.
+  static bool _isNature(AttractionEntity a) {
+    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
+    if (_hasHeritageSignal(a)) return false;
+    if (!_hasNatureSignal(a)) return false;
+    final tags = _tagsOf(a);
+    return !const [
+      'lodging', 'hotel', 'resort_hotel', 'guest_house', 'motel', 'hostel',
+      'bed_and_breakfast', 'restaurant', 'bar', 'cafe',
+    ].any(tags.contains);
+  }
+
+  /// Something built and worth going to see. Nature wins any place that reads as
+  /// outdoors without also carrying real heritage.
+  static bool _isPoi(AttractionEntity a) {
+    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
+    if (_isNature(a)) return false;
+    final cat = (a.categoryName ?? '').toLowerCase();
+    final tags = _tagsOf(a);
+    return _hasHeritageSignal(a) ||
+        _poiTags.any(tags.contains) ||
+        cat.contains('experience') || cat.contains('zoo') ||
+        cat.contains('attraction');
+  }
+
+  static bool _hasMedicalSignal(AttractionEntity a) {
+    final cat = (a.categoryName ?? '').toLowerCase();
+    final name = a.name.toLowerCase();
+    final tags = _tagsOf(a);
+    final bool signal = cat == 'medical' || cat == 'hospital' ||
+        name.contains('medical') || name.contains('hospital') ||
+        name.contains('clinic') || name.contains('pharmacy') ||
+        name.contains('dispensary') || name.contains('health centre') ||
+        name.contains('health center') || tags.contains('hospital') ||
+        tags.contains('pharmacy') || tags.contains('doctor') ||
+        tags.contains('dentist') || tags.contains('physiotherapist') ||
+        tags.contains('veterinary_care') || tags.contains('health') ||
+        tags.contains('medical_center') || tags.contains('medical_clinic') ||
+        cat.contains('medical') || cat.contains('hospital') ||
+        cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor');
+    if (!signal) return false;
+    return !_nonMedicalTags.any(tags.contains);
+  }
+
+  /// Hospital always wins over Medical: Google types most hospitals as
+  /// `hospital` alongside the clinic types, and names the rest without any
+  /// distinguishing type at all.
+  static bool _isHospital(AttractionEntity a) =>
+      _hasMedicalSignal(a) &&
+      (_tagsOf(a).contains('hospital') ||
+          _hospitalWords.any(a.name.toLowerCase().contains));
+
+  static bool _isMedical(AttractionEntity a) =>
+      _hasMedicalSignal(a) && !_isHospital(a);
+
   List<AttractionEntity> _deduplicateAttractions(List<AttractionEntity> list) {
     final seenKeys = <String>{};
     final result = <AttractionEntity>[];
@@ -601,12 +784,158 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   Widget _buildTabContent(bool isLoading) {
     switch (_tabs[_selectedTab]) {
       case 'POI': return _buildPoiTab(isLoading);
+      case 'Nature': return _buildNatureTab(isLoading);
       case 'Food': return _buildFoodTab(isLoading);
       case 'Shopping': return _buildShoppingTab(isLoading);
       case 'Medical': return _buildMedicalTab(isLoading);
+      case 'Hospital': return _buildHospitalTab(isLoading);
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildPoiTab(isLoading);
     }
+  }
+
+  // ═══════════════════════════════════════
+  // NATURE TAB
+  // ═══════════════════════════════════════
+  Widget _buildNatureTab(bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Explore Nature & Outdoors', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🏖',
+                'Beaches',
+                _selectedNatureCategory == 'Beaches',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Beaches' ? null : 'Beaches';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌳',
+                'Parks',
+                _selectedNatureCategory == 'Parks',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Parks' ? null : 'Parks';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🌊',
+                'Waterfalls',
+                _selectedNatureCategory == 'Waterfalls',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Waterfalls' ? null : 'Waterfalls';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🛶',
+                'Lakes',
+                _selectedNatureCategory == 'Lakes',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Lakes' ? null : 'Lakes';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🐘',
+                'Wildlife',
+                _selectedNatureCategory == 'Wildlife',
+                () => setState(() {
+                  _selectedNatureCategory = _selectedNatureCategory == 'Wildlife' ? null : 'Wildlife';
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Text('Nature Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_natureList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No natural spots found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._natureList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Nature', emoji: '🌳');
+          }),
+      ],
+    );
+  }
+
+  // ═══════════════════════════════════════
+  // HOSPITAL TAB
+  // ═══════════════════════════════════════
+  Widget _buildHospitalTab(bool isLoading) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Find a Hospital', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        SizedBox(
+          height: 80,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            clipBehavior: Clip.none,
+            children: [
+              _buildExperienceCategoryItem(
+                '🏛',
+                'Government',
+                _selectedHospitalCategory == 'Government',
+                () => setState(() {
+                  _selectedHospitalCategory = _selectedHospitalCategory == 'Government' ? null : 'Government';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🏥',
+                'Private',
+                _selectedHospitalCategory == 'Private',
+                () => setState(() {
+                  _selectedHospitalCategory = _selectedHospitalCategory == 'Private' ? null : 'Private';
+                }),
+              ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '👶',
+                'Maternity',
+                _selectedHospitalCategory == 'Maternity',
+                () => setState(() {
+                  _selectedHospitalCategory = _selectedHospitalCategory == 'Maternity' ? null : 'Maternity';
+                }),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
+        const Text('Hospitals Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const SizedBox(height: 14),
+        if (isLoading)
+          ...List.generate(5, (index) => _buildShimmerItemCard())
+        else if (_hospitalList.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 40),
+            child: Center(child: Text('No hospitals found nearby.', style: TextStyle(color: AppColors.textTertiary))),
+          )
+        else
+          ..._hospitalList.asMap().entries.map((e) {
+            final a = e.value;
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Hospital', emoji: '🏥');
+          }),
+      ],
+    );
   }
 
   // ═══════════════════════════════════════
@@ -1233,15 +1562,6 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
               ),
               const SizedBox(width: 10),
               _buildExperienceCategoryItem(
-                '🏖',
-                'Beaches',
-                _selectedPoiCategory == 'Beaches',
-                () => setState(() {
-                  _selectedPoiCategory = _selectedPoiCategory == 'Beaches' ? null : 'Beaches';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
                 '🏛',
                 'Museums',
                 _selectedPoiCategory == 'Museums',
@@ -1250,21 +1570,13 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                 }),
               ),
               const SizedBox(width: 10),
+              // Beaches, Parks and Waterfalls moved to the Nature tab.
               _buildExperienceCategoryItem(
-                '🌳',
-                'Parks',
-                _selectedPoiCategory == 'Parks',
+                '🎡',
+                'Leisure',
+                _selectedPoiCategory == 'Leisure',
                 () => setState(() {
-                  _selectedPoiCategory = _selectedPoiCategory == 'Parks' ? null : 'Parks';
-                }),
-              ),
-              const SizedBox(width: 10),
-              _buildExperienceCategoryItem(
-                '🌊',
-                'Waterfalls',
-                _selectedPoiCategory == 'Waterfalls',
-                () => setState(() {
-                  _selectedPoiCategory = _selectedPoiCategory == 'Waterfalls' ? null : 'Waterfalls';
+                  _selectedPoiCategory = _selectedPoiCategory == 'Leisure' ? null : 'Leisure';
                 }),
               ),
             ],
@@ -1655,7 +1967,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Explore Medical & Health Services', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Explore Pharmacies & Clinics', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         SizedBox(
           height: 80,
@@ -1663,15 +1975,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
             children: [
-              _buildExperienceCategoryItem(
-                '🏥',
-                'Hospitals',
-                _selectedMedicalCategory == 'Hospitals',
-                () => setState(() {
-                  _selectedMedicalCategory = _selectedMedicalCategory == 'Hospitals' ? null : 'Hospitals';
-                }),
-              ),
-              const SizedBox(width: 10),
+              // Hospitals have their own tab now.
               _buildExperienceCategoryItem(
                 '🩺',
                 'Clinics',
@@ -1698,11 +2002,20 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   _selectedMedicalCategory = _selectedMedicalCategory == 'Dental' ? null : 'Dental';
                 }),
               ),
+              const SizedBox(width: 10),
+              _buildExperienceCategoryItem(
+                '🔬',
+                'Labs',
+                _selectedMedicalCategory == 'Labs',
+                () => setState(() {
+                  _selectedMedicalCategory = _selectedMedicalCategory == 'Labs' ? null : 'Labs';
+                }),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 28),
-        const Text('Hospitals, Clinics & Pharmacies Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+        const Text('Pharmacies & Clinics Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
         if (isLoading)
           ...List.generate(5, (index) => _buildShimmerItemCard())
@@ -1714,7 +2027,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         else
           ..._medicalList.asMap().entries.map((e) {
             final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Medical', emoji: '🏥');
+            return _buildExperienceCard(a, e.key, defaultCategory: 'Medical', emoji: '💊');
           }),
       ],
     );

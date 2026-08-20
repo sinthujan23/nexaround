@@ -1,8 +1,8 @@
 /// Distance bands for the Around You / Discovery sections.
 ///
 /// Each category's range is split into three contiguous bands and the section
-/// shows five places from each — fifteen in all — so the list reads as a
-/// progression outward rather than fifteen variations on "the nearest thing".
+/// takes a quota from each — ten in all — so the list reads as a progression
+/// outward rather than ten variations on "the nearest thing".
 ///
 /// Bands are weighted, not equal thirds: splitting 0–50 km evenly would put
 /// everything within 16.7 km into one band and collapse the distinction users
@@ -23,9 +23,29 @@ class PlaceBand {
 class PlaceBands {
   const PlaceBands._();
 
-  static const int placesPerBand = 5;
-  static const int bandsPerCategory = 3;
-  static const int totalPerCategory = placesPerBand * bandsPerCategory;
+  /// Places taken from each band, nearest first. Weighted rather than even
+  /// because ten does not divide by three, and because the band a user can walk
+  /// to is the one they actually read.
+  static const List<int> bandQuotas = [4, 3, 3];
+
+  static const int bandsPerCategory = bandQuotas.length;
+  static const int totalPerCategory = 10;
+
+  /// How many places band [index] contributes to its section.
+  static int quotaForBand(int index) =>
+      (index >= 0 && index < bandQuotas.length)
+          ? bandQuotas[index]
+          : bandQuotas.last;
+
+  /// The six sections, in the order Around You shows them.
+  static const List<String> sections = [
+    'Food & Drink',
+    'POI',
+    'Nature',
+    'Shopping',
+    'Medical',
+    'Hospital',
+  ];
 
   static const Map<String, List<PlaceBand>> byCategory = {
     'Food & Drink': [
@@ -38,12 +58,22 @@ class PlaceBands {
       PlaceBand(10.0, 25.0),
       PlaceBand(25.0, 50.0),
     ],
+    'Nature': [
+      PlaceBand(0.0, 10.0),
+      PlaceBand(10.0, 25.0),
+      PlaceBand(25.0, 50.0),
+    ],
     'Shopping': [
       PlaceBand(0.0, 5.0),
       PlaceBand(5.0, 10.0),
       PlaceBand(10.0, 15.0),
     ],
     'Medical': [
+      PlaceBand(0.0, 10.0),
+      PlaceBand(10.0, 25.0),
+      PlaceBand(25.0, 50.0),
+    ],
+    'Hospital': [
       PlaceBand(0.0, 10.0),
       PlaceBand(10.0, 25.0),
       PlaceBand(25.0, 50.0),

@@ -33,14 +33,17 @@ _BASE = "https://maps.googleapis.com/maps/api"
 # deliberately invalid sentinel type appended: the 400 names every unsupported
 # type in the batch, and a 400 is not billed.
 CATEGORY_TYPES_MAP: dict[str, list[str]] = {
+    # Built things worth going to see. The outdoor types this list used to carry
+    # moved to 'Nature' when the two became separate sections — leaving them here
+    # would have both sections buying, and showing, the same parks.
     "POI": [
-        "museum", "park", "zoo", "aquarium", "art_gallery",
-        "amusement_park", "national_park", "state_park", "hiking_area", "beach",
+        "tourist_attraction", "museum", "art_gallery",
         "historical_landmark", "historical_place", "cultural_landmark",
-        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
-        "cultural_center", "marina", "visitor_center", "observation_deck",
         "monument", "castle", "sculpture",
-        "lake", "river", "botanical_garden", "garden"
+        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
+        "cultural_center", "visitor_center", "observation_deck",
+        "zoo", "aquarium", "amusement_park", "water_park", "planetarium",
+        "performing_arts_theater", "amusement_center"
     ],
     "Attractions": [
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
@@ -59,10 +62,13 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "lodging", "hotel", "motel", "resort_hotel", "bed_and_breakfast",
         "hostel", "guest_house", "campground", "inn", "cottage"
     ],
+    # `pharmacy` is deliberately absent. A chemist is a shop, but it is the
+    # Medical section people open when they want one, and leaving the type here
+    # listed every pharmacy in the area under Shopping as well.
     "Shopping": [
         "supermarket", "store", "department_store",
         "convenience_store", "electronics_store", "market",
-        "grocery_store", "pharmacy", "home_goods_store",
+        "grocery_store", "home_goods_store",
         "hardware_store"
     ],
     "Experiences": [
@@ -74,21 +80,28 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "transit_station", "airport", "bus_station", "train_station", "taxi_stand",
         "subway_station", "ferry_terminal", "light_rail_station"
     ],
+    # Everyday health: somewhere you walk into for a prescription, a filling or
+    # a blood test. `hospital` is deliberately absent — it is what makes a place
+    # belong to 'Hospital' instead, and admitting it here put the same
+    # institutions at the top of both sections.
     "Medical": [
-        "hospital", "pharmacy", "drugstore", "doctor", "dentist",
+        "pharmacy", "drugstore", "doctor", "dentist",
         "dental_clinic", "physiotherapist", "chiropractor", "medical_lab",
         "veterinary_care", "medical_clinic"
     ],
     "Nature": [
-        "beach", "national_park", "state_park", "hiking_area", "wildlife_refuge",
-        "wildlife_park", "observation_deck", "lake", "river", "botanical_garden",
-        "garden", "picnic_ground"
+        "park", "national_park", "state_park", "beach", "hiking_area",
+        "wildlife_refuge", "wildlife_park", "lake", "river", "marina",
+        "botanical_garden", "garden", "picnic_ground"
     ],
     "Beach": [
         "park", "tourist_attraction", "beach"
     ],
+    # One type on purpose. Google ranks its twenty results across the whole
+    # includedTypes list, so pairing `hospital` with `medical_clinic` meant a
+    # dense strip of clinics could return twenty clinics and no hospital.
     "Hospital": [
-        "hospital", "medical_clinic"
+        "hospital"
     ],
 }
 
@@ -120,7 +133,6 @@ _CATEGORY_ALIASES: dict[str, str] = {
     "points of interest": "POI",
     "attraction": "POI",
     "attractions": "POI",
-    "nature": "POI",
     "experience": "POI",
     "experiences": "POI",
     "sight": "POI",
@@ -145,13 +157,26 @@ _CATEGORY_ALIASES: dict[str, str] = {
     "service": "POI",
     "services": "POI",
     "medical": "Medical",
-    "hospital": "Medical",
-    "hospitals": "Medical",
     "clinic": "Medical",
     "clinics": "Medical",
     "pharmacy": "Medical",
     "pharmacies": "Medical",
     "doctor": "Medical",
+    "dentist": "Medical",
+    # 'nature', 'hospital' and 'beach' need no entry — each is a canonical key
+    # already, and the case-insensitive canonical index below outranks this
+    # table. Listing them here would be dead weight that reads like a rule.
+    "park": "Nature",
+    "parks": "Nature",
+    "garden": "Nature",
+    "gardens": "Nature",
+    "waterfall": "Nature",
+    "waterfalls": "Nature",
+    "hiking": "Nature",
+    "outdoors": "Nature",
+    "wildlife": "Nature",
+    "national park": "Nature",
+    "hospitals": "Hospital",
 }
 
 
@@ -457,7 +482,11 @@ def _resolve_category_from_types(types: list[str]) -> str:
         return "Hotels"
     if t & {"restaurant", "cafe", "bakery", "meal_takeaway", "meal_delivery", "food"}:
         return "Food & Drink"
-    if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "zoo", "botanical_garden", "lake", "river"}:
+    # `zoo` sits with the built attractions, not here: a zoo is a ticketed venue
+    # that happens to be outdoors, and the Nature section is about the outdoors
+    # itself. Keeping the two consistent matters because this decides the
+    # category a seeded row is stored under.
+    if t & {"park", "campground", "natural_feature", "beach", "national_park", "hiking_area", "garden", "botanical_garden", "lake", "river"}:
         return "Nature"
     if t & {"hospital"}:
         return "Hospital"

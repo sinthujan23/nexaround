@@ -1,10 +1,18 @@
 """Distance bands for the Around You / Discovery sections.
 
-Each category's range is split into three contiguous bands, and the UI shows
-five places from each — fifteen per section. Bands are *weighted*, not equal
-thirds: for the 0–50 km categories an equal split would put everything within
-16.7 km into one band, which collapses the distinction users actually care
-about (walkable vs. a drive vs. a day trip).
+Each category's range is split into three contiguous bands, and the UI takes a
+quota from each — ten per section. Bands are *weighted*, not equal thirds: for
+the 0–50 km categories an equal split would put everything within 16.7 km into
+one band, which collapses the distinction users actually care about (walkable
+vs. a drive vs. a day trip).
+
+Six categories share this table. POI/Nature and Hospital/Medical are two
+*exclusive pairs*: each pair is fed from one shared pool of database rows and
+split by Google type, not by the category a row happens to be filed under. That
+is not a stylistic choice — 3002 of the rows carrying a `hospital` type are
+filed under 'Medical' and only 1068 under 'Hospital', and 1471 parks and beaches
+are filed under 'Attractions'. Splitting on the stored category name would open
+both new sections nearly empty and leave the old two unchanged.
 
 This table is mirrored in the Flutter client at
 `lib/core/constants/place_bands.dart`. Keep the two in sync — the server uses
@@ -13,33 +21,55 @@ it to decide what to fetch, the client uses it to decide what to show.
 from typing import Optional
 
 
-PLACES_PER_BAND = 5
-BANDS_PER_CATEGORY = 3
-TOTAL_PER_CATEGORY = PLACES_PER_BAND * BANDS_PER_CATEGORY
+# Places taken from each band, nearest band first. Weighted rather than even
+# because ten does not divide by three, and because the band a user can walk to
+# is the one they actually read.
+BAND_QUOTAS: tuple[int, ...] = (4, 3, 3)
+BANDS_PER_CATEGORY = len(BAND_QUOTAS)
+TOTAL_PER_CATEGORY = sum(BAND_QUOTAS)
+
+
+def quota_for_band(index: int) -> int:
+    """How many places band `index` contributes to its section."""
+    if 0 <= index < len(BAND_QUOTAS):
+        return BAND_QUOTAS[index]
+    return BAND_QUOTAS[-1]
+
 
 # (min_m, max_m) per band, contiguous, in metres.
 CATEGORY_BANDS: dict[str, list[tuple[int, int]]] = {
     "Food & Drink": [(0, 1667), (1667, 3333), (3333, 5000)],
     "POI":          [(0, 10000), (10000, 25000), (25000, 50000)],
+    "Nature":       [(0, 10000), (10000, 25000), (25000, 50000)],
     "Shopping":     [(0, 5000), (5000, 10000), (10000, 15000)],
     "Medical":      [(0, 10000), (10000, 25000), (25000, 50000)],
+    "Hospital":     [(0, 10000), (10000, 25000), (25000, 50000)],
 }
 
-# Category names as they may appear in the `categories` table. Places seeded
-# under an older vocabulary ('Attractions', 'Nature') still belong to POI, so
-# the band queries have to match all of them or half the DB goes unseen.
+# Category names as they may appear in the `categories` table. These are
+# *candidate pools*, not answers: rows were filed under several vocabularies over
+# the years, so each half of an exclusive pair claims the whole shared pool and
+# `is_relevant` decides which places actually belong to it.
 CATEGORY_DB_ALIASES: dict[str, list[str]] = {
     "Food & Drink": ["Food & Drink", "Food"],
-    "POI": ["POI", "Attractions", "Nature", "Experiences"],
+    "POI": ["POI", "Point of Interest", "Attractions", "Experiences",
+            "Nature", "Beach"],
+    "Nature": ["Nature", "Beach", "Attractions", "POI", "Point of Interest",
+               "Experiences"],
     "Shopping": ["Shopping"],
     "Medical": ["Medical", "Hospital"],
+    "Hospital": ["Hospital", "Medical"],
 }
 
 # Google Nearby Search returns at most 20 results per request and ranks them by
-# prominence across the WHOLE includedTypes list. POI carries ~30 types, so in a
+# prominence across the WHOLE includedTypes list. POI carries ~20 types, so in a
 # temple-dense area all 20 slots come back as temples and museums never surface.
-# Splitting POI into sub-groups and issuing one request per sub-group makes each
-# request compete only within its own theme.
+# Splitting a category into sub-groups and issuing one request per sub-group
+# makes each request compete only within its own theme.
+#
+# Only categories that genuinely crowd themselves out get sub-groups — each one
+# costs an extra billed request per band. Medical and Hospital have none: with
+# hospitals split off, neither type list is broad enough to starve itself.
 #
 # Only types verified as accepted by Places API (New) — see the audit note in
 # google_places_client.CATEGORY_TYPES_MAP.
@@ -50,11 +80,6 @@ CATEGORY_SUBGROUPS: dict[str, list[tuple[str, list[str]]]] = {
             "historical_place", "cultural_landmark", "monument", "castle",
             "sculpture", "cultural_center", "visitor_center",
         ]),
-        ("nature", [
-            "park", "national_park", "state_park", "beach", "hiking_area",
-            "botanical_garden", "garden", "wildlife_park", "wildlife_refuge",
-            "lake", "river", "marina", "picnic_ground", "plaza",
-        ]),
         ("worship", [
             "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
         ]),
@@ -62,6 +87,13 @@ CATEGORY_SUBGROUPS: dict[str, list[tuple[str, list[str]]]] = {
             "zoo", "aquarium", "amusement_park", "water_park", "planetarium",
             "performing_arts_theater", "observation_deck", "amusement_center",
         ]),
+    ],
+    "Nature": [
+        ("green", [
+            "park", "national_park", "state_park", "botanical_garden", "garden",
+            "picnic_ground", "hiking_area", "wildlife_park", "wildlife_refuge",
+        ]),
+        ("water", ["beach", "lake", "river", "marina"]),
     ],
 }
 
@@ -94,21 +126,81 @@ def subgroups_for(category: Optional[str]) -> list[tuple[str, Optional[list[str]
     return [("all", None)]
 
 
+# ── Exclusive pairs ─────────────────────────────────────────────────────────
+# Types that make a place Nature rather than POI. Kept in one set here rather
+# than read back out of CATEGORY_SUBGROUPS: the sub-groups exist to shape Google
+# requests, and the two lists are free to diverge.
+_NATURE_TYPES = {
+    "park", "national_park", "state_park", "beach", "hiking_area",
+    "botanical_garden", "garden", "wildlife_park", "wildlife_refuge",
+    "lake", "river", "marina", "picnic_ground", "natural_feature", "campground",
+}
+
+# Heritage strong enough to keep a place in POI even when it also carries a
+# nature type. A museum inside a botanical garden is somewhere you go to see the
+# museum; a park that Google also tagged `tourist_attraction` is still a park.
+_HERITAGE_OVERRIDES = {
+    "museum", "art_gallery", "historical_landmark", "historical_place",
+    "cultural_landmark", "monument", "castle", "sculpture", "cultural_center",
+    "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
+}
+
+_HOSPITAL_TYPES = {"hospital"}
+
+# Google types plenty of real hospitals as nothing more specific than
+# `medical_clinic`, so the name has to be able to admit one on its own.
+_HOSPITAL_NAME_WORDS = ("hospital", "nursing home", "infirmary")
+
+
+def _sibling_owns(category: str, tag_set: set[str], lowered_name: str) -> bool:
+    """Whether the other half of an exclusive pair is this place's real home.
+
+    Each pair is fed from one shared pool, so a place that satisfies both halves
+    has to be pushed to exactly one of them or it appears twice across the six
+    sections. Only the losing side of each rule needs an entry here: Nature wins
+    the nature types, POI wins them back on heritage, and Hospital always wins
+    over Medical.
+    """
+    if category == "POI":
+        return bool(tag_set & _NATURE_TYPES) and not (tag_set & _HERITAGE_OVERRIDES)
+    if category == "Nature":
+        return bool(tag_set & _HERITAGE_OVERRIDES)
+    if category == "Medical":
+        return bool(tag_set & _HOSPITAL_TYPES) or any(
+            w in lowered_name for w in _HOSPITAL_NAME_WORDS
+        )
+    return False
+
+
 # Legacy tags on rows seeded through the old Places API, mapped to the canonical
 # category they should count towards. Without these, years of existing rows look
 # untyped to the relevance gate below and get filtered out of their own section.
 _LEGACY_TAG_CATEGORIES: dict[str, set[str]] = {
     "Food & Drink": {"food", "meal_takeaway", "meal_delivery"},
-    "POI": {
-        "natural_feature", "place_of_worship", "point_of_interest_landmark",
-        "premise", "campground",
-    },
+    "POI": {"place_of_worship", "point_of_interest_landmark", "premise"},
+    "Nature": {"natural_feature", "campground"},
     "Shopping": {"grocery_or_supermarket", "home_goods_store", "furniture_store",
                  "hardware_store", "liquor_store", "pet_store", "bicycle_store"},
     # 'health' is deliberately absent: Google hangs it on gyms, yoga studios and
     # sports clubs as readily as on clinics, and admitting it put yoga
     # institutes in the Medical section ahead of actual hospitals.
     "Medical": {"medical_center", "drugstore", "doctor", "dentist"},
+    "Hospital": {"medical_center"},
+}
+
+# Everything a health section must never show. Shared by Medical and Hospital —
+# the two split by what they admit, not by what they reject.
+_NON_HEALTH_TAGS = {
+    "school", "university", "bank", "atm", "finance", "accounting",
+    "restaurant", "bar", "cafe", "bakery", "food", "night_club",
+    "shopping_mall", "clothing_store", "electronics_store",
+    "grocery_or_supermarket", "supermarket", "lodging", "hotel",
+    "real_estate_agency", "transit_station", "bus_station", "train_station",
+    "tourist_attraction", "spa", "massage",
+    # Fitness venues describe themselves as health services. They are not
+    # where someone opening Medical or Hospital needs to go.
+    "gym", "fitness_center", "yoga_studio", "sports_school",
+    "sports_complex", "sports_activity_location", "sports_club",
 }
 
 # Tags that disqualify a place from a category even though it also carries a
@@ -125,8 +217,21 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         "lodging", "hotel", "car_repair", "car_dealer", "gas_station",
         "cemetery", "funeral_home", "storage", "moving_company",
     },
+    # Beach resorts and safari lodges carry `beach` and `wildlife_park` next to
+    # `lodging`, and would otherwise fill the section with places to sleep.
+    "Nature": {
+        "spa", "beauty_salon", "hair_care", "massage", "casino", "night_club",
+        "lodging", "hotel", "resort_hotel", "guest_house", "motel", "hostel",
+        "bed_and_breakfast", "restaurant", "bar", "cafe",
+        "travel_agency", "real_estate_agency", "insurance_agency",
+        "bank", "atm", "finance", "school", "university",
+        "hospital", "doctor", "dentist", "pharmacy", "medical_clinic",
+        "car_repair", "car_dealer", "gas_station", "cemetery", "funeral_home",
+        "gym", "fitness_center", "sports_complex", "shopping_mall", "store",
+    },
     "Shopping": {
         "school", "university", "hospital", "doctor", "dentist", "spa",
+        "pharmacy", "drugstore", "medical_clinic",
         "body_art_service", "beauty_salon", "hair_care", "hair_salon",
         "bank", "atm", "finance", "lodging", "restaurant", "bar", "night_club",
         "real_estate_agency", "travel_agency", "car_repair", "car_dealer",
@@ -136,18 +241,8 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         "cafe", "coffee_shop", "ice_cream_shop", "dessert_shop", "bakery",
         "confectionery", "food", "food_store", "meal_takeaway", "meal_delivery",
     },
-    "Medical": {
-        "school", "university", "bank", "atm", "finance", "accounting",
-        "restaurant", "bar", "cafe", "bakery", "food", "night_club",
-        "shopping_mall", "clothing_store", "electronics_store",
-        "grocery_or_supermarket", "supermarket", "lodging", "hotel",
-        "real_estate_agency", "transit_station", "bus_station", "train_station",
-        "tourist_attraction", "spa", "massage",
-        # Fitness venues describe themselves as health services. They are not
-        # where someone opening the Medical section needs to go.
-        "gym", "fitness_center", "yoga_studio", "sports_school",
-        "sports_complex", "sports_activity_location", "sports_club",
-    },
+    "Medical": _NON_HEALTH_TAGS,
+    "Hospital": _NON_HEALTH_TAGS,
     "Food & Drink": {
         "lodging", "hotel", "hospital", "doctor", "pharmacy", "school",
         "university", "bank", "atm", "gas_station", "car_repair",
@@ -163,14 +258,17 @@ _GENERIC_TAGS = {"point_of_interest", "establishment", "premise", "geocode"}
 # `hospital` passes every tag check there is, and only its name gives it away.
 # A veto applies unless the name also carries a word from the same category, so
 # "Hotel Road Pharmacy" survives while "Green path hotel" does not.
+_HEALTH_NAME_VETO = (
+    ("hotel", "restaurant", "guest house", "villa", "resort", "cafe", "bar"),
+    ("hospital", "clinic", "pharmacy", "medical", "dental", "dentist",
+     "surgery", "dispensary", "laborator", "doctor", "ayurved", "health centre",
+     "health center", "drug", "nursing home"),
+)
+
 _NAME_VETOES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     # category: (disqualifying words, words that overrule the disqualification)
-    "Medical": (
-        ("hotel", "restaurant", "guest house", "villa", "resort", "cafe", "bar"),
-        ("hospital", "clinic", "pharmacy", "medical", "dental", "dentist",
-         "surgery", "dispensary", "laborator", "doctor", "ayurved", "health centre",
-         "health center", "drug"),
-    ),
+    "Medical": _HEALTH_NAME_VETO,
+    "Hospital": _HEALTH_NAME_VETO,
 }
 
 
@@ -202,18 +300,26 @@ def is_relevant(category: Optional[str], tags, name: Optional[str] = None) -> bo
     if not category:
         return True
     tag_set = {str(t).lower() for t in (tags or [])}
+    lowered = (name or "").lower()
 
     if tag_set & _EXCLUDED_TAGS.get(category, set()):
         return False
 
     veto = _NAME_VETOES.get(category)
-    if veto and name:
-        lowered = name.lower()
+    if veto and lowered:
         disqualifying, overrides = veto
         if any(w in lowered for w in disqualifying) and not any(
             w in lowered for w in overrides
         ):
             return False
+
+    if _sibling_owns(category, tag_set, lowered):
+        return False
+
+    # A place named for what it is outranks a place Google typed vaguely: plenty
+    # of real hospitals carry nothing narrower than `medical_clinic`.
+    if category == "Hospital" and any(w in lowered for w in _HOSPITAL_NAME_WORDS):
+        return True
 
     allowed = allowed_tags_for(category)
     if not allowed:

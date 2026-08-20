@@ -40,7 +40,34 @@ class GooglePlacesService {
     lastNatureError = '';
   }
 
+  /// Last fetch error for a section, or '' if its last fetch was fine.
+  ///
+  /// Saves every empty-state widget from knowing which of the six fields backs
+  /// which section — an if-chain that quietly stopped covering half of them.
+  static String lastErrorFor(String category) {
+    switch (category) {
+      case 'Food':
+      case 'Food & Drink':
+        return lastFoodError;
+      case 'POI':
+      case 'Attractions':
+        return lastAttractionsError;
+      case 'Nature':
+      case 'Beach':
+        return lastNatureError;
+      case 'Shopping':
+        return lastShoppingError;
+      case 'Medical':
+        return lastMedicalError;
+      case 'Hospital':
+        return lastHospitalError;
+      default:
+        return '';
+    }
+  }
+
   static const Map<String, String> categoryTypeMap = {
+    'POI': 'tourist_attraction',
     'Attractions': 'tourist_attraction',
     'Food & Drink': 'restaurant',
     'Shopping': 'shopping_mall',
@@ -191,11 +218,17 @@ class GooglePlacesService {
       case 'Medical':
         lastMedicalError = message;
         break;
+      case 'Hospital':
+        lastHospitalError = message;
+        break;
       case 'Food & Drink':
         lastFoodError = message;
         break;
       case 'Shopping':
         lastShoppingError = message;
+        break;
+      case 'Nature':
+        lastNatureError = message;
         break;
       case 'POI':
         lastAttractionsError = message;

@@ -669,7 +669,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     );
   }
 
-  /// Load the four Around You / Discovery sections, banded by distance.
+  /// Load the six Around You / Discovery sections, banded by distance.
   ///
   /// Runs alongside [FetchNearbyAttractions] rather than replacing it: that
   /// query feeds the map and its markers and wants everything nearby, while the
@@ -754,13 +754,8 @@ class _LivingMapPageState extends State<LivingMapPage>
     return;
   }
 
-  int _getDiscoverTabIndex(String category) {
-    final cat = category.toLowerCase();
-    if (cat.contains('food')) return 0;
-    if (cat.contains('attraction') || cat.contains('experience')) return 1;
-    if (cat.contains('shop')) return 2;
-    return 0; // Default to food
-  }
+  int _getDiscoverTabIndex(String category) =>
+      DiscoverPage.tabIndexFor(category);
 
   @override
   Widget build(BuildContext context) {
@@ -863,7 +858,9 @@ class _LivingMapPageState extends State<LivingMapPage>
                               onTap: () {
                                 final homeState = context.findAncestorStateOfType<HomePageState>();
                                 if (homeState != null) {
-                                  homeState.switchToDiscover(initialTab: 4);
+                                  homeState.switchToDiscover(
+                                    initialTab: DiscoverPage.emergencyTabIndex,
+                                  );
                                 }
                               },
                             ),
@@ -2518,12 +2515,15 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildCategoryScroller(List<CategoryEntity> categories) {
     final List<CategoryEntity> resolvedCategories = categories.isNotEmpty
         ? categories
+        // Fallback when the categories call has not landed. Mirrors the six
+        // sections so the scroller offers the same filters the cards below use.
         : const [
             CategoryEntity(id: '1', name: 'Food & Drink', sortOrder: 1),
-            CategoryEntity(id: '2', name: 'Attractions', sortOrder: 2),
-            CategoryEntity(id: '3', name: 'Shopping', sortOrder: 3),
-            CategoryEntity(id: '4', name: 'Experiences', sortOrder: 4),
+            CategoryEntity(id: '2', name: 'POI', sortOrder: 2),
+            CategoryEntity(id: '3', name: 'Nature', sortOrder: 3),
+            CategoryEntity(id: '4', name: 'Shopping', sortOrder: 4),
             CategoryEntity(id: '5', name: 'Medical', sortOrder: 5),
+            CategoryEntity(id: '6', name: 'Hospital', sortOrder: 6),
           ];
 
     final displayCategories = [
@@ -5397,13 +5397,16 @@ class _LivingMapPageState extends State<LivingMapPage>
         return Colors.orange.withOpacity(0.15);
       case 'POI':
       case 'Attractions':
-      case 'Nature':
         return const Color(0xFF00BFA5).withOpacity(0.15);
+      case 'Nature':
+      case 'Beach':
+        return const Color(0xFF2E7D32).withOpacity(0.15);
       case 'Shopping':
         return Colors.blue.withOpacity(0.15);
       case 'Medical':
+        return const Color(0xFFEF5350).withOpacity(0.15);
       case 'Hospital':
-        return Colors.red.withOpacity(0.15);
+        return const Color(0xFFC62828).withOpacity(0.15);
       default:
         return Colors.grey.withOpacity(0.15);
     }
@@ -5412,14 +5415,20 @@ class _LivingMapPageState extends State<LivingMapPage>
   Color _getCategoryBorderColor(String category) {
     switch (category) {
       case 'Food':
+      case 'Food & Drink':
         return Colors.orange.withOpacity(0.40);
+      case 'POI':
       case 'Attractions':
         return Colors.teal.withOpacity(0.40);
+      case 'Nature':
+      case 'Beach':
+        return const Color(0xFF2E7D32).withOpacity(0.40);
       case 'Shopping':
         return Colors.blue.withOpacity(0.40);
       case 'Medical':
+        return const Color(0xFFEF5350).withOpacity(0.40);
       case 'Hospital':
-        return Colors.red.withOpacity(0.40);
+        return const Color(0xFFC62828).withOpacity(0.40);
       default:
         return Colors.white.withOpacity(0.25);
     }
@@ -5576,10 +5585,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              categoryName == 'Attractions' ||
-                                      categoryName == 'Medical'
-                                  ? '0-50 km'
-                                  : '0-15 km',
+                              // Read off the band table rather than hardcoded:
+                              // six categories with four different ranges is
+                              // more than a ternary can stay honest about.
+                              '0-${PlaceBands.maxKmFor(categoryName).toStringAsFixed(0)} km',
                               style: TextStyle(
                                 color: _getCategoryBorderColor(
                                   categoryName,
@@ -5621,11 +5630,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                             ),
                           )
                         : () {
-                            final String err = categoryName == 'Attractions'
-                                ? GooglePlacesService.lastAttractionsError
-                                : (categoryName == 'Medical'
-                                    ? GooglePlacesService.lastMedicalError
-                                    : '');
+                            final String err =
+                                GooglePlacesService.lastErrorFor(categoryName);
                             return SizedBox(
                               height: 200,
                               child: Center(
@@ -5636,8 +5642,12 @@ class _LivingMapPageState extends State<LivingMapPage>
                                     children: [
                                       Icon(
                                         categoryName == 'Medical'
-                                            ? Icons.local_hospital_outlined
-                                            : Icons.map_outlined,
+                                            ? Icons.local_pharmacy_outlined
+                                            : categoryName == 'Hospital'
+                                                ? Icons.local_hospital_outlined
+                                                : categoryName == 'Nature'
+                                                    ? Icons.park_outlined
+                                                    : Icons.map_outlined,
                                         color: Colors.white.withOpacity(0.35),
                                         size: 36,
                                       ),
@@ -5645,7 +5655,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                                       Text(
                                         err.isNotEmpty
                                             ? err
-                                            : 'No $categoryName found within 50 km.',
+                                            : 'No $categoryName found within '
+                                                '${PlaceBands.maxKmFor(categoryName).toStringAsFixed(0)} km.',
                                         textAlign: TextAlign.center,
                                         style: TextStyle(
                                           color: Colors.white.withOpacity(0.55),
@@ -5701,12 +5712,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions, MapStatus status) {
     if (attractions.isEmpty) return const SizedBox.shrink();
 
-    // 4 Unified Categories (POI merges Attractions & Nature; Medical merges Medical & Hospital)
+    // Six sections. POI and Nature split the same pool, as do Hospital and
+    // Medical — a place must land in exactly one of each pair or it shows up
+    // twice as the user scrolls across the cards.
     final Map<String, List<AttractionEntity>> grouped = {
-      'Food & Drink': [],
-      'POI': [],
-      'Shopping': [],
-      'Medical': [],
+      for (final c in PlaceBands.sections) c: <AttractionEntity>[],
     };
 
     int compareDistanceAndRating(AttractionEntity a, AttractionEntity b) {
@@ -5720,6 +5730,38 @@ class _LivingMapPageState extends State<LivingMapPage>
       return distA.compareTo(distB);
     }
 
+    // Mirrors `place_bands.py` on the backend. The same place has to land in the
+    // same section whether a card was filled by the banded fetch or by this
+    // local fallback, or the two disagree as the network comes and goes.
+    const natureTags = [
+      'park', 'national_park', 'state_park', 'beach', 'hiking_area',
+      'botanical_garden', 'garden', 'wildlife_park', 'wildlife_refuge',
+      'lake', 'river', 'marina', 'picnic_ground', 'natural_feature', 'campground',
+    ];
+    const natureWords = [
+      'beach', 'park', 'lake', 'waterfall', 'falls', 'garden', 'forest',
+      'sanctuary', 'lagoon', 'trail', 'island',
+    ];
+    // Heritage strong enough to keep a place in POI even when it also reads as
+    // nature — a museum inside a botanical garden is somewhere you go to see
+    // the museum.
+    const heritageTags = [
+      'museum', 'art_gallery', 'historical_landmark', 'historical_place',
+      'cultural_landmark', 'monument', 'castle', 'sculpture', 'cultural_center',
+      'hindu_temple', 'buddhist_temple', 'church', 'mosque', 'synagogue',
+      'place_of_worship',
+    ];
+    const heritageWords = [
+      'museum', 'temple', 'church', 'mosque', 'kovil', 'monument', 'fort',
+      'palace', 'gallery', 'memorial', 'statue',
+    ];
+    const hospitalWords = ['hospital', 'nursing home', 'infirmary'];
+
+    bool hasAny(List<String> haystack, List<String> needles) =>
+        needles.any(haystack.contains);
+    bool nameHasAny(String n, List<String> needles) =>
+        needles.any(n.contains);
+
     for (final place in attractions) {
       final distM = _getAccurateDistanceM(place);
       final distKm = distM / 1000.0;
@@ -5730,61 +5772,87 @@ class _LivingMapPageState extends State<LivingMapPage>
 
       bool matchesFood = false;
       bool matchesPOI = false;
+      bool matchesNature = false;
       bool matchesShopping = false;
       bool matchesMedical = false;
+      bool matchesHospital = false;
 
       // 1. Food & Drink matching logic
-      if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') || 
-          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') || 
+      if (catName.contains('food') || catName.contains('restaurant') || catName.contains('cafe') ||
+          catName.contains('dining') || catName.contains('meal') || name.contains('restaurant') ||
           name.contains('cafe') || name.contains('dining') || name.contains('bakery') || name.contains('bistro')) {
         matchesFood = true;
       }
 
-      // 2. POI (Points of Interest: Culture, Heritage, Beaches, Waterfalls, Parks, Museums, etc.)
-      final bool hasPoiSignal =
-          catName.contains('beach') || catName.contains('park') || catName.contains('garden') ||
-          catName.contains('lake') || catName.contains('river') || catName.contains('waterfall') ||
-          catName.contains('forest') || catName.contains('museum') || catName.contains('experience') ||
-          catName.contains('landmark') || catName.contains('culture') || catName.contains('temple') ||
-          catName.contains('art') || catName.contains('zoo') ||
-          name.contains('beach') || name.contains('park') || name.contains('lake') || 
-          name.contains('waterfall') || name.contains('garden') || name.contains('forest') ||
-          name.contains('temple') || name.contains('museum') || name.contains('fort') ||
-          name.contains('monument') || name.contains('sanctuary') ||
-          tags.contains('park') || tags.contains('beach') ||
-          tags.contains('national_park') || tags.contains('hiking_area') ||
-          tags.contains('botanical_garden') || tags.contains('museum') ||
-          tags.contains('place_of_worship') || tags.contains('hindu_temple') || tags.contains('church') ||
-          tags.contains('buddhist_temple');
+      // 2 & 3. POI and Nature, split from one pool.
+      //
+      // A place reading as nature belongs to Nature unless it also carries real
+      // heritage, in which case POI wins it back. Anything left over that still
+      // reads as somewhere-worth-visiting stays in POI.
+      final bool hasNatureSignal = hasAny(tags, natureTags) ||
+          nameHasAny(name, natureWords) ||
+          catName.contains('beach') || catName.contains('park') ||
+          catName.contains('nature') || catName.contains('garden') ||
+          catName.contains('lake') || catName.contains('river') ||
+          catName.contains('waterfall') || catName.contains('forest');
 
-      if (hasPoiSignal) {
-        final poiExclusions = [
-          'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
-          'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
-          'spa', 'salon', 'wellness', 'massage', 'beauty', 'hair', 'nail',
-          'bank', 'atm', 'store', 'shop', 'office', 'pharmacy', 'supermarket',
-          'grocery', 'gas station', 'homestay', 'guest house', 'apartment', 'villa'
-        ];
-        final poiExcludeTags = [
-          'spa', 'beauty_salon', 'hair_care', 'doctor', 'dentist', 'hospital', 
-          'medical_clinic', 'pharmacy', 'school', 'university', 'bank', 'atm', 
-          'gas_station', 'store', 'shopping_mall', 'real_estate_agency'
-        ];
-        if (!poiExclusions.any((kw) => name.contains(kw)) &&
-            !tags.any((t) => poiExcludeTags.contains(t))) {
+      final bool hasHeritageSignal = hasAny(tags, heritageTags) ||
+          nameHasAny(name, heritageWords) ||
+          catName.contains('museum') || catName.contains('landmark') ||
+          catName.contains('culture') || catName.contains('temple') ||
+          catName.contains('art') || catName.contains('historic');
+
+      final bool hasPoiSignal = hasHeritageSignal ||
+          catName.contains('experience') || catName.contains('zoo') ||
+          catName.contains('attraction') ||
+          hasAny(tags, const [
+            'tourist_attraction', 'zoo', 'aquarium', 'amusement_park',
+            'water_park', 'planetarium', 'performing_arts_theater',
+            'observation_deck', 'visitor_center', 'point_of_interest_landmark',
+          ]);
+
+      // Shared by both halves: neither section wants a dentist or a guest house.
+      const outdoorPoiExcludeTags = [
+        'spa', 'beauty_salon', 'hair_care', 'doctor', 'dentist', 'hospital',
+        'medical_clinic', 'pharmacy', 'school', 'university', 'bank', 'atm',
+        'gas_station', 'store', 'shopping_mall', 'real_estate_agency',
+      ];
+      const outdoorPoiExcludeWords = [
+        'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
+        'surgery', 'clinic', 'medical', 'dental', 'doctor', 'dentist', 'hospital',
+        'spa', 'salon', 'wellness', 'massage', 'beauty', 'hair', 'nail',
+        'bank', 'atm', 'store', 'shop', 'office', 'pharmacy', 'supermarket',
+        'grocery', 'gas station', 'homestay', 'guest house', 'apartment', 'villa',
+      ];
+      final bool visitable = !nameHasAny(name, outdoorPoiExcludeWords) &&
+          !hasAny(tags, outdoorPoiExcludeTags);
+
+      if (visitable) {
+        if (hasNatureSignal && !hasHeritageSignal) {
+          // Resorts and safari lodges carry `beach` and `wildlife_park` next to
+          // `lodging` — they are places to sleep, not places to go.
+          if (!hasAny(tags, const [
+                'lodging', 'hotel', 'resort_hotel', 'guest_house', 'motel',
+                'hostel', 'bed_and_breakfast', 'restaurant', 'bar', 'cafe',
+              ]) &&
+              !nameHasAny(name, const ['hotel', 'resort', 'villa'])) {
+            matchesNature = true;
+          }
+        } else if (hasPoiSignal) {
           matchesPOI = true;
         }
       }
 
-      // 3. Shopping matching logic
-      if (catName.contains('mall') || catName.contains('market') || 
+      // 4. Shopping matching logic
+      if (catName.contains('mall') || catName.contains('market') ||
           catName.contains('store') || tags.contains('department_store')) {
         final shoppingExclusions = [
           'school', 'university', 'college', 'academy', 'preschool', 'kindergarten',
-          'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist'
+          'surgery', 'clinic', 'medical', 'hospital', 'doctor', 'dentist', 'pharmacy'
         ];
         final shoppingExcludeTags = [
-          'school', 'university', 'hospital', 'doctor', 'dentist'
+          'school', 'university', 'hospital', 'doctor', 'dentist',
+          'pharmacy', 'drugstore', 'medical_clinic'
         ];
         if (!shoppingExclusions.any((kw) => name.contains(kw)) &&
             !tags.any((t) => shoppingExcludeTags.contains(t))) {
@@ -5792,7 +5860,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         }
       }
 
-      // 4. Medical matching logic (Merges Medical & Hospitals)
+      // 5 & 6. Hospital and Medical, split from one pool.
+      //
+      // Hospital always wins: Google types most hospitals as `hospital`
+      // alongside the clinic types, and names the rest without any
+      // distinguishing type at all.
       final bool hasMedicalSignal =
           catName == 'medical' || catName == 'hospital' ||
           name.contains('medical') || name.contains('hospital') ||
@@ -5817,7 +5889,11 @@ class _LivingMapPageState extends State<LivingMapPage>
         ];
         final bool isNonMedical = tags.any((t) => nonMedicalTags.contains(t));
         if (!isNonMedical) {
-          matchesMedical = true;
+          if (tags.contains('hospital') || nameHasAny(name, hospitalWords)) {
+            matchesHospital = true;
+          } else {
+            matchesMedical = true;
+          }
         }
       }
 
@@ -5832,26 +5908,20 @@ class _LivingMapPageState extends State<LivingMapPage>
       // to be independent numbers (food filtered at 12 km against a 5 km tier
       // table, shopping at 20 against 15), which let places into the pool that
       // no band could ever display.
-      if (matchesFood && filterDistKm <= PlaceBands.maxKmFor('Food & Drink')) {
-        if (!grouped['Food & Drink']!.any((x) => x.id == place.id)) {
-          grouped['Food & Drink']!.add(place);
-        }
+      void addTo(String category, bool matches) {
+        if (!matches) return;
+        if (filterDistKm > PlaceBands.maxKmFor(category)) return;
+        final bucket = grouped[category]!;
+        if (bucket.any((x) => x.id == place.id)) return;
+        bucket.add(place);
       }
-      if (matchesPOI && filterDistKm <= PlaceBands.maxKmFor('POI')) {
-        if (!grouped['POI']!.any((x) => x.id == place.id)) {
-          grouped['POI']!.add(place);
-        }
-      }
-      if (matchesShopping && filterDistKm <= PlaceBands.maxKmFor('Shopping')) {
-        if (!grouped['Shopping']!.any((x) => x.id == place.id)) {
-          grouped['Shopping']!.add(place);
-        }
-      }
-      if (matchesMedical && filterDistKm <= PlaceBands.maxKmFor('Medical')) {
-        if (!grouped['Medical']!.any((x) => x.id == place.id)) {
-          grouped['Medical']!.add(place);
-        }
-      }
+
+      addTo('Food & Drink', matchesFood);
+      addTo('POI', matchesPOI);
+      addTo('Nature', matchesNature);
+      addTo('Shopping', matchesShopping);
+      addTo('Medical', matchesMedical);
+      addTo('Hospital', matchesHospital);
     }
 
     // ── Distance-band selection ────────────────────────────────────────────
@@ -5913,13 +5983,14 @@ class _LivingMapPageState extends State<LivingMapPage>
       final List<AttractionEntity> selected = [];
       final Set<String> addedIds = {};
 
-      for (final bandList in banded) {
+      for (var i = 0; i < banded.length; i++) {
+        final quota = PlaceBands.quotaForBand(i);
         var taken = 0;
-        for (final p in bandList) {
+        for (final p in banded[i]) {
           if (addedIds.contains(p.id)) continue;
           selected.add(p);
           addedIds.add(p.id);
-          if (++taken >= PlaceBands.placesPerBand) break;
+          if (++taken >= quota) break;
         }
       }
 
@@ -5952,7 +6023,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     // map's own places are banded locally so the section still fills.
     final bandedFromBackend = context.read<MapBloc>().state.bandedPlaces;
 
-    for (final category in const ['Food & Drink', 'POI', 'Shopping', 'Medical']) {
+    for (final category in PlaceBands.sections) {
       final fromBackend = bandedFromBackend[category];
       if (fromBackend != null && fromBackend.isNotEmpty) {
         final flattened = fromBackend.expand((band) => band).toList();
@@ -5981,21 +6052,18 @@ class _LivingMapPageState extends State<LivingMapPage>
         ? 330.0
         : (90.0 + maxPlaces * 38.5).clamp(330.0, 720.0);
 
-    // 4 Streamlined Cards
+    // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
       height: cardHeight,
-      child: ListView(
+      child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
-        children: [
-          _buildCategoryPanel('Food & Drink', grouped['Food & Drink']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('POI', grouped['POI']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Shopping', grouped['Shopping']!, status),
-          const SizedBox(width: 16),
-          _buildCategoryPanel('Medical', grouped['Medical']!, status),
-        ],
+        itemCount: PlaceBands.sections.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 16),
+        itemBuilder: (_, i) {
+          final category = PlaceBands.sections[i];
+          return _buildCategoryPanel(category, grouped[category]!, status);
+        },
       ),
     );
   }
@@ -6015,26 +6083,33 @@ class _LivingMapPageState extends State<LivingMapPage>
         themeColor = const Color(0xFF00BFA5);
         lightTint = const Color(0xFFE0F2F1);
         break;
+      case 'Nature':
+        displayTitle = 'Nature & Outdoors';
+        themeColor = const Color(0xFF2E7D32);
+        lightTint = const Color(0xFFE8F5E9);
+        break;
       case 'Shopping':
         themeColor = const Color(0xFF2979FF);
         lightTint = const Color(0xFFE3F2FD);
         break;
       case 'Medical':
-        themeColor = const Color(0xFFE53935);
+        // Lighter than Hospital: the two sit side by side, and the darker red
+        // should read as the more urgent of the pair.
+        displayTitle = 'Pharmacy & Clinics';
+        themeColor = const Color(0xFFEF5350);
         lightTint = const Color(0xFFFFEBEE);
+        break;
+      case 'Hospital':
+        displayTitle = 'Hospitals';
+        themeColor = const Color(0xFFC62828);
+        lightTint = const Color(0xFFFFCDD2);
         break;
       default:
         themeColor = Colors.grey;
         lightTint = const Color(0xFFF5F5F5);
     }
 
-    final int targetDiscoverTab = (categoryName == 'POI')
-        ? 0
-        : (categoryName == 'Food & Drink')
-            ? 1
-            : (categoryName == 'Shopping')
-                ? 2
-                : 3; // Medical
+    final int targetDiscoverTab = DiscoverPage.tabIndexFor(categoryName);
 
     if (status == MapStatus.loading) {
       return Align(
@@ -6111,16 +6186,8 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
     }
 
-    final String maxRange;
-    if (categoryName == 'POI' || categoryName == 'Attractions' || categoryName == 'Medical' || categoryName == 'Hospital') {
-      maxRange = '0-50 kms';
-    } else if (categoryName == 'Food' || categoryName == 'Food & Drink') {
-      maxRange = '0-5 kms';
-    } else if (categoryName == 'Shopping') {
-      maxRange = '0-15 kms';
-    } else {
-      maxRange = '0-15 kms';
-    }
+    final String maxRange =
+        '0-${PlaceBands.maxKmFor(categoryName).toStringAsFixed(0)} kms';
 
     return Align(
       alignment: Alignment.topCenter,

@@ -138,8 +138,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
   /// Fetch radius for a category, taken from the band table where one applies.
   ///
-  /// 'Attractions' and 'Nature' were folded into POI, and 'Hospital' into
-  /// Medical, so they inherit those ranges.
+  /// 'Attractions' still folds into POI, and 'Beach' into Nature. Nature and
+  /// Hospital are sections in their own right now and carry their own entries.
   static double _radiusForCategory(String category) {
     switch (category) {
       case 'Food & Drink':
@@ -148,20 +148,19 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       case 'Shopping':
         return PlaceBands.maxMetresFor('Shopping');
       case 'Medical':
-      case 'Hospital':
         return PlaceBands.maxMetresFor('Medical');
+      case 'Hospital':
+        return PlaceBands.maxMetresFor('Hospital');
+      case 'Nature':
+      case 'Beach':
+        return PlaceBands.maxMetresFor('Nature');
       default:
         return PlaceBands.maxMetresFor('POI');
     }
   }
 
-  /// The four sections shown by Around You and the Discovery tabs.
-  static const List<String> bandedCategories = [
-    'Food & Drink',
-    'POI',
-    'Shopping',
-    'Medical',
-  ];
+  /// The six sections shown by Around You and the Discovery tabs.
+  static const List<String> bandedCategories = PlaceBands.sections;
 
   Future<void> _onFetchBandedPlaces(
     FetchBandedPlaces event,
@@ -169,8 +168,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   ) async {
     emit(state.copyWith(isLoadingBands: true));
 
-    // All four in parallel: they hit independent cache keys on the backend and
-    // one slow category should not hold up the other three.
+    // All six in parallel: they hit independent cache keys on the backend and
+    // one slow category should not hold up the other five.
     final results = await Future.wait(
       bandedCategories.map((cat) async {
         final bands = await GooglePlacesService.fetchBandedPlaces(
@@ -247,12 +246,17 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         allAttractions: const [],
       ));
 
+      // Feeds the map and its markers, so it stays broader than the six
+      // sections: 'Attractions' still carries most of the older rows, and
+      // 'Hospital' has to be asked for by name now that Medical's type list no
+      // longer includes hospitals.
       final categoriesToFetch = [
         'POI',
         'Attractions',
         'Food & Drink',
         'Shopping',
         'Medical',
+        'Hospital',
         'Nature',
       ];
 
