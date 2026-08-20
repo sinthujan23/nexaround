@@ -673,7 +673,7 @@ class _LivingMapPageState extends State<LivingMapPage>
   ///
   /// Runs alongside [FetchNearbyAttractions] rather than replacing it: that
   /// query feeds the map and its markers and wants everything nearby, while the
-  /// sections want fifteen places spread deliberately across distance.
+  /// sections want a handful of places spread deliberately across distance.
   void _fetchBandedSections(double lat, double lng, {bool forceRefresh = false}) {
     if (!mounted) return;
     context.read<MapBloc>().add(
@@ -5925,8 +5925,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     // ── Distance-band selection ────────────────────────────────────────────
-    // Fifteen places per section: five from each of the category's three bands,
-    // so the list reads as a progression outward instead of fifteen variations
+    // Each section fills from the category's three distance bands on the
+    // quotas in PlaceBands.bandQuotas,
+    // so the list reads as a progression outward instead of a dozen variations
     // on whatever happens to be closest.
     //
     // This is the fallback path, used until the backend's banded fetch lands
@@ -6014,7 +6015,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       return selected.take(PlaceBands.totalPerCategory).toList();
     }
 
-    // Fill each section with fifteen places across its three distance bands.
+    // Fill each section from its three distance bands.
     //
     // The backend's banded result is preferred where it has arrived: it can
     // issue extra Google requests aimed at a band that came up short, which
@@ -6026,9 +6027,16 @@ class _LivingMapPageState extends State<LivingMapPage>
     for (final category in PlaceBands.sections) {
       final fromBackend = bandedFromBackend[category];
       if (fromBackend != null && fromBackend.isNotEmpty) {
-        final flattened = fromBackend.expand((band) => band).toList();
-        if (flattened.isNotEmpty) {
-          grouped[category] = flattened;
+        // The backend is asked for Discovery-depth bands so one fetch serves
+        // both surfaces. Around You is the quick-access strip, so it takes only
+        // its quota off the top of each band — the rest stays in state for the
+        // Discovery tabs to list.
+        final trimmed = <AttractionEntity>[];
+        for (var i = 0; i < fromBackend.length; i++) {
+          trimmed.addAll(fromBackend[i].take(PlaceBands.quotaForBand(i)));
+        }
+        if (trimmed.isNotEmpty) {
+          grouped[category] = trimmed;
           continue;
         }
       }

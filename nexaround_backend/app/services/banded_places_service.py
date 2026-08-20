@@ -292,8 +292,17 @@ async def get_nearby_banded(
     category: Optional[str],
     max_photos: int = 1,
     force_refresh: bool = False,
+    per_band: Optional[int] = None,
 ) -> BandedPlacesResponse:
-    """Ten places for a category, split across its distance bands, backfilled."""
+    """One category's section, drawn across its distance bands and backfilled.
+
+    `per_band` overrides the per-band quota for callers that want a longer list:
+    Discovery lists everything it can, while Around You is the quick-access strip
+    and takes only BAND_QUOTAS from each band. Both are served from the *same*
+    cached pool — what we fetch and cache is deliberately independent of
+    `per_band`, so the two surfaces share one entry rather than fragmenting the
+    cache into a warm copy per requested length.
+    """
     category = google_places_client.canonical_category(category)
     bands = place_bands.bands_for(category)
     key = _cache_key(latitude, longitude, category)
@@ -307,7 +316,7 @@ async def get_nearby_banded(
                 t.hit("redis")
             return _assemble(
                 latitude, longitude, category, bands, cached, max_photos,
-                cached_flag=True, source="cache",
+                cached_flag=True, source="cache", per_band=per_band,
             )
 
     # ── Step 1: PostGIS ring queries ─────────────────────────────────────────
@@ -417,7 +426,7 @@ async def get_nearby_banded(
 
     return _assemble(
         latitude, longitude, category, bands, deduped, max_photos,
-        cached_flag=False, source=source,
+        cached_flag=False, source=source, per_band=per_band,
     )
 
 
@@ -465,6 +474,7 @@ def _assemble(
     *,
     cached_flag: bool,
     source: str,
+    per_band: Optional[int] = None,
 ) -> BandedPlacesResponse:
     """Fill each band to its quota, then backfill to ten from whatever is left.
 
@@ -477,7 +487,7 @@ def _assemble(
     taken_ids: set[str] = set()
 
     for i, (band_min, band_max) in enumerate(bands):
-        quota = place_bands.quota_for_band(i)
+        quota = per_band if per_band is not None else place_bands.quota_for_band(i)
         picks = []
         for p in remaining:
             pid = str(p.get("id") or "")
@@ -492,7 +502,11 @@ def _assemble(
         picks.sort(key=lambda p: p.get("distance_m") or 0.0)
         chosen.append(picks)
 
-    shortfall = place_bands.TOTAL_PER_CATEGORY - sum(len(c) for c in chosen)
+    target_total = (
+        per_band * len(bands) if per_band is not None
+        else place_bands.TOTAL_PER_CATEGORY
+    )
+    shortfall = target_total - sum(len(c) for c in chosen)
     if shortfall > 0:
         leftovers = sorted(
             (p for p in pool if str(p.get("id") or "") not in taken_ids),

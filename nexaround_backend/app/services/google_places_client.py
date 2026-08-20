@@ -89,10 +89,15 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "dental_clinic", "physiotherapist", "chiropractor", "medical_lab",
         "veterinary_care", "medical_clinic"
     ],
+    # Nature means *nature*, not "outdoors". Google's generic `park` covers
+    # children's playgrounds, jogging tracks and cycling parks, which filled this
+    # section with Lotus Tower Kids Park and Mahara Jogging Track. Asking only
+    # for the specific natural types keeps genuine national parks and reserves
+    # (which also carry `park`) while leaving urban recreation behind.
     "Nature": [
-        "park", "national_park", "state_park", "beach", "hiking_area",
-        "wildlife_refuge", "wildlife_park", "lake", "river", "marina",
-        "botanical_garden", "garden", "picnic_ground"
+        "national_park", "state_park", "beach", "hiking_area",
+        "wildlife_refuge", "wildlife_park", "lake", "river",
+        "botanical_garden"
     ],
     "Beach": [
         "park", "tourist_attraction", "beach"

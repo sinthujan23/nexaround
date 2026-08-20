@@ -31,12 +31,12 @@ class FetchNearbyAttractions extends MapEvent {
   List<Object?> get props => [latitude, longitude, radius, categoryId, categoryName, useLegacy, forceRefresh];
 }
 
-/// Load the four Around You / Discovery sections, each already split into
+/// Load the six Around You / Discovery sections, each already split into
 /// three distance bands by the backend.
 ///
 /// Separate from [FetchNearbyAttractions] on purpose: that one feeds the map
-/// and its markers, which want everything nearby. The sections want fifteen
-/// places spread deliberately across distance, which is a different query and
+/// and its markers, which want everything nearby. The sections want places
+/// spread deliberately across distance, which is a different query and
 /// a different cost profile.
 class FetchBandedPlaces extends MapEvent {
   final double latitude;

@@ -28,6 +28,15 @@ class PlaceBands {
   /// to is the one they actually read.
   static const List<int> bandQuotas = [4, 3, 3];
 
+  /// How many places per band the app asks the backend for.
+  ///
+  /// Deliberately larger than [bandQuotas]: Discovery lists a full page per
+  /// category, while Around You is the quick-access strip and slices only
+  /// [bandQuotas] off the top of each band. One fetch serves both surfaces, so
+  /// opening Discovery costs nothing extra and the two never disagree about
+  /// which places exist.
+  static const int fetchPerBand = 15;
+
   static const int bandsPerCategory = bandQuotas.length;
   static const int totalPerCategory = 10;
 

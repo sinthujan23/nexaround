@@ -63,6 +63,12 @@ async def get_nearby_places_banded(
     ),
     max_photos: int = Query(1, ge=1, le=10, description="Max photos per place"),
     force_refresh: bool = Query(False, description="Bypass the Redis entry"),
+    per_band: Optional[int] = Query(
+        None, ge=1, le=40,
+        description="Override the per-band quota. Around You omits this and gets "
+                    "BAND_QUOTAS (4/3/3); Discovery asks for more to list a full "
+                    "page per category. Both share one cache entry.",
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Places for one Around You / Discovery section, split into distance bands.
@@ -87,6 +93,7 @@ async def get_nearby_places_banded(
         category=category,
         max_photos=max_photos,
         force_refresh=force_refresh,
+        per_band=per_band,
     )
 
 

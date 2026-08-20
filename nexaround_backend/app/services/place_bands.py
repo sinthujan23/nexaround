@@ -89,11 +89,16 @@ CATEGORY_SUBGROUPS: dict[str, list[tuple[str, list[str]]]] = {
         ]),
     ],
     "Nature": [
+        # `park`, `garden`, `picnic_ground` and `marina` are deliberately absent.
+        # allowed_tags_for() unions these sub-group types into the relevance
+        # gate, so listing the generic types here would re-admit every kids'
+        # park and jogging track that narrowing CATEGORY_TYPES_MAP just removed.
+        # Genuine reserves still qualify through national_park/state_park.
         ("green", [
-            "park", "national_park", "state_park", "botanical_garden", "garden",
-            "picnic_ground", "hiking_area", "wildlife_park", "wildlife_refuge",
+            "national_park", "state_park", "botanical_garden",
+            "hiking_area", "wildlife_park", "wildlife_refuge",
         ]),
-        ("water", ["beach", "lake", "river", "marina"]),
+        ("water", ["beach", "lake", "river"]),
     ],
 }
 
@@ -151,6 +156,16 @@ _HOSPITAL_TYPES = {"hospital"}
 # `medical_clinic`, so the name has to be able to admit one on its own.
 _HOSPITAL_NAME_WORDS = ("hospital", "nursing home", "infirmary")
 
+# ...and the reverse is just as common: Google types small dispensaries, chemists
+# and one-room clinics as `hospital` too. When the name says what the place
+# actually is, it outranks the type — otherwise every pharmacy and clinic in the
+# country lands in Hospital and the Medical section has nothing left to show.
+_CLINIC_NAME_WORDS = (
+    "pharmacy", "pharmacies", "chemist", "drug store", "drugstore",
+    "clinic", "dispensary", "dental", "dentist", "laborator",
+    "medical centre", "medical center", "surgery", "ayurved",
+)
+
 
 def _sibling_owns(category: str, tag_set: set[str], lowered_name: str) -> bool:
     """Whether the other half of an exclusive pair is this place's real home.
@@ -166,10 +181,30 @@ def _sibling_owns(category: str, tag_set: set[str], lowered_name: str) -> bool:
     if category == "Nature":
         return bool(tag_set & _HERITAGE_OVERRIDES)
     if category == "Medical":
+        # A name that says pharmacy, clinic or dispensary settles it: Medical
+        # keeps the place regardless of the `hospital` type Google hung on it.
+        if _reads_as_clinic(lowered_name):
+            return False
         return bool(tag_set & _HOSPITAL_TYPES) or any(
             w in lowered_name for w in _HOSPITAL_NAME_WORDS
         )
+    if category == "Hospital":
+        # The same rule seen from the other side, so the pair stays exclusive.
+        return _reads_as_clinic(lowered_name)
     return False
+
+
+def _reads_as_clinic(lowered_name: str) -> bool:
+    """Name describes everyday care rather than a hospital.
+
+    'Colombo General Hospital Pharmacy' names both; the hospital wins, because
+    the department belongs to the institution people are looking for.
+    """
+    if not lowered_name:
+        return False
+    if any(w in lowered_name for w in _HOSPITAL_NAME_WORDS):
+        return False
+    return any(w in lowered_name for w in _CLINIC_NAME_WORDS)
 
 
 # Legacy tags on rows seeded through the old Places API, mapped to the canonical
@@ -228,6 +263,12 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         "hospital", "doctor", "dentist", "pharmacy", "medical_clinic",
         "car_repair", "car_dealer", "gas_station", "cemetery", "funeral_home",
         "gym", "fitness_center", "sports_complex", "shopping_mall", "store",
+        # Urban recreation. Google files playgrounds, jogging tracks and cycling
+        # parks under the same generic `park` as a national park, which is how
+        # Lotus Tower Kids Park and Mahara Jogging Track reached this section.
+        "city_park", "cycling_park", "dog_park", "playground", "skateboard_park",
+        "athletic_field", "stadium", "ice_skating_rink", "sports_activity_location",
+        "amusement_park", "water_park", "amusement_center",
     },
     "Shopping": {
         "school", "university", "hospital", "doctor", "dentist", "spa",
@@ -319,6 +360,11 @@ def is_relevant(category: Optional[str], tags, name: Optional[str] = None) -> bo
     # A place named for what it is outranks a place Google typed vaguely: plenty
     # of real hospitals carry nothing narrower than `medical_clinic`.
     if category == "Hospital" and any(w in lowered for w in _HOSPITAL_NAME_WORDS):
+        return True
+    # Same courtesy for everyday care: a dispensary Google typed only `hospital`
+    # carries no tag the Medical list accepts, and would otherwise fall through
+    # both health sections and disappear entirely.
+    if category == "Medical" and _reads_as_clinic(lowered):
         return True
 
     allowed = allowed_tags_for(category)

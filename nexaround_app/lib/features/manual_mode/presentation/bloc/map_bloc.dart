@@ -177,6 +177,8 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           longitude: event.longitude,
           categoryName: cat,
           forceRefresh: event.forceRefresh,
+          // Fetch Discovery-depth once; Around You slices its quota off the top.
+          perBand: PlaceBands.fetchPerBand,
         );
         return MapEntry(cat, bands);
       }),

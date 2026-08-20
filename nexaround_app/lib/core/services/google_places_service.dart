@@ -161,20 +161,23 @@ class GooglePlacesService {
     return '$sLat:$sLng:$cat:$radius:$useLegacy';
   }
 
-  /// Fetch nearby places from backend cached Places API
   /// Fetch one Around You / Discovery section, already split into distance
   /// bands by the backend.
   ///
-  /// Returns fifteen places — five per band, backfilled nearest-first when a
-  /// band is genuinely empty. Prefer this over [fetchNearbyPlaces] for the
-  /// category sections: a plain radius query returns whatever is closest, and
-  /// the outer bands stay empty however large the radius, because Google ranks
-  /// its twenty results by prominence around the centre.
+  /// Returns one list per band, nearest band first, backfilled when a band is
+  /// genuinely empty. [perBand] sets how deep each band goes; omitted, the
+  /// backend applies its own quotas.
+  ///
+  /// Prefer this over [fetchNearbyPlaces] for the category sections: a plain
+  /// radius query returns whatever is closest, and the outer bands stay empty
+  /// however large the radius, because Google ranks its twenty results by
+  /// prominence around the centre.
   static Future<List<List<AttractionEntity>>> fetchBandedPlaces({
     required double latitude,
     required double longitude,
     required String categoryName,
     bool forceRefresh = false,
+    int? perBand,
   }) async {
     try {
       final response = await ApiClient.instance.get(
@@ -184,6 +187,7 @@ class GooglePlacesService {
           'lng': longitude,
           'category': categoryName,
           if (forceRefresh) 'force_refresh': true,
+          if (perBand != null) 'per_band': perBand,
         },
       );
 

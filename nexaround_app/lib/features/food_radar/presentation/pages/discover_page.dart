@@ -552,11 +552,7 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                     _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
 
                     // Filter Shopping List
-                    _shoppingList = masterList.where((a) {
-                      final cat = (a.categoryName ?? '').toLowerCase();
-                      return cat.contains('mall') || cat.contains('market') || 
-                             cat.contains('store');
-                    }).toList();
+                    _shoppingList = masterList.where(_isShopping).toList();
                     if (_selectedShoppingCategory != null) {
                       _shoppingList = _shoppingList.where((a) {
                         final cat = (a.categoryName ?? '').toLowerCase();
@@ -678,6 +674,24 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     'lodging', 'real_estate_agency',
     'transit_station', 'bus_station', 'train_station',
   ];
+  static const _shoppingTags = [
+    'shopping_mall', 'department_store', 'supermarket', 'grocery_store',
+    'grocery_or_supermarket', 'convenience_store', 'store', 'market',
+    'clothing_store', 'electronics_store', 'shoe_store', 'jewelry_store',
+    'book_store', 'gift_shop', 'home_goods_store', 'furniture_store',
+    'hardware_store', 'sporting_goods_store', 'pet_store', 'liquor_store',
+    'bicycle_store', 'warehouse_store', 'wholesaler', 'discount_store',
+  ];
+  /// Carry `store` but belong to another section — cafés and chemists above all,
+  /// which Google files as `food_store` and `store` respectively.
+  static const _nonShoppingTags = [
+    'cafe', 'coffee_shop', 'restaurant', 'bar', 'bakery', 'ice_cream_shop',
+    'dessert_shop', 'confectionery', 'food', 'food_store', 'meal_takeaway',
+    'meal_delivery', 'pharmacy', 'drugstore', 'hospital', 'doctor', 'dentist',
+    'medical_clinic', 'school', 'university', 'bank', 'atm', 'finance',
+    'lodging', 'hotel', 'spa', 'beauty_salon', 'hair_care', 'body_art_service',
+    'real_estate_agency', 'travel_agency', 'car_repair', 'car_dealer',
+  ];
   static const _stayWords = [
     'homestay', 'bedroom', 'apartment', 'villa', 'guest house', 'hotel',
     'resort',
@@ -763,6 +777,22 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
 
   static bool _isMedical(AttractionEntity a) =>
       _hasMedicalSignal(a) && !_isHospital(a);
+
+  /// Somewhere you go to buy something that is not food or medicine.
+  ///
+  /// Matched on Google types, like every other section. The previous filter
+  /// tested `categoryName` for 'mall'/'market'/'store' — but categoryName is the
+  /// literal string 'Shopping', which contains none of those, so the tab matched
+  /// nothing and rendered empty while Around You showed the same places fine.
+  static bool _isShopping(AttractionEntity a) {
+    final tags = _tagsOf(a);
+    if (_nonShoppingTags.any(tags.contains)) return false;
+    if (_stayWords.any(a.name.toLowerCase().contains)) return false;
+    if (_shoppingTags.any(tags.contains)) return true;
+    final cat = (a.categoryName ?? '').toLowerCase();
+    return cat.contains('shopping') || cat.contains('mall') ||
+        cat.contains('market') || cat.contains('store');
+  }
 
   List<AttractionEntity> _deduplicateAttractions(List<AttractionEntity> list) {
     final seenKeys = <String>{};
