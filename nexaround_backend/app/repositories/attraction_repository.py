@@ -83,6 +83,33 @@ class AttractionRepository:
         results = await self.db.execute(query.offset(skip).limit(limit))
         return [(row[0], bool(row[1])) for row in results.all()], total
 
+    async def get_coordinates_in_bounds(
+        self,
+        min_lat: float,
+        min_lng: float,
+        max_lat: float,
+        max_lng: float,
+    ) -> set:
+        """Coordinates of every attraction inside a bounding box.
+
+        The duplicate check when seeding used to run find_duplicate_by_coordinates
+        once per incoming place, which is one database round trip each — sixty
+        places meant sixty queries. This pulls the same information in one, and
+        the caller matches in memory.
+
+        Rounded to six decimals to match the tolerance find_duplicate_by_coordinates
+        applies (< 1e-6), so the two agree on what counts as the same spot.
+        """
+        stmt = select(
+            func.ST_Y(Attraction.location),
+            func.ST_X(Attraction.location),
+        ).where(
+            func.ST_Y(Attraction.location).between(min_lat, max_lat),
+            func.ST_X(Attraction.location).between(min_lng, max_lng),
+        )
+        result = await self.db.execute(stmt)
+        return {(round(lat, 6), round(lng, 6)) for lat, lng in result.all()}
+
     async def get_nearby(
         self,
         latitude: float,

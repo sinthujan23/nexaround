@@ -1,4 +1,5 @@
 """Top-level Places service: cache-first, Google as fallback."""
+import asyncio
 import math
 import re
 from typing import Optional
@@ -172,6 +173,19 @@ async def _query_nearby_three_zones(
 
 
 _active_seed_tasks: set[str] = set()
+
+# Strong references to running background tasks. asyncio keeps only a *weak*
+# reference, so a bare create_task can be garbage-collected mid-flight. Every
+# background task here either spends money on Google or writes to the database,
+# so silently losing one is worse than holding the reference.
+_background_tasks: set = set()
+
+
+def spawn_background(coro) -> None:
+    """Run a coroutine detached from the request, without losing it to the GC."""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def seed_places_from_google_bg(
@@ -530,7 +544,7 @@ async def get_nearby(
             # Revalidate in the background if the coverage is not adequate yet
             if not has_adequate_coverage:
                 import asyncio
-                asyncio.create_task(seed_places_from_google_bg(
+                spawn_background(seed_places_from_google_bg(
                     latitude=latitude,
                     longitude=longitude,
                     category=category,
@@ -878,7 +892,7 @@ async def search(
             place_dicts[i]["address"] = p["formattedAddress"]
 
     import asyncio
-    asyncio.create_task(_save_search_results_bg(place_dicts, latitude, longitude))
+    spawn_background(_save_search_results_bg(place_dicts, latitude, longitude))
 
     place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
 

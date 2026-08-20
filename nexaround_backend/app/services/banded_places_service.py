@@ -101,14 +101,38 @@ async def _seed_place_dicts(place_dicts: list[dict]) -> None:
         async with async_session() as session:
             repo = AttractionRepository(session)
             cat_cache: dict[str, object] = {}
-            for p in place_dicts:
-                name = p.get("name")
-                plat = p.get("latitude")
-                plng = p.get("longitude")
-                if not name or plat is None or plng is None:
+
+            # One query for every coordinate already stored in the area these
+            # places cover, instead of a round trip per place. Seeding a band
+            # fill of ~60 places used to mean ~60 sequential SELECTs.
+            usable = [
+                p for p in place_dicts
+                if p.get("name")
+                and p.get("latitude") is not None
+                and p.get("longitude") is not None
+            ]
+            if not usable:
+                return
+            lats = [p["latitude"] for p in usable]
+            lngs = [p["longitude"] for p in usable]
+            # Padded by the same 1e-6 the duplicate check tolerates, so a point
+            # sitting exactly on the edge is still compared against.
+            pad = 0.000001
+            seen_coords = await repo.get_coordinates_in_bounds(
+                min(lats) - pad, min(lngs) - pad,
+                max(lats) + pad, max(lngs) + pad,
+            )
+
+            for p in usable:
+                name = p["name"]
+                plat = p["latitude"]
+                plng = p["longitude"]
+                coord = (round(plat, 6), round(plng, 6))
+                # Also guards against duplicates *within* this batch: the same
+                # place can arrive from two overlapping sampling circles.
+                if coord in seen_coords:
                     continue
-                if await repo.find_duplicate_by_coordinates(plat, plng):
-                    continue
+                seen_coords.add(coord)
 
                 cat_id = None
                 resolved = p.get("category_name")
@@ -382,7 +406,7 @@ async def get_nearby_banded(
     await place_cache_service.set_cached(key, deduped)
 
     if defer_fill:
-        asyncio.create_task(_fill_bands_bg(
+        places_service.spawn_background(_fill_bands_bg(
             latitude=latitude,
             longitude=longitude,
             category=category,
