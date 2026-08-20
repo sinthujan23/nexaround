@@ -1,3 +1,4 @@
+import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -193,6 +194,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ),
       );
       Navigator.pop(context, true);
+    } on BudgetTooLowException catch (e) {
+      // The client mirrors the server's floor, so reaching here means the two
+      // disagreed — a stale build, or a destination only the server resolves.
+      // Show the server's own sentence rather than a generic failure.
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: const Color(0xFFE65100),
+          duration: const Duration(seconds: 6),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
@@ -868,6 +882,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               },
             ),
           ),
+          if (_budgetShortfallMessage != null) ...[
+            const SizedBox(height: 20),
+            _budgetShortfallCard(_budgetShortfallMessage!),
+          ],
           const SizedBox(height: 40),
                   ],
                 ),
@@ -879,8 +897,83 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
+  /// Shown under the budget field when the trip cannot be bought at this price.
+  ///
+  /// Deliberately states the number to type rather than only that the budget is
+  /// wrong: "too low" leaves the traveller guessing, and guessing again costs
+  /// another round trip.
+  Widget _budgetShortfallCard(String message) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF4E5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFFFB74D)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.account_balance_wallet_outlined,
+              color: Color(0xFFE65100), size: 22),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                fontSize: 13.5,
+                height: 1.45,
+                color: Color(0xFF8D4E00),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The floor this trip cannot go below, or null when it is fine or unknown.
+  ///
+  /// Mirrors the server's check so the traveller learns before pressing
+  /// Generate rather than after a round trip. The server still enforces it —
+  /// this copy is for speed, not for authority.
+  double? get _budgetShortfall {
+    final destination = _destinationController.text.trim();
+    if (destination.isEmpty) return null;
+    final minimum = TripCostFloor.minimumBudget(
+      destination: destination,
+      days: _days,
+      travelers: _travelers,
+      currency: _currency,
+      departureCountry: _departureCountry,
+      includeFlights: _includeFlights,
+    );
+    if (minimum == null) return null;
+    return (_budget * _travelers) < minimum ? minimum : null;
+  }
+
+  String? get _budgetShortfallMessage {
+    final minimum = _budgetShortfall;
+    if (minimum == null) return null;
+    final destination = _destinationController.text.trim();
+    final crossesBorder = _departureCountry.trim().isNotEmpty &&
+        TripCostFloor.countryFor(_departureCountry) !=
+            TripCostFloor.countryFor(destination);
+    return TripCostFloor.shortfallMessage(
+      destination: destination,
+      minimum: minimum,
+      currency: _currency,
+      days: _days,
+      travelers: _travelers,
+      includesFlight: _includeFlights || crossesBorder,
+    );
+  }
+
   Widget _buildBottomAction() {
     final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
+    // Only blocks on the final step: the budget is not meaningful until the
+    // destination and dates behind it have been chosen.
+    final blocked = _currentStep == 2 && _budgetShortfall != null;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: BoxDecoration(
@@ -892,12 +985,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         height: 60,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.black,
+            color: blocked ? Colors.black26 : Colors.black,
             borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8))],
+            boxShadow: blocked
+                ? null
+                : [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8))],
           ),
           child: ElevatedButton(
-            onPressed: _isSubmitting ? null : _onPrimaryAction,
+            onPressed: (_isSubmitting || blocked) ? null : _onPrimaryAction,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,

@@ -129,3 +129,64 @@ def test_quality_score_uses_the_same_constants():
     v, r = 1795, 4.4
     dart_value = (v * r + weight * mean) / (v + weight)
     assert dart_value == pytest.approx(pb.quality_score(r, v))
+
+
+# ── Trip cost floor ─────────────────────────────────────────────────────────
+# The floor is enforced on the server and mirrored on the client so the
+# traveller learns before pressing Generate. A divergence means the app shows a
+# minimum the backend disagrees with, or lets through a request the backend then
+# rejects with a different number.
+
+FLOOR_DART = (APP / "constants" / "trip_cost_floor.dart") if APP else Path("missing")
+
+
+def _dart_map(source: str, name: str) -> dict[str, str]:
+    match = re.search(rf"{name}\s*=\s*\{{(.*?)\n  \}};", source, re.S)
+    assert match, f"could not find `{name}` in the Dart source"
+    return dict(re.findall(r"'([^']+)':\s*'?([^,'\n]+)'?,", match.group(1)))
+
+
+def test_daily_floors_match():
+    from app.services import trip_cost_floor as tcf
+    dart = _dart_map(FLOOR_DART.read_text(encoding="utf-8"), "dailyFloorUsd")
+    assert {k: float(v) for k, v in dart.items()} == tcf.DAILY_FLOOR_USD
+
+
+def test_flight_floor_and_default_tier_match():
+    from app.services import trip_cost_floor as tcf
+    source = FLOOR_DART.read_text(encoding="utf-8")
+    flight = float(
+        re.search(r"internationalFlightFloorUsd\s*=\s*\n?\s*([\d.]+)", source).group(1)
+    )
+    tier = re.search(r"defaultTier\s*=\s*'([^']+)'", source).group(1)
+    assert flight == tcf.INTERNATIONAL_FLIGHT_FLOOR_USD
+    assert tier == tcf.DEFAULT_TIER
+
+
+def test_country_tiers_match():
+    from app.services import trip_cost_floor as tcf
+    dart = _dart_map(FLOOR_DART.read_text(encoding="utf-8"), "countryTier")
+    assert dart == tcf.COUNTRY_TIER
+
+
+def test_place_table_matches():
+    """A place the app resolves but the server does not (or vice versa) means
+    one side blocks and the other allows."""
+    from app.services import trip_cost_floor as tcf
+    dart = _dart_map(FLOOR_DART.read_text(encoding="utf-8"), "placeCountry")
+    assert dart == tcf.PLACE_COUNTRY
+
+
+def test_exchange_rates_match():
+    from app.services import trip_cost_floor as tcf
+    dart = _dart_map(FLOOR_DART.read_text(encoding="utf-8"), "fxPerUsd")
+    assert {k: float(v) for k, v in dart.items()} == tcf.FX_PER_USD
+
+
+def test_loose_match_threshold_matches():
+    """The length below which a name only matches the whole input. If the two
+    differ, 'somewhere nice' is a French trip on one side and not the other."""
+    from app.services import trip_cost_floor as tcf
+    source = FLOOR_DART.read_text(encoding="utf-8")
+    dart = int(re.search(r"_minLooseMatch\s*=\s*(\d+)", source).group(1))
+    assert dart == tcf._MIN_LOOSE_MATCH
