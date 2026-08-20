@@ -37,7 +37,7 @@ class PlaceBands {
   /// which places exist.
   static const int fetchPerBand = 15;
 
-  static const int bandsPerCategory = bandQuotas.length;
+  static int get bandsPerCategory => bandQuotas.length;
   static const int totalPerCategory = 10;
 
   /// How many places band [index] contributes to its section.
