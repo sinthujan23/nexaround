@@ -5949,7 +5949,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         lightTint = const Color(0xFFE0F2F1);
         break;
       case 'Nature':
-        displayTitle = 'Nature & Outdoors';
+        displayTitle = 'Nature';
         themeColor = const Color(0xFF2E7D32);
         lightTint = const Color(0xFFE8F5E9);
         break;
@@ -5960,7 +5960,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       case 'Medical':
         // Lighter than Hospital: the two sit side by side, and the darker red
         // should read as the more urgent of the pair.
-        displayTitle = 'Pharmacy & Clinics';
+        displayTitle = 'Medical';
         themeColor = const Color(0xFFEF5350);
         lightTint = const Color(0xFFFFEBEE);
         break;
