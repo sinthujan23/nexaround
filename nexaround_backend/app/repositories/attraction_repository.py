@@ -1,6 +1,7 @@
 import uuid
 from typing import List, Optional, Tuple
-from sqlalchemy import select, func, desc, or_
+from sqlalchemy import select, func, desc, or_, cast, String
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, aliased
 from geoalchemy2 import Geometry, Geography
@@ -120,7 +121,9 @@ class AttractionRepository:
         sort_by_away: bool = False,
         is_active: Optional[bool] = None,
         min_radius_m: Optional[float] = None,
-        category_ids: Optional[List[uuid.UUID]] = None
+        category_ids: Optional[List[uuid.UUID]] = None,
+        any_tags: Optional[List[str]] = None,
+        any_name_ilike: Optional[List[str]] = None
     ) -> List[Tuple[Attraction, float]]:
         """Get attractions within a certain radius, with distance calculation."""
         center_point = create_point(latitude, longitude)
@@ -155,6 +158,28 @@ class AttractionRepository:
         # under or most of the existing rows stay invisible to it.
         if category_ids:
             query = query.where(Attraction.category_id.in_(category_ids))
+
+        # Relevance pre-filter, applied before the row limit.
+        #
+        # Several sections read from one shared pool — Nature's rows sit among
+        # POI's, Medical's among Hospital's. Judging relevance only in Python
+        # meant `limit` was spent on rows that were then thrown away: in a
+        # temple-dense area the forty nearest rows were all temples, so Nature
+        # came back with one place while a hundred more sat unexamined further
+        # down. Filtering here makes the limit count rows that could plausibly
+        # belong. Python still has the final say — this net is deliberately
+        # looser than `is_relevant`, never tighter.
+        if any_tags or any_name_ilike:
+            clauses = []
+            if any_tags:
+                # `tags` is declared with SQLAlchemy's generic ARRAY, which has
+                # no .overlap(); cast to the Postgres type to reach `&&`.
+                clauses.append(
+                    Attraction.tags.op("&&")(cast(any_tags, PG_ARRAY(String)))
+                )
+            for pattern in (any_name_ilike or []):
+                clauses.append(Attraction.name.ilike(pattern))
+            query = query.where(or_(*clauses))
 
 
         if min_radius_m is not None:

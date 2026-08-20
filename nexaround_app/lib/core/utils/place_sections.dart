@@ -15,13 +15,21 @@ import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.d
 class PlaceSections {
   const PlaceSections._();
 
+  /// Must stay equal to `place_bands.allowed_tags_for('Nature')` on the server.
+  /// `park`, `garden`, `picnic_ground` and `marina` are deliberately absent:
+  /// Google files playgrounds, jogging tracks and cycling parks under the same
+  /// generic `park` as a national park. Real reserves still qualify through
+  /// national_park/state_park, and lakes and beaches through their own types.
   static const _natureTags = [
-    'park', 'national_park', 'state_park', 'beach', 'hiking_area',
-    'botanical_garden', 'garden', 'wildlife_park', 'wildlife_refuge',
-    'lake', 'river', 'marina', 'picnic_ground', 'natural_feature', 'campground',
+    'national_park', 'state_park', 'beach', 'hiking_area',
+    'botanical_garden', 'wildlife_park', 'wildlife_refuge',
+    'lake', 'river', 'natural_feature', 'campground',
   ];
+  /// Words that mark a place as natural when Google typed it vaguely — Google
+  /// has no `waterfall` type at all, so names are the only signal for those.
+  /// 'park' and 'garden' are excluded: they match playgrounds and city parks.
   static const _natureWords = [
-    'beach', 'park', 'lake', 'waterfall', 'falls', 'garden', 'forest',
+    'beach', 'lake', 'waterfall', 'falls', 'forest',
     'sanctuary', 'lagoon', 'trail', 'island',
   ];
   static const _heritageTags = [
@@ -78,10 +86,13 @@ class PlaceSections {
     final cat = (a.categoryName ?? '').toLowerCase();
     final name = a.name.toLowerCase();
     final tags = tagsOf(a);
+    // `park` is gone from the category test too. Narrowing only the tag list
+    // would have let every generic park back in through the category name,
+    // which is how "Ezhilarangu Stadium" reached the Nature tab.
     return _natureTags.any(tags.contains) ||
         _natureWords.any(name.contains) ||
-        cat.contains('nature') || cat.contains('beach') || cat.contains('park') ||
-        cat.contains('garden') || cat.contains('lake') || cat.contains('river') ||
+        cat.contains('nature') || cat.contains('beach') ||
+        cat.contains('lake') || cat.contains('river') ||
         cat.contains('waterfall') || cat.contains('forest');
   }
 

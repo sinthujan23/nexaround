@@ -26,3 +26,7 @@ beautifulsoup4
 pandas>=2.2.0
 openpyxl>=3.1.0
 
+
+# Testing. The suite in tests/ is pure-function only — no database, no network —
+# so it runs anywhere the app imports.
+pytest>=8.0.0

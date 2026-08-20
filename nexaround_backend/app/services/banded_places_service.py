@@ -323,6 +323,9 @@ async def get_nearby_banded(
     async with async_session() as session:
         repo = AttractionRepository(session)
         category_ids = await _category_ids_for(session, category)
+        # Narrow to plausible rows in SQL so the per-band limit is spent on
+        # candidates rather than on a category sibling's places.
+        pre_tags, pre_names = place_bands.sql_prefilter(category)
 
         band_rows = await asyncio.gather(*(
             repo.get_nearby(
@@ -331,6 +334,8 @@ async def get_nearby_banded(
                 radius_m=float(band_max),
                 min_radius_m=float(band_min) if band_min > 0 else None,
                 category_ids=category_ids or None,
+                any_tags=pre_tags or None,
+                any_name_ilike=pre_names or None,
                 limit=_DB_LIMIT_PER_BAND,
                 is_active=True,
             )

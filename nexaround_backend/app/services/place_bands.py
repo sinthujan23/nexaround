@@ -375,6 +375,43 @@ def is_relevant(category: Optional[str], tags, name: Optional[str] = None) -> bo
     return bool((tag_set - _GENERIC_TAGS) & allowed)
 
 
+def sql_prefilter(category: Optional[str]) -> tuple[list[str], list[str]]:
+    """Cheap database-side pre-filter for a category: (tags, name patterns).
+
+    Exists because the band queries pull from a pool shared across categories —
+    Nature's rows sit among POI's, Medical's among Hospital's — and the row limit
+    used to be applied *before* relevance was judged. In a temple-dense area the
+    forty nearest rows were all temples, so Nature survived the filter with one
+    place while 133 real ones sat further down the list, never looked at.
+
+    Filtering here makes the limit count only plausible rows. This is a
+    deliberately loose net: it must never drop something `is_relevant` would have
+    kept, because nothing downstream can put a row back. Hence the extra tags,
+    and the name patterns for the two health sections, which admit places on
+    their name alone when Google typed them vaguely.
+
+    Returns empty lists for unknown categories, meaning "do not filter".
+    """
+    if not category:
+        return [], []
+
+    tags = set(allowed_tags_for(category))
+    if not tags:
+        return [], []
+
+    names: list[str] = []
+    if category == "Medical":
+        # is_relevant admits a clinic on its name even when the only type Google
+        # gave it is `hospital`, so both have to survive the pre-filter.
+        tags |= {"hospital", "health", "medical_center"}
+        names = [f"%{w}%" for w in _CLINIC_NAME_WORDS]
+    elif category == "Hospital":
+        tags |= {"medical_clinic", "health", "medical_center"}
+        names = [f"%{w}%" for w in _HOSPITAL_NAME_WORDS]
+
+    return sorted(tags), names
+
+
 def quality_score(rating: Optional[float], review_count: Optional[int]) -> float:
     """Rating shrunk toward the mean by how little it is backed up.
 
