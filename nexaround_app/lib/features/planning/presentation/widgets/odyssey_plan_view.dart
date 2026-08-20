@@ -891,73 +891,67 @@ class OdysseyPlanView extends StatelessWidget {
     final bool editable = onSwapActivity != null && !isCompleted;
     final bool checkable = onToggleVisited != null;
     final bool isSwapping = swappingKey == '$dayIndex:$activityIndex';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Checkbox column (fixed width for alignment)
-          if (checkable)
-            GestureDetector(
-              onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 1, right: 8),
-                child: Icon(
-                  act.visited
-                      ? Icons.check_circle_rounded
-                      : Icons.radio_button_unchecked_rounded,
-                  size: 22,
-                  color: act.visited ? AppColors.neonGreen : Colors.black26,
+    return Builder(
+      builder: (context) => Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Checkbox column (fixed width for alignment)
+            if (checkable)
+              GestureDetector(
+                onTap: isCompleted ? null : () => onToggleVisited!(dayIndex, activityIndex),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 1, right: 8),
+                  child: Icon(
+                    act.visited
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    size: 22,
+                    color: act.visited ? AppColors.neonGreen : Colors.black26,
+                  ),
+                ),
+              ),
+            // Time column (fixed width for consistent alignment)
+            SizedBox(
+              width: 56,
+              child: Text(
+                act.time,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: act.visited ? Colors.black26 : AppColors.actionTeal,
                 ),
               ),
             ),
-          // Time column (fixed width for consistent alignment)
-          SizedBox(
-            width: 56,
-            child: Text(
-              act.time,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: act.visited ? Colors.black26 : AppColors.actionTeal,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          // Main content column
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Name + cost row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        act.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: act.visited ? Colors.black38 : Colors.black,
-                          decoration: act.visited ? TextDecoration.lineThrough : null,
+            const SizedBox(width: 8),
+            // Main content column
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Name + cost row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          act.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: act.visited ? Colors.black38 : Colors.black,
+                            decoration: act.visited ? TextDecoration.lineThrough : null,
+                          ),
                         ),
                       ),
-                    ),
-                    if (act.cost.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Text(
-                        act.cost,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.black,
-                        ),
-                      ),
+                      if (act.cost.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        _buildPriceWithSource(context, act),
+                      ],
                     ],
-                  ],
-                ),
+                  ),
                 // Action button always on its own line for consistent alignment
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
@@ -1016,7 +1010,8 @@ class OdysseyPlanView extends StatelessWidget {
           ],
         ],
       ),
-    );
+    ),
+  );
   }
 
   /// Builds the type-specific action button for an activity.
@@ -1185,6 +1180,340 @@ class OdysseyPlanView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Builds the price pill with contextual source attribution tag and tap-to-inspect info.
+  Widget _buildPriceWithSource(BuildContext context, OdysseyActivity act) {
+    final cleanCost = act.cost.trim().toLowerCase();
+    final bool isFree = cleanCost == 'free' ||
+        cleanCost == '0' ||
+        cleanCost == '\$0' ||
+        cleanCost.endsWith(' 0') ||
+        cleanCost.endsWith(' 0.00');
+
+    String sourceTag;
+    String sourceDetail;
+
+    if (act.priceSource.isNotEmpty) {
+      sourceTag = act.priceSource;
+      sourceDetail = act.priceBasis.isNotEmpty
+          ? act.priceBasis
+          : 'Estimated price baseline derived from travel intelligence and regional pricing data.';
+    } else if (isFree) {
+      sourceTag = 'Public';
+      sourceDetail =
+          'Public access landmark, scenic viewpoint, or self-guided exploration spot with zero entrance fee.';
+    } else {
+      switch (act.type) {
+        case ActivityType.attraction:
+          sourceTag = 'Est. Ticket';
+          sourceDetail =
+              'Estimated admission price derived from standard venue ticketing rates and travel partner booking baselines.';
+          break;
+        case ActivityType.transport:
+          sourceTag = 'Est. Fare';
+          sourceDetail =
+              'Estimated ride-hail / transit fare benchmarked from standard local distance averages.';
+          break;
+        case ActivityType.dining:
+          sourceTag = 'Avg. Meal';
+          sourceDetail =
+              'Average meal cost estimate based on local restaurant menu price tiers in this destination.';
+          break;
+        case ActivityType.accommodation:
+          sourceTag = 'Est. Stay';
+          sourceDetail =
+              'Estimated accommodation allocation calculated from destination lodging averages.';
+          break;
+        case ActivityType.exploration:
+        case ActivityType.other:
+          sourceTag = 'Est. Rate';
+          sourceDetail =
+              'Estimated rate benchmarked from regional travel and destination pricing data.';
+          break;
+      }
+    }
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showPriceSourceInfo(context, act, sourceTag, sourceDetail),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: isFree ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isFree ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+            width: 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              act.cost,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: isFree ? const Color(0xFF166534) : Colors.black87,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Container(
+              width: 1,
+              height: 9,
+              color: isFree ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              sourceTag,
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: isFree ? const Color(0xFF15803D) : const Color(0xFF64748B),
+              ),
+            ),
+            const SizedBox(width: 3),
+            Icon(
+              Icons.info_outline_rounded,
+              size: 10.5,
+              color: isFree ? const Color(0xFF15803D) : const Color(0xFF94A3B8),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Bottom sheet detailing the source basis for an activity's estimated price.
+  void _showPriceSourceInfo(
+    BuildContext context,
+    OdysseyActivity act,
+    String sourceTag,
+    String sourceDetail,
+  ) {
+    final cleanCost = act.cost.trim().toLowerCase();
+    final isFree = cleanCost == 'free' ||
+        cleanCost == '0' ||
+        cleanCost == '\$0' ||
+        cleanCost.endsWith(' 0') ||
+        cleanCost.endsWith(' 0.00');
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: isFree
+                        ? const Color(0xFFE8F5E9)
+                        : const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    isFree ? Icons.park_outlined : Icons.price_change_outlined,
+                    size: 20,
+                    color: isFree
+                        ? const Color(0xFF2E7D32)
+                        : const Color(0xFF2563EB),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Price & Rate Details',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      Text(
+                        act.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Estimated Rate',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.black54,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isFree
+                              ? const Color(0xFFE8F5E9)
+                              : const Color(0xFFE0F2FE),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          act.cost,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: isFree
+                                ? const Color(0xFF2E7D32)
+                                : const Color(0xFF0369A1),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                  const SizedBox(height: 10),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.analytics_outlined,
+                        size: 16,
+                        color: Color(0xFF64748B),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Source Basis ($sourceTag)',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              sourceDetail,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                height: 1.4,
+                                color: Colors.black54,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFFBEB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFFDE68A)),
+              ),
+              child: const Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: Color(0xFFD97706),
+                  ),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Live prices in the real world can vary due to seasonal demand, local exchange rates, peak hours, and vendor policy updates. Always check official booking channels or onsite counters for exact rates.',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        height: 1.35,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 42,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: const Text(
+                  'Got it',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

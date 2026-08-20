@@ -59,6 +59,8 @@ class OdysseyActivity {
   final String name; // place / activity name
   final String tip; // short practical note
   final String cost; // optional human-readable cost, e.g. "LKR 1,500"
+  final String priceSource; // e.g. "Official Gate Ticket", "Uber / Metered Taxi", "Public Access"
+  final String priceBasis; // explanation/details of the rate baseline
   final bool visited; // ticked off as the traveler completes the trip
   final ActivityType type; // classified activity type
   final String actualCost; // user-entered actual cost after completing
@@ -70,6 +72,8 @@ class OdysseyActivity {
     required this.name,
     this.tip = '',
     this.cost = '',
+    this.priceSource = '',
+    this.priceBasis = '',
     this.visited = false,
     this.type = ActivityType.other,
     this.actualCost = '',
@@ -81,12 +85,16 @@ class OdysseyActivity {
     bool? visited,
     String? actualCost,
     ActivityType? type,
+    String? priceSource,
+    String? priceBasis,
   }) =>
       OdysseyActivity(
         time: time,
         name: name,
         tip: tip,
         cost: cost,
+        priceSource: priceSource ?? this.priceSource,
+        priceBasis: priceBasis ?? this.priceBasis,
         visited: visited ?? this.visited,
         type: type ?? this.type,
         actualCost: actualCost ?? this.actualCost,
@@ -107,6 +115,8 @@ class OdysseyActivity {
       name: name,
       tip: (json['tip'] ?? json['note'] ?? '').toString(),
       cost: cost,
+      priceSource: (json['price_source'] ?? json['source'] ?? '').toString(),
+      priceBasis: (json['price_basis'] ?? json['basis'] ?? '').toString(),
       visited: json['visited'] == true,
       type: type,
       actualCost: (json['actual_cost'] ?? '').toString(),
@@ -123,6 +133,8 @@ class OdysseyActivity {
         'name': name,
         'tip': tip,
         'cost': cost,
+        'price_source': priceSource,
+        'price_basis': priceBasis,
         'visited': visited,
         'type': type.name,
         'actual_cost': actualCost,

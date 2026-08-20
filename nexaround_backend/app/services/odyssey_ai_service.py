@@ -908,7 +908,7 @@ Return ONLY a JSON object with EXACTLY this shape:
       "day": 1,
       "theme": "Short day theme",
       "activities": [
-        {{ "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "{currency} amount or 'Free'", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
+        {{ "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "{currency} amount or 'Free'", "price_source": "Official Ticket / Metered Taxi / Menu Avg / Public Access", "price_basis": "1-sentence note on rate baseline or conditions", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
       ]
     }}
   ]

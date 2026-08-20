@@ -110,7 +110,14 @@ Return ONLY a JSON object with EXACTLY this shape:
       "day": 1,
       "theme": "Short day theme",
       "activities": [
-        { "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "$currency amount or 'Free'" }
+        {
+          "time": "09:00",
+          "name": "Place or activity name",
+          "tip": "Short practical tip",
+          "cost": "$currency amount or 'Free'",
+          "price_source": "Official Ticket / Metered Fare / Menu Avg / Public Access",
+          "price_basis": "1-sentence note explaining the rate baseline or conditions"
+        }
       ]
     }
   ]
@@ -119,6 +126,7 @@ Return ONLY a JSON object with EXACTLY this shape:
 Rules:
 - Produce exactly $days entries in "day_plans", each with 3-5 activities.
 - Keep the SUM of all activity costs within the ${budget.toStringAsFixed(0)} $currency budget.
+- For each activity, specify a concise "price_source" (e.g. 'Official Ticket', 'Metered Taxi', 'Avg Meal', 'Public Free') and a 1-sentence "price_basis" explaining the rate.
 - Use real, recognisable places near "$destination".
 - Be concise; tips under ~12 words.
 ''';
