@@ -187,3 +187,78 @@ def test_subgroup_types_stay_within_the_category(category):
     allowed = pb.allowed_tags_for(category)
     for name, types in pb.CATEGORY_SUBGROUPS[category]:
         assert set(types) <= allowed, f"{category}/{name} strays outside the category"
+
+
+# ── Ordering and duplicates in the assembled response ───────────────────────
+# Both of these were live bugs: bands sorted by distance meant a caller taking
+# the front of a band got the nearest rather than the best, and unnamed tanks
+# that Google labels with the district name filled a card with "Trincomalee"
+# four times over.
+
+def _fake(name, dist_m, rating=4.0, reviews=0, place_id=None):
+    """Minimal place dict that still satisfies the PlaceResponse schema."""
+    return {
+        "id": place_id or f"{name}-{dist_m}",
+        "name": name,
+        "latitude": 8.5,
+        "longitude": 81.18,
+        "distance_m": float(dist_m),
+        "rating": rating,
+        "review_count": reviews,
+        "tags": ["beach"],
+        "created_at": "2026-01-01T00:00:00+00:00",
+    }
+
+
+def _assemble(pool, per_band=None):
+    from app.services import banded_places_service as svc
+    return svc._assemble(
+        0.0, 0.0, "Nature", pb.bands_for("Nature"), pool, 1,
+        cached_flag=False, source="test", per_band=per_band,
+    )
+
+
+def test_bands_are_ordered_best_first_not_nearest_first():
+    """Around You takes BAND_QUOTAS off the front of each band. If bands came
+    back nearest-first it would get unreviewed ponds instead of Marble Beach."""
+    pool = [
+        _fake("Pond A", 600, 4.0, 0),
+        _fake("Pond B", 700, 4.0, 0),
+        _fake("Pond C", 800, 4.0, 0),
+        _fake("Pond D", 900, 4.0, 0),
+        _fake("Marble Beach", 3500, 4.4, 1763),
+    ]
+    band0 = _assemble(pool, per_band=15).bands[0].places
+    assert band0[0].name == "Marble Beach", (
+        "band must lead with its best place, not its nearest"
+    )
+
+
+def test_flat_list_is_ordered_nearest_first_for_display():
+    pool = [
+        _fake("Far but great", 9000, 4.8, 5000),
+        _fake("Near and plain", 500, 4.0, 3),
+    ]
+    places = _assemble(pool, per_band=15).places
+    distances = [p.distance_m for p in places]
+    assert distances == sorted(distances)
+
+
+def test_repeated_names_are_collapsed_to_one():
+    """Google labels many unnamed tanks with only the district name."""
+    pool = [_fake("Trincomalee", 600 + i * 100, place_id=f"t{i}") for i in range(5)]
+    pool.append(_fake("Kinniya Beach", 2040, 4.3, 158))
+    names = [p.name for p in _assemble(pool).places]
+    assert names.count("Trincomalee") == 1
+    assert "Kinniya Beach" in names
+
+
+def test_case_differences_still_count_as_the_same_name():
+    """'WAWE' and 'Wawe' were showing as two entries."""
+    pool = [
+        _fake("WAWE", 33660, place_id="w1"),
+        _fake("Wawe", 35660, place_id="w2"),
+        _fake("Beybiya Wewa", 36950, place_id="w3"),
+    ]
+    names = [p.name.lower() for p in _assemble(pool).places]
+    assert names.count("wawe") == 1

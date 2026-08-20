@@ -5850,11 +5850,39 @@ class _LivingMapPageState extends State<LivingMapPage>
         // both surfaces. Around You is the quick-access strip, so it takes only
         // its quota off the top of each band — the rest stays in state for the
         // Discovery tabs to list.
+        //
+        // Each band arrives in selection order, best first, so taking from the
+        // front takes the band's best. It is then sorted for reading: without
+        // that the card would list its ten in quality order rather than as a
+        // walk outward.
         final trimmed = <AttractionEntity>[];
+        final takenIds = <String>{};
         for (var i = 0; i < fromBackend.length; i++) {
-          trimmed.addAll(fromBackend[i].take(PlaceBands.quotaForBand(i)));
+          for (final p in fromBackend[i].take(PlaceBands.quotaForBand(i))) {
+            if (takenIds.add(p.id)) trimmed.add(p);
+          }
         }
+
+        // A band can hold fewer places than its quota — central Colombo has
+        // only three pharmacies inside 10 km — and the shortfall would
+        // otherwise just shrink the card. Make it up from the bands that do
+        // have spare, nearest first, so the count holds at ten.
+        if (trimmed.length < PlaceBands.totalPerCategory) {
+          final spare = fromBackend
+              .expand((band) => band)
+              .where((p) => !takenIds.contains(p.id))
+              .toList()
+            ..sort((a, b) =>
+                _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+          for (final p in spare) {
+            if (trimmed.length >= PlaceBands.totalPerCategory) break;
+            if (takenIds.add(p.id)) trimmed.add(p);
+          }
+        }
+
         if (trimmed.isNotEmpty) {
+          trimmed.sort((a, b) =>
+              _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
           grouped[category] = trimmed;
           continue;
         }

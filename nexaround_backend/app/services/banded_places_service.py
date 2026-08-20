@@ -490,21 +490,41 @@ def _assemble(
     remaining = sorted(pool, key=_rank_for_selection)
     chosen: list[list[dict]] = []
     taken_ids: set[str] = set()
+    # Google labels a great many unnamed tanks and inlets with nothing but the
+    # district name, so a section could show "Trincomalee" four times and
+    # "WAWE" three — all real, distinct rows at different coordinates, so the
+    # id/coordinate dedupe never touched them. One entry per name is worth far
+    # more to a reader than a complete list of things called the same thing.
+    taken_names: set[str] = set()
+
+    def _claim(place: dict) -> bool:
+        """Take a place, unless its id or name is already spoken for."""
+        pid = str(place.get("id") or "")
+        name = (place.get("name") or "").strip().lower()
+        if pid in taken_ids or (name and name in taken_names):
+            return False
+        taken_ids.add(pid)
+        if name:
+            taken_names.add(name)
+        return True
 
     for i, (band_min, band_max) in enumerate(bands):
         quota = per_band if per_band is not None else place_bands.quota_for_band(i)
         picks = []
         for p in remaining:
-            pid = str(p.get("id") or "")
-            if pid in taken_ids:
-                continue
             dist = p.get("distance_m") or 0.0
-            if band_min <= dist <= band_max:
-                picks.append(p)
-                taken_ids.add(pid)
-                if len(picks) >= quota:
-                    break
-        picks.sort(key=lambda p: p.get("distance_m") or 0.0)
+            if not (band_min <= dist <= band_max):
+                continue
+            if not _claim(p):
+                continue
+            picks.append(p)
+            if len(picks) >= quota:
+                break
+        # `remaining` is in selection order (review-weighted quality), and the
+        # quota above is taken from the front of it — so `picks` already holds
+        # the band's best. Sorting for display happens once, at the end, after
+        # every band has chosen; sorting here would leave callers that take the
+        # first N of a band with the nearest N rather than the best N.
         chosen.append(picks)
 
     target_total = (
@@ -517,8 +537,13 @@ def _assemble(
             (p for p in pool if str(p.get("id") or "") not in taken_ids),
             key=lambda p: p.get("distance_m") or 0.0,
         )
-        for p in leftovers[:shortfall]:
-            taken_ids.add(str(p.get("id") or ""))
+        filled = 0
+        for p in leftovers:
+            if filled >= shortfall:
+                break
+            if not _claim(p):
+                continue
+            filled += 1
             dist = p.get("distance_m") or 0.0
             # File each backfilled place under the band it actually falls in, so
             # the client's band headings stay truthful; anything beyond the last
@@ -529,9 +554,15 @@ def _assemble(
                     target = i
                     break
             chosen[target].append(p)
-        for picks in chosen:
-            picks.sort(key=lambda p: p.get("distance_m") or 0.0)
 
+    # Each band stays in *selection* order — best first. That is the order a
+    # caller taking only part of a band needs: Around You takes BAND_QUOTAS off
+    # the front and must get the band's best, not its nearest. Sorting bands by
+    # distance here is what made the app show three unreviewed ponds ahead of
+    # Marble Beach and its 1,763 reviews.
+    #
+    # `places` below carries the display order instead, nearest first, for
+    # callers that render the whole thing.
     band_models = [
         PlaceBand(
             index=i,
@@ -545,7 +576,10 @@ def _assemble(
         for i, ((band_min, band_max), picks) in enumerate(zip(bands, chosen))
     ]
 
-    flat = [p for band in band_models for p in band.places]
+    flat = sorted(
+        (p for band in band_models for p in band.places),
+        key=lambda p: p.distance_m if p.distance_m is not None else 0.0,
+    )
 
     return BandedPlacesResponse(
         category=category or "all",

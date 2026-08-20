@@ -41,7 +41,14 @@ class PlacesNearbyResponse(BaseModel):
 
 
 class PlaceBand(BaseModel):
-    """One distance band of an Around You / Discovery section."""
+    """One distance band of an Around You / Discovery section.
+
+    `places` is in *selection* order — best first, by review-weighted rating.
+    A caller showing only part of a band (Around You takes BAND_QUOTAS off the
+    front) therefore gets the band's best. Sort by `distance_m` yourself when
+    rendering, or read `BandedPlacesResponse.places`, which is already in
+    display order.
+    """
     index: int
     min_m: float
     max_m: float
@@ -54,8 +61,9 @@ class BandedPlacesResponse(BaseModel):
     bands: list[PlaceBand]
     places: list[PlaceResponse] = Field(
         ...,
-        description="All bands flattened, nearest first — for clients that "
-                    "render one list and don't care about band boundaries.",
+        description="All bands flattened in display order, nearest first — for "
+                    "clients that render one list and don't care about band "
+                    "boundaries. Individual bands are in selection order.",
     )
     cached: bool = False
     source: str = Field("database", description="cache | database | google")
