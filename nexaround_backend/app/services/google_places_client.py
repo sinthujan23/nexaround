@@ -693,8 +693,8 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
 
 
 async def fetch_place_details(place_id: str) -> Optional[dict]:
-    """Fetch rich place details (reviews, regularOpeningHours, photos, phone, website, price)
-    from Google Places API (New) using strict field masking to minimize API billing.
+    """Fetch rich place details (reviews, opening_hours, photos, phone, website, price)
+    from Google Places API (Legacy) using strict field filtering to minimize API billing.
     """
     async with async_session() as db:
         settings_service = SettingsService(db)
@@ -706,57 +706,66 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
 
     # Handle place ID (strip 'places/' if duplicated, then format for API)
     raw_id = place_id.replace("places/", "")
-    url = f"https://places.googleapis.com/v1/places/{raw_id}"
+    url = "https://maps.googleapis.com/maps/api/place/details/json"
     
-    field_mask = (
-        "id,displayName,formattedAddress,location,rating,userRatingCount,"
-        "reviews,regularOpeningHours,photos,internationalPhoneNumber,"
-        "websiteUri,editorialSummary,priceLevel"
+    fields = (
+        "place_id,name,formatted_address,geometry,rating,user_ratings_total,"
+        "reviews,opening_hours,photos,international_phone_number,formatted_phone_number,"
+        "website,price_level,editorial_summary"
     )
-    headers = {
-        "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": field_mask,
+    params = {
+        "place_id": raw_id,
+        "fields": fields,
+        "key": google_maps_key,
     }
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            # This field mask includes reviews and opening hours, which is the
-            # Enterprise tier rather than Essentials — the priciest way to read
-            # a place. Worth watching in the SKU breakdown.
             async with telemetry.track(
-                "google_maps", "place_details",
+                "google_maps", "place_details_legacy",
                 sku="place_details",
-                cache_key=f"pd:{raw_id}",
+                cache_key=f"pdl:{raw_id}",
             ) as t:
-                resp = await client.get(url, headers=headers)
+                resp = await client.get(url, params=params)
                 t.upstream(resp)
             resp.raise_for_status()
             data = resp.json()
 
-        # Parse Places API (New) response into normalized dict
-        display_name = data.get("displayName", {}).get("text") or "Unknown"
-        formatted_address = data.get("formattedAddress") or ""
-        loc_data = data.get("location") or {}
-        latitude = float(loc_data.get("latitude") or 0.0)
-        longitude = float(loc_data.get("longitude") or 0.0)
-        rating = float(data.get("rating") or 4.0)
-        user_ratings_total = int(data.get("userRatingCount") or 0)
+        status = data.get("status")
+        if status != "OK" and status != "ZERO_RESULTS":
+            print(f"⚠️ Google Place Details Legacy status {status}: {data.get('error_message')}")
+            if status != "ZERO_RESULTS":
+                return None
+
+        result = data.get("result") or {}
+        if not result:
+            return None
+
+        # Parse Places API (Legacy) response into normalized dict
+        display_name = result.get("name") or "Unknown"
+        formatted_address = result.get("formatted_address") or ""
+        geom = result.get("geometry") or {}
+        loc_data = geom.get("location") or {}
+        latitude = float(loc_data.get("lat") or 0.0)
+        longitude = float(loc_data.get("lng") or 0.0)
+        rating = float(result.get("rating") or 4.0)
+        user_ratings_total = int(result.get("user_ratings_total") or 0)
         
         # Reviews (top 5)
-        raw_reviews = data.get("reviews") or []
+        raw_reviews = result.get("reviews") or []
         reviews = []
         for r in raw_reviews[:5]:
             reviews.append({
-                "author": r.get("authorAttribution", {}).get("displayName") or "Anonymous",
+                "author": r.get("author_name") or "Anonymous",
                 "rating": float(r.get("rating") or 5.0),
-                "text": r.get("text", {}).get("text") or "",
-                "time": r.get("relativePublishTimeDescription") or "",
+                "text": r.get("text") or "",
+                "time": r.get("relative_time_description") or "",
             })
 
         # Opening Hours
-        hours_data = data.get("regularOpeningHours") or {}
-        open_now = hours_data.get("openNow")
-        weekday_descriptions = hours_data.get("weekdayDescriptions") or []
+        hours_data = result.get("opening_hours") or {}
+        open_now = hours_data.get("open_now")
+        weekday_descriptions = hours_data.get("weekday_text") or []
         closing_time = None
         if open_now and weekday_descriptions:
             import datetime
@@ -769,29 +778,30 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
                     closing_time = match.group(1).strip()
 
         # Price Level
-        price_level_str = data.get("priceLevel")
+        price_level_val = result.get("price_level")
         price_map = {
-            "PRICE_LEVEL_FREE": "Free",
-            "PRICE_LEVEL_INEXPENSIVE": "Inexpensive",
-            "PRICE_LEVEL_MODERATE": "Moderate",
-            "PRICE_LEVEL_EXPENSIVE": "Expensive",
-            "PRICE_LEVEL_VERY_EXPENSIVE": "Very Expensive",
+            0: "Free",
+            1: "Inexpensive",
+            2: "Moderate",
+            3: "Expensive",
+            4: "Very Expensive",
         }
-        price_text = price_map.get(price_level_str, "Moderate")
+        price_text = price_map.get(price_level_val, "Moderate")
 
         # Photos (cap at 3)
-        photos = data.get("photos") or []
+        photos = result.get("photos") or []
         photo_urls = []
         for ph in photos[:3]:
-            ref = ph.get("name")
+            ref = ph.get("photo_reference")
             if ref:
                 photo_urls.append(f"/api/v1/places/photo?ref={ref}")
 
         # Editorial Summary
-        editorial_summary = data.get("editorialSummary", {}).get("text")
+        ed = result.get("editorial_summary")
+        editorial_summary = ed.get("overview") if isinstance(ed, dict) else None
 
         return {
-            "id": data.get("id") or place_id,
+            "id": result.get("place_id") or place_id,
             "name": display_name,
             "address": formatted_address,
             "latitude": latitude,
@@ -805,10 +815,10 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
             "weekday_hours": weekday_descriptions,
             "price_level": price_text,
             "photo_urls": photo_urls,
-            "phone_number": data.get("internationalPhoneNumber"),
-            "website_uri": data.get("websiteUri"),
+            "phone_number": result.get("international_phone_number") or result.get("formatted_phone_number"),
+            "website_uri": result.get("website"),
             "editorial_summary": editorial_summary,
         }
     except Exception as e:
-        print(f"⚠️ Error fetching place details from Google Places API (New) for {place_id}: {e}")
+        print(f"⚠️ Error fetching place details from Google Places API (Legacy) for {place_id}: {e}")
         return None

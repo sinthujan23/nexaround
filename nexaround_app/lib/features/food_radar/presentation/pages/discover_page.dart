@@ -32,6 +32,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -335,19 +336,19 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         });
       }
 
-      // Coordinates are snapped to ~0.1 degrees (~11 km) before going into the
-      // prompt. The answer is country- and city-level — emergency numbers do
-      // not change between one street and the next — and the backend caches
-      // Gemini responses by prompt hash, so full-precision GPS would make every
-      // launch a unique prompt and a cache miss. Same mistake `locationbias`
-      // made on the Places side.
-      final coarseLat = (lat * 10).roundToDouble() / 10;
-      final coarseLng = (lng * 10).roundToDouble() / 10;
+      // Use the exact reverse-geocoded location name (matching homepage top-left)
+      String locationName = CacheService.getLastFetchLocationName() ?? '';
+      String countryName = 'Sri Lanka';
+      if (locationName.isEmpty || locationName == 'Nearby' || locationName == 'Locating...') {
+        final detailed = await GooglePlacesService.reverseGeocodeDetailed(lat, lng);
+        locationName = detailed['location_name'] ?? 'Nearby';
+        countryName = detailed['country'] ?? 'Sri Lanka';
+      }
+
       final geminiPrompt =
-          'I am a traveller at GPS coordinates ($coarseLat, $coarseLng). '
-          'What country/city am I likely in? '
+          'I am a traveller currently in "$locationName, $countryName" (GPS coordinates: $lat, $lng). '
           'Give me ONLY a JSON object with these fields (no markdown): '
-          '{ "country": "...", "city": "...", "emergency_numbers": [{"label":"Police","number":"..."},{"label":"Ambulance","number":"..."},{"label":"Fire","number":"..."},{"label":"Tourist Helpline","number":"..."}], '
+          '{ "country": "$countryName", "city": "$locationName", "emergency_numbers": [{"label":"Police","number":"..."},{"label":"Ambulance","number":"..."},{"label":"Fire","number":"..."},{"label":"Tourist Helpline","number":"..."}], '
           '"phrases": [{"english":"Help!","local":"..."},{"english":"I need a doctor","local":"..."},{"english":"Where is the hospital?","local":"..."},{"english":"Call the police","local":"..."}] }';
 
       final rawGemini = await GeminiService().getResponse(geminiPrompt);
@@ -358,6 +359,8 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
           json = json.replaceAll(RegExp(r'```json?\n?'), '').replaceAll(RegExp(r'\n?```'), '');
         }
         info = jsonDecode(json) as Map<String, dynamic>;
+        info['city'] = locationName;
+        info['country'] = countryName;
       } catch (_) {}
 
       if (mounted) {
@@ -2816,9 +2819,12 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   Widget _buildEmergencyTab() {
     final numbers = (_emergencyInfo?['emergency_numbers'] as List?)?.cast<Map>() ?? [];
     final phrases = (_emergencyInfo?['phrases'] as List?)?.cast<Map>() ?? [];
-    final city = _emergencyInfo?['city'] as String?;
+    final cachedName = CacheService.getLastFetchLocationName();
+    final city = (_emergencyInfo?['city'] as String?) ?? cachedName;
     final country = _emergencyInfo?['country'] as String?;
-    final locationLabel = [city, country].where((s) => s != null && s.isNotEmpty).join(', ');
+    final locationLabel = (cachedName != null && cachedName.isNotEmpty && cachedName != 'Nearby' && cachedName != 'Locating...')
+        ? cachedName
+        : [city, country].where((s) => s != null && s.isNotEmpty).join(', ');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2826,11 +2832,10 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         // SOS button
         Center(
           child: GestureDetector(
-            onTap: () async {
+            onTap: () {
               final firstNumber = numbers.isNotEmpty ? numbers[0]['number'] as String? : null;
               if (firstNumber != null) {
-                final uri = Uri.parse('tel:${firstNumber.replaceAll(' ', '')}');
-                if (await canLaunchUrl(uri)) launchUrl(uri);
+                _makePhoneCall(firstNumber);
               }
             },
             child: Container(
@@ -3022,30 +3027,65 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
     ).animate().fade(delay: Duration(milliseconds: 100 * index));
   }
 
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final cleanNumber = phoneNumber.replaceAll(RegExp(r'[^0-9+]'), '');
+    if (cleanNumber.isEmpty) return;
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: cleanNumber,
+    );
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+      } else {
+        await launchUrl(launchUri, mode: LaunchMode.externalApplication);
+      }
+    } catch (e) {
+      debugPrint('Could not launch dialer for $phoneNumber: $e');
+    }
+  }
+
   Widget _buildEmergencyNumber(String label, String number, IconData icon) {
-    return GestureDetector(
-      onTap: () async {
-        final uri = Uri.parse('tel:${number.replaceAll(' ', '')}');
-        if (await canLaunchUrl(uri)) launchUrl(uri);
-      },
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 20, color: AppColors.error),
-              const SizedBox(width: 14),
-              Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary))),
-              Text(number, style: TextStyle(fontSize: 14, color: AppColors.primary, fontWeight: FontWeight.w700)),
-              const SizedBox(width: 8),
-              Icon(Icons.phone_rounded, size: 16, color: AppColors.primary),
-            ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _makePhoneCall(number),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: AppColors.error),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                Text(
+                  number,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.phone_rounded, size: 16, color: AppColors.primary),
+              ],
+            ),
           ),
         ),
       ),

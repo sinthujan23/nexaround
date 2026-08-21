@@ -252,15 +252,65 @@ class _MiniTourGamePageState extends State<MiniTourGamePage> {
         return true;
       }
 
-      // Filter places within 3 km and prefer those with known distance/rating.
-      final usable = places
-          .where((p) => p.distanceM != null && p.distanceM! <= 3000 && isPublicSpot(p))
-          .toList()
+      // Deduplicate places strictly by name, id, and coordinate proximity
+      final List<AttractionEntity> uniqueList = [];
+      final Set<String> seenNames = {};
+      final Set<String> seenIds = {};
+
+      for (final p in places) {
+        if (!isPublicSpot(p)) continue;
+        if (p.distanceM != null && p.distanceM! > 3500) continue;
+
+        final normName = p.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+        if (normName.isEmpty) continue;
+        if (seenNames.contains(normName) || (p.id.isNotEmpty && seenIds.contains(p.id))) {
+          continue;
+        }
+
+        // Check geographic proximity: if within 40 meters of an already added stop, consider duplicate
+        final isNearExisting = uniqueList.any((e) =>
+            _haversine(e.latitude, e.longitude, p.latitude, p.longitude) < 40);
+        if (isNearExisting) continue;
+
+        seenNames.add(normName);
+        if (p.id.isNotEmpty) seenIds.add(p.id);
+        uniqueList.add(p);
+      }
+
+      // If we don't have enough unique places from the list, fetch more nearby attractions
+      if (uniqueList.length < 3) {
+        final extraPlaces = await GooglePlacesService.fetchNearbyPlaces(
+          latitude: centerLat,
+          longitude: centerLng,
+          radius: 3500,
+          categoryName: 'POI',
+        );
+        for (final p in extraPlaces) {
+          if (!isPublicSpot(p)) continue;
+          final normName = p.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+          if (normName.isEmpty) continue;
+          if (seenNames.contains(normName) || (p.id.isNotEmpty && seenIds.contains(p.id))) {
+            continue;
+          }
+          final isNearExisting = uniqueList.any((e) =>
+              _haversine(e.latitude, e.longitude, p.latitude, p.longitude) < 40);
+          if (isNearExisting) continue;
+
+          seenNames.add(normName);
+          if (p.id.isNotEmpty) seenIds.add(p.id);
+          uniqueList.add(p);
+          if (uniqueList.length >= _maxStops) break;
+        }
+      }
+
+      final usable = uniqueList
         ..sort((a, b) {
           // Primary: sort by rating (highest first for famous spots)
           if (b.rating != a.rating) return b.rating.compareTo(a.rating);
           // Secondary: closer distance
-          return a.distanceM!.compareTo(b.distanceM!);
+          final da = a.distanceM ?? 0;
+          final db = b.distanceM ?? 0;
+          return da.compareTo(db);
         });
 
       if (usable.length < 3) {

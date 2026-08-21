@@ -664,9 +664,18 @@ class CacheService {
     return _prefs.getDouble('last_fetch_lng');
   }
 
+  static Future<void> setLastFetchLocationName(String name) async {
+    await _prefs.setString('last_fetch_location_name', name);
+  }
+
+  static String? getLastFetchLocationName() {
+    return _prefs.getString('last_fetch_location_name');
+  }
+
   static Future<void> clearLastFetchCoords() async {
     await _prefs.remove('last_fetch_lat');
     await _prefs.remove('last_fetch_lng');
+    await _prefs.remove('last_fetch_location_name');
   }
 
   // Hybrid Places Caching (Expires after 24 hours)

@@ -13,6 +13,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:nexaround_app/features/ar_mode/presentation/pages/ar_camera_page.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/permission_service.dart';
@@ -255,23 +256,16 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       return;
     }
 
-    final url = 'https://www.google.com/maps/search/?api=1&query=${widget.latitude},${widget.longitude}';
-    try {
-      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-    } catch (_) {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => SmartTourismMapPage(
-              initialLat: widget.latitude!,
-              initialLng: widget.longitude!,
-              destinationName: widget.name,
-            ),
-          ),
-        );
-      }
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => GoogleMapsPage(
+          initialLat: widget.latitude!,
+          initialLng: widget.longitude!,
+          destinationName: widget.name,
+        ),
+      ),
+    );
   }
 
   @override
@@ -397,29 +391,10 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                     style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800, color: AppColors.textPrimary, letterSpacing: -1, height: 1.1),
                   ),
 
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Icon(Icons.location_on_rounded, size: 14, color: AppColors.actionTeal),
-                      const SizedBox(width: 4),
-                      Text(_routeDistanceStr ?? widget.distance, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
-                      if (_routeDurationStr != null) ...[
-                        const SizedBox(width: 8),
-                        const Icon(Icons.directions_car_rounded, size: 14, color: AppColors.actionTeal),
-                        const SizedBox(width: 4),
-                        Text(_routeDurationStr!, style: const TextStyle(fontSize: 13, color: AppColors.actionTeal, fontWeight: FontWeight.w600)),
-                      ],
-                      if (_isLoadingRoute) ...[
-                        const SizedBox(width: 8),
-                        const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.actionTeal)),
-                      ],
-                      if (_isLoadingPlaces) ...[
-                        const SizedBox(width: 16),
-                        const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textTertiary),
-                        const SizedBox(width: 4),
-                        Container(width: 100, height: 12, decoration: BoxDecoration(color: Colors.grey.shade200, borderRadius: BorderRadius.circular(6))),
-                      ] else if (_openNowText != null && _openNowText!.isNotEmpty) ...[
-                        const SizedBox(width: 16),
+                  if (_openNowText != null && _openNowText!.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
                         Icon(
                           Icons.access_time_rounded,
                           size: 14,
@@ -435,8 +410,8 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
                           ),
                         ),
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
 
                   const SizedBox(height: 24),
 

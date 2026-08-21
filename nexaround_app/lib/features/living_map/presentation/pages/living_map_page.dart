@@ -264,6 +264,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               _currentLocationName = locationName;
               _currentDistrict = district;
             });
+            CacheService.setLastFetchLocationName(locationName);
 
             // Fetch new places for the new neighborhood (Redis > DB > Google)
             context.read<MapBloc>().add(
@@ -578,6 +579,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _currentLocationName = locationName;
           _currentDistrict = district;
         });
+        CacheService.setLastFetchLocationName(locationName);
 
         // Load places cleanly from Database & Cache (0 Gemini cost)
         context.read<MapBloc>().add(
@@ -693,14 +695,32 @@ class _LivingMapPageState extends State<LivingMapPage>
     try {
       final stateAttractions = context.read<MapBloc>().state.attractions;
       if (stateAttractions.isNotEmpty) {
-        final existing = stateAttractions.where((p) {
+        final List<AttractionEntity> uniqueExisting = [];
+        final Set<String> seen = {};
+        for (final p in stateAttractions) {
+          final normName = p.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+          if (normName.isEmpty) continue;
           final cat = (p.categoryName ?? '').toLowerCase();
-          final name = p.name.toLowerCase();
-          return cat.contains('attraction') || cat.contains('museum') || cat.contains('park') || name.contains('park') || name.contains('temple');
-        }).take(5).toList();
-        if (existing.isNotEmpty) {
+          final isInteresting = cat.contains('attraction') ||
+              cat.contains('museum') ||
+              cat.contains('park') ||
+              cat.contains('poi') ||
+              cat.contains('nature') ||
+              cat.contains('experience') ||
+              normName.contains('park') ||
+              normName.contains('temple') ||
+              normName.contains('bridge') ||
+              normName.contains('beach') ||
+              normName.contains('monument');
+          if (isInteresting && !seen.contains(normName) && (p.id.isEmpty || !seen.contains(p.id))) {
+            seen.add(normName);
+            if (p.id.isNotEmpty) seen.add(p.id);
+            uniqueExisting.add(p);
+          }
+        }
+        if (uniqueExisting.length >= 3) {
           setState(() {
-            _miniTourPlaces = existing;
+            _miniTourPlaces = uniqueExisting.take(5).toList();
             _loadingMiniTour = false;
           });
           return;
@@ -713,31 +733,35 @@ class _LivingMapPageState extends State<LivingMapPage>
       final places = await GooglePlacesService.fetchNearbyPlaces(
         latitude: lat,
         longitude: lng,
-        radius: 2500,
+        radius: 3000,
         categoryName: 'Attractions',
         useLegacy: false,
       );
 
-      final uniquePlaces = <String, AttractionEntity>{};
+      final List<AttractionEntity> uniquePlaces = [];
+      final Set<String> seen = {};
       for (final p in places) {
-        if (p.distanceM != null && p.distanceM! <= 3000) {
-          final normName = p.name.trim().toLowerCase();
-          if (!uniquePlaces.containsKey(normName) &&
-              !uniquePlaces.values.any((x) => x.id == p.id)) {
-            uniquePlaces[normName] = p;
+        final normName = p.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+        if (normName.isEmpty) continue;
+        if (!seen.contains(normName) && (p.id.isEmpty || !seen.contains(p.id))) {
+          seen.add(normName);
+          if (p.id.isNotEmpty) seen.add(p.id);
+          if (p.distanceM != null && p.distanceM! <= 3500) {
+            uniquePlaces.add(p);
           }
         }
       }
 
-      final usable = uniquePlaces.values.toList()
-        ..sort((a, b) {
-          if (b.rating != a.rating) return b.rating.compareTo(a.rating);
-          return a.distanceM!.compareTo(b.distanceM!);
-        });
+      uniquePlaces.sort((a, b) {
+        if (b.rating != a.rating) return b.rating.compareTo(a.rating);
+        final da = a.distanceM ?? 0;
+        final db = b.distanceM ?? 0;
+        return da.compareTo(db);
+      });
 
       if (mounted) {
         setState(() {
-          _miniTourPlaces = usable;
+          _miniTourPlaces = uniquePlaces;
           _loadingMiniTour = false;
         });
       }
@@ -1483,6 +1507,7 @@ class _LivingMapPageState extends State<LivingMapPage>
           _userLongitude = lng;
           _currentLocationName = name;
           _currentDistrict = district;
+          CacheService.setLastFetchLocationName(name);
           
           CacheService.overriddenLatitude = lat;
           CacheService.overriddenLongitude = lng;
@@ -1547,6 +1572,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               _userLongitude = position.longitude;
               _currentLocationName = locationName;
               _currentDistrict = district;
+              CacheService.setLastFetchLocationName(locationName);
               
               // Clear previous data so UI shows loading state
               _geminiTrendingPlaces = [];

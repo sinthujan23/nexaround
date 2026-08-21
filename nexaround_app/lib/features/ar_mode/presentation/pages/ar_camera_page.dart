@@ -3588,11 +3588,13 @@ class _ArCameraPageState extends State<ArCameraPage>
     if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
     final trimmed = query.trim();
     if (trimmed.isEmpty) {
-      updateState(() {
-        _searchResults = [];
-        _showSearchResults = false;
-        _isGoogleSearching = false;
-      });
+      if (_searchResults.isNotEmpty || _showSearchResults || _isGoogleSearching) {
+        updateState(() {
+          _searchResults = [];
+          _showSearchResults = false;
+          _isGoogleSearching = false;
+        });
+      }
       return;
     }
     // Industry standard debounce (300ms) for Google Places autocomplete
@@ -3601,11 +3603,13 @@ class _ArCameraPageState extends State<ArCameraPage>
         _performGoogleSearch(trimmed);
       });
     } else {
-      updateState(() {
-        _searchResults = [];
-        _showSearchResults = false;
-        _isGoogleSearching = false;
-      });
+      if (_searchResults.isNotEmpty || _showSearchResults || _isGoogleSearching) {
+        updateState(() {
+          _searchResults = [];
+          _showSearchResults = false;
+          _isGoogleSearching = false;
+        });
+      }
     }
   }
 
@@ -3883,8 +3887,11 @@ class _ArCameraPageState extends State<ArCameraPage>
   // BOTTOM SEARCH BAR - Moved to bottom for easy thumb access while driving
   // ═══════════════════════════════════════
   Widget _buildBottomSearchSuggestionsOverlay() {
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final double bottomPadding = MediaQuery.of(context).padding.bottom;
     return Positioned(
-      bottom: MediaQuery.of(context).padding.bottom + 68,
+      key: const ValueKey('ar_bottom_search_suggestions_overlay'),
+      bottom: bottomInset > 0 ? (bottomInset + 60) : (bottomPadding + 68),
       left: 14,
       right: 14,
       child: Column(
@@ -3893,7 +3900,7 @@ class _ArCameraPageState extends State<ArCameraPage>
           if (_searchResults.isNotEmpty)
             Container(
               constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.38,
+                maxHeight: MediaQuery.of(context).size.height * 0.35,
               ),
               decoration: BoxDecoration(
                 color: const Color(0xFF0A0E17).withOpacity(0.94),
@@ -3977,12 +3984,15 @@ class _ArCameraPageState extends State<ArCameraPage>
   // BOTTOM SEARCH BAR - Fixed bottom position for uninterrupted keyboard focus
   // ═══════════════════════════════════════
   Widget _buildBottomSearchBar() {
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Positioned(
-      bottom: 0,
+      key: const ValueKey('ar_bottom_search_bar_positioned'),
+      bottom: bottomInset,
       left: 0,
       right: 0,
       child: SafeArea(
         top: false,
+        bottom: bottomInset == 0,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
           child: Container(
@@ -4077,6 +4087,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                         ),
                         child: TextField(
+                          key: const ValueKey('ar_search_text_field'),
                           controller: _searchController,
                           focusNode: _searchFocusNode,
                           keyboardType: TextInputType.text,
@@ -4122,8 +4133,9 @@ class _ArCameraPageState extends State<ArCameraPage>
                         ),
                       ),
                     ),
-                    if (_searchController.text.isNotEmpty)
-                      GestureDetector(
+                    Visibility(
+                      visible: _searchController.text.isNotEmpty,
+                      child: GestureDetector(
                         onTap: () {
                           _searchController.clear();
                           updateState(() {
@@ -4140,6 +4152,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                         ),
                       ),
+                    ),
                     GestureDetector(
                       onTap: () {
                         if (_isListening) {
@@ -4348,6 +4361,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false,
       body: Stack(
         children: [
           // Live camera feed
