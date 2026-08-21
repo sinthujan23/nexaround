@@ -47,6 +47,14 @@ class Masterpiece {
   final String? artist;
   final String category;
   final String? description;
+  /// Position within the itinerary currently being shown.
+  ///
+  /// [rank] is one sequence across every tour, so a shorter tour reads
+  /// 1, 2, 3, 9, 11, 53 — gaps that look like missing stops. This is the number
+  /// the museum's own sheet gives for the tour on screen. Null only for museums
+  /// seeded before the backend tracked it.
+  final int? stop;
+
   final bool included3h;
   final bool included5h;
   final bool included1d;
@@ -55,6 +63,7 @@ class Masterpiece {
   const Masterpiece({
     required this.id,
     required this.rank,
+    this.stop,
     required this.building,
     required this.roomGallery,
     required this.mustSeeItem,
@@ -70,6 +79,7 @@ class Masterpiece {
   factory Masterpiece.fromJson(Map<String, dynamic> json) => Masterpiece(
         id: json['id'] as String,
         rank: json['rank'] as int,
+        stop: json['stop'] as int?,
         building: json['building'] as String,
         roomGallery: json['room_gallery'] as String,
         mustSeeItem: json['must_see_item'] as String,

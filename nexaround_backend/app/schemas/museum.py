@@ -10,6 +10,13 @@ class MasterpieceOut(BaseModel):
     """A single must-see item returned to the client."""
     id: UUID
     rank: int
+    stop: Optional[int] = None
+    """Position within the requested itinerary.
+
+    `rank` is a single sequence across every tour, so a shorter tour reads
+    1, 2, 3, 9, 11, 53 — gaps that look like missing stops. This is the number
+    the spreadsheet gives for the tour actually being shown.
+    """
     building: str
     room_gallery: str
     must_see_item: str

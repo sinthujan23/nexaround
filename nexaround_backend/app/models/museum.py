@@ -80,6 +80,16 @@ class MuseumMasterpiece(Base):
     included_1d: Mapped[bool] = mapped_column(Boolean, default=False)
     included_2d: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Position within each itinerary. The same exhibit sits at a different stop
+    # in each tour — 41 of the Acropolis's 50 five-hour exhibits are numbered
+    # differently in the one-day route — so a single `rank` could only ever
+    # represent one of them. Null for museums seeded before this existed; the
+    # itinerary query falls back to `rank` for those.
+    stop_3h: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stop_5h: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stop_1d: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stop_2d: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     # Relationships
     museum = relationship("Museum", back_populates="masterpieces")
 
