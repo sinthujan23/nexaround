@@ -19,9 +19,6 @@ class OdysseyService {
       'You craft realistic, budget-aware, day-by-day trip blueprints. '
       'You always reply with a single JSON object that matches the requested '
       'schema exactly — no markdown, no commentary, no code fences. '
-      'CRITICAL: If the user provides an unrealistically low or impossible budget (e.g. 1 USD or very low amount), '
-      'DO NOT FAIL OR REFUSE. Instead, generate an ultra-low budget / free exploration itinerary for the destination, '
-      'and include a clear, helpful "budget_advisory" disclaimer explaining the realistic costs required. '
       'CRITICAL HOTEL REQUIREMENT: Recommend ONLY genuine, real, famous, and currently operating hotels that are bookable on major platforms like Booking.com and Agoda. DO NOT invent fictitious names or append company suffixes like "Pvt Ltd" or "City". Use the exact official hotel name as listed on Google Maps / Booking.com (e.g., "The Heritage Madurai", "Hotel Royal Court", "Courtyard by Marriott Madurai"). Exclude non-existent or unbookable properties.';
 
   Future<Odyssey> generate({
@@ -94,13 +91,6 @@ CRITICAL — LIVE SEARCH GROUNDING RULES:
 4. "price_source" must name the actual source you found (the site, publisher, or official page name) — never a generic label with no real anchor behind it.
 5. The ONLY links allowed are the fixed "booking_partners" URLs given below.
 
-CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
-1. If the total budget of ${budget.toStringAsFixed(0)} $currency is too low to cover standard travel/hotel/flights for $destination for $days days:
-   - NEVER fail or refuse to generate a plan.
-   - Design an ultra-saver plan with free sights, public parks, iconic viewpoints, self-guided walks, and affordable street food.
-   - Set "budget_advisory" with a clear disclaimer: "A total budget of ${budget.toStringAsFixed(0)} $currency is insufficient for a standard $days-day trip to $destination (realistic minimum starts from ~$currency X). This itinerary is generated as an ultra-saver plan with free sights and low-cost exploration, but additional funds will be needed for actual lodging, transit, and meals."
-2. If the budget is sufficient, set "budget_advisory": "".
-
 CRITICAL PRICE JUSTIFICATION RULES:
 1. Every non-zero cost MUST cite a concrete, named reference point — never a vague category.
 2. "price_basis" MUST state the actual anchor rate/figure found and any currency conversion applied, in one sentence.
@@ -115,7 +105,6 @@ Return ONLY a JSON object with EXACTLY this shape:
   "currency": "$currency",
   "summary": "1-2 sentence overview matching the '$mood' style.",
   "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
-  "budget_advisory": "Notice if budget cap is insufficient for realistic rates, otherwise empty string.",
   "budget_breakdown": {
     "stay": 0,
     "transit": 0,

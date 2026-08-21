@@ -463,8 +463,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _infoCard('Budget Summary', widget.odyssey.budgetSplit, Icons.pie_chart_rounded),
           if (widget.odyssey.budget > 0)
             _budgetBreakdownCard(context),
-          if (widget.odyssey.budgetAdvisory.isNotEmpty)
-            _budgetAdvisoryCard(context),
         ],
       ),
     );
@@ -1588,10 +1586,14 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final isFree = ctx.$4;
     final displayCost = ctx.$7;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final maxPillWidth = screenWidth > 120 ? screenWidth - 120 : 220.0;
+
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () => _showPriceSourceInfo(context, act),
       child: Container(
+        constraints: BoxConstraints(maxWidth: maxPillWidth),
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
           color: isFree ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
@@ -1620,12 +1622,16 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               color: isFree ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
             ),
             const SizedBox(width: 4),
-            Text(
-              sourceTag,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: isFree ? const Color(0xFF15803D) : const Color(0xFF64748B),
+            Flexible(
+              child: Text(
+                sourceTag,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: isFree ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                ),
               ),
             ),
             const SizedBox(width: 3),
@@ -2207,73 +2213,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     }
   }
 
-  Widget _budgetAdvisoryCard(BuildContext context) {
-    if (widget.odyssey.budgetAdvisory.isEmpty) return const SizedBox.shrink();
-    return Container(
-      margin: const EdgeInsets.only(top: 14),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFFDE68A), width: 1.2),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFD97706).withValues(alpha: 0.08),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.warning_amber_rounded,
-              color: Color(0xFFD97706),
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'BUDGET ADVISORY & REALITY CHECK',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFFB45309),
-                    letterSpacing: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  widget.odyssey.budgetAdvisory,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF451A03),
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Returns the asset image path for a known provider, or null if no logo exists yet.
   static String? _getPartnerLogoPath(String providerName) {

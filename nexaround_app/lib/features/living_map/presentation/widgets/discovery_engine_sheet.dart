@@ -145,7 +145,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
             _buildHeader(),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 150, top: 12),
+                padding: const EdgeInsets.only(left: 20, right: 20, bottom: 100, top: 12),
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -208,20 +208,15 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                     ),
                   ],
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: const [
-                    Text('✨', style: TextStyle(fontSize: 20)),
-                    SizedBox(width: 8),
-                    Text(
-                      'Tell me',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                child: const Center(
+                  child: Text(
+                    'Tell me',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -998,6 +993,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      showDragHandle: false,
       isScrollControlled: true,
       builder: (modalContext) => StatefulBuilder(
         builder: (modalContext, setModalState) {

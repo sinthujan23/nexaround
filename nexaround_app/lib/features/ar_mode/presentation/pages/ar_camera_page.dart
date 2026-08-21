@@ -65,6 +65,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   // Search state
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   List<dynamic> _searchResults = [];
   bool _isSearching = false;
   bool _isGoogleSearching = false;
@@ -1339,6 +1340,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1445,6 +1447,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             _searchController.text = place.name;
             _isIdentifying = false;
           });
+          _searchFocusNode.unfocus();
           FocusScope.of(context).unfocus();
         } else {
           setState(() {
@@ -3583,23 +3586,34 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   void _onSearchQueryChanged(String query) {
     if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
-    if (query.trim().isEmpty) {
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) {
       updateState(() {
         _searchResults = [];
         _showSearchResults = false;
+        _isGoogleSearching = false;
       });
       return;
     }
-    // Debounce: 200ms for fast Google Maps-like typing response
-    _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
-      _performGoogleSearch(query.trim());
-    });
+    // Industry standard debounce (300ms) for Google Places autocomplete
+    if (trimmed.length >= 2) {
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+        _performGoogleSearch(trimmed);
+      });
+    } else {
+      updateState(() {
+        _searchResults = [];
+        _showSearchResults = false;
+        _isGoogleSearching = false;
+      });
+    }
   }
 
   Future<void> _performGoogleSearch(String query) async {
     if (_currentPosition == null) return;
     updateState(() {
       _isGoogleSearching = true;
+      _isSearching = true;
     });
 
     try {
@@ -3627,6 +3641,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     Map<String, dynamic> suggestion,
   ) async {
     // Hide keyboard
+    _searchFocusNode.unfocus();
     FocusScope.of(context).unfocus();
     updateState(() {
       _isSearching = false;
@@ -3693,8 +3708,9 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
     }
 
+    final targetIndex = _landmarks.indexWhere((l) => l.name == found.name);
     updateState(() {
-      _selectedLandmark = _landmarks.indexOf(found);
+      _selectedLandmark = targetIndex != -1 ? targetIndex : 0;
       _showInfoCard = true;
       _isNavigating = false;
       _isIdentifying = false;
@@ -3866,56 +3882,68 @@ class _ArCameraPageState extends State<ArCameraPage>
   // ═══════════════════════════════════════
   // BOTTOM SEARCH BAR - Moved to bottom for easy thumb access while driving
   // ═══════════════════════════════════════
-  Widget _buildBottomSearchBar() {
+  Widget _buildBottomSearchSuggestionsOverlay() {
     return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Search Results (shown above the search bar)
-            if (_isSearching && _searchResults.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(context).size.height * 0.4,
+      bottom: MediaQuery.of(context).padding.bottom + 68,
+      left: 14,
+      right: 14,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_searchResults.isNotEmpty)
+            Container(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.38,
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0A0E17).withOpacity(0.94),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: const Color(0xFF00E5FF).withOpacity(0.3),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.6),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
                   ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.85),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
-                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: ListView.separated(
                     shrinkWrap: true,
-                    padding: EdgeInsets.zero,
+                    padding: const EdgeInsets.symmetric(vertical: 4),
                     itemCount: _searchResults.length,
                     separatorBuilder: (_, __) => Divider(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withOpacity(0.08),
                       height: 1,
                     ),
                     itemBuilder: (context, index) {
                       final item = _searchResults[index];
                       return ListTile(
+                        dense: true,
                         leading: const Icon(
                           Icons.place_rounded,
-                          color: Colors.white54,
+                          color: Color(0xFF00E5FF),
+                          size: 20,
                         ),
                         title: Text(
                           item['main_text'] ?? '',
                           style: const TextStyle(
                             color: Colors.white,
-                            fontWeight: FontWeight.bold,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 14,
                           ),
                         ),
                         subtitle: Text(
                           item['description'] ?? '',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 11.5,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -3926,208 +3954,224 @@ class _ArCameraPageState extends State<ArCameraPage>
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
-            ],
-            if (_isSearching && _isGoogleSearching) ...[
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Center(
-                  child: CircularProgressIndicator(
-                    color: AppColors.primary,
-                    strokeWidth: 2,
-                  ),
-                ),
-              ),
-            ],
-            // Search Bar (Deep OLED Black & Cyan Neon)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
-              child: Container(
-                height: 52,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0A0E17).withOpacity(0.92),
-                  borderRadius: BorderRadius.circular(26),
-                  border: Border.all(
-                    color: _isListening
-                        ? const Color(0xFF00E5FF)
-                        : const Color(0xFF00E5FF).withOpacity(0.35),
-                    width: 1.2,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF00E5FF).withOpacity(_isListening ? 0.3 : 0.1),
-                      blurRadius: _isListening ? 18 : 12,
-                      spreadRadius: _isListening ? 1 : 0,
-                    ),
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.55),
-                      blurRadius: 14,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(26),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 6),
-                        // Global Compass
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFD600), // Yellow background
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.black.withOpacity(0.15),
-                              width: 1.2,
-                            ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(
-                                Icons.explore_outlined,
-                                color: Colors.black, // Black needle
-                                size: 14,
-                              ),
-                              Text(
-                                _cardinalFromHeading(_heading),
-                                style: const TextStyle(
-                                  color: Colors.black, // Black text
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        GestureDetector(
-                          onTap: () {
-                            final text = _searchController.text.trim();
-                            if (text.isNotEmpty) {
-                              _performArSearchAndSelectFirst(text);
-                            }
-                          },
-                          child: Icon(
-                                _isListening
-                                    ? Icons.graphic_eq_rounded
-                                    : Icons.search_rounded,
-                                color: const Color(0xFF00E5FF),
-                                size: 20,
-                              )
-                              .animate(target: _isListening ? 1 : 0)
-                              .scaleXY(end: 1.1, duration: 200.ms),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Theme(
-                            data: Theme.of(context).copyWith(
-                              textSelectionTheme: const TextSelectionThemeData(
-                                cursorColor: Color(0xFF00E5FF),
-                                selectionColor: Color(0x5500E5FF),
-                                selectionHandleColor: Color(0xFF00E5FF),
-                              ),
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              cursorColor: const Color(0xFF00E5FF),
-                              cursorWidth: 2.2,
-                              cursorRadius: const Radius.circular(2.0),
-                              textInputAction: TextInputAction.search,
-                              textAlignVertical: TextAlignVertical.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: _isListening
-                                    ? 'Listening...'
-                                    : 'Search place...',
-                                hintStyle: TextStyle(
-                                  color: _isListening
-                                      ? const Color(0xFF00E5FF).withOpacity(0.9)
-                                      : Colors.white.withOpacity(0.55),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                                filled: true,
-                                fillColor: Colors.transparent,
-                                border: InputBorder.none,
-                                enabledBorder: InputBorder.none,
-                                focusedBorder: InputBorder.none,
-                                errorBorder: InputBorder.none,
-                                disabledBorder: InputBorder.none,
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 10),
-                              ),
-                              onTap: () {
-                                updateState(() => _isSearching = true);
-                              },
-                              onChanged: _onSearchQueryChanged,
-                              onSubmitted: (val) {
-                                _performArSearchAndSelectFirst(val);
-                              },
-                            ),
-                          ),
-                        ),
-                        if (_searchController.text.isNotEmpty)
-                          GestureDetector(
-                            onTap: () {
-                              _searchController.clear();
-                              updateState(() {
-                                _searchResults = [];
-                                _showSearchResults = false;
-                              });
-                            },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                              child: Icon(
-                                Icons.close_rounded,
-                                color: Colors.white70,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        GestureDetector(
-                          onTap: () {
-                            if (_isListening) {
-                              _speechToText.stop();
-                              updateState(() => _isListening = false);
-                            } else {
-                              _startVoiceSearch();
-                            }
-                          },
-                          child: Container(
-                            color: Colors.transparent, // Expand hit area
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 8,
-                            ),
-                            child:
-                                Icon(
-                                      _isListening
-                                          ? Icons.mic_rounded
-                                          : Icons.mic_none_rounded,
-                                      color: const Color(0xFF00E5FF),
-                                      size: 24,
-                                    )
-                                    .animate(target: _isListening ? 1 : 0)
-                                    .scaleXY(end: 1.2, duration: 200.ms),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            ),
+          if (_isGoogleSearching) ...[
+            const SizedBox(height: 8),
+            const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Color(0xFF00E5FF),
+                  strokeWidth: 2,
                 ),
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+
+  // ═══════════════════════════════════════
+  // BOTTOM SEARCH BAR - Fixed bottom position for uninterrupted keyboard focus
+  // ═══════════════════════════════════════
+  Widget _buildBottomSearchBar() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          child: Container(
+            height: 52,
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17).withOpacity(0.92),
+              borderRadius: BorderRadius.circular(26),
+              border: Border.all(
+                color: _isListening
+                    ? const Color(0xFF00E5FF)
+                    : const Color(0xFF00E5FF).withOpacity(0.35),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00E5FF).withOpacity(_isListening ? 0.3 : 0.1),
+                  blurRadius: _isListening ? 18 : 12,
+                  spreadRadius: _isListening ? 1 : 0,
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.55),
+                  blurRadius: 14,
+                  offset: const Offset(0, 3),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(26),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 6),
+                    // Global Compass
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD600), // Yellow background
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.black.withOpacity(0.15),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.explore_outlined,
+                            color: Colors.black, // Black needle
+                            size: 14,
+                          ),
+                          Text(
+                            _cardinalFromHeading(_heading),
+                            style: const TextStyle(
+                              color: Colors.black, // Black text
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        final text = _searchController.text.trim();
+                        if (text.isNotEmpty) {
+                          _performArSearchAndSelectFirst(text);
+                        }
+                      },
+                      child: Icon(
+                            _isListening
+                                ? Icons.graphic_eq_rounded
+                                : Icons.search_rounded,
+                            color: const Color(0xFF00E5FF),
+                            size: 20,
+                          )
+                          .animate(target: _isListening ? 1 : 0)
+                          .scaleXY(end: 1.1, duration: 200.ms),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Theme(
+                        data: Theme.of(context).copyWith(
+                          textSelectionTheme: const TextSelectionThemeData(
+                            cursorColor: Color(0xFF00E5FF),
+                            selectionColor: Color(0x5500E5FF),
+                            selectionHandleColor: Color(0xFF00E5FF),
+                          ),
+                        ),
+                        child: TextField(
+                          controller: _searchController,
+                          focusNode: _searchFocusNode,
+                          keyboardType: TextInputType.text,
+                          enableInteractiveSelection: true,
+                          cursorColor: const Color(0xFF00E5FF),
+                          cursorWidth: 2.2,
+                          cursorRadius: const Radius.circular(2.0),
+                          textInputAction: TextInputAction.search,
+                          textAlignVertical: TextAlignVertical.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: _isListening
+                                ? 'Listening...'
+                                : 'Search place...',
+                            hintStyle: TextStyle(
+                              color: _isListening
+                                  ? const Color(0xFF00E5FF).withOpacity(0.9)
+                                  : Colors.white.withOpacity(0.55),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            filled: true,
+                            fillColor: Colors.transparent,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            errorBorder: InputBorder.none,
+                            disabledBorder: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onTap: () {
+                            updateState(() => _isSearching = true);
+                          },
+                          onChanged: _onSearchQueryChanged,
+                          onSubmitted: (val) {
+                            _performArSearchAndSelectFirst(val);
+                          },
+                        ),
+                      ),
+                    ),
+                    if (_searchController.text.isNotEmpty)
+                      GestureDetector(
+                        onTap: () {
+                          _searchController.clear();
+                          updateState(() {
+                            _searchResults = [];
+                            _showSearchResults = false;
+                          });
+                        },
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white70,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                    GestureDetector(
+                      onTap: () {
+                        if (_isListening) {
+                          _speechToText.stop();
+                          updateState(() => _isListening = false);
+                        } else {
+                          _startVoiceSearch();
+                        }
+                      },
+                      child: Container(
+                        color: Colors.transparent, // Expand hit area
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        child:
+                            Icon(
+                                  _isListening
+                                      ? Icons.mic_rounded
+                                      : Icons.mic_none_rounded,
+                                  color: const Color(0xFF00E5FF),
+                                  size: 24,
+                                )
+                                .animate(target: _isListening ? 1 : 0)
+                                .scaleXY(end: 1.2, duration: 200.ms),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -4414,6 +4458,10 @@ class _ArCameraPageState extends State<ArCameraPage>
           // Redesigned persistent Bottom Navigation Row (which includes Home, Location Pill, and Maps)
           if (!_minimalHud && !_isMapping && _nevaSearchResult == null)
             _buildBottomNavigationRow(),
+
+          // Floating Search Suggestions Overlay (above bottom search bar)
+          if (_isSearching && (_searchResults.isNotEmpty || _isGoogleSearching) && !_isNavigating)
+            _buildBottomSearchSuggestionsOverlay(),
 
           // Bottom Search Bar - easy thumb access while driving
           if (!_minimalHud &&
@@ -11443,6 +11491,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: TextField(
               controller: _searchController,
+              focusNode: _searchFocusNode,
               textInputAction: TextInputAction.search,
               textAlignVertical: TextAlignVertical.center,
               style: const TextStyle(

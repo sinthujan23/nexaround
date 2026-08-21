@@ -115,10 +115,7 @@ _SYSTEM = (
     "You are NexAround's expert local travel designer. "
     "You craft realistic, budget-aware, day-by-day trip blueprints. You always "
     "reply with a single JSON object that matches the requested schema exactly - "
-    "no markdown, no commentary, no code fences. "
-    "CRITICAL: If the user provides an unrealistically low or impossible budget (e.g. 1 USD, 10 USD, or very low funds), "
-    "DO NOT FAIL OR REFUSE. Instead, generate an ultra-low budget / free exploration itinerary for the destination, "
-    "and include a clear, helpful 'budget_advisory' disclaimer explaining the realistic costs required."
+    "no markdown, no commentary, no code fences."
 )
 
 
@@ -681,16 +678,6 @@ async def generate_odyssey(
     activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
-    # Advisory calculation: ensure ultra-low budgets always carry a clear disclaimer
-    gemini_advisory = str(plan.get("budget_advisory") or "").strip()
-    estimated_min_daily = 35.0 * max(travelers, 1) * g_days
-    if not gemini_advisory:
-        if budget <= 10 or budget < estimated_min_daily or (cheapest_flight_cost + cheapest_hotel_cost > budget and budget > 0):
-            gemini_advisory = (
-                f"Your budget of {int(budget)} {currency} is below the typical minimum required for a {g_days}-day trip to {final_destination}. "
-                f"We've tailored an ultra-saver plan featuring free attractions and budget-friendly exploration, but additional funds will be required for actual flights, accommodation, and daily meals."
-            )
-
     # Deduplicate grounding chunks into verified sources
     verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
     if verified_sources:
@@ -719,7 +706,7 @@ async def generate_odyssey(
         end_date=final_end_date,
         departure_city=departure_city or "",
         budget_breakdown=budget_breakdown,
-        budget_advisory=gemini_advisory,
+        budget_advisory="",
         verified_sources=verified_sources,
     )
 
@@ -897,13 +884,6 @@ CRITICAL — LIVE SEARCH GROUNDING RULES:
 5. Do not fabricate deep links to specific hotels, restaurants, or attractions anywhere in the output. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged. If you don't have a verified link, omit it — never guess one.
 6. Prefer official/primary sources (venue's own site, government tourism site, transit authority) over blogs or aggregators when search results offer a choice.
 
-CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
-1. If the total budget of {int(budget)} {currency} is NOT realistic or too low to cover standard travel/hotel/flights for {travelers} traveler(s) in {destination} for {days} days (e.g. 1 USD, very low amount):
-   - NEVER fail, refuse, or return an empty error plan.
-   - Design an ultra-saver / backpacker / free-exploration itinerary: prioritize free iconic sights, self-guided walking tours, scenic parks, public viewpoints, free museums/galleries, and affordable street food/market stalls.
-   - Populate "budget_advisory" with a clear, polite disclaimer explaining: "A total budget of {int(budget)} {currency} is insufficient for a standard {days}-day trip to {destination} (realistic budget typically starts from ~{currency} X). This itinerary is optimized as an ultra-saver plan with free sights and low-cost exploration, but additional funds will be needed for realistic lodging, transit, and meals."
-2. If the budget is sufficient and realistic, set "budget_advisory": "".
-
 CRITICAL BUDGET PRIORITY RULES:
 1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
 2. Allocate realistic funds for Flights (~40-50%) and Stay (~30-35%).
@@ -931,7 +911,6 @@ Return ONLY a JSON object with EXACTLY this shape:
   "currency": "{currency}",
   "summary": "1-2 sentence overview matching the '{mood}' style.",
   "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
-  "budget_advisory": "Notice if budget cap is insufficient for realistic flight/hotel rates, otherwise empty string.",
   "budget_breakdown": {{
     "stay": 0,
     "transit": 0,
