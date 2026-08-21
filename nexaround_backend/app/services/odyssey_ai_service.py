@@ -101,8 +101,8 @@ def _build_deep_booking_url(
 # Try a chain: a 503 on one model falls through to another that's healthy now.
 _MODELS = [
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 
@@ -1000,8 +1000,10 @@ async def _call_gemini(
     base_generation_config = {
         "temperature": 0.8,
         "maxOutputTokens": max_tokens,
-        "responseMimeType": "application/json",
     }
+    # Google Gemini API strictly rejects responseMimeType: 'application/json' when tools/grounding are active (HTTP 400).
+    if not use_grounding:
+        base_generation_config["responseMimeType"] = "application/json"
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     # Odyssey is a one-shot background job, so a single 503 would permanently
     # fail it. Rotate through the model chain twice (with a short backoff
@@ -1106,6 +1108,11 @@ def _deduplicate_grounding_chunks(chunks: list[dict]) -> list[dict]:
 
 def _parse_json(raw: str) -> dict:
     raw = (raw or "").strip()
+    # Strip markdown code fences if present
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        raw = raw.strip()
     try:
         parsed = json.loads(raw)
         if isinstance(parsed, dict):
@@ -1114,9 +1121,12 @@ def _parse_json(raw: str) -> dict:
         pass
     start, end = raw.find("{"), raw.rfind("}")
     if start != -1 and end > start:
-        parsed = json.loads(raw[start:end + 1])
-        if isinstance(parsed, dict):
-            return parsed
+        try:
+            parsed = json.loads(raw[start:end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
     raise ValueError("Gemini did not return a JSON object")
 
 

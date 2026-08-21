@@ -1094,8 +1094,8 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
 
     models = [
         "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
     ]
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     
@@ -1110,7 +1110,7 @@ If no events exist, recommend self-guided tours, food trails, scenic spots, or n
                 ) as t:
                     resp = await client.post(url, json=body, headers=headers)
                     t.upstream(resp)
-                if resp.status_code in (429, 500, 503) and i < len(models) - 1:
+                if resp.status_code != 200 and i < len(models) - 1:
                     continue
                 resp.raise_for_status()
                 data = resp.json()

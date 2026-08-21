@@ -143,8 +143,8 @@ async def proxy_gemini_generate(
     # on one model falls through to another that's currently healthy without incurring Pro costs.
     models = [
         "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
     ]
     # gemini-2.5-flash reasons by default, and reasoning tokens bill at the
     # OUTPUT rate. Across four months this path produced 22.8M output tokens
@@ -159,6 +159,8 @@ async def proxy_gemini_generate(
     if isinstance(gen_config, dict):
         gen_config.setdefault("thinkingConfig", {"thinkingBudget": 0})
         gen_config.setdefault("maxOutputTokens", 2048)
+        if payload.get("tools") and "responseMimeType" in gen_config:
+            gen_config.pop("responseMimeType", None)
 
     # Opening the app fires roughly sixteen of these before the user touches
     # anything, and the prompts repeat — the same district asks the same
