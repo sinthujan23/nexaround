@@ -13,6 +13,16 @@ from app.services import telemetry
 
 _BASE = "https://maps.googleapis.com/maps/api"
 
+# The grid `place_cache_service` and the Google Maps proxy both snap coordinates
+# to before building a cache key (~500m). Duplicated as a one-liner rather than
+# imported so this client keeps its single-direction dependency on settings and
+# telemetry only.
+_KEY_GRID_DEG = 0.005
+
+
+def _snap_coord(value: float) -> str:
+    return f"{math.floor(value / _KEY_GRID_DEG) * _KEY_GRID_DEG:.4f}"
+
 
 # Expanded Google Place types map to retrieve a much wider and richer set of places
 # for each application category, resolving the issue of sparse results.
@@ -692,9 +702,83 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
     return photo_bytes, ctype
 
 
+async def find_place_id_legacy(
+    name: str,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+) -> Optional[str]:
+    """Resolve a place name to a Google Place ID via Find Place From Text (Legacy).
+
+    Requests `place_id` and nothing else. That is deliberate: legacy Find Place
+    bills by data tier, and asking for only the ID keeps the call in the IDs-Only
+    tier instead of pulling in Basic or Atmosphere. It exists so a row seeded
+    before `attractions.google_place_id` — which is all 67k of them — can be
+    mapped onto its upstream place once and never looked up again.
+
+    `locationbias` is a tight circle rather than a wide one on purpose. The names
+    in our table are generic enough ("Dental Care & Implant Centre") that a 50 km
+    bias readily matches the wrong branch; the caller passes the stored
+    coordinates, which are the same ones Google gave us for that place.
+    """
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — cannot resolve place id")
+        return None
+
+    params = {
+        "input": clean_name,
+        "inputtype": "textquery",
+        "fields": "place_id",
+        "key": google_maps_key,
+    }
+    if latitude is not None and longitude is not None:
+        params["locationbias"] = f"circle:200@{latitude},{longitude}"
+
+    # Same shape and same ~500m grid the proxy uses for its own Find Place key,
+    # so both paths land in one group in the duplicates panel instead of looking
+    # like two unrelated sources of Find Place spend.
+    if latitude is not None and longitude is not None:
+        bias_key = f"{_snap_coord(latitude)},{_snap_coord(longitude)}"
+    else:
+        bias_key = ""
+    cache_key = f"fpt:{clean_name.lower()}|{bias_key}"
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            async with telemetry.track(
+                "google_maps", "findplacefromtext",
+                sku="find_place_basic",
+                cache_key=cache_key,
+            ) as t:
+                resp = await client.get(f"{_BASE}/place/findplacefromtext/json", params=params)
+                t.upstream(resp)
+            resp.raise_for_status()
+            data = resp.json()
+
+        status = data.get("status")
+        if status not in ("OK", "ZERO_RESULTS"):
+            print(f"⚠️ Find Place legacy status {status}: {data.get('error_message')}")
+            return None
+
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+        return candidates[0].get("place_id") or None
+    except Exception as e:
+        print(f"⚠️ Error resolving place id for {clean_name!r}: {e}")
+        return None
+
+
 async def fetch_place_details(place_id: str) -> Optional[dict]:
-    """Fetch rich place details (reviews, opening_hours, photos, phone, website, price)
-    from Google Places API (Legacy) using strict field filtering to minimize API billing.
+    """Fetch rich place details (reviews, opening_hours, photos) from Google Places
+    API (Legacy) using strict field filtering to minimize API billing.
     """
     async with async_session() as db:
         settings_service = SettingsService(db)
@@ -708,10 +792,17 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
     raw_id = place_id.replace("places/", "")
     url = "https://maps.googleapis.com/maps/api/place/details/json"
     
+    # Legacy Place Details bills per data *tier*, not per field, so trimming
+    # within a tier we already pay for saves nothing — this list is scoped to
+    # what the detail page actually renders so the payload and the parsing stay
+    # honest about it. Tiers engaged: Basic (place_id/name/address/geometry/
+    # photos), Contact (opening_hours), Atmosphere (rating/user_ratings_total/
+    # reviews/price_level). Dropped `editorial_summary`, `website` and both
+    # phone fields: fetched since the endpoint was written, never read by any
+    # caller.
     fields = (
         "place_id,name,formatted_address,geometry,rating,user_ratings_total,"
-        "reviews,opening_hours,photos,international_phone_number,formatted_phone_number,"
-        "website,price_level,editorial_summary"
+        "reviews,opening_hours,photos,price_level"
     )
     params = {
         "place_id": raw_id,
@@ -796,10 +887,6 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
             if ref:
                 photo_urls.append(f"/api/v1/places/photo?ref={ref}")
 
-        # Editorial Summary
-        ed = result.get("editorial_summary")
-        editorial_summary = ed.get("overview") if isinstance(ed, dict) else None
-
         return {
             "id": result.get("place_id") or place_id,
             "name": display_name,
@@ -815,9 +902,6 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
             "weekday_hours": weekday_descriptions,
             "price_level": price_text,
             "photo_urls": photo_urls,
-            "phone_number": result.get("international_phone_number") or result.get("formatted_phone_number"),
-            "website_uri": result.get("website"),
-            "editorial_summary": editorial_summary,
         }
     except Exception as e:
         print(f"⚠️ Error fetching place details from Google Places API (Legacy) for {place_id}: {e}")

@@ -178,12 +178,27 @@ async def get_trending_experiences(
 @router.get("/{place_id}/details")
 async def get_place_details_endpoint(
     place_id: str,
+    name: Optional[str] = Query(
+        None,
+        description="Place name, used to resolve a Place ID when `place_id` is "
+                    "not one — a local UUID whose row predates google_place_id, "
+                    "or a client-side placeholder.",
+    ),
+    lat: Optional[float] = Query(None, ge=-90.0, le=90.0),
+    lng: Optional[float] = Query(None, ge=-180.0, le=180.0),
     current_user: User = Depends(get_current_user),
 ):
-    """Fetch rich details (reviews, opening hours, photos, website, phone, price) for a place
-    using Google Places API (New) with 14-day Redis caching.
+    """Fetch rich details (reviews, opening hours, photos, price) for a place.
+
+    Google Places API (Legacy) throughout — Find Place to map an identifier we
+    cannot send upstream onto a real Place ID, then Place Details — behind a
+    14-day Redis cache. Resolution lives here rather than in the client so the
+    detail page does not have to make a `/places/search` round trip first, which
+    was reaching Places API (New) Text Search on a database miss.
     """
-    details = await places_service.get_place_details(place_id)
+    details = await places_service.get_place_details(
+        place_id, name=name, latitude=lat, longitude=lng,
+    )
     if details is None:
         raise HTTPException(status_code=404, detail="Place details not found")
     return details

@@ -1,16 +1,24 @@
 """Top-level Places service: cache-first, Google as fallback."""
 import asyncio
+import json
 import math
 import re
+from datetime import datetime, timezone
 from typing import Optional
-from app.services import google_places_client, place_cache_service, telemetry, spend_guard
+from app.services import (
+    google_places_client,
+    photo_cache_service,
+    place_cache_service,
+    spend_guard,
+    telemetry,
+)
 from app.schemas.place import PlaceResponse, PlacesNearbyResponse
 from app.core.database import async_session
 from app.repositories.attraction_repository import AttractionRepository
 from app.models.category import Category
 from app.models.attraction import Attraction
 from app.utils.geo_utils import create_point, get_lat_lng
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 
 def _photo_url(photo_reference: str) -> str:
@@ -19,6 +27,20 @@ def _photo_url(photo_reference: str) -> str:
     Routes through our backend so the Google API key never leaves the server.
     """
     return f"/api/v1/places/photo?ref={photo_reference}"
+
+
+def _google_id_of(place: dict) -> Optional[str]:
+    """The upstream Place ID in a seeded place dict, if it really is one.
+
+    Dicts on the seeding path come from `to_place_dict*`, whose `id` is a Google
+    Place ID — but the same shape is also produced by `attraction_to_place_dict`,
+    whose `id` is a local UUID. Storing one of those would create a mapping that
+    resolves to nothing at Google, so anything UUID-shaped is rejected here.
+    """
+    pid = (place.get("id") or "").strip()
+    if not pid or _UUID_RE.match(pid):
+        return None
+    return pid
 
 
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -368,6 +390,7 @@ async def seed_places_from_google_bg(
 
                     new_attr = Attraction(
                         name=p_name,
+                        google_place_id=_google_id_of(p),
                         description=p.get("description") or "",
                         location=create_point(plat, plng),
                         category_id=cat_id,
@@ -754,6 +777,7 @@ async def get_nearby(
 
                 new_attr = Attraction(
                     name=p_name,
+                    google_place_id=_google_id_of(p),
                     description=p.get("description") or "",
                     location=create_point(plat, plng),
                     category_id=cat_id,
@@ -961,6 +985,7 @@ async def _save_search_results_bg(place_dicts: list[dict], latitude: float, long
 
                     new_attr = Attraction(
                         name=p_name,
+                        google_place_id=_google_id_of(p),
                         description=p.get("description") or "",
                         location=create_point(plat, plng),
                         category_id=cat_id,
@@ -1247,8 +1272,15 @@ async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
             if attr is None:
                 return None
             lat, lng = get_lat_lng(attr.location)
+            hours = attr.opening_hours or {}
+            # Hours land here in the shape a Place Details refresh wrote them.
+            # Surfacing them under the key the client reads means a row that has
+            # been refreshed once still shows its hours after the Redis entry
+            # expires, without another Google request.
+            weekday_hours = hours.get("weekday_text") or [] if isinstance(hours, dict) else []
             return {
                 "place_id": str(attr.id),
+                "id": str(attr.id),
                 "name": attr.name,
                 "address": attr.address or "",
                 "latitude": lat,
@@ -1256,7 +1288,8 @@ async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
                 "rating": attr.rating or 0.0,
                 "user_ratings_total": attr.review_count or 0,
                 "photo_urls": list(attr.photo_urls or []),
-                "opening_hours": attr.opening_hours or {},
+                "opening_hours": hours,
+                "weekday_hours": weekday_hours,
                 "description": attr.description,
                 "reviews": [],
                 "source": "database",
@@ -1266,22 +1299,268 @@ async def _local_attraction_details(attraction_id: str) -> Optional[dict]:
         return None
 
 
-async def get_place_details(place_id: str) -> Optional[dict]:
+# How long a details payload stays good in Redis. Google's terms cap caching of
+# Places content at 30 days; 14 keeps a margin and matches the nearby cache.
+_DETAILS_TTL = 14 * 24 * 60 * 60
+
+# A place Find Place could not match will not start matching tomorrow. Remember
+# the failure so one unmatchable row cannot buy a lookup on every open.
+_UNRESOLVED = "__unresolved__"
+_UNRESOLVED_TTL = 30 * 24 * 60 * 60
+
+
+async def _google_place_id_for_local(attraction_id: str) -> Optional[str]:
+    """Map a local attraction row onto its Google Place ID, resolving if needed.
+
+    Rows seeded after `attractions.google_place_id` existed already carry one and
+    cost nothing here. Older rows — every row seeded before this column — get one
+    ID-only Find Place lookup, and the answer is written back, so a place is only
+    ever resolved once no matter how many people open it.
+    """
+    resolve_key = f"places:gpid:{attraction_id}"
+    try:
+        cached = await place_cache_service.get_raw(resolve_key)
+        if cached == _UNRESOLVED:
+            return None
+        if cached:
+            return cached
+    except Exception as e:
+        print(f"⚠️ Redis GET error for {resolve_key}: {e}")
+
+    async with async_session() as session:
+        attr = (await session.execute(
+            select(Attraction).where(Attraction.id == attraction_id)
+        )).scalar_one_or_none()
+        if attr is None:
+            return None
+        if attr.google_place_id:
+            return attr.google_place_id
+        name = attr.name
+        lat, lng = get_lat_lng(attr.location)
+
+    # Resolving costs a request, so it answers to the same budget guard as
+    # seeding. Blocked means the page falls back to the local payload for now,
+    # not that the mapping is wrong.
+    ok, reason = await spend_guard.allowed(None)
+    if not ok:
+        print(f"skipping place id resolve: {reason}")
+        return None
+
+    resolved = await google_places_client.find_place_id_legacy(
+        name=name, latitude=lat, longitude=lng,
+    )
+
+    if resolved:
+        try:
+            async with async_session() as session:
+                await session.execute(
+                    update(Attraction)
+                    .where(Attraction.id == attraction_id)
+                    .values(google_place_id=resolved)
+                )
+                await session.commit()
+        except Exception as e:
+            # Persisting is an optimisation, not the answer. The mapping is still
+            # correct for this request and still cached in Redis; the only cost of
+            # failing here is one more lookup when that entry expires.
+            print(f"⚠️ could not persist google_place_id for {attraction_id}: {e}")
+
+    try:
+        await place_cache_service.set_raw(
+            resolve_key,
+            resolved or _UNRESOLVED,
+            ttl=_DETAILS_TTL if resolved else _UNRESOLVED_TTL,
+        )
+    except Exception as e:
+        print(f"⚠️ Redis SET error for {resolve_key}: {e}")
+
+    return resolved
+
+
+async def _resolve_by_name(
+    name: Optional[str],
+    latitude: Optional[float],
+    longitude: Optional[float],
+) -> Optional[str]:
+    """Find a Place ID for a place we only know by name, cached by name+tile.
+
+    Keyed on the ~500m tile rather than exact GPS so two users standing metres
+    apart asking about the same place share one lookup — the omission that let
+    Find Place spend go unnoticed on the proxy path.
+    """
+    clean = (name or "").strip()
+    if not clean:
+        return None
+
+    if latitude is not None and longitude is not None:
+        tile = f"{place_cache_service._snap(latitude)},{place_cache_service._snap(longitude)}"
+    else:
+        tile = "-"
+    resolve_key = f"places:gpid:byname:{clean.lower()}:{tile}"
+
+    try:
+        cached = await place_cache_service.get_raw(resolve_key)
+        if cached == _UNRESOLVED:
+            return None
+        if cached:
+            return cached
+    except Exception as e:
+        print(f"⚠️ Redis GET error for {resolve_key}: {e}")
+
+    ok, reason = await spend_guard.allowed(None)
+    if not ok:
+        print(f"skipping place id resolve by name: {reason}")
+        return None
+
+    resolved = await google_places_client.find_place_id_legacy(
+        name=clean, latitude=latitude, longitude=longitude,
+    )
+
+    try:
+        await place_cache_service.set_raw(
+            resolve_key,
+            resolved or _UNRESOLVED,
+            ttl=_DETAILS_TTL if resolved else _UNRESOLVED_TTL,
+        )
+    except Exception as e:
+        print(f"⚠️ Redis SET error for {resolve_key}: {e}")
+
+    return resolved
+
+
+async def _persist_details(attraction_id: str, details: dict) -> None:
+    """Write the durable half of a details payload back onto the row.
+
+    Hours, address and photos change on the order of months, so holding them
+    locally means a Redis expiry does not have to become another Google request.
+    Reviews and open/closed are deliberately excluded: they are volatile, and
+    Google's terms do not allow us to keep them.
+    """
+    values: dict = {"details_fetched_at": datetime.now(timezone.utc)}
+    hours = details.get("weekday_hours")
+    if hours:
+        values["opening_hours"] = {"weekday_text": hours}
+    if details.get("address"):
+        values["address"] = details["address"]
+    if details.get("photo_urls"):
+        values["photo_urls"] = details["photo_urls"]
+    if details.get("user_ratings_total"):
+        values["review_count"] = details["user_ratings_total"]
+    if details.get("rating"):
+        values["rating"] = details["rating"]
+
+    try:
+        async with async_session() as session:
+            await session.execute(
+                update(Attraction)
+                .where(Attraction.id == attraction_id)
+                .values(**values)
+            )
+            await session.commit()
+    except Exception as e:
+        print(f"⚠️ could not persist details for {attraction_id}: {e}")
+
+
+def _is_sendable_place_id(candidate: str) -> bool:
+    """Whether an identifier can be put in front of Google at all.
+
+    Google 400s on anything that is not one of its own Place IDs. Local UUIDs and
+    the numeric placeholder the client falls back to when a place arrived without
+    an id both have to be resolved before they are worth a request.
+    """
+    if not candidate or len(candidate) < 10:
+        return False
+    if _UUID_RE.match(candidate):
+        return False
+    if candidate.isdigit() or (candidate.startswith("-") and candidate[1:].isdigit()):
+        return False
+    return True
+
+
+async def _warm_hero_photo(details: dict) -> None:
+    """Pull this place's first photo into the disk cache.
+
+    The app loads images through `CachedNetworkImage`, which sends no auth header,
+    so every photo request from a device lands in the anonymous branch of
+    `/places/photo` — cache-only by design, 404 on a miss. Nothing on the device
+    can therefore ever fill that cache: 18,992 photo requests missed in the 30
+    days before this, against a single upstream fetch.
+
+    Warming it here is what makes the policy work. A place's photo is bought once,
+    on the click that opens its detail page, and every later view — that page again,
+    or the same place in a discovery list — is served from disk for free. Only the
+    hero is fetched; the rest of the carousel is not worth a request nobody asked
+    for.
+    """
+    photo_urls = details.get("photo_urls") or []
+    if not photo_urls:
+        return
+    # `photo_urls` holds our own endpoint, not Google's — the raw reference is
+    # the part after `ref=`.
+    first = photo_urls[0]
+    if "ref=" not in first:
+        return
+    ref = first.split("ref=", 1)[1].split("&", 1)[0]
+    if not ref:
+        return
+
+    ok, reason = await spend_guard.allowed(None)
+    if not ok:
+        print(f"skipping hero photo warm: {reason}")
+        return
+
+    try:
+        await photo_cache_service.get_or_fetch(ref, maxwidth=800)
+    except Exception as e:
+        print(f"⚠️ hero photo warm failed: {e}")
+
+
+async def get_place_details(
+    place_id: str,
+    *,
+    name: Optional[str] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+) -> Optional[dict]:
     """Fetch place details with 14-day Redis caching.
-    Uses Google Places API (New) with field masking to minimize billing.
+
+    Uses Google Places API (Legacy) — Find Place to map an identifier we cannot
+    send upstream onto a real Place ID, then Place Details. Nothing on this path
+    touches Places API (New).
+
+    `name`/`latitude`/`longitude` are resolution hints for callers holding an
+    identifier that is not a Google Place ID and not one of our rows either.
     """
     clean_id = place_id.replace("places/", "")
-    key = f"places:details:{clean_id}"
 
-    # 0. A local id can never resolve at Google. Serve it from our own table
-    #    rather than spending a guaranteed-failing request on it.
+    # 0. Resolve anything Google would reject into something it accepts.
+    local_id: Optional[str] = None
     if _UUID_RE.match(clean_id):
-        async with telemetry.track(
-            "internal", "place_details", cache_key=f"pd:{clean_id}"
-        ) as t:
-            local = await _local_attraction_details(clean_id)
-            t.hit("database" if local else "negative")
-        return local
+        # A local row. Map it onto the Google place it was seeded from; only if
+        # that fails do we answer from our own table, which carries no reviews.
+        local_id = clean_id
+        resolved = await _google_place_id_for_local(clean_id)
+        if not resolved:
+            async with telemetry.track(
+                "internal", "place_details", cache_key=f"pd:{clean_id}"
+            ) as t:
+                local = await _local_attraction_details(clean_id)
+                t.hit("database" if local else "negative")
+            return local
+        clean_id = resolved
+    elif not _is_sendable_place_id(clean_id):
+        # Neither a Google ID nor one of ours — a client-side placeholder. The
+        # name is all there is to go on.
+        resolved = await _resolve_by_name(name, latitude, longitude)
+        if not resolved:
+            async with telemetry.track(
+                "internal", "place_details", cache_key=f"pd:{clean_id}"
+            ) as t:
+                t.hit("negative")
+            return None
+        clean_id = resolved
+
+    key = f"places:details:{clean_id}"
 
     # 1. Check Redis cache first (14 days TTL)
     try:
@@ -1298,16 +1577,30 @@ async def get_place_details(place_id: str) -> Optional[dict]:
     except Exception as e:
         print(f"⚠️ Redis GET error for {key}: {e}")
 
-    # 2. Cache miss — fetch from Google Places API (New)
-    details = await google_places_client.fetch_place_details(place_id)
+    # 2. Cache miss — fetch from Google Places API (Legacy)
+    details = await google_places_client.fetch_place_details(clean_id)
     if not details:
+        # Google knows the ID but had nothing to say, or the call failed. Either
+        # way the caller still deserves the name and coordinates we hold.
+        if local_id:
+            return await _local_attraction_details(local_id)
         return None
 
-    # 3. Store in Redis (14-day TTL = 1,209,600 seconds)
+    # 3. Store in Redis, and keep the durable fields locally so the next expiry
+    #    is not automatically another Google request.
     try:
-        await place_cache_service.set_raw(key, json.dumps(details, default=str), ttl=1209600)
+        await place_cache_service.set_raw(
+            key, json.dumps(details, default=str), ttl=_DETAILS_TTL
+        )
     except Exception as e:
         print(f"⚠️ Redis SET error for {key}: {e}")
+
+    if local_id:
+        await _persist_details(local_id, details)
+
+    # Detached: the page should render its text without waiting on an image the
+    # client will request separately anyway.
+    spawn_background(_warm_hero_photo(details))
 
     details["cached"] = False
     return details

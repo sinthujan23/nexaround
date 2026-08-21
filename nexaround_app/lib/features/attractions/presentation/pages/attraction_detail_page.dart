@@ -138,44 +138,51 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
 
   Future<void> _fetchPlacesDetails() async {
     try {
-      // Use place_id if it looks like a real Google place ID, else find by name+location
-      String? resolvedId = widget.id;
-      bool isUuid = RegExp(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$').hasMatch(resolvedId ?? '');
-      if (resolvedId == null || resolvedId.length < 10 || int.tryParse(resolvedId) != null || isUuid) {
-        resolvedId = await _findPlaceId();
-      }
-      if (resolvedId != null && resolvedId.isNotEmpty) {
-        // Call backend Places API (New) details endpoint (14-day Redis cache — 0 Google cost on hit)
-        final cleanId = resolvedId.replaceFirst('places/', '');
-        final response = await ApiClient.instance.get(
-          '${ApiConstants.apiVersion}/places/$cleanId/details',
-        );
-        if (response.statusCode == 200) {
-          final data = response.data as Map<String, dynamic>?;
-          if (data != null) {
-            final openNowText = data['open_now_text'] as String?;
-            final closingTime = data['closing_time'] as String?;
-            final totalReviews = data['user_ratings_total'] as int?;
-            final priceLevel = data['price_level'] as String?;
-            final weekday = (data['weekday_hours'] as List?)?.cast<String>() ?? [];
-            final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
-            final reviews = rawReviews.map((r) => Map<String, dynamic>.from(r)).toList();
-            final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
-            final String? firstPhoto = photoUrls.isNotEmpty ? photoUrls[0] : null;
+      // The id is passed through as-is. Whatever kind it is — a Google Place ID,
+      // one of our UUIDs, or the name-hash placeholder used when a place arrived
+      // without one — the backend resolves it, using Places API (Legacy) Find
+      // Place and its own stored mapping. Resolving it here instead meant a
+      // /places/search round trip that answered from our database with the same
+      // UUID it was given, so the details call could never reach Google.
+      final resolvedId = (widget.id != null && widget.id!.isNotEmpty)
+          ? widget.id!
+          : _placeId;
+      final cleanId = resolvedId.replaceFirst('places/', '');
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/$cleanId/details',
+        queryParameters: {
+          // Resolution hints, used only when the id is not something Google
+          // accepts. Ignored otherwise.
+          'name': widget.name,
+          if (widget.latitude != null && widget.latitude != 0.0) 'lat': widget.latitude,
+          if (widget.longitude != null && widget.longitude != 0.0) 'lng': widget.longitude,
+        },
+      );
+      if (response.statusCode == 200) {
+        final data = response.data as Map<String, dynamic>?;
+        if (data != null) {
+          final openNowText = data['open_now_text'] as String?;
+          final closingTime = data['closing_time'] as String?;
+          final totalReviews = data['user_ratings_total'] as int?;
+          final priceLevel = data['price_level'] as String?;
+          final weekday = (data['weekday_hours'] as List?)?.cast<String>() ?? [];
+          final rawReviews = (data['reviews'] as List?)?.cast<Map>() ?? [];
+          final reviews = rawReviews.map((r) => Map<String, dynamic>.from(r)).toList();
+          final photoUrls = (data['photo_urls'] as List?)?.cast<String>() ?? [];
+          final String? firstPhoto = photoUrls.isNotEmpty ? photoUrls[0] : null;
 
-            if (mounted) {
-              setState(() {
-                _openNowText = openNowText;
-                _closingTime = closingTime;
-                _totalReviews = totalReviews;
-                _priceLevel = priceLevel;
-                _realReviews = reviews;
-                _weekdayHours = weekday;
-                if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && firstPhoto != null) {
-                  _resolvedImageUrl = firstPhoto;
-                }
-              });
-            }
+          if (mounted) {
+            setState(() {
+              _openNowText = openNowText;
+              _closingTime = closingTime;
+              _totalReviews = totalReviews;
+              _priceLevel = priceLevel;
+              _realReviews = reviews;
+              _weekdayHours = weekday;
+              if ((_resolvedImageUrl == null || _resolvedImageUrl!.isEmpty) && firstPhoto != null) {
+                _resolvedImageUrl = firstPhoto;
+              }
+            });
           }
         }
       }
@@ -187,32 +194,6 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
       }
     }
   }
-
-  Future<String?> _findPlaceId() async {
-    try {
-      // Use backend search (checks Redis & PostgreSQL DB before Google)
-      final response = await ApiClient.instance.get(
-        '${ApiConstants.apiVersion}/places/search',
-        queryParameters: {
-          'query': widget.name,
-          'lat': widget.latitude ?? 6.9271,
-          'lng': widget.longitude ?? 79.8612,
-        },
-      );
-      if (response.statusCode == 200) {
-        final data = response.data;
-        final places = data['places'] as List? ?? [];
-        if (places.isNotEmpty) {
-          return places[0]['id'] as String?;
-        }
-      }
-      return null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-
 
   Future<void> _launchNavigation(BuildContext context) async {
     if (widget.latitude == null || widget.longitude == null ||

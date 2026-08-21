@@ -153,6 +153,7 @@ async def _seed_place_dicts(place_dicts: list[dict]) -> None:
 
                 session.add(Attraction(
                     name=name,
+                    google_place_id=places_service._google_id_of(p),
                     description=p.get("description") or "",
                     location=create_point(plat, plng),
                     category_id=cat_id,

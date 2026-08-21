@@ -24,6 +24,14 @@ class Attraction(Base):
         UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
     )
     address: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    # The Google place this row was seeded from, when it was seeded from one.
+    # Nullable: admin-curated rows have no upstream, and rows seeded before the
+    # column existed resolve lazily on first detail view.
+    google_place_id: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
+    details_fetched_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     opening_hours: Mapped[dict] = mapped_column(JSON, default=dict)
     entry_fee: Mapped[float] = mapped_column(Float, nullable=True, default=0.0)
     currency: Mapped[str] = mapped_column(String(10), default="USD")
