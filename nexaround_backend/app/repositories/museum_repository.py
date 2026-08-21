@@ -34,24 +34,32 @@ class MuseumRepository:
         if museum is None:
             return None, []
 
-        # Map duration string to column
+        # Each duration has an inclusion flag and its own stop number.
         col_map = {
-            "3h": MuseumMasterpiece.included_3h,
-            "5h": MuseumMasterpiece.included_5h,
-            "1d": MuseumMasterpiece.included_1d,
-            "2d": MuseumMasterpiece.included_2d,
+            "3h": (MuseumMasterpiece.included_3h, MuseumMasterpiece.stop_3h),
+            "5h": (MuseumMasterpiece.included_5h, MuseumMasterpiece.stop_5h),
+            "1d": (MuseumMasterpiece.included_1d, MuseumMasterpiece.stop_1d),
+            "2d": (MuseumMasterpiece.included_2d, MuseumMasterpiece.stop_2d),
         }
-        col = col_map.get(duration.lower())
-        if col is None:
+        columns = col_map.get(duration.lower())
+        if columns is None:
             return museum, []
+        included, stop = columns
 
+        # Order by this tour's own stop number. The same exhibit sits at a
+        # different position in each tour, so ordering every tour by the single
+        # `rank` column showed most of them in the wrong sequence. Museums
+        # seeded before those columns existed have none, hence the fallback.
         result = await db.execute(
             select(MuseumMasterpiece)
             .where(
                 MuseumMasterpiece.museum_id == museum.id,
-                col == True,
+                included == True,
             )
-            .order_by(MuseumMasterpiece.rank.asc())
+            .order_by(
+                func.coalesce(stop, MuseumMasterpiece.rank).asc(),
+                MuseumMasterpiece.rank.asc(),
+            )
         )
         return museum, list(result.scalars().all())
 

@@ -35,8 +35,8 @@ async def check():
     # Now let's test the Gemini models
     models = [
         "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
+        "gemini-2.5-flash-lite",
+        "gemini-2.5-pro",
     ]
 
     payload = {

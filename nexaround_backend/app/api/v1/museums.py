@@ -74,10 +74,15 @@ async def get_museum_itinerary(
     if museum is None:
         raise HTTPException(status_code=404, detail="Museum not found")
 
-    # Group by building, preserving order of first appearance
+    # Group by building, preserving order of first appearance. Each item also
+    # carries the stop number for *this* tour, so the client can show 1..N
+    # rather than the gap-ridden global rank.
+    stop_attr = f"stop_{duration.lower()}"
     grouped: OrderedDict[str, list] = OrderedDict()
-    for mp in masterpieces:
-        grouped.setdefault(mp.building, []).append(MasterpieceOut.model_validate(mp))
+    for position, mp in enumerate(masterpieces, start=1):
+        item = MasterpieceOut.model_validate(mp)
+        item.stop = getattr(mp, stop_attr, None) or position
+        grouped.setdefault(mp.building, []).append(item)
 
     sections = [
         BuildingSection(building=building, items=items)

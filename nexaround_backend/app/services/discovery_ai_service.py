@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 _MODELS = [
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-pro",
 ]
 
 
@@ -242,12 +242,13 @@ async def generate_discovery_itinerary(
             ) as t:
                 resp = await client.post(_model_url(model), json=body, headers=headers)
                 t.upstream(resp)
-            if resp.status_code in (429, 500, 503) and i < len(attempts) - 1:
+            if resp.status_code != 200 and i < len(attempts) - 1:
                 logger.warning(
-                    "Gemini %s for %s — falling through to next model",
-                    resp.status_code, model,
+                    "Gemini %s for %s — falling through to next model (details: %s)",
+                    resp.status_code, model, resp.text[:200],
                 )
-                await asyncio.sleep(1)  # brief backoff before trying next model
+                if resp.status_code != 404:
+                    await asyncio.sleep(1)  # brief backoff before trying next model
                 continue
             resp.raise_for_status()
             data = resp.json()

@@ -889,7 +889,12 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                                   ),
                                   const Spacer(),
                                   Text(
-                                    '#${mp.rank}',
+                                    // The tour's own stop number, not the
+                                    // global rank: rank is one sequence across
+                                    // every tour, so a five-hour route showed
+                                    // #1, #2, #9, #11, #53 as if stops were
+                                    // missing.
+                                    '#${mp.stop ?? mp.rank}',
                                     style: const TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w700,
