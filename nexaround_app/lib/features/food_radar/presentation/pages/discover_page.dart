@@ -9,6 +9,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:nexaround_app/core/widgets/converted_currency_text.dart';
 
 import 'package:nexaround_app/features/budget/presentation/bloc/budget_bloc.dart';
@@ -95,7 +96,7 @@ class DiscoverPage extends StatefulWidget {
   State<DiscoverPage> createState() => _DiscoverPageState();
 }
 
-class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMixin {
+class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderStateMixin {
   late int _selectedTab;
   late AnimationController _radarController;
   final ScrollController _tabScrollController = ScrollController();
@@ -458,163 +459,137 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                   builder: (context, state) {
                     final isLoading = _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
                     
-                    // Populate lists from state.allAttractions (master cached list) or fallback to state.attractions
-                    final baseList = state.allAttractions.isNotEmpty ? state.allAttractions : state.attractions;
-
-                    // The banded fetch goes looking for places in the outer
-                    // distance bands, which a radius query centred on the user
-                    // never returns — Google ranks its twenty results by
-                    // prominence around the centre. Merging them in means the
-                    // Discovery tabs list the same far-out places Around You
-                    // shows, instead of stopping where the map data stops.
-                    final bandedPlaces = state.bandedPlaces.values
-                        .expand((bands) => bands.expand((band) => band))
-                        .toList();
-
-                    final rawMasterList = [...baseList, ...bandedPlaces];
-                    final masterList = _deduplicateAttractions(rawMasterList);
-                    // Same split Around You uses, so the two can't disagree.
+                    final activeTab = _tabs[_selectedTab];
                     final sections = PlaceSections.sectionsFrom(state);
-                    
-                    // Filter POI List — built attractions: heritage, culture,
-                    // worship and ticketed venues. Beaches, parks and waterfalls
-                    // now belong to Nature and are excluded by _isPoi.
-                    _poiList = sections['POI']!;
 
-                    if (_selectedPoiCategory != null) {
-                      _poiList = _poiList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        final tags = PlaceSections.tagsOf(a);
-                        if (_selectedPoiCategory == 'Landmarks') {
-                          return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
-                        } else if (_selectedPoiCategory == 'Culture') {
-                          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
-                        } else if (_selectedPoiCategory == 'Museums') {
-                          return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
-                        } else if (_selectedPoiCategory == 'Leisure') {
-                          return tags.contains('zoo') || tags.contains('aquarium') || tags.contains('amusement_park') || tags.contains('water_park') || tags.contains('planetarium') || tags.contains('performing_arts_theater') || cat.contains('zoo') || cat.contains('experience') || name.contains('zoo') || name.contains('aquarium') || name.contains('theatre') || name.contains('theater');
-                        }
-                        return true;
-                      }).toList();
+                    if (activeTab == 'POI') {
+                      _poiList = sections['POI'] ?? [];
+                      if (_selectedPoiCategory != null) {
+                        _poiList = _poiList.where((a) {
+                          final cat = (a.categoryName ?? '').toLowerCase();
+                          final name = a.name.toLowerCase();
+                          final tags = PlaceSections.tagsOf(a);
+                          if (_selectedPoiCategory == 'Landmarks') {
+                            return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
+                          } else if (_selectedPoiCategory == 'Culture') {
+                            return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
+                          } else if (_selectedPoiCategory == 'Museums') {
+                            return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
+                          } else if (_selectedPoiCategory == 'Leisure') {
+                            return tags.contains('zoo') || tags.contains('aquarium') || tags.contains('amusement_park') || tags.contains('water_park') || tags.contains('planetarium') || tags.contains('performing_arts_theater') || cat.contains('zoo') || cat.contains('experience') || name.contains('zoo') || name.contains('aquarium') || name.contains('theatre') || name.contains('theater');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _poiList.sort((a, b) {
+                        int ratingComp = b.rating.compareTo(a.rating);
+                        if (ratingComp != 0) return ratingComp;
+                        return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                      });
+                      _poiList = _deduplicateAttractions(_poiList);
+                    } else if (activeTab == 'Nature') {
+                      _natureList = sections['Nature'] ?? [];
+                      if (_selectedNatureCategory != null) {
+                        _natureList = _natureList.where((a) {
+                          final cat = (a.categoryName ?? '').toLowerCase();
+                          final name = a.name.toLowerCase();
+                          final tags = PlaceSections.tagsOf(a);
+                          if (_selectedNatureCategory == 'Beaches') {
+                            return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
+                          } else if (_selectedNatureCategory == 'Parks') {
+                            return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('national_park') || tags.contains('botanical_garden') || tags.contains('garden');
+                          } else if (_selectedNatureCategory == 'Waterfalls') {
+                            return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
+                          } else if (_selectedNatureCategory == 'Lakes') {
+                            return cat.contains('lake') || cat.contains('river') || name.contains('lake') || name.contains('river') || name.contains('lagoon') || name.contains('reservoir') || tags.contains('lake') || tags.contains('river');
+                          } else if (_selectedNatureCategory == 'Wildlife') {
+                            return name.contains('sanctuary') || name.contains('safari') || name.contains('wildlife') || tags.contains('wildlife_park') || tags.contains('wildlife_refuge') || tags.contains('hiking_area');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _natureList.sort((a, b) {
+                        int ratingComp = b.rating.compareTo(a.rating);
+                        if (ratingComp != 0) return ratingComp;
+                        return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
+                      });
+                      _natureList = _deduplicateAttractions(_natureList);
+                    } else if (activeTab == 'Food') {
+                      _foodList = sections['Food & Drink'] ?? [];
+                      if (_selectedFoodCategory != null) {
+                        _foodList = _foodList.where((a) {
+                          final cat = (a.categoryName ?? '').toLowerCase();
+                          final name = a.name.toLowerCase();
+                          if (_selectedFoodCategory == 'Street Food') {
+                            return cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || cat.contains('snack') || name.contains('street') || name.contains('burger') || name.contains('kiosk');
+                          } else if (_selectedFoodCategory == 'Fine Dining') {
+                            final isCafeOrStreet = cat.contains('cafe') || cat.contains('coffee') || cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || name.contains('cafe') || name.contains('street');
+                            return !isCafeOrStreet && (cat.contains('dining') || cat.contains('restaurant') || cat.contains('bistro') || cat.contains('hotel') || name.contains('fine') || name.contains('restaurant') || name.contains('hotel') || name.contains('grill'));
+                          } else if (_selectedFoodCategory == 'Cafés') {
+                            return cat.contains('cafe') || cat.contains('coffee') || cat.contains('tea') || cat.contains('bakery') || cat.contains('dessert') || name.contains('cafe') || name.contains('coffee') || name.contains('bakery');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                      _foodList = _deduplicateAttractions(_foodList);
+                    } else if (activeTab == 'Shopping') {
+                      _shoppingList = sections['Shopping'] ?? [];
+                      if (_selectedShoppingCategory != null) {
+                        _shoppingList = _shoppingList.where((a) {
+                          final cat = (a.categoryName ?? '').toLowerCase();
+                          final name = a.name.toLowerCase();
+                          if (_selectedShoppingCategory == 'Tech') {
+                            return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
+                          } else if (_selectedShoppingCategory == 'Local') {
+                            return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                      _shoppingList = _deduplicateAttractions(_shoppingList);
+                    } else if (activeTab == 'Medical') {
+                      _medicalList = sections['Medical'] ?? [];
+                      if (_selectedMedicalCategory != null) {
+                        _medicalList = _medicalList.where((a) {
+                          final cat = (a.categoryName ?? '').toLowerCase();
+                          final name = a.name.toLowerCase();
+                          final tags = PlaceSections.tagsOf(a);
+                          if (_selectedMedicalCategory == 'Clinics') {
+                            return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
+                          } else if (_selectedMedicalCategory == 'Pharmacies') {
+                            return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
+                          } else if (_selectedMedicalCategory == 'Dental') {
+                            return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
+                          } else if (_selectedMedicalCategory == 'Labs') {
+                            return name.contains('laborator') || name.contains('lab ') || name.contains('scan') || tags.contains('medical_lab') || tags.contains('physiotherapist');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                      _medicalList = _deduplicateAttractions(_medicalList);
+                    } else if (activeTab == 'Hospital') {
+                      _hospitalList = sections['Hospital'] ?? [];
+                      if (_selectedHospitalCategory != null) {
+                        _hospitalList = _hospitalList.where((a) {
+                          final name = a.name.toLowerCase();
+                          if (_selectedHospitalCategory == 'Government') {
+                            return name.contains('general') || name.contains('base ') || name.contains('district') ||
+                                   name.contains('teaching') || name.contains('national') || name.contains('government');
+                          } else if (_selectedHospitalCategory == 'Private') {
+                            return !(name.contains('general') || name.contains('base ') || name.contains('district') ||
+                                     name.contains('teaching') || name.contains('national') || name.contains('government'));
+                          } else if (_selectedHospitalCategory == 'Maternity') {
+                            return name.contains('maternity') || name.contains('children') || name.contains('women');
+                          }
+                          return true;
+                        }).toList();
+                      }
+                      _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+                      _hospitalList = _deduplicateAttractions(_hospitalList);
                     }
-                    _poiList.sort((a, b) {
-                      int ratingComp = b.rating.compareTo(a.rating);
-                      if (ratingComp != 0) return ratingComp;
-                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                    });
-
-                    // Filter Nature List — the outdoors itself: beaches, parks,
-                    // waterfalls, lakes and trails.
-                    _natureList = sections['Nature']!;
-
-                    if (_selectedNatureCategory != null) {
-                      _natureList = _natureList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        final tags = PlaceSections.tagsOf(a);
-                        if (_selectedNatureCategory == 'Beaches') {
-                          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
-                        } else if (_selectedNatureCategory == 'Parks') {
-                          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('national_park') || tags.contains('botanical_garden') || tags.contains('garden');
-                        } else if (_selectedNatureCategory == 'Waterfalls') {
-                          return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
-                        } else if (_selectedNatureCategory == 'Lakes') {
-                          return cat.contains('lake') || cat.contains('river') || name.contains('lake') || name.contains('river') || name.contains('lagoon') || name.contains('reservoir') || tags.contains('lake') || tags.contains('river');
-                        } else if (_selectedNatureCategory == 'Wildlife') {
-                          return name.contains('sanctuary') || name.contains('safari') || name.contains('wildlife') || tags.contains('wildlife_park') || tags.contains('wildlife_refuge') || tags.contains('hiking_area');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _natureList.sort((a, b) {
-                      int ratingComp = b.rating.compareTo(a.rating);
-                      if (ratingComp != 0) return ratingComp;
-                      return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                    });
-
-                    // Filter Food List
-                    _foodList = sections['Food & Drink']!;
-                    if (_selectedFoodCategory != null) {
-                      _foodList = _foodList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        if (_selectedFoodCategory == 'Street Food') {
-                          return cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || cat.contains('snack') || name.contains('street') || name.contains('burger') || name.contains('kiosk');
-                        } else if (_selectedFoodCategory == 'Fine Dining') {
-                          final isCafeOrStreet = cat.contains('cafe') || cat.contains('coffee') || cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || name.contains('cafe') || name.contains('street');
-                          return !isCafeOrStreet && (cat.contains('dining') || cat.contains('restaurant') || cat.contains('bistro') || cat.contains('hotel') || name.contains('fine') || name.contains('restaurant') || name.contains('hotel') || name.contains('grill'));
-                        } else if (_selectedFoodCategory == 'Cafés') {
-                          return cat.contains('cafe') || cat.contains('coffee') || cat.contains('tea') || cat.contains('bakery') || cat.contains('dessert') || name.contains('cafe') || name.contains('coffee') || name.contains('bakery');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-                    // Filter Shopping List
-                    _shoppingList = sections['Shopping']!;
-                    if (_selectedShoppingCategory != null) {
-                      _shoppingList = _shoppingList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        if (_selectedShoppingCategory == 'Tech') {
-                          return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
-                        } else if (_selectedShoppingCategory == 'Local') {
-                          return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-                    // Filter Medical List — everyday health. Hospitals are their
-                    // own section now and _isMedical excludes them.
-                    _medicalList = sections['Medical']!;
-                    if (_selectedMedicalCategory != null) {
-                      _medicalList = _medicalList.where((a) {
-                        final cat = (a.categoryName ?? '').toLowerCase();
-                        final name = a.name.toLowerCase();
-                        final tags = PlaceSections.tagsOf(a);
-                        if (_selectedMedicalCategory == 'Clinics') {
-                          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
-                        } else if (_selectedMedicalCategory == 'Pharmacies') {
-                          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
-                        } else if (_selectedMedicalCategory == 'Dental') {
-                          return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
-                        } else if (_selectedMedicalCategory == 'Labs') {
-                          return name.contains('laborator') || name.contains('lab ') || name.contains('scan') || tags.contains('medical_lab') || tags.contains('physiotherapist');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-                    // Filter Hospital List
-                    _hospitalList = sections['Hospital']!;
-                    if (_selectedHospitalCategory != null) {
-                      _hospitalList = _hospitalList.where((a) {
-                        final name = a.name.toLowerCase();
-                        if (_selectedHospitalCategory == 'Government') {
-                          return name.contains('general') || name.contains('base ') || name.contains('district') ||
-                                 name.contains('teaching') || name.contains('national') || name.contains('government');
-                        } else if (_selectedHospitalCategory == 'Private') {
-                          return !(name.contains('general') || name.contains('base ') || name.contains('district') ||
-                                   name.contains('teaching') || name.contains('national') || name.contains('government'));
-                        } else if (_selectedHospitalCategory == 'Maternity') {
-                          return name.contains('maternity') || name.contains('children') || name.contains('women');
-                        }
-                        return true;
-                      }).toList();
-                    }
-                    _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-                    _poiList = _deduplicateAttractions(_poiList);
-                    _natureList = _deduplicateAttractions(_natureList);
-                    _foodList = _deduplicateAttractions(_foodList);
-                    _shoppingList = _deduplicateAttractions(_shoppingList);
-                    _medicalList = _deduplicateAttractions(_medicalList);
-                    _hospitalList = _deduplicateAttractions(_hospitalList);
 
                     return Column(
                       children: [
@@ -1636,48 +1611,66 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
         ? a.categoryName!
         : defaultCategory;
 
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => AttractionDetailPage(
-          id: a.id,
-          name: a.name,
-          category: catName,
-          rating: a.rating,
-          distance: '${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
-          emoji: emoji,
-          imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
-          latitude: a.latitude,
-          longitude: a.longitude,
-        )),
-      ),
-      child: GlassCard(
-        margin: const EdgeInsets.only(bottom: 16),
-        padding: const EdgeInsets.all(12),
-        glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
-        child: Row(
-          children: [
-            // Thumbnail (Network Image / Fallback Icon Container)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: a.photoUrls.isNotEmpty
-                  ? CachedNetworkImage(
-                      imageUrl: a.photoUrls.first.startsWith('/')
-                          ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
-                          : a.photoUrls.first,
-                      width: 90,
-                      height: 90,
-                      fit: BoxFit.cover,
-                      placeholder: (_, __) => Container(
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => AttractionDetailPage(
+            id: a.id,
+            name: a.name,
+            category: catName,
+            rating: a.rating,
+            distance: '${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+            emoji: emoji,
+            imageUrl: a.photoUrls.isNotEmpty ? a.photoUrls.first : null,
+            latitude: a.latitude,
+            longitude: a.longitude,
+          )),
+        ),
+        child: GlassCard(
+          margin: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.all(12),
+          glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
+          child: Row(
+            children: [
+              // Thumbnail (Network Image / Fallback Icon Container)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: a.photoUrls.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: a.photoUrls.first.startsWith('/')
+                            ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
+                            : a.photoUrls.first,
                         width: 90,
                         height: 90,
-                        color: AppColors.surfaceVariant,
-                        child: const Icon(Icons.image_rounded, size: 24, color: AppColors.textMuted),
-                      ),
-                      errorWidget: (_, __, ___) => Container(
+                        fit: BoxFit.cover,
+                        placeholder: (_, __) => Container(
+                          width: 90,
+                          height: 90,
+                          color: AppColors.surfaceVariant,
+                          child: const Icon(Icons.image_rounded, size: 24, color: AppColors.textMuted),
+                        ),
+                        errorWidget: (_, __, ___) => Container(
+                          width: 90,
+                          height: 90,
+                          color: AppColors.secondary.withOpacity(0.1),
+                          child: Center(
+                            child: Icon(
+                              _getExperienceIcon(catName, a.name, index),
+                              color: AppColors.secondary,
+                              size: 36,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Container(
                         width: 90,
                         height: 90,
-                        color: AppColors.secondary.withOpacity(0.1),
+                        decoration: BoxDecoration(
+                          color: AppColors.secondary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
+                        ),
                         child: Center(
                           child: Icon(
                             _getExperienceIcon(catName, a.name, index),
@@ -1686,84 +1679,68 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
                           ),
                         ),
                       ),
-                    )
-                  : Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.secondary.withOpacity(0.2)),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          _getExperienceIcon(catName, a.name, index),
-                          color: AppColors.secondary,
-                          size: 36,
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(width: 16),
-            
-            // Details
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        catName.toUpperCase(),
-                        style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
-                      ),
-                      GestureDetector(
-                        onTap: () async {
-                          if (a is AttractionModel) {
-                            await CacheService.toggleFavoritePlace(a.toJson());
-                          }
-                          setState(() {});
-                        },
-                        child: Icon(
-                          CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
-                          color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
-                          size: 20,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    a.name,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
-                      Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                      const SizedBox(width: 10),
-                      const Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
-                      Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    a.description ?? 'Discover this unique location near you.',
-                    style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              
+              // Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          catName.toUpperCase(),
+                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.primary, letterSpacing: 1),
+                        ),
+                        GestureDetector(
+                          onTap: () async {
+                            if (a is AttractionModel) {
+                              await CacheService.toggleFavoritePlace(a.toJson());
+                            }
+                            setState(() {});
+                          },
+                          child: Icon(
+                            CacheService.isPlaceFavorite(a.id) ? Icons.favorite_rounded : Icons.favorite_outline_rounded,
+                            color: CacheService.isPlaceFavorite(a.id) ? AppColors.primary : AppColors.textTertiary,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      a.name,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const Icon(Icons.star_rounded, size: 14, color: AppColors.warning),
+                        Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+                        const SizedBox(width: 10),
+                        const Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
+                        Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      a.description ?? 'Discover this unique location near you.',
+                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary, height: 1.3),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-    ).animate().fade(delay: Duration(milliseconds: 50 * (index % 10))).slideY(begin: 0.05, end: 0);
+    );
   }
 
   // ═══════════════════════════════════════
@@ -2973,58 +2950,97 @@ class _DiscoverPageState extends State<DiscoverPage> with TickerProviderStateMix
   }
 
   Widget _buildHospitalCard(String name, String dist, String address, double lat, double lng, int index) {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(16),
-      glowColor: AppColors.error,
-      child: Row(
-        children: [
-          const Text('🏥', style: TextStyle(fontSize: 28)),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(name, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-                if (dist.isNotEmpty)
-                  Text(dist, style: const TextStyle(fontSize: 12, color: AppColors.textTertiary)),
-                if (address.isNotEmpty)
-                  Text(address, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-          ),
-          GestureDetector(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => SmartTourismMapPage(
-                    initialLat: lat,
-                    initialLng: lng,
-                    destinationName: name,
-                  ),
-                ),
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: AppColors.error.withOpacity(0.15),
-                border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(14),
+                color: AppColors.error.withOpacity(0.1),
               ),
-              child: Row(
+              child: const Icon(Icons.local_hospital_rounded, color: AppColors.error, size: 24),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.directions_rounded, color: AppColors.error, size: 14),
-                  const SizedBox(width: 4),
-                  Text('Go', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.error)),
+                  Text(
+                    name,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.near_me_rounded, size: 12, color: AppColors.brandGreen),
+                      const SizedBox(width: 4),
+                      Text(dist, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.brandGreen)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          address,
+                          style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
-          ),
-        ],
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GoogleMapsPage(
+                      initialLat: lat,
+                      initialLng: lng,
+                      destinationName: name,
+                    ),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.error.withOpacity(0.15),
+                  border: Border.all(color: AppColors.error.withOpacity(0.3)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.directions_rounded, color: AppColors.error, size: 14),
+                    SizedBox(width: 4),
+                    Text('Go', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.error)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
-    ).animate().fade(delay: Duration(milliseconds: 100 * index));
+    );
   }
 
   Future<void> _makePhoneCall(String phoneNumber) async {

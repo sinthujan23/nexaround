@@ -137,7 +137,7 @@ async def _run_discovery_generation(
                 mode=data.mode,
                 result=clean_response,
             )
-            await repo.create(item)
+            saved_item = await repo.create(item)
 
             # 4. Notify user via push notification
             user_result = await db.execute(
@@ -160,8 +160,8 @@ async def _run_discovery_generation(
                         body=f"Your itinerary for {data.location} is ready!",
                         data={
                             "type": "discovery_ready",
-                            "id": str(saved.id),
-                            "discovery_id": str(saved.id),
+                            "id": str(saved_item.id),
+                            "discovery_id": str(saved_item.id),
                             "location": data.location,
                         },
                     )

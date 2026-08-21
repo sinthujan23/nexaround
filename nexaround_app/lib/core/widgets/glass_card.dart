@@ -19,6 +19,9 @@ class GlassCard extends StatefulWidget {
   /// Elevation level — controls the base shadow stack.
   final GlassElevation elevation;
 
+  /// When true, renders a real-time GPU BackdropFilter blur. Disabled by default for scroll performance.
+  final bool enableBlur;
+
   const GlassCard({
     super.key,
     required this.child,
@@ -27,6 +30,7 @@ class GlassCard extends StatefulWidget {
     this.borderRadius,
     this.glowColor,
     this.blur = 20,
+    this.enableBlur = false,
     this.onTap,
     this.pressFeedback = true,
     this.elevation = GlassElevation.sm,
@@ -63,6 +67,26 @@ class _GlassCardState extends State<GlassCard> {
       if (widget.glowColor != null) ...AppShadows.glow(widget.glowColor!),
     ];
 
+    Widget content = Container(
+      padding: widget.padding ?? AppSpacing.cardPadding,
+      decoration: BoxDecoration(
+        gradient: AppColors.cardGradient,
+        borderRadius: br,
+        border: Border.all(
+          color: AppColors.glassBorder,
+          width: 0.6,
+        ),
+      ),
+      child: widget.child,
+    );
+
+    if (widget.enableBlur && widget.blur > 0) {
+      content = BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: widget.blur, sigmaY: widget.blur),
+        child: content,
+      );
+    }
+
     final card = AnimatedScale(
       duration: AppDurations.fast,
       curve: AppCurves.standard,
@@ -77,21 +101,7 @@ class _GlassCardState extends State<GlassCard> {
         ),
         child: ClipRRect(
           borderRadius: br,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: widget.blur, sigmaY: widget.blur),
-            child: Container(
-              padding: widget.padding ?? AppSpacing.cardPadding,
-              decoration: BoxDecoration(
-                gradient: AppColors.cardGradient,
-                borderRadius: br,
-                border: Border.all(
-                  color: AppColors.glassBorder,
-                  width: 0.6,
-                ),
-              ),
-              child: widget.child,
-            ),
-          ),
+          child: content,
         ),
       ),
     );

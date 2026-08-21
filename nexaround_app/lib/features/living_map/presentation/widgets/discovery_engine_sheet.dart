@@ -37,6 +37,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   late String _aiResult;
 
   late String _currentLocationName;
+  String _planLocationName = '';
   double? _currentLatitude;
   double? _currentLongitude;
   String _selectedWeather = '🌧️ Rainy';
@@ -45,6 +46,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   void initState() {
     super.initState();
     _currentLocationName = widget.locationName;
+    _planLocationName = widget.locationName;
     _currentLatitude = widget.latitude;
     _currentLongitude = widget.longitude;
 
@@ -327,9 +329,9 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                         letterSpacing: -0.3,
                       ),
                     ),
-                    if (_currentLocationName.isNotEmpty)
+                    if (_planLocationName.isNotEmpty)
                       Text(
-                        _currentLocationName,
+                        _planLocationName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -924,6 +926,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                 if (result != null && result is Map<String, dynamic>) {
                   setState(() {
                     _currentLocationName = result['name'] ?? _currentLocationName;
+                    _planLocationName = _currentLocationName;
                     _currentLatitude = result['latitude'] as double?;
                     _currentLongitude = result['longitude'] as double?;
                   });
@@ -1073,6 +1076,8 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                               // Show results
                               setState(() {
                                 _aiResult = result;
+                                _planLocationName = location;
+                                _selectedMode = mode;
                                 _sheetState = SheetState.result;
                               });
                             },

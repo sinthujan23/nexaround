@@ -860,13 +860,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                     toolbarHeight: 64,
                     titleSpacing: 24,
                     centerTitle: false,
-                    flexibleSpace: ClipRRect(
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-                        child: Container(
-                          color: AppColors.background.withOpacity(0.85),
-                        ),
-                      ),
+                    flexibleSpace: Container(
+                      color: AppColors.background.withOpacity(0.95),
                     ),
                     title: _buildExploringCard(),
                     actions: [
@@ -1400,20 +1395,23 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildExploringCard() {
     return GestureDetector(
       onTap: () => _showLocationSearchModal(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(100),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppColors.brandGreen.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(100),
-            border: Border.all(
-              color: AppColors.brandGreen.withOpacity(0.3),
-              width: 0.8,
-            ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(100),
+          border: Border.all(
+            color: AppColors.brandGreen.withOpacity(0.35),
+            width: 1.0,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
@@ -1483,8 +1481,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             ],
           ),
         ),
-      ),
-    ));
+      );
   }
 
   void _showLocationSearchModal(BuildContext context) {
@@ -5523,13 +5520,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                     offset: const Offset(0, 8),
                   ),
                 ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                  child: Container(color: Colors.transparent),
-                ),
               ),
             ),
           ),

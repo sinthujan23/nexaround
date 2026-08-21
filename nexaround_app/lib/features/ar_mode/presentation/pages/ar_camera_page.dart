@@ -9716,18 +9716,6 @@ HOW TO FORMAT EVERY REPLY:
                       shadows: [Shadow(color: Colors.black, blurRadius: 10)],
                     ),
                   ),
-                  // Route overview (total distance + ETA)
-                  if (hasRoute) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      '${_walkingRoute!.remainingDistanceText(_currentStepIndex)} · ${_walkingRoute!.totalDuration}',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
