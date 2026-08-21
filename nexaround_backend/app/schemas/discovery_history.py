@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic import BaseModel
 from uuid import UUID
 from datetime import datetime
@@ -27,10 +28,10 @@ class DiscoveryGenerateRequest(BaseModel):
     mode: str
     latitude: float
     longitude: float
-    budget: str
     companions: str
     weather: str
     time_available: str
     mood: str
     time_of_day: str
+    budget: Optional[str] = None
 

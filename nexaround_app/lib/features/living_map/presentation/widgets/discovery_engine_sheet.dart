@@ -63,13 +63,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
   // Details
   String _timeAvailable = '5 Hours';
   String _companions = 'Solo';
-  int _budgetLevel = 1; // 0 = Budget, 1 = Moderate, 2 = Luxury
-
-  String _getBudgetString() {
-    if (_budgetLevel == 0) return 'Budget (\$)';
-    if (_budgetLevel == 2) return 'Luxury (\$\$\$)';
-    return 'Moderate (\$\$)';
-  }
 
   final List<Map<String, dynamic>> _moods = [
     {'label': 'Happy', 'icon': Icons.sentiment_very_satisfied_rounded},
@@ -161,13 +154,13 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                     const SizedBox(height: 12),
                     _buildMoodGrid(),
                     const SizedBox(height: 24),
-                    _buildSectionTitle(Icons.explore_rounded, 'Discovery Mode', 'What kind of experience are you looking for?', tag: 'Optional'),
-                    const SizedBox(height: 12),
-                    _buildModesList(),
-                    const SizedBox(height: 24),
                     _buildSectionTitle(Icons.tune_rounded, 'Tell us a few details', 'These help us create your personalized itinerary.'),
                     const SizedBox(height: 12),
                     _buildDetailsList(),
+                    const SizedBox(height: 24),
+                    _buildSectionTitle(Icons.explore_rounded, 'Discovery Mode', 'What kind of experience are you looking for?', tag: 'Optional'),
+                    const SizedBox(height: 12),
+                    _buildModesList(),
                     const SizedBox(height: 30),
                   ],
                 ),
@@ -549,7 +542,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     final currentTimeAvailable = _timeAvailable;
     final currentMood = _selectedMood;
     final currentMode = _selectedMode ?? 'Explore';
-    final currentBudget = _getBudgetString();
     final currentCompanions = _companions;
     final currentWeather = _selectedWeather;
     final formattedTime = TimeOfDay.now().format(context);
@@ -575,7 +567,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
           'mode': currentMode,
           'latitude': currentLat ?? 0.0,
           'longitude': currentLng ?? 0.0,
-          'budget': currentBudget,
           'companions': currentCompanions,
           'weather': currentWeather,
           'time_available': currentTimeAvailable,
@@ -993,26 +984,6 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
               ['Solo', 'Couple', 'Family', 'Friends'], 
               _companions, 
               (val) => setState(() => _companions = val)
-            ),
-          ),
-          const Divider(height: 1, color: AppColors.border),
-          _buildDetailRow(
-            Icons.account_balance_wallet_rounded, 'Budget', _getBudgetString(), AppColors.brandGreen,
-            onTap: () => _showSelectionSheet(
-              'Budget', 
-              const ['Budget (\$)', 'Moderate (\$\$)', 'Luxury (\$\$\$)'], 
-              _getBudgetString(), 
-              (val) {
-                setState(() {
-                  if (val.startsWith('Budget')) {
-                    _budgetLevel = 0;
-                  } else if (val.startsWith('Luxury')) {
-                    _budgetLevel = 2;
-                  } else {
-                    _budgetLevel = 1;
-                  }
-                });
-              }
             ),
           ),
         ],

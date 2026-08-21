@@ -866,6 +866,14 @@ Trip brief:
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
 
+CRITICAL — LIVE SEARCH GROUNDING RULES:
+1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
+2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost. Do not estimate from memory if a search is possible.
+3. If a search genuinely returns no usable price for an item, do NOT invent one. Set "price_confidence": "Estimated" and state in "price_basis": "No current search result found; figure is a general regional estimate, not sourced."
+4. "price_source" must name the actual source you found via search (the site, publisher, or official page name) — never a generic label like "Official Ticket" or "Menu Avg" with no real anchor behind it.
+5. Do not fabricate deep links to specific hotels, restaurants, or attractions anywhere in the output. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged. If you don't have a verified link, omit it — never guess one.
+6. Prefer official/primary sources (venue's own site, government tourism site, transit authority) over blogs or aggregators when search results offer a choice.
+
 CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
 1. If the total budget of {int(budget)} {currency} is NOT realistic or too low to cover standard travel/hotel/flights for {travelers} traveler(s) in {destination} for {days} days (e.g. 1 USD, very low amount):
    - NEVER fail, refuse, or return an empty error plan.
@@ -879,6 +887,18 @@ CRITICAL BUDGET PRIORITY RULES:
 3. Stay (Accommodation) budget MUST NEVER be near zero or under 25% of total budget unless flights alone exceed 70% or total budget is an ultra-saver amount.
 4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget.
 
+CRITICAL PRICE JUSTIFICATION RULES:
+1. Every non-zero cost MUST cite a concrete, named reference point found via search — never a vague category.
+2. "price_basis" MUST state the actual anchor rate/figure found and any currency conversion applied, in one sentence.
+3. Add "price_confidence" to every costed activity, one of:
+   - "Fixed" — official/published rate confirmed via search (museum tickets, train fares, park entry).
+   - "Typical" — well-established market rate with some variance, confirmed via search (metered taxi, chain hotel breakfast, common street food).
+   - "Estimated" — no reliable search result found, or inherently variable (ride-hail surge, informal bargaining, seasonal swings) — must name what could move the price.
+4. Self-honesty rule: these labels reflect genuine confidence based on what search actually returned, not how official something sounds. Do not label something "Fixed" without a real search result backing it.
+5. Round to sensible increments (nearest 1, 5, or 10 in local currency) unless an official rate is exact. Never fabricate false precision (e.g. "23.47").
+6. For "dining" activities, "restaurants" entries should be real, findable venues confirmed via search, or realistic venue *types* for the area if no specific venue is confirmed — never fabricated proper names presented as fact.
+7. The sum of all activity costs must match the "food" + "activities" portions of budget_breakdown. Recompute if they drift.
+
 Return ONLY a JSON object with EXACTLY this shape:
 {{
   "title": "Evocative 2-4 word trip name",
@@ -890,10 +910,10 @@ Return ONLY a JSON object with EXACTLY this shape:
   "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
   "budget_advisory": "Notice if budget cap is insufficient for realistic flight/hotel rates, otherwise empty string.",
   "budget_breakdown": {{
-    "stay": {int(budget * 0.35)},
-    "transit": {int(budget * 0.45)},
-    "food": {int(budget * 0.12)},
-    "activities": {int(budget * 0.08)},
+    "stay": 0,
+    "transit": 0,
+    "food": 0,
+    "activities": 0,
     "total": {int(budget)}
   }},
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
@@ -908,37 +928,31 @@ Return ONLY a JSON object with EXACTLY this shape:
       "day": 1,
       "theme": "Short day theme",
       "activities": [
-        {{ "time": "09:00", "name": "Place or activity name", "tip": "Short practical tip", "cost": "{currency} amount or 'Free'", "price_source": "Official Ticket / Metered Taxi / Menu Avg / Public Access", "price_basis": "1-sentence note on rate baseline or conditions", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
+        {{
+          "time": "09:00",
+          "name": "Place or activity name",
+          "tip": "Short practical tip",
+          "cost": "{currency} amount or 'Free'",
+          "price_source": "Named source actually found via search (site/publisher/official page)",
+          "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",
+          "price_confidence": "Fixed | Typical | Estimated",
+          "type": "transport|attraction|dining|exploration|accommodation|other",
+          "restaurants": []
+        }}
       ]
     }}
   ]
 }}
 
 Rules for "type" field in each activity:
-- "transport": Travel/transit between locations (e.g. "Travel to X", "Taxi to Y", "Ferry to Z"). Cost = estimated ride/fare.
-- "attraction": Ticketed landmarks, museums, temples, cathedrals, galleries, parks with entry fees. Cost = ticket price.
-- "dining": Meals — lunch, dinner, breakfast, brunch, street food, food tours. Cost = cheapest restaurant option available. Include "restaurants" array with 3-5 nearby restaurant suggestions.
-- "exploration": Free self-guided walking, wandering, exploring streets/markets. Cost = "Free".
-- "accommodation": Hotel check-in/check-out. Cost = "Free" (hotel cost is in budget_breakdown).
-- "other": Any activity that doesn't fit above categories.
+- "transport": Travel/transit between locations. Cost = estimated fare.
+- "attraction": Ticketed landmarks, museums, temples, parks. Cost = ticket price.
+- "dining": Meals. Cost = cheapest realistic option. Include "restaurants" array with 3-5 real or realistic nearby suggestions.
+- "exploration": Free self-guided walking, public markets, viewpoints. Cost = "Free".
+- "accommodation": Hotel check-in/check-out. Cost = "Free" (room cost lives in budget_breakdown).
+- "other": Any other activity.
 
-Rules for "restaurants" in dining activities:
-- Only include "restaurants" array for activities with type "dining".
-- Each restaurant: {{ "name": "Restaurant Name", "cuisine": "Italian / Local / etc", "price_range": "{currency} X - Y per person", "rating": "4.5", "tip": "Known for X" }}
-- List 3-5 real, popular restaurants near the dining location.
-- The activity "cost" should match the cheapest restaurant's lower price range.
-
-Rules for "booking_partners":
-- List ONLY 2-4 real, popular travel websites, ride-hailing apps, booking platforms, or local apps that directly match the transit/hotel/tour recommendations in this plan.
-- If ride-hailing or transit is recommended, include the exact app used in that region (e.g. Uber for US/Europe/India, PickMe for Sri Lanka, Grab for SE Asia, Yandex for Russia).
-- For stays & hotels: Include the recommended hotel booking site (e.g. Booking.com, Agoda, Ostrovok).
-- For tours & tickets: Include the recommended activity platform (e.g. Headout, GetYourGuide, Klook, Viator).
-- The "url" field MUST be the official search URL of that exact provider (e.g. https://www.uber.com, https://www.viator.com, https://www.booking.com).
-- The "type" field must be one of: "hotels", "tours", "transit".
-
-Rules:
-- Plan for {travelers} traveler(s): size accommodation, meals and tickets for the group, and make every activity "cost" the TOTAL for all {travelers}.
-- In "budget_breakdown", strictly divide the total budget of {int(budget)} {currency} across the 4 core categories: "stay" (accommodation), "transit" (flights/intercity transport), "food" (all meals & dining), and "activities" (tours/tickets). Ensure stay + transit + food + activities == {int(budget)}.
+General rules:
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
 - Keep the SUM of all activity costs within the "activities" and "food" budget portion of {int(budget)} {currency}.
 - Use real, recognisable places near "{destination}".

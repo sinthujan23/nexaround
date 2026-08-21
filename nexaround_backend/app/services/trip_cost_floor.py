@@ -364,8 +364,7 @@ def shortfall_message(floor: dict, destination: str) -> str:
     # Attributive, so always singular: "a 3-day trip", never "a 3-days trip".
     amount = f"{floor['currency']} {floor['minimum']:,.0f}"
     who = "" if floor["travelers"] == 1 else f" for {floor['travelers']} travellers"
-    flight = " including flights" if floor["includes_flight"] else ""
     return (
         f"A {days}-day trip to {destination}{who} needs at least "
-        f"about {amount}{flight}. Please raise your budget to continue."
+        f"about {amount} for standard stay and travel. Please raise your budget to continue."
     )

@@ -120,9 +120,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => const LocationSearchModal(),
     ).then((result) {
-      if (result != null && result is Map<String, dynamic>) {
+      if (result != null && result is Map) {
         setState(() {
-          _destinationController.text = result['name'] ?? '';
+          _destinationController.text = result['name']?.toString() ?? '';
         });
       }
     });
@@ -136,11 +136,36 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   // ── Actions ────────────────────────────────────────────────────────────
   void _onPrimaryAction() {
     FocusScope.of(context).unfocus();
-    if (_currentStep == 0 && _destinationController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Where do you want to go?')),
-      );
-      return;
+    if (_currentStep == 0) {
+      if (_destinationController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Where do you want to go?')),
+        );
+        return;
+      }
+      if (_startDate == null || _endDate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select your trip start & end dates to continue.'),
+            backgroundColor: Color(0xFFE65100),
+          ),
+        );
+        return;
+      }
+    }
+    if (_currentStep == 1) {
+      if (_includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select Departure Date and Return Date for flights.')),
+        );
+        return;
+      }
+      if (_includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select Check-in Date and Check-out Date for hotels.')),
+        );
+        return;
+      }
     }
     if (_currentStep < 2) {
       setState(() => _currentStep++);
@@ -629,15 +654,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Future<void> _pickTripDateRange() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final initialRange = DateTimeRange(
-      start: _startDate ?? DateTime.now().add(const Duration(days: 1)),
-      end: _endDate ?? DateTime.now().add(Duration(days: 1 + _days)),
+      start: _startDate ?? today,
+      end: _endDate ?? today.add(Duration(days: _days > 1 ? _days - 1 : 0)),
     );
     final picked = await showDateRangePicker(
       context: context,
       initialDateRange: initialRange,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'SELECT TRIP DATES (Tap same date twice for 1-day trip)',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -675,15 +703,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Future<void> _pickFlightDateRange() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final initialRange = DateTimeRange(
-      start: _flightStartDate ?? DateTime.now().add(const Duration(days: 1)),
-      end: _flightEndDate ?? DateTime.now().add(Duration(days: 1 + _days)),
+      start: _flightStartDate ?? (_startDate ?? today),
+      end: _flightEndDate ?? (_endDate ?? today.add(Duration(days: _days > 1 ? _days - 1 : 0))),
     );
     final picked = await showDateRangePicker(
       context: context,
       initialDateRange: initialRange,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'SELECT FLIGHT DATES',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -710,15 +741,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   Future<void> _pickHotelDateRange() async {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
     final initialRange = DateTimeRange(
-      start: _hotelCheckInDate ?? (_flightStartDate ?? DateTime.now().add(const Duration(days: 1))),
-      end: _hotelCheckOutDate ?? (_flightEndDate ?? DateTime.now().add(Duration(days: 1 + _days))),
+      start: _hotelCheckInDate ?? (_startDate ?? today),
+      end: _hotelCheckOutDate ?? (_endDate ?? today.add(Duration(days: _days > 1 ? _days - 1 : 0))),
     );
     final picked = await showDateRangePicker(
       context: context,
       initialDateRange: initialRange,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      firstDate: today,
+      lastDate: today.add(const Duration(days: 365)),
+      helpText: 'SELECT HOTEL DATES',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -969,11 +1003,30 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
+  bool get _isCurrentStepValid {
+    if (_currentStep == 0) {
+      return _destinationController.text.trim().isNotEmpty &&
+          _startDate != null &&
+          _endDate != null;
+    }
+    if (_currentStep == 1) {
+      if (_includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
+        return false;
+      }
+      if (_includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
+        return false;
+      }
+      return true;
+    }
+    if (_currentStep == 2) {
+      return _budgetShortfall == null;
+    }
+    return true;
+  }
+
   Widget _buildBottomAction() {
     final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
-    // Only blocks on the final step: the budget is not meaningful until the
-    // destination and dates behind it have been chosen.
-    final blocked = _currentStep == 2 && _budgetShortfall != null;
+    final blocked = !_isCurrentStepValid;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
       decoration: BoxDecoration(

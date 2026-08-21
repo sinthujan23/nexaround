@@ -77,34 +77,59 @@ class OdysseyService {
     required int days,
     required String currency,
   }) {
+    final nights = days > 1 ? days - 1 : 0;
     return '''
 Design a $days-day travel Odyssey.
 
 Trip brief:
 - Destination: $destination
 - Travel style / mood: $mood
-- Total budget: ${budget.toStringAsFixed(0)} $currency (this is the hard cap for the whole trip)
+- Total budget: ${budget.toStringAsFixed(0)} $currency (hard cap for the entire trip)
 - Currency to use in all costs: $currency
 
+CRITICAL — LIVE SEARCH GROUNDING RULES:
+1. You MUST find current prices — do not recall prices from memory/training data.
+2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost.
+3. If a search genuinely returns no usable price for an item, set "price_confidence": "Estimated" and state in "price_basis": "No current search result found; figure is a general regional estimate, not sourced."
+4. "price_source" must name the actual source you found (the site, publisher, or official page name) — never a generic label with no real anchor behind it.
+5. The ONLY links allowed are the fixed "booking_partners" URLs given below.
+
 CRITICAL LOW / IMPOSSIBLE BUDGET HANDLING:
-1. If the total budget of ${budget.toStringAsFixed(0)} $currency is too low to cover standard travel/hotel/flights for $destination for $days days (e.g. 1 $currency, very low funds):
+1. If the total budget of ${budget.toStringAsFixed(0)} $currency is too low to cover standard travel/hotel/flights for $destination for $days days:
    - NEVER fail or refuse to generate a plan.
    - Design an ultra-saver plan with free sights, public parks, iconic viewpoints, self-guided walks, and affordable street food.
    - Set "budget_advisory" with a clear disclaimer: "A total budget of ${budget.toStringAsFixed(0)} $currency is insufficient for a standard $days-day trip to $destination (realistic minimum starts from ~$currency X). This itinerary is generated as an ultra-saver plan with free sights and low-cost exploration, but additional funds will be needed for actual lodging, transit, and meals."
 2. If the budget is sufficient, set "budget_advisory": "".
+
+CRITICAL PRICE JUSTIFICATION RULES:
+1. Every non-zero cost MUST cite a concrete, named reference point — never a vague category.
+2. "price_basis" MUST state the actual anchor rate/figure found and any currency conversion applied, in one sentence.
+3. Add "price_confidence" to every costed activity ("Fixed" | "Typical" | "Estimated").
 
 Return ONLY a JSON object with EXACTLY this shape:
 {
   "title": "Evocative 2-4 word trip name",
   "destination": "$destination",
   "days": $days,
-  "nights": ${days > 1 ? days - 1 : 0},
+  "nights": $nights,
   "currency": "$currency",
   "summary": "1-2 sentence overview matching the '$mood' style.",
-  "budget_split": "Short split, e.g. '40% Stay · 30% Food · 30% Experiences'",
+  "budget_split": "Short split, e.g. '35% Stay - 45% Transit - 12% Food - 8% Activities'",
   "budget_advisory": "Notice if budget cap is insufficient for realistic rates, otherwise empty string.",
+  "budget_breakdown": {
+    "stay": 0,
+    "transit": 0,
+    "food": 0,
+    "activities": 0,
+    "total": ${budget.toInt()}
+  },
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
+  "booking_partners": [
+    { "name": "Booking.com", "type": "hotels", "url": "https://www.booking.com" },
+    { "name": "Viator", "type": "tours", "url": "https://www.viator.com" },
+    { "name": "Skyscanner", "type": "transit", "url": "https://www.skyscanner.com" }
+  ],
   "day_plans": [
     {
       "day": 1,
@@ -115,8 +140,11 @@ Return ONLY a JSON object with EXACTLY this shape:
           "name": "Place or activity name",
           "tip": "Short practical tip",
           "cost": "$currency amount or 'Free'",
-          "price_source": "Official Ticket / Metered Fare / Menu Avg / Public Access",
-          "price_basis": "1-sentence note explaining the rate baseline or conditions"
+          "price_source": "Named source actually found (site/publisher/official page)",
+          "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",
+          "price_confidence": "Fixed | Typical | Estimated",
+          "type": "transport|attraction|dining|exploration|accommodation|other",
+          "restaurants": []
         }
       ]
     }
@@ -126,7 +154,6 @@ Return ONLY a JSON object with EXACTLY this shape:
 Rules:
 - Produce exactly $days entries in "day_plans", each with 3-5 activities.
 - Keep the SUM of all activity costs within the ${budget.toStringAsFixed(0)} $currency budget.
-- For each activity, specify a concise "price_source" (e.g. 'Official Ticket', 'Metered Taxi', 'Avg Meal', 'Public Free') and a 1-sentence "price_basis" explaining the rate.
 - Use real, recognisable places near "$destination".
 - Be concise; tips under ~12 words.
 ''';

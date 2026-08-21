@@ -127,7 +127,6 @@ def _build_prompt(
     weather: str,
     time_available: str,
     mood: str,
-    budget: str,
     companions: str,
 ) -> str:
     return f"""# NexAround AI Discovery Engine
@@ -139,7 +138,7 @@ You are **NexAround**, an AI Discovery Companion. Help people discover what they
 - Date: {date_str} | Time: {time_str}
 - Weather: {weather} | Time Available: {time_available}
 - Mood: {mood} | Mode: {mode}
-- Budget: {budget} | Companions: {companions}
+- Companions: {companions}
 - Transportation: Auto-detect (walking/driving/public transport)
 
 **CRITICAL:** ONLY recommend places within 15km of {location}. Do NOT recommend places in other cities.
@@ -188,6 +187,7 @@ If rain/traffic/closure: suggest alternatives inline.
 - Use REAL places findable on Google Maps — do NOT invent places
 - Wrap place names in [[double brackets]] for app linking
 - Do NOT include Google Maps URLs or HTTP links
+- Do NOT include estimated costs, prices, or budgets (focus purely on experiences, timings, and tips)
 - Write conversationally, not like a generic travel blog
 """
 
@@ -201,9 +201,9 @@ async def generate_discovery_itinerary(
     weather: str,
     time_available: str,
     mood: str,
-    budget: str,
     companions: str,
     api_key: str,
+    budget: Optional[str] = None,
 ) -> str:
     prompt = _build_prompt(
         location=location,
@@ -213,7 +213,6 @@ async def generate_discovery_itinerary(
         weather=weather,
         time_available=time_available,
         mood=mood,
-        budget=budget,
         companions=companions,
     )
 

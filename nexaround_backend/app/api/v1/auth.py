@@ -210,3 +210,84 @@ async def record_session(
         db.add(UserSession(user_id=user_id, duration_seconds=secs))
         await db.commit()
     return MessageResponse(message="ok")
+
+
+class RecentLocationItem(BaseModel):
+    name: str
+    place_id: Optional[str] = ""
+    district: Optional[str] = "Nearby"
+    address: Optional[str] = ""
+    latitude: Optional[float] = 0.0
+    longitude: Optional[float] = 0.0
+
+
+@router.get("/me/recent-locations", response_model=list[dict])
+async def get_recent_locations(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrieve user's recent location searches synced across devices."""
+    token = authorization.replace("Bearer ", "")
+    service = AuthService(db)
+    user = await service.get_current_user(token)
+    prefs = user.preferences or {}
+    return prefs.get("recent_locations") or []
+
+
+@router.post("/me/recent-locations", response_model=list[dict])
+async def add_recent_location(
+    data: RecentLocationItem,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save or move a location to the top of user's cross-device search history."""
+    token = authorization.replace("Bearer ", "")
+    service = AuthService(db)
+    user = await service.get_current_user(token)
+    prefs = user.preferences or {}
+    locations = [dict(loc) for loc in (prefs.get("recent_locations") or []) if isinstance(loc, dict)]
+
+    # Deduplicate
+    name_lower = data.name.strip().lower()
+    locations = [
+        loc for loc in locations
+        if loc.get("name", "").strip().lower() != name_lower
+        and not (data.place_id and loc.get("place_id") and loc.get("place_id") == data.place_id)
+    ]
+
+    # Prepend new search
+    locations.insert(0, data.model_dump())
+    locations = locations[:10]  # keep max 10
+
+    await service.update_preferences(user.id, {"recent_locations": locations})
+    return locations
+
+
+@router.delete("/me/recent-locations", response_model=list[dict])
+async def remove_recent_location(
+    name: Optional[str] = None,
+    place_id: Optional[str] = None,
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a specific search item or clear all recent locations."""
+    token = authorization.replace("Bearer ", "")
+    service = AuthService(db)
+    user = await service.get_current_user(token)
+    prefs = user.preferences or {}
+    locations = [dict(loc) for loc in (prefs.get("recent_locations") or []) if isinstance(loc, dict)]
+
+    if not name and not place_id:
+        # Clear all
+        locations = []
+    else:
+        name_lower = (name or "").strip().lower()
+        locations = [
+            loc for loc in locations
+            if (not name or loc.get("name", "").strip().lower() != name_lower)
+            and (not place_id or loc.get("place_id") != place_id)
+        ]
+
+    await service.update_preferences(user.id, {"recent_locations": locations})
+    return locations
+

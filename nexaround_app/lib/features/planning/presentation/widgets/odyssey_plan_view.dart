@@ -72,22 +72,6 @@ class OdysseyPlanView extends StatefulWidget {
 }
 
 class _OdysseyPlanViewState extends State<OdysseyPlanView> {
-  /// Places whose details are showing. Collapsed is the default: a day reads as
-  /// a scannable list of names, and the price, tip, booking button and cost
-  /// field appear only for the one being looked at.
-  final Set<String> _expanded = <String>{};
-
-  static String _key(int dayIndex, int activityIndex) => '$dayIndex:$activityIndex';
-
-  bool _isExpanded(int dayIndex, int activityIndex) =>
-      _expanded.contains(_key(dayIndex, activityIndex));
-
-  void _toggleExpanded(int dayIndex, int activityIndex) {
-    setState(() {
-      final key = _key(dayIndex, activityIndex);
-      if (!_expanded.remove(key)) _expanded.add(key);
-    });
-  }
 
 
   @override
@@ -1078,7 +1062,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool isCompleted = widget.odyssey.status == 'completed';
     final bool checkable = widget.onToggleVisited != null;
     final bool reorderable = widget.onReorderActivity != null && !isCompleted;
-    final bool open = _isExpanded(dayIndex, activityIndex);
 
     // The time each place was scheduled for is deliberately not shown. Places
     // can now be dragged into any order and into other days, and a fixed
@@ -1106,108 +1089,89 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Collapsed header — the whole strip toggles, so the tap target is
-            // the row rather than the small chevron.
-            InkWell(
-              onTap: () => _toggleExpanded(dayIndex, activityIndex),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (checkable)
-                      GestureDetector(
-                        onTap: isCompleted
-                            ? null
-                            : () => widget.onToggleVisited!(dayIndex, activityIndex),
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: Icon(
-                            act.visited
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            size: 22,
-                            color: act.visited ? AppColors.neonGreen : Colors.black26,
-                          ),
-                        ),
-                      ),
-                    Expanded(
-                      child: Text(
-                        act.name,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: act.visited ? Colors.black38 : Colors.black,
-                          decoration:
-                              act.visited ? TextDecoration.lineThrough : null,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  if (checkable)
+                    GestureDetector(
+                      onTap: isCompleted
+                          ? null
+                          : () => widget.onToggleVisited!(dayIndex, activityIndex),
+                      behavior: HitTestBehavior.opaque,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 10),
+                        child: Icon(
+                          act.visited
+                              ? Icons.check_circle_rounded
+                              : Icons.radio_button_unchecked_rounded,
+                          size: 22,
+                          color: act.visited ? AppColors.neonGreen : Colors.black26,
                         ),
                       ),
                     ),
-                    // Price stays visible while collapsed: it is the thing most
-                    // worth comparing between places without opening each one.
-                    if (act.cost.isNotEmpty && !open) ...[
-                      const SizedBox(width: 8),
-                      _buildPriceWithSource(context, act),
-                    ],
-                    Icon(
-                      open
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      size: 22,
-                      color: Colors.black38,
-                    ),
-                    if (reorderable)
-                      ReorderableDragStartListener(
-                        index: _rowIndexOf(dayIndex, activityIndex),
-                        child: const Padding(
-                          padding: EdgeInsets.only(left: 2, right: 4),
-                          child: Icon(Icons.drag_indicator_rounded,
-                              size: 20, color: Colors.black26),
-                        ),
+                  Expanded(
+                    child: Text(
+                      act.name,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: act.visited ? Colors.black38 : Colors.black,
+                        decoration:
+                            act.visited ? TextDecoration.lineThrough : null,
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                  if (reorderable)
+                    ReorderableDragStartListener(
+                      index: _rowIndexOf(dayIndex, activityIndex),
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 2, right: 4),
+                        child: Icon(Icons.drag_indicator_rounded,
+                            size: 20, color: Colors.black26),
+                      ),
+                    ),
+                ],
               ),
             ),
-            // Details, shown only while open.
-            if (open)
-              Padding(
-                padding: EdgeInsets.fromLTRB(
-                  checkable ? 48 : 16,
-                  0,
-                  16,
-                  14,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (act.cost.isNotEmpty) ...[
-                      _buildPriceWithSource(context, act),
-                      const SizedBox(height: 6),
-                    ],
-                    if (act.tip.isNotEmpty) ...[
-                      Text(
-                        act.tip,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          height: 1.35,
-                          color: Colors.black54,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                    ],
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: _buildActionButton(act, dayIndex, activityIndex),
-                    ),
-                    if (act.visited && widget.onActualCostChanged != null) ...[
-                      const SizedBox(height: 8),
-                      _buildActualCostInput(dayIndex, activityIndex, act),
-                    ],
-                  ],
-                ),
+            // Details are always visible
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                checkable ? 48 : 16,
+                0,
+                16,
+                14,
               ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (act.cost.isNotEmpty) ...[
+                    _buildPriceWithSource(context, act),
+                    const SizedBox(height: 6),
+                  ],
+                  if (act.tip.isNotEmpty) ...[
+                    Text(
+                      act.tip,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: _buildActionButton(act, dayIndex, activityIndex),
+                  ),
+                  if (act.visited && widget.onActualCostChanged != null) ...[
+                    const SizedBox(height: 8),
+                    _buildActualCostInput(dayIndex, activityIndex, act),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -1788,252 +1752,265 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      showDragHandle: false,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctxModal) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctxModal).viewInsets.bottom + 24,
+      backgroundColor: Colors.transparent,
+      builder: (ctxModal) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Drag handle ──
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            // ── Header: icon + title + activity name ──
-            Row(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: iconBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(icon, size: 22, color: iconColor),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Price & Rate Details',
-                        style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        act.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
+                // ── Drag handle ──
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // ── Rate + Source Tag card ──
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Estimated Rate',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black54,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: isFree
-                              ? const Color(0xFFE8F5E9)
-                              : const Color(0xFFE0F2FE),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          displayCost,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            color: isFree
-                                ? const Color(0xFF2E7D32)
-                                : const Color(0xFF0369A1),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Icon(icon, size: 15, color: iconColor),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Source: $sourceTag',
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            // ── Verify on: clickable platform links ──
-            const Text(
-              '🔍  Verify price on',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 10),
-            ...verifyLinks.map((link) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: InkWell(
-                    onTap: () async {
-                      final uri = Uri.parse(link.$2);
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    },
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 12),
+                // ── Header: icon + title + activity name ──
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: iconBg,
                         borderRadius: BorderRadius.circular(12),
-                        border:
-                            Border.all(color: const Color(0xFFE2E8F0), width: 1),
                       ),
-                      child: Row(
+                      child: Icon(icon, size: 22, color: iconColor),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            width: 32,
-                            height: 32,
-                            decoration: BoxDecoration(
-                              color: link.$4.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: Icon(link.$3, size: 18, color: link.$4),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              link.$1,
-                              style: const TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.black87,
-                              ),
+                          const Text(
+                            'Price & Rate Details',
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
                             ),
                           ),
-                          Icon(
-                            Icons.open_in_new_rounded,
-                            size: 16,
-                            color: link.$4,
+                          const SizedBox(height: 2),
+                          Text(
+                            act.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
-                )),
-            const SizedBox(height: 6),
-            // ── Disclaimer banner ──
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.info_outline_rounded,
-                    size: 16,
-                    color: Color(0xFFD97706),
-                  ),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Prices may vary due to seasonal demand, exchange rates & vendor updates. Verify on the platforms above for live rates.',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.35,
-                        color: Color(0xFF92400E),
-                      ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                // ── Scrollable Body ──
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // ── Rate + Source Tag card ──
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                    'Estimated Rate',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.black54,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: isFree
+                                          ? const Color(0xFFE8F5E9)
+                                          : const Color(0xFFE0F2FE),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      displayCost,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                        color: isFree
+                                            ? const Color(0xFF2E7D32)
+                                            : const Color(0xFF0369A1),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                              const SizedBox(height: 10),
+                              Row(
+                                children: [
+                                  Icon(icon, size: 15, color: iconColor),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Source: $sourceTag',
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        // ── Verify on: clickable platform links ──
+                        const Text(
+                          '🔍  Verify price on',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        ...verifyLinks.map((link) => Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: InkWell(
+                                onTap: () async {
+                                  final uri = Uri.parse(link.$2);
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 14, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border:
+                                        Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: link.$4.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Icon(link.$3, size: 18, color: link.$4),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          link.$1,
+                                          style: const TextStyle(
+                                            fontSize: 13.5,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.black87,
+                                          ),
+                                        ),
+                                      ),
+                                      Icon(
+                                        Icons.open_in_new_rounded,
+                                        size: 16,
+                                        color: link.$4,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            )),
+                        const SizedBox(height: 6),
+                        // ── Disclaimer banner ──
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFFBEB),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFDE68A)),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                Icons.info_outline_rounded,
+                                size: 16,
+                                color: Color(0xFFD97706),
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Prices may vary due to seasonal demand, exchange rates & vendor updates. Verify on the platforms above for live rates.',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    height: 1.35,
+                                    color: Color(0xFF92400E),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // ── Close button ──
-            SizedBox(
-              width: double.infinity,
-              height: 42,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(ctxModal).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                ),
+                const SizedBox(height: 16),
+                // ── Pinned Close button (Always completely visible) ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctxModal).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: const Text(
+                      'Got it',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
                   ),
-                  elevation: 0,
                 ),
-                child: const Text(
-                  'Got it',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2054,110 +2031,125 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      showDragHandle: false,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20, right: 20, top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: Colors.black12,
-                  borderRadius: BorderRadius.circular(2),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-            Text(
-              'Restaurant Options',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              act.name,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            ...act.restaurants.map((r) => InkWell(
-              onTap: () => _navigateToSmartMap(context, r.name),
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF8F8F8),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                const Text(
+                  'Restaurant Options',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                const SizedBox(height: 4),
+                Text(
+                  act.name,
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: Text(
-                            r.name,
-                            style: const TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w700,
+                        ...act.restaurants.map((r) => InkWell(
+                          onTap: () => _navigateToSmartMap(context, r.name),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8F8F8),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        r.name,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    if (r.rating.isNotEmpty) ...[
+                                      const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                                      const SizedBox(width: 2),
+                                      Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                    ],
+                                    const SizedBox(width: 6),
+                                    const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),
+                                  ],
+                                ),
+                                if (r.cuisine.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                                ],
+                                if (r.priceRange.isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    r.priceRange,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppColors.actionTeal,
+                                    ),
+                                  ),
+                                ],
+                                if (r.tip.isNotEmpty) ...[
+                                  const SizedBox(height: 2),
+                                  Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                                ],
+                                const SizedBox(height: 6),
+                                const Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    Icon(Icons.touch_app_outlined, size: 12, color: Colors.black26),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Tap to view on map',
+                                      style: TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                        if (r.rating.isNotEmpty) ...[
-                          const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                          const SizedBox(width: 2),
-                          Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                        ],
-                        const SizedBox(width: 6),
-                        const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),
+                        )),
                       ],
                     ),
-                    if (r.cuisine.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
-                    ],
-                    if (r.priceRange.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        r.priceRange,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: AppColors.actionTeal,
-                        ),
-                      ),
-                    ],
-                    if (r.tip.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                    ],
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Icon(Icons.touch_app_outlined, size: 12, color: Colors.black26),
-                        SizedBox(width: 4),
-                        Text(
-                          'Tap to view on map',
-                          style: TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            )),
-            const SizedBox(height: 8),
-          ],
+              ],
+            ),
+          ),
         ),
       ),
     );

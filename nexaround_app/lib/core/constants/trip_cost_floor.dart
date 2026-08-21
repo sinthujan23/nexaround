@@ -353,10 +353,9 @@ class TripCostFloor {
   }) {
     final amount = '$currency ${_thousands(minimum)}';
     final who = travelers == 1 ? '' : ' for $travelers travellers';
-    final flight = includesFlight ? ' including flights' : '';
     // Attributive, so always singular: 'a 3-day trip', never 'a 3-days trip'.
     return 'A $days-day trip to $destination$who needs at least '
-        'about $amount$flight. Please raise your budget to continue.';
+        'about $amount for standard stay and travel. Please raise your budget to continue.';
   }
 
   static String _thousands(double value) {
