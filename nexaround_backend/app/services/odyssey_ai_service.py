@@ -166,6 +166,7 @@ def build_meta_item(
     departure_city: str = "",
     budget_breakdown: dict = None,
     budget_advisory: str = "",
+    verified_sources: list[dict] = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -191,6 +192,7 @@ def build_meta_item(
         "departure_city": departure_city,
         "budget_breakdown": budget_breakdown or {},
         "budget_advisory": budget_advisory,
+        "verified_sources": verified_sources or [],
     }
 
 
@@ -336,7 +338,7 @@ Return ONLY a JSON object with this exact shape:
 }}
 """
     try:
-        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        text, _ = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
         data = _parse_json(text)
         strategies = data.get("strategies")
         if isinstance(strategies, list):
@@ -507,7 +509,7 @@ Return ONLY a JSON object with this exact shape:
 }}
 """
     try:
-        text = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        text, _ = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
         data = _parse_json(text)
         strategies = data.get("strategies")
         if isinstance(strategies, list):
@@ -554,7 +556,9 @@ async def generate_odyssey(
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
     prompt = _build_prompt(destination, mood, budget, days, currency, travelers)
-    text = await _call_gemini(prompt, api_key, max_tokens=8192, thinking_budget=0)
+    text, grounding_chunks = await _call_gemini(
+        prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
+    )
     plan = _parse_json(text)
 
     g_days = _as_int(plan.get("days"), days)
@@ -687,6 +691,14 @@ async def generate_odyssey(
                 f"We've tailored an ultra-saver plan featuring free attractions and budget-friendly exploration, but additional funds will be required for actual flights, accommodation, and daily meals."
             )
 
+    # Deduplicate grounding chunks into verified sources
+    verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
+    if verified_sources:
+        logger.info(
+            "Google Search grounding: %d verified sources attached to itinerary",
+            len(verified_sources),
+        )
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
@@ -708,6 +720,7 @@ async def generate_odyssey(
         departure_city=departure_city or "",
         budget_breakdown=budget_breakdown,
         budget_advisory=gemini_advisory,
+        verified_sources=verified_sources,
     )
 
     day_items: list[dict] = []
@@ -736,6 +749,16 @@ async def generate_odyssey(
                 "tip": str(a.get("tip") or a.get("note") or ""),
                 "cost": str(a.get("cost") or ""),
             }
+            # Price justification fields (from grounded generation)
+            price_source = str(a.get("price_source") or "").strip()
+            price_basis = str(a.get("price_basis") or "").strip()
+            price_confidence = str(a.get("price_confidence") or "").strip()
+            if price_source:
+                act_dict["price_source"] = price_source
+            if price_basis:
+                act_dict["price_basis"] = price_basis
+            if price_confidence:
+                act_dict["price_confidence"] = price_confidence
             if act_type:
                 act_dict["type"] = act_type
             if restaurants:
@@ -784,7 +807,7 @@ async def generate_replacement_activity(
     # thinking_budget=0 disables gemini-2.5-flash's hidden "thinking" tokens —
     # they otherwise eat the output budget and can leave zero text for a small
     # task like this. A single activity needs no reasoning, so turn it off.
-    text = await _call_gemini(prompt, api_key, max_tokens=2048, thinking_budget=0)
+    text, _ = await _call_gemini(prompt, api_key, max_tokens=2048, thinking_budget=0)
     data = _parse_json(text)
 
     name = str(data.get("name") or data.get("attraction_name") or "").strip()
@@ -960,7 +983,19 @@ General rules:
 """
 
 
-async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinking_budget=None) -> str:
+async def _call_gemini(
+    prompt: str,
+    api_key: str,
+    max_tokens: int = 4096,
+    thinking_budget=None,
+    use_grounding: bool = False,
+) -> tuple[str, list[dict]]:
+    """Call Gemini with optional Google Search grounding.
+
+    Returns (text, grounding_chunks) where grounding_chunks is a list of
+    {"title": ..., "uri": ...} dicts extracted from the response's
+    groundingMetadata. Empty list when grounding is disabled or absent.
+    """
     api_key = (api_key or "").strip().strip('"').strip("'")
     base_generation_config = {
         "temperature": 0.8,
@@ -974,7 +1009,9 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     # one that's currently healthy.
     data = None
     attempts = _MODELS * 2
-    async with httpx.AsyncClient(timeout=45.0) as client:
+    # Grounded calls may take longer due to live search; use extended timeout
+    timeout = 90.0 if use_grounding else 45.0
+    async with httpx.AsyncClient(timeout=timeout) as client:
         for i, model in enumerate(attempts):
             generation_config = dict(base_generation_config)
             # Only gemini-2.5+ models support thinkingConfig; 1.5/2.0 reject it
@@ -986,10 +1023,18 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
                 "system_instruction": {"parts": [{"text": _SYSTEM}]},
                 "generationConfig": generation_config,
             }
+
+            # Attach Google Search grounding tool when requested.
+            # This tells Gemini to actually search Google for real-time data
+            # (prices, opening hours, etc.) instead of relying on training data.
+            if use_grounding:
+                body["tools"] = [{"google_search": {}}]
+
             try:
+                sku = "gemini_flash_grounded" if use_grounding else "gemini_flash_generate"
                 async with telemetry.track(
                     "gemini", f"odyssey_generate:{model}",
-                    sku="gemini_flash_generate",
+                    sku=sku,
                 ) as t:
                     resp = await client.post(_model_url(model), json=body, headers=headers)
                     t.upstream(resp)
@@ -1019,7 +1064,44 @@ async def _call_gemini(prompt: str, api_key: str, max_tokens: int = 4096, thinki
     text = "".join(p.get("text", "") for p in parts if isinstance(p, dict))
     if not text.strip():
         raise ValueError(f"Gemini returned no text (finishReason={cand.get('finishReason')})")
-    return text
+
+    # Extract grounding chunks from the response metadata.
+    # These are the real, verifiable sources Gemini actually searched.
+    grounding_chunks = _extract_grounding_chunks(cand) if use_grounding else []
+
+    return text, grounding_chunks
+
+
+def _extract_grounding_chunks(candidate: dict) -> list[dict]:
+    """Pull verified sources from Gemini's groundingMetadata.
+
+    The REST API returns them at:
+        candidate.groundingMetadata.groundingChunks[].web.{title, uri}
+    """
+    chunks = []
+    try:
+        metadata = candidate.get("groundingMetadata") or {}
+        for chunk in metadata.get("groundingChunks") or []:
+            web = chunk.get("web") or {}
+            uri = web.get("uri") or ""
+            title = web.get("title") or ""
+            if uri:
+                chunks.append({"title": title, "uri": uri})
+    except (AttributeError, TypeError):
+        pass
+    return chunks
+
+
+def _deduplicate_grounding_chunks(chunks: list[dict]) -> list[dict]:
+    """Deduplicate grounding chunks by URI, preserving order."""
+    seen = set()
+    unique = []
+    for chunk in chunks:
+        uri = chunk.get("uri", "")
+        if uri and uri not in seen:
+            seen.add(uri)
+            unique.append(chunk)
+    return unique
 
 
 def _parse_json(raw: str) -> dict:
@@ -1094,7 +1176,7 @@ Suggest exactly ONE other real, popular travel website, booking platform, or loc
 Return ONLY a JSON object with this exact shape:
 {{ "name": "Platform Name", "type": "{partner_type}", "url": "Search or landing URL for this platform in {destination}" }}
 """
-    text = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
+    text, _ = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
     data = _parse_json(text)
     return {
         "name": str(data.get("name") or "").strip(),

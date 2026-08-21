@@ -61,6 +61,7 @@ class OdysseyActivity {
   final String cost; // optional human-readable cost, e.g. "LKR 1,500"
   final String priceSource; // e.g. "Official Gate Ticket", "Uber / Metered Taxi", "Public Access"
   final String priceBasis; // explanation/details of the rate baseline
+  final String priceConfidence; // "Fixed" | "Typical" | "Estimated" (from Google Search grounding)
   final bool visited; // ticked off as the traveler completes the trip
   final ActivityType type; // classified activity type
   final String actualCost; // user-entered actual cost after completing
@@ -74,6 +75,7 @@ class OdysseyActivity {
     this.cost = '',
     this.priceSource = '',
     this.priceBasis = '',
+    this.priceConfidence = '',
     this.visited = false,
     this.type = ActivityType.other,
     this.actualCost = '',
@@ -87,6 +89,7 @@ class OdysseyActivity {
     ActivityType? type,
     String? priceSource,
     String? priceBasis,
+    String? priceConfidence,
   }) =>
       OdysseyActivity(
         time: time,
@@ -95,6 +98,7 @@ class OdysseyActivity {
         cost: cost,
         priceSource: priceSource ?? this.priceSource,
         priceBasis: priceBasis ?? this.priceBasis,
+        priceConfidence: priceConfidence ?? this.priceConfidence,
         visited: visited ?? this.visited,
         type: type ?? this.type,
         actualCost: actualCost ?? this.actualCost,
@@ -117,6 +121,7 @@ class OdysseyActivity {
       cost: cost,
       priceSource: (json['price_source'] ?? json['source'] ?? '').toString(),
       priceBasis: (json['price_basis'] ?? json['basis'] ?? '').toString(),
+      priceConfidence: (json['price_confidence'] ?? '').toString(),
       visited: json['visited'] == true,
       type: type,
       actualCost: (json['actual_cost'] ?? '').toString(),
@@ -135,6 +140,7 @@ class OdysseyActivity {
         'cost': cost,
         'price_source': priceSource,
         'price_basis': priceBasis,
+        'price_confidence': priceConfidence,
         'visited': visited,
         'type': type.name,
         'actual_cost': actualCost,
