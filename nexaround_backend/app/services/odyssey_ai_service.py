@@ -552,19 +552,9 @@ async def generate_odyssey(
     end_date: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
-    prompt = _build_prompt(destination, mood, budget, days, currency, travelers)
-    text, grounding_chunks = await _call_gemini(
-        prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
-    )
-    plan = _parse_json(text)
+    final_destination = str(destination)
 
-    g_days = _as_int(plan.get("days"), days)
-    nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
-    title = str(plan.get("title") or "Your Odyssey")
-
-    # Fetch Unsplash cover photo, flight strategies, and hotel strategies concurrently
-    final_destination = str(plan.get("destination") or destination)
-
+    # 1. Fetch Unsplash cover photo, flight strategies, and hotel strategies concurrently FIRST
     async def _get_cover():
         if unsplash_api_key:
             try:
@@ -581,9 +571,9 @@ async def generate_odyssey(
                     departure_city=departure_city,
                     departure_country=departure_country,
                     destination=final_destination,
-                    days=g_days,
+                    days=days,
                     budget=budget,
-                    currency=str(plan.get("currency") or currency),
+                    currency=currency,
                     travelers=travelers,
                     flight_start_date=flight_start_date or "",
                     flight_end_date=flight_end_date or "",
@@ -600,9 +590,9 @@ async def generate_odyssey(
             try:
                 return await generate_hotel_strategies(
                     destination=final_destination,
-                    days=g_days,
+                    days=days,
                     budget=budget,
-                    currency=str(plan.get("currency") or currency),
+                    currency=currency,
                     travelers=travelers,
                     hotel_check_in_date=hotel_check_in_date or "",
                     hotel_check_out_date=hotel_check_out_date or "",
@@ -618,6 +608,42 @@ async def generate_odyssey(
         _get_cover(), _get_flights(), _get_hotels()
     )
 
+    # Extract primary recommended hotel entity from confirmed SerpAPI results
+    primary_hotel = None
+    if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
+        for s in hotel_strategies["strategies"]:
+            if isinstance(s, dict) and s.get("name"):
+                primary_hotel = s
+                break
+
+    # Extract primary flight entity if available
+    primary_flight = None
+    if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
+        for s in flight_strategies["strategies"]:
+            if isinstance(s, dict) and s.get("name"):
+                primary_flight = s
+                break
+
+    # 2. Build grounded prompt using confirmed live inventory
+    prompt = _build_prompt(
+        destination=final_destination,
+        mood=mood,
+        budget=budget,
+        days=days,
+        currency=currency,
+        travelers=travelers,
+        confirmed_hotel=primary_hotel,
+        confirmed_flight=primary_flight,
+    )
+    text, grounding_chunks = await _call_gemini(
+        prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
+    )
+    plan = _parse_json(text)
+
+    g_days = _as_int(plan.get("days"), days)
+    nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
+    title = str(plan.get("title") or "Your Odyssey")
+
     final_start_date = start_date or flight_start_date or hotel_check_in_date or ""
     final_end_date = end_date or flight_end_date or hotel_check_out_date or ""
 
@@ -630,7 +656,6 @@ async def generate_odyssey(
             if isinstance(s, dict) and _extract_lowest_price(s.get("estimated_price_range")) > 0
         ]
         if f_costs:
-            # Flight strategies express per-person rate; multiply by travelers for group total
             cheapest_flight_cost = min(f_costs) * max(travelers, 1)
 
     cheapest_hotel_cost = 0.0
@@ -647,7 +672,6 @@ async def generate_odyssey(
     tot = float(budget) if budget > 0 else 1.0
     
     if cheapest_flight_cost > 0:
-        # Cap transit to max 85% of total budget if flight cost is extremely high
         transit_amt = min(cheapest_flight_cost, round(tot * 0.85, 2))
     else:
         transit_amt = round(tot * 0.30, 2)
@@ -671,14 +695,12 @@ async def generate_odyssey(
         "total": tot,
     }
 
-    # Dynamically generate budget_split text string to guarantee 100% agreement with breakdown
     stay_pct = round((stay_amt / tot) * 100)
     transit_pct = round((transit_amt / tot) * 100)
     food_pct = round((food_amt / tot) * 100)
     activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
-    # Deduplicate grounding chunks into verified sources
     verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
     if verified_sources:
         logger.info(
@@ -711,14 +733,82 @@ async def generate_odyssey(
     )
 
     day_items: list[dict] = []
-    for d in (plan.get("day_plans") or plan.get("plan") or []):
+    raw_days = plan.get("day_plans") or plan.get("plan") or []
+    total_days = len(raw_days)
+
+    for d_idx, d in enumerate(raw_days):
         if not isinstance(d, dict):
             continue
         activities = []
+        is_first_day = (d_idx == 0)
+        is_last_day = (d_idx == total_days - 1)
+        has_accommodation = False
+
         for a in (d.get("activities") or []):
             if not isinstance(a, dict):
                 continue
             act_type = str(a.get("type") or "").strip().lower()
+            name_str = str(a.get("name") or a.get("attraction_name") or "")
+            name_lower = name_str.lower()
+
+            is_acc = (
+                act_type == "accommodation"
+                or "check in" in name_lower
+                or "check-in" in name_lower
+                or "check out" in name_lower
+                or "check-out" in name_lower
+                or "freshen up" in name_lower
+            )
+
+            act_dict = {
+                "time": str(a.get("time") or ""),
+                "name": name_str,
+                "tip": str(a.get("tip") or a.get("note") or ""),
+                "cost": str(a.get("cost") or ""),
+            }
+
+            # 3. Strictly reconcile accommodation stops with confirmed primary hotel
+            if is_acc and primary_hotel:
+                has_accommodation = True
+                hotel_name = primary_hotel.get("name", "Hotel")
+                hotel_url = primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link", "")
+                hotel_rating = primary_hotel.get("rating", "4.5 ★")
+                hotel_rate = primary_hotel.get("price_per_night", "")
+                hotel_total_cost = primary_hotel.get("total_estimated_cost", "")
+
+                if is_first_day:
+                    act_dict["name"] = f"Check into {hotel_name}"
+                    act_dict["tip"] = f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels."
+                elif is_last_day and ("check out" in name_lower or "check-out" in name_lower):
+                    act_dict["name"] = f"Hotel Check-out at {hotel_name}"
+                    act_dict["tip"] = f"Complete check-out and luggage drop at {hotel_name} before departure."
+                else:
+                    if "hotel" in name_lower or "resort" in name_lower:
+                        act_dict["name"] = f"Rest & Freshen Up at {hotel_name}"
+
+                act_dict["type"] = "accommodation"
+                act_dict["cost"] = "Included in Stay"
+                act_dict["price_source"] = "Google Hotels"
+                act_dict["price_basis"] = f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)"
+                act_dict["price_confidence"] = "Fixed"
+                if hotel_url:
+                    act_dict["booking_url"] = hotel_url
+            else:
+                price_source = str(a.get("price_source") or "").strip()
+                price_basis = str(a.get("price_basis") or "").strip()
+                price_confidence = str(a.get("price_confidence") or "").strip()
+                booking_url = str(a.get("booking_url") or "").strip()
+                if price_source:
+                    act_dict["price_source"] = price_source
+                if price_basis:
+                    act_dict["price_basis"] = price_basis
+                if price_confidence:
+                    act_dict["price_confidence"] = price_confidence
+                if booking_url:
+                    act_dict["booking_url"] = booking_url
+                if act_type:
+                    act_dict["type"] = act_type
+
             restaurants = []
             if isinstance(a.get("restaurants"), list):
                 for r in a.get("restaurants"):
@@ -730,27 +820,29 @@ async def generate_odyssey(
                             "rating": str(r.get("rating") or ""),
                             "tip": str(r.get("tip") or ""),
                         })
-            act_dict = {
-                "time": str(a.get("time") or ""),
-                "name": str(a.get("name") or a.get("attraction_name") or ""),
-                "tip": str(a.get("tip") or a.get("note") or ""),
-                "cost": str(a.get("cost") or ""),
-            }
-            # Price justification fields (from grounded generation)
-            price_source = str(a.get("price_source") or "").strip()
-            price_basis = str(a.get("price_basis") or "").strip()
-            price_confidence = str(a.get("price_confidence") or "").strip()
-            if price_source:
-                act_dict["price_source"] = price_source
-            if price_basis:
-                act_dict["price_basis"] = price_basis
-            if price_confidence:
-                act_dict["price_confidence"] = price_confidence
-            if act_type:
-                act_dict["type"] = act_type
             if restaurants:
                 act_dict["restaurants"] = restaurants
             activities.append(act_dict)
+
+        # Guarantee Day 1 Check-in activity if not present
+        if is_first_day and primary_hotel and not has_accommodation:
+            hotel_name = primary_hotel.get("name", "Hotel")
+            hotel_url = primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link", "")
+            hotel_rating = primary_hotel.get("rating", "4.5 ★")
+            hotel_rate = primary_hotel.get("price_per_night", "")
+            hotel_total_cost = primary_hotel.get("total_estimated_cost", "")
+            activities.insert(0, {
+                "time": "14:00",
+                "name": f"Check into {hotel_name}",
+                "tip": f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels.",
+                "cost": "Included in Stay",
+                "price_source": "Google Hotels",
+                "price_basis": f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)",
+                "price_confidence": "Fixed",
+                "type": "accommodation",
+                "booking_url": hotel_url,
+            })
+
         day_items.append({
             "kind": "day",
             "day": _as_int(d.get("day"), len(day_items) + 1),
@@ -864,9 +956,52 @@ Return ONLY a JSON object with this exact shape (no markdown, no commentary):
 
 
 
-def _build_prompt(destination: str, mood: str, budget: float, days: int, currency: str, travelers: int = 1) -> str:
+def _build_prompt(
+    destination: str,
+    mood: str,
+    budget: float,
+    days: int,
+    currency: str,
+    travelers: int = 1,
+    confirmed_hotel: dict | None = None,
+    confirmed_flight: dict | None = None,
+) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
+
+    hotel_rules = ""
+    if confirmed_hotel and confirmed_hotel.get("name"):
+        h_name = confirmed_hotel.get("name")
+        h_rate = confirmed_hotel.get("price_per_night", "")
+        h_total = confirmed_hotel.get("total_estimated_cost", "")
+        h_rating = confirmed_hotel.get("rating", "4.5 ★")
+        h_url = confirmed_hotel.get("booking_url") or confirmed_hotel.get("serpapi_link", "")
+        hotel_rules = f"""
+CRITICAL — CONFIRMED ACCOMMODATION (STRICTLY BIND THIS HOTEL, ZERO HALLUCINATIONS):
+- Primary Confirmed Hotel: "{h_name}"
+- Provider: Google Hotels
+- Star Rating: {h_rating}
+- Confirmed Nightly Rate: {h_rate}
+- Total Stay Cost: {h_total}
+- Direct Booking Link: {h_url}
+
+Accommodation Scheduling Rules:
+1. Day 1 MUST include check-in: "name": "Check into {h_name}", "type": "accommodation", "cost": "Included in Stay", "price_source": "Google Hotels", "price_basis": "Confirmed live rate: {h_rate} / night ({h_total} total stay)", "price_confidence": "Fixed", "booking_url": "{h_url}", "tip": "Check in at {h_name}. Rated {h_rating} on Google Hotels."
+2. Day {days} (Final Day) MUST include check-out: "name": "Hotel Check-out at {h_name}", "type": "accommodation", "cost": "Included in Stay", "price_source": "Google Hotels", "booking_url": "{h_url}"
+3. STRICTLY use "{h_name}" for all hotel references in the plan.
+"""
+
+    flight_rules = ""
+    if confirmed_flight and confirmed_flight.get("name"):
+        f_name = confirmed_flight.get("name")
+        f_price = confirmed_flight.get("estimated_price_range", "")
+        flight_rules = f"""
+CRITICAL — CONFIRMED FLIGHT ROUTE:
+- Flight: "{f_name}"
+- Fare: {f_price}
+- Provider: Google Flights
+"""
+
     return f"""Design a {days}-day travel Odyssey for a group of {travelers} traveler(s).
 
 Trip brief:
@@ -875,7 +1010,8 @@ Trip brief:
 - Group size: {travelers} traveler(s)
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
-
+{hotel_rules}
+{flight_rules}
 CRITICAL — LIVE SEARCH GROUNDING RULES:
 1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
 2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost. Do not estimate from memory if a search is possible.
@@ -939,7 +1075,15 @@ Return ONLY a JSON object with EXACTLY this shape:
           "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",
           "price_confidence": "Fixed | Typical | Estimated",
           "type": "transport|attraction|dining|exploration|accommodation|other",
-          "restaurants": []
+          "restaurants": [
+            {{
+              "name": "Restaurant Name",
+              "cuisine": "Cuisine type (e.g. Seafood, Italian, Local)",
+              "price_range": "{currency} 25 - 45 or $$",
+              "rating": "4.6 ★",
+              "tip": "Short booking tip or signature dish"
+            }}
+          ]
         }}
       ]
     }}
@@ -949,7 +1093,7 @@ Return ONLY a JSON object with EXACTLY this shape:
 Rules for "type" field in each activity:
 - "transport": Travel/transit between locations. Cost = estimated fare.
 - "attraction": Ticketed landmarks, museums, temples, parks. Cost = ticket price.
-- "dining": Meals. Cost = cheapest realistic option. Include "restaurants" array with 3-5 real or realistic nearby suggestions.
+- "dining": Meals (Breakfast, Lunch, Dinner). Cost = estimated meal cost. MUST include "restaurants" array with 2-4 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
 - "exploration": Free self-guided walking, public markets, viewpoints. Cost = "Free".
 - "accommodation": Hotel check-in/check-out. Cost = "Free" (room cost lives in budget_breakdown).
 - "other": Any other activity.

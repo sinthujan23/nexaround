@@ -584,6 +584,21 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           sliver: SliverReorderableList(
             itemCount: rows.length,
             onReorder: _onReorder,
+            proxyDecorator: (Widget child, int index, Animation<double> animation) {
+              return AnimatedBuilder(
+                animation: animation,
+                builder: (BuildContext context, Widget? child) {
+                  return Material(
+                    elevation: 6,
+                    color: Colors.transparent,
+                    shadowColor: Colors.black26,
+                    borderRadius: BorderRadius.circular(16),
+                    child: child,
+                  );
+                },
+                child: child,
+              );
+            },
             // Places carry their own handle; a day heading is not draggable, so
             // the default handles are off and added per row instead.
             itemBuilder: (context, index) {
@@ -591,7 +606,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               if (row is _DayHeadingRow) {
                 final day = widget.odyssey.dayPlans[row.dayIndex];
                 return Column(
-                  key: ValueKey('day-${row.dayIndex}'),
+                  key: ValueKey('day-heading-${row.dayIndex}'),
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     if (row.dayIndex > 0) const SizedBox(height: 16),
@@ -608,6 +623,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                 place.activityIndex,
                 act,
                 isLastOfDay: place.isLastOfDay,
+                rowIndex: index,
                 key: ValueKey(
                   'act-${place.dayIndex}-${place.activityIndex}-${act.name}',
                 ),
@@ -1055,19 +1071,17 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     int activityIndex,
     OdysseyActivity act, {
     bool isLastOfDay = false,
+    int? rowIndex,
     Key? key,
   }) {
     final bool isCompleted = widget.odyssey.status == 'completed';
     final bool checkable = widget.onToggleVisited != null;
     final bool reorderable = widget.onReorderActivity != null && !isCompleted;
 
-    // The time each place was scheduled for is deliberately not shown. Places
-    // can now be dragged into any order and into other days, and a fixed
-    // "09:00" sitting on a place the traveller just moved to the end of day 3
-    // states something the plan no longer means.
-    return Builder(
+    return Material(
       key: key,
-      builder: (context) => Container(
+      color: Colors.transparent,
+      child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
           border: Border(
@@ -1110,20 +1124,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       ),
                     ),
                   Expanded(
-                    child: Text(
-                      act.name,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: act.visited ? Colors.black38 : Colors.black,
-                        decoration:
-                            act.visited ? TextDecoration.lineThrough : null,
+                    child: InkWell(
+                      onTap: () => _navigateToSmartMap(context, act.name),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Text(
+                          act.name,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: act.visited ? Colors.black38 : Colors.black,
+                            decoration:
+                                act.visited ? TextDecoration.lineThrough : null,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                   if (reorderable)
                     ReorderableDragStartListener(
-                      index: _rowIndexOf(dayIndex, activityIndex),
+                      index: rowIndex ?? _rowIndexOf(dayIndex, activityIndex),
                       child: const Padding(
                         padding: EdgeInsets.only(left: 2, right: 4),
                         child: Icon(Icons.drag_indicator_rounded,
@@ -1240,25 +1261,47 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// Booking.com logo button for accommodation activities (shows clean logo only).
+  /// Google Hotels button for accommodation activities (opens direct entity link).
   Widget _buildAccommodationButton(OdysseyActivity act) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
-        final hotelName = act.name.replaceAll(RegExp(r'^(Check into|Check in|Hotel Check-out & Transfer to|Hotel Check-out)\s+', caseSensitive: false), '').trim();
+        if (act.bookingUrl.isNotEmpty) {
+          final uri = Uri.parse(act.bookingUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            return;
+          }
+        }
+        final hotelName = act.name.replaceAll(RegExp(r'^(Check into|Check in|Hotel Check-out & Transfer to|Hotel Check-out|Rest & Freshen Up at)\s+', caseSensitive: false), '').trim();
         final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
         final query = hotelName.isNotEmpty ? (dest.isNotEmpty ? '$hotelName, $dest' : hotelName) : dest;
-        final url = Uri.parse('https://www.booking.com/searchresults.html?ss=${Uri.encodeComponent(query)}');
+        final url = Uri.parse('https://www.google.com/travel/search?q=${Uri.encodeComponent(query)}');
         if (await canLaunchUrl(url)) {
           await launchUrl(url, mode: LaunchMode.externalApplication);
         }
       },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: Image.asset(
-          'assets/images/booking_logo.jpg',
-          height: 18,
-          fit: BoxFit.contain,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF3E8FF),
+          borderRadius: BorderRadius.circular(5),
+          border: Border.all(color: const Color(0xFFE9D5FF)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.hotel_rounded, size: 12, color: Color(0xFF9333EA)),
+            SizedBox(width: 4),
+            Text(
+              'Google Hotels',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF9333EA),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1758,6 +1801,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (ctxModal) => Container(
         constraints: BoxConstraints(
@@ -2025,138 +2069,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// Bottom sheet showing restaurant options for a dining activity.
   void _showRestaurantSheet(BuildContext context, OdysseyActivity act) {
-    if (act.restaurants.isEmpty) {
-      // Fallback: open Google Maps restaurant search
-      final location = act.name.replaceAll(RegExp(r'^(Lunch|Dinner|Breakfast|Brunch)\s+(at|in)\s+', caseSensitive: false), '').trim();
-      final query = Uri.encodeComponent('restaurants in $location');
-      final url = Uri.parse('https://www.google.com/maps/search/$query');
-      launchUrl(url, mode: LaunchMode.externalApplication);
-      return;
-    }
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-        ),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: Colors.black12,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const Text(
-                  'Restaurant Options',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  act.name,
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ...act.restaurants.map((r) => InkWell(
-                          onTap: () => _navigateToSmartMap(context, r.name),
-                          borderRadius: BorderRadius.circular(14),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 10),
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8F8F8),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        r.name,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                    ),
-                                    if (r.rating.isNotEmpty) ...[
-                                      const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
-                                      const SizedBox(width: 2),
-                                      Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                                    ],
-                                    const SizedBox(width: 6),
-                                    const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),
-                                  ],
-                                ),
-                                if (r.cuisine.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
-                                ],
-                                if (r.priceRange.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    r.priceRange,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppColors.actionTeal,
-                                    ),
-                                  ),
-                                ],
-                                if (r.tip.isNotEmpty) ...[
-                                  const SizedBox(height: 2),
-                                  Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                                ],
-                                const SizedBox(height: 6),
-                                const Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    Icon(Icons.touch_app_outlined, size: 12, color: Colors.black26),
-                                    SizedBox(width: 4),
-                                    Text(
-                                      'Tap to view on map',
-                                      style: TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w500),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        )),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      builder: (ctx) => _RestaurantListBottomSheet(
+        activity: act,
+        destination: widget.odyssey.destination,
+        onSelectRestaurant: (name) => _navigateToSmartMap(context, name),
       ),
     );
   }
@@ -2168,18 +2089,17 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Locating $placeName...'),
+        content: Text('Locating $placeName on Smart Map...'),
         duration: const Duration(seconds: 2),
       ),
     );
 
-    // Close the bottom sheet first
-    Navigator.of(context).pop();
+    // Close any open bottom sheets first
+    Navigator.of(context, rootNavigator: true).maybePop();
 
     try {
       final results = await GooglePlacesService.searchPlaces(
         query: searchQuery,
-        // Use a default location bias (will be overridden by searchPlaces if destination is clear)
         latitude: 6.9271,
         longitude: 79.8612,
       );
@@ -2199,17 +2119,31 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ),
         );
       } else {
-        // Fallback: open Google Maps search in browser
-        final query = Uri.encodeComponent(searchQuery);
-        final url = Uri.parse('https://www.google.com/maps/search/$query');
-        await launchUrl(url, mode: LaunchMode.externalApplication);
+        // Fallback: stay in-app on Smart Tourism Map
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SmartTourismMapPage(
+              initialLat: 6.9271,
+              initialLng: 79.8612,
+              destinationName: placeName,
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (!context.mounted) return;
-      // Fallback: open Google Maps search in browser
-      final query = Uri.encodeComponent(searchQuery);
-      final url = Uri.parse('https://www.google.com/maps/search/$query');
-      launchUrl(url, mode: LaunchMode.externalApplication);
+      // Fallback: stay in-app on Smart Tourism Map
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SmartTourismMapPage(
+            initialLat: 6.9271,
+            initialLng: 79.8612,
+            destinationName: placeName,
+          ),
+        ),
+      );
     }
   }
 
@@ -2607,6 +2541,244 @@ class _ActualCostInputFieldState extends State<_ActualCostInputField> {
           prefixIconConstraints: const BoxConstraints(minWidth: 28, minHeight: 0),
         ),
         onSubmitted: (_) => _save(),
+      ),
+    );
+  }
+}
+
+class _RestaurantListBottomSheet extends StatefulWidget {
+  final OdysseyActivity activity;
+  final String destination;
+  final Function(String) onSelectRestaurant;
+
+  const _RestaurantListBottomSheet({
+    required this.activity,
+    required this.destination,
+    required this.onSelectRestaurant,
+  });
+
+  @override
+  State<_RestaurantListBottomSheet> createState() => _RestaurantListBottomSheetState();
+}
+
+class _RestaurantListBottomSheetState extends State<_RestaurantListBottomSheet> {
+  List<RestaurantOption> _restaurants = [];
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.activity.restaurants.isNotEmpty) {
+      _restaurants = widget.activity.restaurants;
+    } else {
+      _fetchDynamicRestaurants();
+    }
+  }
+
+  Future<void> _fetchDynamicRestaurants() async {
+    setState(() => _isLoading = true);
+    try {
+      final location = widget.activity.name
+          .replaceAll(RegExp(r'^(Lunch|Dinner|Breakfast|Brunch)\s+(at|in)\s+', caseSensitive: false), '')
+          .trim();
+      final query = widget.destination.isNotEmpty
+          ? 'restaurants in $location, ${widget.destination}'
+          : 'restaurants in $location';
+
+      final places = await GooglePlacesService.searchPlaces(
+        query: query,
+        latitude: 6.9271,
+        longitude: 79.8612,
+      );
+
+      if (mounted) {
+        setState(() {
+          _restaurants = places.take(6).map((p) => RestaurantOption(
+            name: p.name,
+            cuisine: p.categoryName ?? 'Local Cuisine',
+            priceRange: r'$$',
+            rating: p.rating > 0 ? '${p.rating} ★' : '4.5 ★',
+            tip: p.address ?? 'Popular spot near $location',
+          )).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const Text(
+                'Restaurant Options',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                widget.activity.name,
+                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              if (_isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 40),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(color: AppColors.actionTeal),
+                        SizedBox(height: 12),
+                        Text(
+                          'Discovering top nearby dining options...',
+                          style: TextStyle(fontSize: 13, color: Colors.black54, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (_restaurants.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 30),
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.restaurant_rounded, size: 40, color: Colors.black26),
+                        const SizedBox(height: 10),
+                        const Text(
+                          'No specific restaurant list found',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black87),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Tap below to explore all restaurants on Smart Map',
+                          style: TextStyle(fontSize: 12, color: Colors.black54),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: () => widget.onSelectRestaurant(widget.activity.name),
+                          icon: const Icon(Icons.map_outlined, size: 16),
+                          label: const Text('Explore on Smart Map'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.actionTeal,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _restaurants.map((r) => InkWell(
+                        onTap: () => widget.onSelectRestaurant(r.name),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8F8F8),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      r.name,
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (r.rating.isNotEmpty) ...[
+                                    const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
+                                    const SizedBox(width: 2),
+                                    Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                  ],
+                                  const SizedBox(width: 6),
+                                  const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),
+                                ],
+                              ),
+                              if (r.cuisine.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(r.cuisine, style: const TextStyle(fontSize: 11, color: Colors.black45)),
+                              ],
+                              if (r.priceRange.isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  r.priceRange,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppColors.actionTeal,
+                                  ),
+                                ),
+                              ],
+                              if (r.tip.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(r.tip, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                              ],
+                              const SizedBox(height: 6),
+                              const Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  Icon(Icons.touch_app_outlined, size: 12, color: Colors.black26),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Tap to view on Smart Map',
+                                    style: TextStyle(fontSize: 10, color: Colors.black38, fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      )).toList(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
