@@ -1165,10 +1165,30 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (act.cost.isNotEmpty) ...[
-                    _buildPriceWithSource(context, act),
-                    const SizedBox(height: 6),
-                  ],
+                  Builder(
+                    builder: (context) {
+                      final hasCost = act.cost.isNotEmpty;
+                      final actionBtn = _buildActionButton(act, dayIndex, activityIndex);
+                      final hasActionBtn = actionBtn is! SizedBox;
+
+                      if (!hasCost && !hasActionBtn) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (hasCost) _buildPriceWithSource(context, act),
+                            if (hasActionBtn) actionBtn,
+                          ],
+                        ),
+                      );
+                    },
+                  ),
                   if (act.tip.isNotEmpty) ...[
                     Text(
                       act.tip,
@@ -1180,10 +1200,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     ),
                     const SizedBox(height: 6),
                   ],
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _buildActionButton(act, dayIndex, activityIndex),
-                  ),
                   if (act.visited && widget.onActualCostChanged != null) ...[
                     const SizedBox(height: 8),
                     _buildActualCostInput(dayIndex, activityIndex, act),
@@ -1199,20 +1215,68 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// Builds the type-specific action button for an activity.
   Widget _buildActionButton(OdysseyActivity act, int dayIndex, int activityIndex) {
+    Widget btn;
     switch (act.type) {
       case ActivityType.transport:
-        return _buildTransportButton(act);
+        btn = _buildTransportButton(act);
+        break;
       case ActivityType.attraction:
-        return _buildAttractionButton(act);
+        btn = _buildAttractionButton(act);
+        break;
       case ActivityType.accommodation:
-        return _buildAccommodationButton(act);
+        btn = _buildAccommodationButton(act);
+        break;
       case ActivityType.dining:
-        return _buildDiningButton(act, dayIndex, activityIndex);
+        btn = _buildDiningButton(act, dayIndex, activityIndex);
+        break;
       case ActivityType.exploration:
-        return _buildExplorationButton(act);
+        btn = _buildExplorationButton(act);
+        break;
       case ActivityType.other:
-        return const SizedBox.shrink();
+        btn = const SizedBox.shrink();
+        break;
     }
+
+    if (btn is SizedBox) return btn;
+
+    final lowerCost = act.cost.trim().toLowerCase();
+    final bool isFree = lowerCost.isEmpty ||
+        lowerCost == 'free' ||
+        lowerCost == '0' ||
+        lowerCost == '\$0' ||
+        lowerCost.endsWith(' 0') ||
+        lowerCost.endsWith(' 0.00');
+
+    // If activity is Free and we have a platform action button (Headout, GetYourGuide, Uber, Google Hotels, etc.)
+    // show [Paid] badge chip beside the platform logo (except for LIST restaurant sheet)
+    if (isFree && act.type != ActivityType.dining) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF2F2),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: const Color(0xFFFCA5A5)),
+            ),
+            child: const Text(
+              'Paid',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFDC2626),
+              ),
+            ),
+          ),
+          const SizedBox(width: 5),
+          btn,
+        ],
+      );
+    }
+
+    return btn;
   }
 
   /// Uber button for transport activities (shows clean logo only, no box/container).
@@ -1400,12 +1464,17 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0') ||
         lowerCost.endsWith(' 0.00');
 
-    // Format displayCost: e.g. "1500" -> "LKR 1,500"
+    // Format displayCost: e.g. "1500" -> "~ LKR 1,500"
     String displayCost = rawCost;
     if (!isFree && displayCost.isNotEmpty) {
       final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
       if (!hasCurrency && widget.odyssey.currency.isNotEmpty) {
         displayCost = '${widget.odyssey.currency} $displayCost';
+      }
+      if (!displayCost.startsWith('~') &&
+          !displayCost.toLowerCase().contains('included') &&
+          !displayCost.toLowerCase().contains('approx')) {
+        displayCost = '~ $displayCost';
       }
     }
 
@@ -1425,6 +1494,18 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         icon = Icons.hotel_outlined;
         iconBg = const Color(0xFFF3E8FF);
         iconColor = const Color(0xFF9333EA);
+
+        if ((displayCost.isEmpty || displayCost.toLowerCase() == 'included in stay') &&
+            act.priceBasis.isNotEmpty &&
+            act.priceBasis.contains('rate:')) {
+          final match = RegExp(r'rate:\s*([^(\n]+)').firstMatch(act.priceBasis);
+          if (match != null) {
+            final rate = match.group(1)?.trim();
+            if (rate != null && rate.isNotEmpty) {
+              displayCost = rate.startsWith('~') ? rate : '~ $rate';
+            }
+          }
+        }
       } else if (act.type == ActivityType.transport || lowerName.contains('airport') || lowerName.contains('taxi')) {
         icon = Icons.directions_car_outlined;
         iconBg = const Color(0xFFFEF3C7);
@@ -1457,14 +1538,24 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerName.contains('hostel') ||
         lowerName.contains('villa') ||
         lowerName.contains('guest house')) {
+      String accCost = 'Included in Stay';
+      if (act.priceBasis.isNotEmpty && act.priceBasis.contains('rate:')) {
+        final match = RegExp(r'rate:\s*([^(\n]+)').firstMatch(act.priceBasis);
+        if (match != null) {
+          final rate = match.group(1)?.trim();
+          if (rate != null && rate.isNotEmpty) {
+            accCost = rate.startsWith('~') ? rate : '~ $rate';
+          }
+        }
+      }
       return (
-        'Included in Stay',
-        'Hotel check-in, room access, and luggage drop are included in your accommodation reservation.',
+        'Google Hotels',
+        'Hotel accommodation rate based on verified lowest Google Hotels room rate.',
         Icons.hotel_outlined,
-        true,
+        false,
         const Color(0xFFF3E8FF),
         const Color(0xFF9333EA),
-        'Free',
+        accCost,
       );
     }
 
