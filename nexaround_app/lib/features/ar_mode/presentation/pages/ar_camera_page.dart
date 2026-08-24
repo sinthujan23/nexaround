@@ -3599,7 +3599,6 @@ class _ArCameraPageState extends State<ArCameraPage>
   void _onSearchQueryChanged(String query) {
     if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
     final trimmed = query.trim();
-    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed);
 
     if (trimmed.isEmpty) {
       if (_searchResults.isNotEmpty || _showSearchResults || _isGoogleSearching) {
@@ -3612,15 +3611,11 @@ class _ArCameraPageState extends State<ArCameraPage>
       return;
     }
 
-    // Instant 0ms local match preview from loaded landmarks (strictly <= 2000m for Near Me)
+    // Instant local match preview from loaded landmarks
     final localMatches = _allLandmarks
-        .where((lm) {
-          if (isNearMe) {
-            return lm.distanceM <= 2000.0;
-          }
-          return lm.name.toLowerCase().contains(trimmed.toLowerCase()) ||
-              lm.category.toLowerCase().contains(trimmed.toLowerCase());
-        })
+        .where((lm) =>
+            lm.name.toLowerCase().contains(trimmed.toLowerCase()) ||
+            lm.category.toLowerCase().contains(trimmed.toLowerCase()))
         .toList();
 
     localMatches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
@@ -3648,9 +3643,9 @@ class _ArCameraPageState extends State<ArCameraPage>
       });
     }
 
-    // High speed debounce (200ms) for Google Places autocomplete / Near Me
-    if (trimmed.length >= 2 || isNearMe) {
-      _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+    // Debounce (250ms) for Google Places autocomplete / Near Me search
+    if (trimmed.length >= 2) {
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 250), () {
         _performGoogleSearch(trimmed);
       });
     }
@@ -3662,7 +3657,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     final double lat = _currentPosition?.latitude ?? 6.9271;
     final double lng = _currentPosition?.longitude ?? 79.8612;
-    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed) || trimmed.toLowerCase() == 'near me';
+    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed);
 
     updateState(() {
       _isGoogleSearching = true;
@@ -3674,26 +3669,20 @@ class _ArCameraPageState extends State<ArCameraPage>
       List<Map<String, dynamic>> results = [];
 
       if (isNearMe) {
-        // Direct Near Me fetch bounded strictly to 1-2 km (2000m)
+        // Fetch places within 1-2 km (2000m) for 'near me' query
         final nearPlaces = await GooglePlacesService.getPlacesNearMe(
           latitude: lat,
           longitude: lng,
           radiusM: 2000.0,
         );
-        results = nearPlaces.map((p) {
-          final distM = p.distanceM ?? geo.Geolocator.distanceBetween(lat, lng, p.latitude, p.longitude);
-          final distText = distM < 1000 ? '${distM.toInt()} m' : '${(distM / 1000).toStringAsFixed(1)} km';
-          return {
-            'place_id': p.id,
-            'main_text': p.name,
-            'description': p.address ?? p.categoryName ?? 'Nearby attraction',
-            'latitude': p.latitude,
-            'longitude': p.longitude,
-            'rating': p.rating,
-            'category': p.categoryName,
-            'distance_m': distM,
-            'distance_text': distText,
-          };
+        results = nearPlaces.map((p) => {
+          'place_id': p.id,
+          'main_text': p.name,
+          'description': p.address ?? p.categoryName ?? 'Nearby attraction',
+          'latitude': p.latitude,
+          'longitude': p.longitude,
+          'rating': p.rating,
+          'category': p.categoryName,
         }).toList();
       } else {
         results = await GooglePlacesService.getAutocompleteSuggestions(
@@ -3709,20 +3698,14 @@ class _ArCameraPageState extends State<ArCameraPage>
             latitude: lat,
             longitude: lng,
           );
-          results = textResults.map((p) {
-            final distM = p.distanceM ?? geo.Geolocator.distanceBetween(lat, lng, p.latitude, p.longitude);
-            final distText = distM < 1000 ? '${distM.toInt()} m' : '${(distM / 1000).toStringAsFixed(1)} km';
-            return {
-              'place_id': p.id,
-              'main_text': p.name,
-              'description': p.address ?? p.categoryName ?? 'Attraction nearby',
-              'latitude': p.latitude,
-              'longitude': p.longitude,
-              'rating': p.rating,
-              'category': p.categoryName,
-              'distance_m': distM,
-              'distance_text': distText,
-            };
+          results = textResults.map((p) => {
+            'place_id': p.id,
+            'main_text': p.name,
+            'description': p.address ?? p.categoryName ?? 'Attraction nearby',
+            'latitude': p.latitude,
+            'longitude': p.longitude,
+            'rating': p.rating,
+            'category': p.categoryName,
           }).toList();
         }
       }
@@ -3994,8 +3977,6 @@ class _ArCameraPageState extends State<ArCameraPage>
   Widget _buildBottomSearchSuggestionsOverlay() {
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
-    final bool isNearMeActive = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(_searchController.text) || _searchController.text.trim().isEmpty;
-
     return Positioned(
       key: const ValueKey('ar_bottom_search_suggestions_overlay'),
       bottom: bottomInset > 0 ? (bottomInset + 60) : (bottomPadding + 68),
@@ -4036,9 +4017,8 @@ class _ArCameraPageState extends State<ArCameraPage>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header & Category Chips
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                       child: Row(
                         children: [
                           Container(
@@ -4051,9 +4031,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                           const SizedBox(width: 8),
                           Text(
-                            isNearMeActive
-                                ? 'PLACES NEAR ME · 0–2 KM'
-                                : 'SUGGESTED PLACES (${_searchResults.length})',
+                            'SUGGESTED PLACES (${_searchResults.length})',
                             style: const TextStyle(
                               color: Color(0xFF00E5FF),
                               fontSize: 10.5,
@@ -4074,43 +4052,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                         ],
                       ),
                     ),
-
-                    // Quick Near Me Filters
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      child: Row(
-                        children: [
-                          _buildSearchChip('📍 Near Me (0-2 km)', () {
-                            _searchController.text = 'Near Me';
-                            _performGoogleSearch('Near Me');
-                          }),
-                          const SizedBox(width: 6),
-                          _buildSearchChip('🍕 Food', () {
-                            _searchController.text = 'Food near me';
-                            _performGoogleSearch('Food near me');
-                          }),
-                          const SizedBox(width: 6),
-                          _buildSearchChip('☕ Cafes', () {
-                            _searchController.text = 'Cafes near me';
-                            _performGoogleSearch('Cafes near me');
-                          }),
-                          const SizedBox(width: 6),
-                          _buildSearchChip('🏨 Hotels', () {
-                            _searchController.text = 'Hotels near me';
-                            _performGoogleSearch('Hotels near me');
-                          }),
-                          const SizedBox(width: 6),
-                          _buildSearchChip('🛍️ Shopping', () {
-                            _searchController.text = 'Shopping near me';
-                            _performGoogleSearch('Shopping near me');
-                          }),
-                        ],
-                      ),
-                    ),
-
                     const Divider(color: Colors.white10, height: 1),
-
                     if (_searchResults.isNotEmpty)
                       Flexible(
                         child: ListView.separated(
@@ -4125,7 +4067,6 @@ class _ArCameraPageState extends State<ArCameraPage>
                             final item = _searchResults[index];
                             final mainText = (item['main_text'] ?? item['name'] ?? '').toString();
                             final subText = (item['description'] ?? item['address'] ?? '').toString();
-                            final distText = (item['distance_text'] ?? '').toString();
 
                             return Material(
                               color: Colors.transparent,
@@ -4144,7 +4085,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                                     ),
                                   ),
                                   child: const Icon(
-                                    Icons.near_me_rounded,
+                                    Icons.location_on_rounded,
                                     color: Color(0xFF00E5FF),
                                     size: 16,
                                   ),
@@ -4157,44 +4098,17 @@ class _ArCameraPageState extends State<ArCameraPage>
                                     fontSize: 13.5,
                                   ),
                                 ),
-                                subtitle: Row(
-                                  children: [
-                                    if (distText.isNotEmpty) ...[
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                        decoration: BoxDecoration(
-                                          color: AppColors.brandGreen.withOpacity(0.2),
-                                          borderRadius: BorderRadius.circular(5),
-                                          border: Border.all(
-                                            color: AppColors.brandGreen.withOpacity(0.45),
-                                            width: 0.8,
-                                          ),
+                                subtitle: subText.isNotEmpty
+                                    ? Text(
+                                        subText,
+                                        style: TextStyle(
+                                          color: Colors.white.withOpacity(0.6),
+                                          fontSize: 11,
                                         ),
-                                        child: Text(
-                                          distText,
-                                          style: const TextStyle(
-                                            color: AppColors.brandGreen,
-                                            fontSize: 9.5,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                    ],
-                                    if (subText.isNotEmpty)
-                                      Expanded(
-                                        child: Text(
-                                          subText,
-                                          style: TextStyle(
-                                            color: Colors.white.withOpacity(0.6),
-                                            fontSize: 11,
-                                          ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                  ],
-                                ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      )
+                                    : null,
                                 trailing: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -4245,7 +4159,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                               ),
                               SizedBox(width: 10),
                               Text(
-                                'Finding places near you (0-2 km)...',
+                                'Searching places...',
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 12,
@@ -4262,31 +4176,6 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSearchChip(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: Colors.white.withOpacity(0.12),
-            width: 0.8,
-          ),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
       ),
     );
   }
@@ -4437,9 +4326,6 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                           onTap: () {
                             updateState(() => _isSearching = true);
-                            if (_searchController.text.trim().isEmpty && _searchResults.isEmpty) {
-                              _performGoogleSearch('Near Me');
-                            }
                           },
                           onChanged: _onSearchQueryChanged,
                           onSubmitted: (val) {

@@ -397,17 +397,6 @@ class GooglePlacesService {
     }
   }
 
-  /// Helper to clean noise words like "near me", "nearby", or "near" from queries.
-  static String _cleanSearchQuery(String query) {
-    String cleaned = query.trim();
-    final nearMeRegex = RegExp(r'\b(near\s+me|nearby|near)\b', caseSensitive: false);
-    cleaned = cleaned
-        .replaceAll(nearMeRegex, '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return cleaned;
-  }
-
   /// Search places strictly within a 1-2 km radius (default 2000m)
   static Future<List<AttractionEntity>> getPlacesNearMe({
     required double latitude,
@@ -449,21 +438,9 @@ class GooglePlacesService {
     required double longitude,
   }) async {
     try {
-      final bool isNearMeIntent = RegExp(r'\b(near\s+me|nearby)\b', caseSensitive: false).hasMatch(query);
-      final cleanedQuery = _cleanSearchQuery(query);
-
-      // If user searched solely "near me" or "nearby", fetch all places strictly in 1-2 km range
-      if (cleanedQuery.isEmpty) {
-        return await getPlacesNearMe(
-          latitude: latitude,
-          longitude: longitude,
-          radiusM: 2000.0,
-        );
-      }
-
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/search',
-        queryParameters: {'query': cleanedQuery, 'lat': latitude, 'lng': longitude},
+        queryParameters: {'query': query, 'lat': latitude, 'lng': longitude},
       );
 
       if (response.statusCode == 200) {
@@ -473,27 +450,17 @@ class GooglePlacesService {
             .map((p) => AttractionModel.fromJson(p))
             .toList();
 
-        var filteredModels = models;
-
-        // If query specified "near me" / "nearby", clamp strictly to 2000m (1-2 km)
-        if (isNearMeIntent) {
-          filteredModels = filteredModels.where((p) {
-            final dist = p.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, p.latitude, p.longitude);
-            return dist <= 2000.0;
-          }).toList();
-        }
-
-        // Sort by distance ascending
-        filteredModels.sort((a, b) {
+        // Sort by distance ascending if available
+        models.sort((a, b) {
           final distA = a.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, a.latitude, a.longitude);
           final distB = b.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, b.latitude, b.longitude);
           return distA.compareTo(distB);
         });
 
         print(
-          '✅ Places searched: ${filteredModels.length} items',
+          '✅ Places searched: ${models.length} items',
         );
-        return filteredModels;
+        return models;
       }
       return [];
     } on DioException catch (e) {
@@ -611,7 +578,7 @@ class GooglePlacesService {
     required double latitude,
     required double longitude,
   }) async {
-    final cleanedInput = _cleanSearchQuery(input);
+    final cleanedInput = input.trim();
     if (cleanedInput.isEmpty) return [];
 
     final cacheKey = '${cleanedInput.toLowerCase()}|${latitude.toStringAsFixed(2)},${longitude.toStringAsFixed(2)}';

@@ -179,8 +179,23 @@ def extract_hotel_strategies_from_serpapi(
         "best_areas": "..."
       }
     """
-    properties = serpapi_data.get("properties") or []
+    raw_properties = serpapi_data.get("properties") or []
     strategies: List[Dict[str, Any]] = []
+
+    # Strictly filter for available properties that have valid, active pricing and names
+    properties: List[Dict[str, Any]] = []
+    for p in raw_properties:
+        if not isinstance(p, dict):
+            continue
+        name = p.get("name", "").strip()
+        if not name:
+            continue
+        rate_info = p.get("rate_per_night") or {}
+        extracted_rate = rate_info.get("extracted_lowest") or 0
+        price_display = rate_info.get("lowest", "")
+        # Must have a positive price to ensure the hotel is currently available and bookable
+        if (isinstance(extracted_rate, (int, float)) and extracted_rate > 0) or price_display:
+            properties.append(p)
 
     # Categorize hotels by price tier
     def _categorize(rate: float, all_rates: List[float]) -> str:
@@ -196,26 +211,20 @@ def extract_hotel_strategies_from_serpapi(
 
     # Collect extracted rates for categorization
     all_rates: List[float] = []
-    for p in properties[:max_hotels * 2]:  # look at more for better categorization
+    for p in properties[:max_hotels * 2]:
         rate_info = p.get("rate_per_night") or {}
         extracted = rate_info.get("extracted_lowest")
         if isinstance(extracted, (int, float)) and extracted > 0:
             all_rates.append(float(extracted))
 
     for rank, p in enumerate(properties[:max_hotels], start=1):
-        if not isinstance(p, dict):
-            continue
-
         name = p.get("name", "").strip()
-        if not name:
-            continue
-
         rating = p.get("overall_rating")
         reviews = p.get("reviews", 0)
         hotel_type = p.get("type", "")
         description = p.get("description", "")
 
-        # Price extraction
+        # Price extraction directly from Google Hotels
         rate_info = p.get("rate_per_night") or {}
         price_display = rate_info.get("lowest", "")
         extracted_rate = rate_info.get("extracted_lowest", 0)
@@ -246,10 +255,10 @@ def extract_hotel_strategies_from_serpapi(
         # Rating string
         rating_str = f"{rating} ★" if rating else "N/A"
 
-        # Provider: Google Hotels aggregates rates across all platforms (Booking.com, Agoda, Direct)
+        # Provider: Google Hotels aggregates rates across all platforms
         provider = "Google Hotels"
 
-        # Clean hotel name by stripping room specifications (e.g. - Family Room...)
+        # Clean hotel name by stripping room specifications
         import re
         clean_name = re.sub(
             r'\s*[-–—]\s*(Family|Standard|Deluxe|Executive|Superior|Suite|Villa|Room|Bed|King|Queen|Twin|Double|Single|Sea View|Garden View|Ocean View|Penthouse|Bungalow|Apartment|Studio|Cottage|Luxury|Chalet|Resort|One|Two|Three|Four|Five|\d+).*',
@@ -260,13 +269,19 @@ def extract_hotel_strategies_from_serpapi(
         if not clean_name:
             clean_name = name
 
-        # Booking URL: use SerpAPI's direct property link if available, otherwise build Google Travel deep link with dates
-        serpapi_link = p.get("link", "")
+        # Booking URL: use SerpAPI's direct Google Hotels property link if available
+        serpapi_link = str(p.get("link") or "").strip()
         import urllib.parse
-        google_q = urllib.parse.quote_plus(f"{clean_name} {destination}")
-        booking_url = f"https://www.google.com/travel/hotels?q={google_q}"
-        if check_in_date and check_out_date:
-            booking_url += f"&dates={check_in_date},{check_out_date}"
+        if serpapi_link:
+            booking_url = serpapi_link
+        else:
+            google_q = urllib.parse.quote_plus(f"{clean_name} {destination}")
+            booking_url = f"https://www.google.com/travel/hotels?q={google_q}"
+            if check_in_date and check_out_date:
+                booking_url += f"&dates={check_in_date},{check_out_date}"
+
+        # Format price with currency symbol/code if not already formatted
+        price_str = price_display if price_display else f"{currency} {extracted_rate}" if extracted_rate else ""
 
         strategies.append({
             "rank": rank,
@@ -275,7 +290,7 @@ def extract_hotel_strategies_from_serpapi(
             "category": category,
             "rating": rating_str,
             "reviews": reviews if isinstance(reviews, int) else 0,
-            "price_per_night": price_display if price_display else f"{currency} {extracted_rate}" if extracted_rate else "",
+            "price_per_night": price_str,
             "total_estimated_cost": total_display if total_display else "",
             "location": location,
             "amenities": amenities,

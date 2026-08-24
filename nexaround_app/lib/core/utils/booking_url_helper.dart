@@ -146,8 +146,7 @@ class BookingUrlHelper {
 
     // For Google Travel / Google Hotels
     if (provider.contains('google')) {
-      // If serpApiLink is a direct official hotel link (not a google travel search URL), use it
-      if (serpApiLink.isNotEmpty && !serpApiLink.toLowerCase().contains('google.com/travel/hotels')) {
+      if (serpApiLink.isNotEmpty) {
         return _sanitizeUrl(serpApiLink);
       }
       var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';

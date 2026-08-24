@@ -161,7 +161,9 @@ class HotelStrategiesSection extends StatelessWidget {
                                   const Icon(Icons.star_rounded, size: 12, color: AppColors.ratingGold),
                                   const SizedBox(width: 4),
                                   Text(
-                                    hs.rating,
+                                    hs.reviews > 0
+                                        ? '${hs.rating} (${hs.reviews >= 1000 ? "${(hs.reviews / 1000).toStringAsFixed(1)}k" : hs.reviews})'
+                                        : hs.rating,
                                     style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
                                   ),
                                 ],
