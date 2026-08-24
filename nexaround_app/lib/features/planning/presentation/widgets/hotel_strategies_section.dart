@@ -79,7 +79,7 @@ class HotelStrategiesSection extends StatelessWidget {
     if (provider.isEmpty || provider.toLowerCase() == 'hotel provider') {
       final lowerUrl = hs.bookingUrl.toLowerCase();
       if (lowerUrl.contains('google')) {
-        provider = 'Google Travel';
+        provider = 'Google Hotels';
       } else if (lowerUrl.contains('agoda')) {
         provider = 'Agoda';
       } else if (lowerUrl.contains('expedia')) {
@@ -91,10 +91,10 @@ class HotelStrategiesSection extends StatelessWidget {
       } else if (lowerUrl.contains('booking')) {
         provider = 'Booking.com';
       } else {
-        provider = 'Google Travel';
+        provider = 'Google Hotels';
       }
-    } else if (provider.toLowerCase() == 'google') {
-      provider = 'Google Travel';
+    } else if (provider.toLowerCase() == 'google' || provider.toLowerCase() == 'google travel') {
+      provider = 'Google Hotels';
     }
 
     return Container(

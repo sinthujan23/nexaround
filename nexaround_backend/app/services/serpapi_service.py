@@ -246,8 +246,8 @@ def extract_hotel_strategies_from_serpapi(
         # Rating string
         rating_str = f"{rating} ★" if rating else "N/A"
 
-        # Provider: Google Travel aggregates rates across all platforms (Booking.com, Agoda, Direct)
-        provider = "Google Travel"
+        # Provider: Google Hotels aggregates rates across all platforms (Booking.com, Agoda, Direct)
+        provider = "Google Hotels"
 
         # Clean hotel name by stripping room specifications (e.g. - Family Room...)
         import re

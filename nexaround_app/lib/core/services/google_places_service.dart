@@ -400,16 +400,46 @@ class GooglePlacesService {
   /// Helper to clean noise words like "near me", "nearby", or "near" from queries.
   static String _cleanSearchQuery(String query) {
     String cleaned = query.trim();
-    final nearMeRegex = RegExp(r'\s+near\s+me\b', caseSensitive: false);
-    final nearbyRegex = RegExp(r'\s+nearby\b', caseSensitive: false);
-    final nearRegex = RegExp(r'\s+near\b', caseSensitive: false);
-    
+    final nearMeRegex = RegExp(r'\b(near\s+me|nearby|near)\b', caseSensitive: false);
     cleaned = cleaned
         .replaceAll(nearMeRegex, '')
-        .replaceAll(nearbyRegex, '')
-        .replaceAll(nearRegex, '')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
     return cleaned;
+  }
+
+  /// Search places strictly within a 1-2 km radius (default 2000m)
+  static Future<List<AttractionEntity>> getPlacesNearMe({
+    required double latitude,
+    required double longitude,
+    String? category,
+    double radiusM = 2000.0,
+  }) async {
+    try {
+      final List<AttractionEntity> places = await fetchNearbyPlaces(
+        latitude: latitude,
+        longitude: longitude,
+        radius: radiusM.toInt(),
+        categoryName: category,
+      );
+
+      // Strictly filter within radius and sort ascending by distance
+      final filtered = places.where((p) {
+        final dist = p.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, p.latitude, p.longitude);
+        return dist <= radiusM;
+      }).toList();
+
+      filtered.sort((a, b) {
+        final distA = a.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, a.latitude, a.longitude);
+        final distB = b.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, b.latitude, b.longitude);
+        return distA.compareTo(distB);
+      });
+
+      return filtered;
+    } catch (e) {
+      debugPrint('Error getting places near me (1-2 km): $e');
+      return [];
+    }
   }
 
   /// Search places by text query biased towards current coordinates (New API)
@@ -419,8 +449,17 @@ class GooglePlacesService {
     required double longitude,
   }) async {
     try {
+      final bool isNearMeIntent = RegExp(r'\b(near\s+me|nearby)\b', caseSensitive: false).hasMatch(query);
       final cleanedQuery = _cleanSearchQuery(query);
-      if (cleanedQuery.isEmpty) return [];
+
+      // If user searched solely "near me" or "nearby", fetch all places strictly in 1-2 km range
+      if (cleanedQuery.isEmpty) {
+        return await getPlacesNearMe(
+          latitude: latitude,
+          longitude: longitude,
+          radiusM: 2000.0,
+        );
+      }
 
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/search',
@@ -434,7 +473,15 @@ class GooglePlacesService {
             .map((p) => AttractionModel.fromJson(p))
             .toList();
 
-        final filteredModels = models;
+        var filteredModels = models;
+
+        // If query specified "near me" / "nearby", clamp strictly to 2000m (1-2 km)
+        if (isNearMeIntent) {
+          filteredModels = filteredModels.where((p) {
+            final dist = p.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, p.latitude, p.longitude);
+            return dist <= 2000.0;
+          }).toList();
+        }
 
         // Sort by distance ascending
         filteredModels.sort((a, b) {

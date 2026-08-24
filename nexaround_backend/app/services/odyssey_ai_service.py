@@ -78,9 +78,9 @@ def _build_deep_booking_url(
             search_q += f" on {start_date}"
         return f"https://www.google.com/travel/flights?q={urllib.parse.quote_plus(search_q)}"
     else:  # Hotel
-        # Google Hotels query: always destination-based so it never shows
-        # "No results" for AI-generated hotel names that may not exist.
-        google_hotel_q = f"hotels in {dest}" if dest else query
+        # Google Hotels query: use the specific hotel name + destination
+        # so Google Hotels opens with the exact hotel from the plan.
+        google_hotel_q = query if query else f"hotels in {dest}"
         if "booking" in prov_lower:
             url = f"https://www.booking.com/searchresults.html?ss={encoded_query}"
             if start_date:
@@ -476,8 +476,8 @@ For each option, include a REAL, well-known hotel name that actually exists in {
 Categories: Luxury, Boutique, Budget, Resort, or Apartment.
 
 IMPORTANT RULES:
-- provider_name MUST be either "Google Travel" or "Booking.com".
-- Use REAL hotel names that exist in {destination}.
+- provider_name MUST be "Google Hotels".
+- Use REAL hotel names that actually exist in {destination}.
 - Estimate REALISTIC per-night rates in {currency}.
 - booking_url: Leave empty, will be generated server-side.
 
@@ -488,7 +488,7 @@ Return ONLY a JSON object with this exact shape:
     {{
       "rank": 1,
       "name": "Real Hotel Name",
-      "provider_name": "Booking.com",
+      "provider_name": "Google Hotels",
       "category": "Boutique / Luxury / Budget",
       "rating": "4.7 ★",
       "price_per_night": "{currency} 120",
@@ -512,7 +512,7 @@ Return ONLY a JSON object with this exact shape:
         if isinstance(strategies, list):
             for strat in strategies:
                 if isinstance(strat, dict):
-                    provider = strat.get("provider_name") or "Booking.com"
+                    provider = strat.get("provider_name") or "Google Hotels"
                     item_name = strat.get("name") or destination
                     strat["booking_url"] = _build_deep_booking_url(
                         provider=provider,

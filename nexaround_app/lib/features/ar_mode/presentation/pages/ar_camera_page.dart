@@ -1084,6 +1084,12 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
 
       _lastRenderedHeading = newHeading;
+
+      // Skip full-screen rebuilds while the user is actively typing or searching to ensure silky smooth keyboard performance
+      if (_isSearching || _searchFocusNode.hasFocus) {
+        return;
+      }
+
       setState(() {});
     });
 
@@ -1095,6 +1101,12 @@ class _ArCameraPageState extends State<ArCameraPage>
           ),
         ).listen((pos) {
           if (!mounted || !widget.isActive) return;
+
+          if (_isSearching || _searchFocusNode.hasFocus) {
+            _currentPosition = pos;
+            return;
+          }
+
           debugPrint(
             '📍 AR Location Update: ${pos.latitude}, ${pos.longitude}',
           );
@@ -3587,6 +3599,8 @@ class _ArCameraPageState extends State<ArCameraPage>
   void _onSearchQueryChanged(String query) {
     if (_searchDebounceTimer?.isActive ?? false) _searchDebounceTimer!.cancel();
     final trimmed = query.trim();
+    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed);
+
     if (trimmed.isEmpty) {
       if (_searchResults.isNotEmpty || _showSearchResults || _isGoogleSearching) {
         updateState(() {
@@ -3597,42 +3611,132 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
       return;
     }
-    // Industry standard debounce (300ms) for Google Places autocomplete
-    if (trimmed.length >= 2) {
-      _searchDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+
+    // Instant 0ms local match preview from loaded landmarks (strictly <= 2000m for Near Me)
+    final localMatches = _allLandmarks
+        .where((lm) {
+          if (isNearMe) {
+            return lm.distanceM <= 2000.0;
+          }
+          return lm.name.toLowerCase().contains(trimmed.toLowerCase()) ||
+              lm.category.toLowerCase().contains(trimmed.toLowerCase());
+        })
+        .toList();
+
+    localMatches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+    final localResults = localMatches
+        .take(8)
+        .map((lm) => {
+              'place_id': lm.name,
+              'main_text': lm.name,
+              'description': lm.description.isNotEmpty ? lm.description : lm.category,
+              'latitude': lm.lat,
+              'longitude': lm.lng,
+              'rating': lm.rating,
+              'category': lm.category,
+              'distance_m': lm.distanceM,
+              'distance_text': lm.distance,
+            })
+        .toList();
+
+    if (localResults.isNotEmpty) {
+      updateState(() {
+        _searchResults = localResults;
+        _showSearchResults = true;
+        _isSearching = true;
+      });
+    }
+
+    // High speed debounce (200ms) for Google Places autocomplete / Near Me
+    if (trimmed.length >= 2 || isNearMe) {
+      _searchDebounceTimer = Timer(const Duration(milliseconds: 200), () {
         _performGoogleSearch(trimmed);
       });
-    } else {
-      if (_searchResults.isNotEmpty || _showSearchResults || _isGoogleSearching) {
-        updateState(() {
-          _searchResults = [];
-          _showSearchResults = false;
-          _isGoogleSearching = false;
-        });
-      }
     }
   }
 
   Future<void> _performGoogleSearch(String query) async {
-    if (_currentPosition == null) return;
+    final trimmed = query.trim();
+    if (trimmed.isEmpty) return;
+
+    final double lat = _currentPosition?.latitude ?? 6.9271;
+    final double lng = _currentPosition?.longitude ?? 79.8612;
+    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed) || trimmed.toLowerCase() == 'near me';
+
     updateState(() {
       _isGoogleSearching = true;
       _isSearching = true;
+      _showSearchResults = true;
     });
 
     try {
-      final results = await GooglePlacesService.getAutocompleteSuggestions(
-        input: query,
-        latitude: _currentPosition!.latitude,
-        longitude: _currentPosition!.longitude,
-      );
+      List<Map<String, dynamic>> results = [];
+
+      if (isNearMe) {
+        // Direct Near Me fetch bounded strictly to 1-2 km (2000m)
+        final nearPlaces = await GooglePlacesService.getPlacesNearMe(
+          latitude: lat,
+          longitude: lng,
+          radiusM: 2000.0,
+        );
+        results = nearPlaces.map((p) {
+          final distM = p.distanceM ?? geo.Geolocator.distanceBetween(lat, lng, p.latitude, p.longitude);
+          final distText = distM < 1000 ? '${distM.toInt()} m' : '${(distM / 1000).toStringAsFixed(1)} km';
+          return {
+            'place_id': p.id,
+            'main_text': p.name,
+            'description': p.address ?? p.categoryName ?? 'Nearby attraction',
+            'latitude': p.latitude,
+            'longitude': p.longitude,
+            'rating': p.rating,
+            'category': p.categoryName,
+            'distance_m': distM,
+            'distance_text': distText,
+          };
+        }).toList();
+      } else {
+        results = await GooglePlacesService.getAutocompleteSuggestions(
+          input: trimmed,
+          latitude: lat,
+          longitude: lng,
+        );
+
+        // If autocomplete yields no results, fallback to searchPlaces
+        if (results.isEmpty) {
+          final textResults = await GooglePlacesService.searchPlaces(
+            query: trimmed,
+            latitude: lat,
+            longitude: lng,
+          );
+          results = textResults.map((p) {
+            final distM = p.distanceM ?? geo.Geolocator.distanceBetween(lat, lng, p.latitude, p.longitude);
+            final distText = distM < 1000 ? '${distM.toInt()} m' : '${(distM / 1000).toStringAsFixed(1)} km';
+            return {
+              'place_id': p.id,
+              'main_text': p.name,
+              'description': p.address ?? p.categoryName ?? 'Attraction nearby',
+              'latitude': p.latitude,
+              'longitude': p.longitude,
+              'rating': p.rating,
+              'category': p.categoryName,
+              'distance_m': distM,
+              'distance_text': distText,
+            };
+          }).toList();
+        }
+      }
+
       if (mounted) {
         updateState(() {
-          _searchResults = results;
+          if (results.isNotEmpty) {
+            _searchResults = results;
+          }
           _isGoogleSearching = false;
         });
       }
     } catch (e) {
+      debugPrint('AR Google Search error: $e');
       if (mounted) {
         updateState(() {
           _isGoogleSearching = false;
@@ -3744,7 +3848,7 @@ class _ArCameraPageState extends State<ArCameraPage>
           onResult: (result) {
             _searchController.text = result.recognizedWords;
             if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-              _performArSearchAndSelectFirst(result.recognizedWords);
+              _performGoogleSearch(result.recognizedWords.trim());
             }
           },
         );
@@ -3773,6 +3877,7 @@ class _ArCameraPageState extends State<ArCameraPage>
               _searchController.clear();
               _searchResults.clear();
             });
+            _searchFocusNode.unfocus();
             FocusScope.of(context).unfocus();
             return;
           }
@@ -3889,6 +3994,8 @@ class _ArCameraPageState extends State<ArCameraPage>
   Widget _buildBottomSearchSuggestionsOverlay() {
     final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final double bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bool isNearMeActive = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(_searchController.text) || _searchController.text.trim().isEmpty;
+
     return Positioned(
       key: const ValueKey('ar_bottom_search_suggestions_overlay'),
       bottom: bottomInset > 0 ? (bottomInset + 60) : (bottomPadding + 68),
@@ -3897,85 +4004,289 @@ class _ArCameraPageState extends State<ArCameraPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (_searchResults.isNotEmpty)
-            Container(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.of(context).size.height * 0.35,
+          Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.42,
+            ),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0A0E17).withOpacity(0.95),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: const Color(0xFF00E5FF).withOpacity(0.35),
+                width: 1.2,
               ),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0A0E17).withOpacity(0.94),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: const Color(0xFF00E5FF).withOpacity(0.3),
-                  width: 1,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00E5FF).withOpacity(0.12),
+                  blurRadius: 18,
+                  spreadRadius: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.6),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(18),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: _searchResults.length,
-                    separatorBuilder: (_, __) => Divider(
-                      color: Colors.white.withOpacity(0.08),
-                      height: 1,
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.7),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header & Category Chips
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Color(0xFF00E5FF),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            isNearMeActive
+                                ? 'PLACES NEAR ME · 0–2 KM'
+                                : 'SUGGESTED PLACES (${_searchResults.length})',
+                            style: const TextStyle(
+                              color: Color(0xFF00E5FF),
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_isGoogleSearching)
+                            const SizedBox(
+                              width: 12,
+                              height: 12,
+                              child: CircularProgressIndicator(
+                                color: Color(0xFF00E5FF),
+                                strokeWidth: 1.5,
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
-                    itemBuilder: (context, index) {
-                      final item = _searchResults[index];
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.place_rounded,
-                          color: Color(0xFF00E5FF),
-                          size: 20,
+
+                    // Quick Near Me Filters
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      child: Row(
+                        children: [
+                          _buildSearchChip('📍 Near Me (0-2 km)', () {
+                            _searchController.text = 'Near Me';
+                            _performGoogleSearch('Near Me');
+                          }),
+                          const SizedBox(width: 6),
+                          _buildSearchChip('🍕 Food', () {
+                            _searchController.text = 'Food near me';
+                            _performGoogleSearch('Food near me');
+                          }),
+                          const SizedBox(width: 6),
+                          _buildSearchChip('☕ Cafes', () {
+                            _searchController.text = 'Cafes near me';
+                            _performGoogleSearch('Cafes near me');
+                          }),
+                          const SizedBox(width: 6),
+                          _buildSearchChip('🏨 Hotels', () {
+                            _searchController.text = 'Hotels near me';
+                            _performGoogleSearch('Hotels near me');
+                          }),
+                          const SizedBox(width: 6),
+                          _buildSearchChip('🛍️ Shopping', () {
+                            _searchController.text = 'Shopping near me';
+                            _performGoogleSearch('Shopping near me');
+                          }),
+                        ],
+                      ),
+                    ),
+
+                    const Divider(color: Colors.white10, height: 1),
+
+                    if (_searchResults.isNotEmpty)
+                      Flexible(
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          padding: const EdgeInsets.only(bottom: 6),
+                          itemCount: _searchResults.length,
+                          separatorBuilder: (_, __) => Divider(
+                            color: Colors.white.withOpacity(0.07),
+                            height: 1,
+                          ),
+                          itemBuilder: (context, index) {
+                            final item = _searchResults[index];
+                            final mainText = (item['main_text'] ?? item['name'] ?? '').toString();
+                            final subText = (item['description'] ?? item['address'] ?? '').toString();
+                            final distText = (item['distance_text'] ?? '').toString();
+
+                            return Material(
+                              color: Colors.transparent,
+                              child: ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                                leading: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00E5FF).withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFF00E5FF).withOpacity(0.25),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.near_me_rounded,
+                                    color: Color(0xFF00E5FF),
+                                    size: 16,
+                                  ),
+                                ),
+                                title: Text(
+                                  mainText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                                subtitle: Row(
+                                  children: [
+                                    if (distText.isNotEmpty) ...[
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.brandGreen.withOpacity(0.2),
+                                          borderRadius: BorderRadius.circular(5),
+                                          border: Border.all(
+                                            color: AppColors.brandGreen.withOpacity(0.45),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          distText,
+                                          style: const TextStyle(
+                                            color: AppColors.brandGreen,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ],
+                                    if (subText.isNotEmpty)
+                                      Expanded(
+                                        child: Text(
+                                          subText,
+                                          style: TextStyle(
+                                            color: Colors.white.withOpacity(0.6),
+                                            fontSize: 11,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF00E5FF).withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Text(
+                                        'SELECT',
+                                        style: TextStyle(
+                                          color: Color(0xFF00E5FF),
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.8,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Icon(
+                                      Icons.arrow_forward_ios_rounded,
+                                      color: Color(0xFF00E5FF),
+                                      size: 12,
+                                    ),
+                                  ],
+                                ),
+                                onTap: () => _onSearchSuggestionSelected(item),
+                              ),
+                            );
+                          },
                         ),
-                        title: Text(
-                          item['main_text'] ?? '',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14,
+                      )
+                    else if (_isGoogleSearching)
+                      const Padding(
+                        padding: EdgeInsets.all(24.0),
+                        child: Center(
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF00E5FF),
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                              SizedBox(width: 10),
+                              Text(
+                                'Finding places near you (0-2 km)...',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        subtitle: Text(
-                          item['description'] ?? '',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
-                            fontSize: 11.5,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: () => _onSearchSuggestionSelected(item),
-                      );
-                    },
-                  ),
+                      ),
+                  ],
                 ),
               ),
             ),
-          if (_isGoogleSearching) ...[
-            const SizedBox(height: 8),
-            const Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  color: Color(0xFF00E5FF),
-                  strokeWidth: 2,
-                ),
-              ),
-            ),
-          ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSearchChip(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: Colors.white.withOpacity(0.12),
+            width: 0.8,
+          ),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
     );
   }
@@ -4063,7 +4374,8 @@ class _ArCameraPageState extends State<ArCameraPage>
                       onTap: () {
                         final text = _searchController.text.trim();
                         if (text.isNotEmpty) {
-                          _performArSearchAndSelectFirst(text);
+                          _searchDebounceTimer?.cancel();
+                          _performGoogleSearch(text);
                         }
                       },
                       child: Icon(
@@ -4125,10 +4437,17 @@ class _ArCameraPageState extends State<ArCameraPage>
                           ),
                           onTap: () {
                             updateState(() => _isSearching = true);
+                            if (_searchController.text.trim().isEmpty && _searchResults.isEmpty) {
+                              _performGoogleSearch('Near Me');
+                            }
                           },
                           onChanged: _onSearchQueryChanged,
                           onSubmitted: (val) {
-                            _performArSearchAndSelectFirst(val);
+                            final text = val.trim();
+                            if (text.isNotEmpty) {
+                              _searchDebounceTimer?.cancel();
+                              _performGoogleSearch(text);
+                            }
                           },
                         ),
                       ),
@@ -4365,7 +4684,21 @@ class _ArCameraPageState extends State<ArCameraPage>
       body: Stack(
         children: [
           // Live camera feed
-          _buildCameraBackground(),
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onTap: () {
+              if (_isSearching) {
+                updateState(() {
+                  _isSearching = false;
+                  _searchResults = [];
+                  _showSearchResults = false;
+                });
+                _searchFocusNode.unfocus();
+                FocusScope.of(context).unfocus();
+              }
+            },
+            child: _buildCameraBackground(),
+          ),
 
           // Removed subtle scan line wave effect as requested
 
@@ -4399,13 +4732,9 @@ class _ArCameraPageState extends State<ArCameraPage>
               !_isSearching)
             _buildDiscoveryTarget(),
 
-          // Top HUD (XP and Map Place) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
+          // Top HUD (Back button) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null)
             _buildTopHUD(),
-
-          // Search Results Dropdown Overlay (shown when pressing enter in search bar)
-          if (_showSearchResults && !_isNavigating)
-            _buildArSearchResultsOverlay(),
 
           // Filter chip bar - hide when mapping, showing detail, or navigating to keep screen clean
           if (!_minimalHud &&
@@ -4428,7 +4757,7 @@ class _ArCameraPageState extends State<ArCameraPage>
           // Notice banners removed per client request
 
           // Dynamic Loading Indicator for Range/Places Fetching
-          if (_isFetchingPlaces)
+          if (_isFetchingPlaces && !_isSearching)
             Positioned(
               top: MediaQuery.of(context).padding.top + 146,
               left: 0,
@@ -4437,19 +4766,22 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
 
           // Selected place direction guidance (card floating on screen + turn chevrons)
-          if (_showInfoCard &&
+          if (!_isSearching &&
+              _showInfoCard &&
               _selectedLandmark >= 0 &&
               _selectedLandmark < _landmarks.length &&
               !_isNavigating)
             _buildSelectedPlaceGuidanceOverlay(screenW, screenH),
 
           // Tap-triggered place detail card (compact bottom card) - Consolidated Explore & Navigation Page!
-          if (_isNavigating && _navigationTarget != null)
-            _buildInfoCard(_navigationTarget!)
-          else if (_showInfoCard &&
-              _selectedLandmark >= 0 &&
-              _selectedLandmark < _landmarks.length)
-            _buildInfoCard(_landmarks[_selectedLandmark]),
+          if (!_isSearching) ...[
+            if (_isNavigating && _navigationTarget != null)
+              _buildInfoCard(_navigationTarget!)
+            else if (_showInfoCard &&
+                _selectedLandmark >= 0 &&
+                _selectedLandmark < _landmarks.length)
+              _buildInfoCard(_landmarks[_selectedLandmark]),
+          ],
 
           // Temporary Range Info overlay toast
           if (false)
@@ -4470,7 +4802,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
 
           // Redesigned persistent Bottom Navigation Row (which includes Home, Location Pill, and Maps)
-          if (!_minimalHud && !_isMapping && _nevaSearchResult == null)
+          if (!_minimalHud && !_isMapping && !_isSearching && _nevaSearchResult == null)
             _buildBottomNavigationRow(),
 
           // Floating Search Suggestions Overlay (above bottom search bar)
@@ -4485,11 +4817,11 @@ class _ArCameraPageState extends State<ArCameraPage>
             _buildBottomSearchBar(),
 
           // DISCOVERY CROSSHAIR (Only in Mapping Mode)
-          if (_isMapping) _buildDiscoveryCrosshair(),
-          if (_isMapping) _buildMappingOverlay(),
+          if (_isMapping && !_isSearching) _buildDiscoveryCrosshair(),
+          if (_isMapping && !_isSearching) _buildMappingOverlay(),
 
           // NEVA DISCOVERY MODE - Analysis overlay only
-          if (_isNevaAnalyzing) _buildNevaAnalysisOverlay(),
+          if (_isNevaAnalyzing && !_isSearching) _buildNevaAnalysisOverlay(),
 
           // CAMERA FLASH EFFECT
           if (_isCapturing)
@@ -4502,7 +4834,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
 
           // NAVIGATION OVERLAY
-          if (_isNavigating && _navigationTarget != null)
+          if (!_isSearching && _isNavigating && _navigationTarget != null)
             _buildNavigationOverlay(),
 
           // ═══════════════════════════════════════════════════════════
@@ -11463,229 +11795,6 @@ extension _ArCameraNavigation on _ArCameraPageState {
             // Fallback icon if asset doesn't load or exist yet
             return const Icon(Icons.auto_awesome, color: Color(0xFF00E5FF));
           },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildArSearchBar() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 74,
-      left: 16,
-      right: 16,
-      child: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.55),
-          borderRadius: BorderRadius.circular(25),
-          border: Border.all(color: Colors.white.withOpacity(0.15), width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(25),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: TextField(
-              controller: _searchController,
-              focusNode: _searchFocusNode,
-              textInputAction: TextInputAction.search,
-              textAlignVertical: TextAlignVertical.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15.5,
-                fontWeight: FontWeight.w500,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search any place to navigate...',
-                hintStyle: TextStyle(
-                  color: Colors.white.withOpacity(0.5),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w400,
-                ),
-                prefixIcon: GestureDetector(
-                  onTap: () {
-                    final text = _searchController.text.trim();
-                    if (text.isNotEmpty) {
-                      _performArSearchAndSelectFirst(text);
-                    }
-                  },
-                  child: const Icon(
-                    Icons.search_rounded,
-                    color: AppColors.brandGreen,
-                    size: 20,
-                  ),
-                ),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(
-                          Icons.clear_rounded,
-                          color: Colors.white70,
-                          size: 18,
-                        ),
-                        onPressed: () {
-                          _searchController.clear();
-                          updateState(() {
-                            _searchResults = [];
-                            _showSearchResults = false;
-                          });
-                        },
-                      )
-                    : null,
-                border: InputBorder.none,
-                enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                filled: true,
-                fillColor: Colors.transparent,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              ),
-              onChanged: _onSearchQueryChanged,
-              onSubmitted: (val) {
-                _performArSearchAndSelectFirst(val);
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildArSearchResultsOverlay() {
-    return Positioned(
-      top: MediaQuery.of(context).padding.top + 124,
-      left: 16,
-      right: 16,
-      child: Container(
-        constraints: const BoxConstraints(maxHeight: 280),
-        decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.78),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
-            child: _isSearching
-                ? const Padding(
-                    padding: EdgeInsets.all(20.0),
-                    child: Center(
-                      child: SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                          color: Color(0xFF00E5FF),
-                          strokeWidth: 2,
-                        ),
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    shrinkWrap: true,
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    itemCount: _searchResults.length,
-                    separatorBuilder: (context, index) => Divider(
-                      color: Colors.white.withOpacity(0.08),
-                      height: 1,
-                    ),
-                    itemBuilder: (context, index) {
-                      final place = _searchResults[index];
-                      final distanceM = place.distanceM ?? 0.0;
-                      final distanceText = distanceM < 1000
-                          ? '${distanceM.toInt()} m'
-                          : '${(distanceM / 1000).toStringAsFixed(1)} km';
-                      return ListTile(
-                        dense: true,
-                        leading: const Icon(
-                          Icons.place_rounded,
-                          color: Color(0xFF00E5FF),
-                          size: 18,
-                        ),
-                        title: Text(
-                          place.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                        subtitle: place.address != null
-                            ? Text(
-                                place.address!,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.6),
-                                  fontSize: 11,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )
-                            : null,
-                        trailing: Text(
-                          distanceText,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.4),
-                            fontSize: 10,
-                          ),
-                        ),
-                        onTap: () {
-                          final pos = _currentPosition;
-                          final bearing = pos != null
-                              ? _calculateBearing(
-                                  pos.latitude,
-                                  pos.longitude,
-                                  place.latitude,
-                                  place.longitude,
-                                )
-                              : 0.0;
-                          final landmark = _ArLandmark(
-                            place.name,
-                            place.photoUrls.isNotEmpty
-                                ? place.photoUrls.first
-                                : 'https://images.unsplash.com/photo-1548013146-72479768bbaa?q=80&w=1000&auto=format&fit=crop',
-                            place.rating,
-                            distanceText,
-                            bearing,
-                            place.description ??
-                                'A remarkable location nearby!',
-                            place.categoryName?.toUpperCase() ?? 'ATTRACTION',
-                            distanceM,
-                            place.latitude,
-                            place.longitude,
-                          );
-
-                          updateState(() {
-                            if (!_landmarks.any(
-                              (l) => l.name == landmark.name,
-                            )) {
-                              _landmarks.add(landmark);
-                            }
-                            _selectedLandmark = _landmarks.indexWhere(
-                              (l) => l.name == landmark.name,
-                            );
-                            _showInfoCard = true;
-                            _showSearchResults = false;
-                            _searchController.text = place.name;
-                            _isIdentifying = false;
-                          });
-                          FocusScope.of(context).unfocus();
-                        },
-                      );
-                    },
-                  ),
-          ),
         ),
       ),
     );

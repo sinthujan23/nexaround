@@ -31,7 +31,7 @@ class BookingUrlHelper {
     if (lowerUrl.contains('expedia')) return 'Expedia';
     if (lowerUrl.contains('hotels.com')) return 'Hotels.com';
     if (lowerUrl.contains('airbnb')) return 'Airbnb';
-    if (lowerUrl.contains('google')) return 'Google';
+    if (lowerUrl.contains('google')) return 'Google Hotels';
     if (lowerUrl.contains('skyscanner')) return 'Skyscanner';
     if (lowerUrl.contains('kayak')) return 'Kayak';
     if (lowerUrl.contains('getyourguide')) return 'GetYourGuide';
