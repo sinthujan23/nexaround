@@ -65,11 +65,6 @@ class OdysseyActivity {
   final bool visited; // ticked off as the traveler completes the trip
   final ActivityType type; // classified activity type
   final String actualCost; // user-entered actual cost after completing
-  final String description; // extended 2-3 sentence overview & highlights
-  final String openingHours; // venue operating hours e.g. "09:00 AM – 06:00 PM"
-  final String directions; // transit / travel directions e.g. "~15 mins by Taxi"
-  final String entryCost; // base admission info e.g. "Free" or "INR 25"
-  final String guidedOption; // optional guided tour details e.g. "GetYourGuide: ~INR 1,200"
   final String bookingUrl; // optional deep link for booking
   final List<RestaurantOption> restaurants; // dining activity restaurant list
 
@@ -84,11 +79,6 @@ class OdysseyActivity {
     this.visited = false,
     this.type = ActivityType.other,
     this.actualCost = '',
-    this.description = '',
-    this.openingHours = '',
-    this.directions = '',
-    this.entryCost = '',
-    this.guidedOption = '',
     this.bookingUrl = '',
     this.restaurants = const [],
   });
@@ -100,11 +90,6 @@ class OdysseyActivity {
     String? priceSource,
     String? priceBasis,
     String? priceConfidence,
-    String? description,
-    String? openingHours,
-    String? directions,
-    String? entryCost,
-    String? guidedOption,
   }) =>
       OdysseyActivity(
         time: time,
@@ -117,11 +102,6 @@ class OdysseyActivity {
         visited: visited ?? this.visited,
         type: type ?? this.type,
         actualCost: actualCost ?? this.actualCost,
-        description: description ?? this.description,
-        openingHours: openingHours ?? this.openingHours,
-        directions: directions ?? this.directions,
-        entryCost: entryCost ?? this.entryCost,
-        guidedOption: guidedOption ?? this.guidedOption,
         bookingUrl: bookingUrl,
         restaurants: restaurants,
       );
@@ -145,11 +125,6 @@ class OdysseyActivity {
       visited: json['visited'] == true,
       type: type,
       actualCost: (json['actual_cost'] ?? '').toString(),
-      description: (json['description'] ?? '').toString(),
-      openingHours: (json['opening_hours'] ?? json['timings'] ?? '').toString(),
-      directions: (json['directions'] ?? json['transit'] ?? '').toString(),
-      entryCost: (json['entry_cost'] ?? '').toString(),
-      guidedOption: (json['guided_option'] ?? '').toString(),
       bookingUrl: (json['booking_url'] ?? '').toString(),
       restaurants: ((json['restaurants'] as List?) ?? const [])
           .whereType<Map>()
@@ -169,11 +144,6 @@ class OdysseyActivity {
         'visited': visited,
         'type': type.name,
         'actual_cost': actualCost,
-        'description': description,
-        'opening_hours': openingHours,
-        'directions': directions,
-        'entry_cost': entryCost,
-        'guided_option': guidedOption,
         'booking_url': bookingUrl,
         if (restaurants.isNotEmpty)
           'restaurants': restaurants.map((r) => r.toJson()).toList(),

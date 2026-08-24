@@ -765,11 +765,6 @@ async def generate_odyssey(
                 "name": name_str,
                 "tip": str(a.get("tip") or a.get("note") or ""),
                 "cost": str(a.get("cost") or ""),
-                "description": str(a.get("description") or ""),
-                "opening_hours": str(a.get("opening_hours") or a.get("timings") or ""),
-                "directions": str(a.get("directions") or a.get("transit") or ""),
-                "entry_cost": str(a.get("entry_cost") or ""),
-                "guided_option": str(a.get("guided_option") or ""),
             }
 
             # 3. Strictly reconcile accommodation stops with confirmed primary hotel
@@ -784,20 +779,15 @@ async def generate_odyssey(
                 if is_first_day:
                     act_dict["name"] = f"Check into {hotel_name}"
                     act_dict["tip"] = f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels."
-                    act_dict["description"] = f"Arrive at {hotel_name}, complete seamless check-in, and settle into your room before setting off to explore."
-                    act_dict["opening_hours"] = "Check-in: 14:00 PM"
                 elif is_last_day and ("check out" in name_lower or "check-out" in name_lower):
                     act_dict["name"] = f"Hotel Check-out at {hotel_name}"
                     act_dict["tip"] = f"Complete check-out and luggage drop at {hotel_name} before departure."
-                    act_dict["description"] = f"Complete check-out procedures and secure luggage storage at {hotel_name} before departure."
-                    act_dict["opening_hours"] = "Check-out: 11:00 AM – 12:00 PM"
                 else:
                     if "hotel" in name_lower or "resort" in name_lower:
                         act_dict["name"] = f"Rest & Freshen Up at {hotel_name}"
 
                 act_dict["type"] = "accommodation"
                 act_dict["cost"] = "Included in Stay"
-                act_dict["entry_cost"] = "Included in Stay"
                 act_dict["price_source"] = "Google Hotels"
                 act_dict["price_basis"] = f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)"
                 act_dict["price_confidence"] = "Fixed"
@@ -844,12 +834,8 @@ async def generate_odyssey(
             activities.insert(0, {
                 "time": "14:00",
                 "name": f"Check into {hotel_name}",
-                "description": f"Arrive at {hotel_name}, complete seamless check-in, and settle into your room before setting off to explore.",
                 "tip": f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels.",
-                "opening_hours": "Check-in: 14:00 PM",
-                "directions": f"Direct transit / Taxi to {hotel_name}",
                 "cost": "Included in Stay",
-                "entry_cost": "Included in Stay",
                 "price_source": "Google Hotels",
                 "price_basis": f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)",
                 "price_confidence": "Fixed",
@@ -1044,13 +1030,13 @@ CRITICAL PRICE JUSTIFICATION RULES:
 1. Every non-zero cost MUST cite a concrete, named reference point found via search — never a vague category.
 2. "price_basis" MUST state the actual anchor rate/figure found and any currency conversion applied, in one sentence.
 3. Add "price_confidence" to every costed activity, one of:
-   - "Fixed" — official/published flat rate (museum tickets, train fares, park entry, free admission).
-   - "Typical" — market rate with some seasonal variance. Format cost as "~ {currency} {amount} (approx)".
-   - "Estimated" — variable regional estimate (ride-hail, meal tiers). Format cost as "~ {currency} {amount} (approx)".
+   - "Fixed" — official/published rate confirmed via search (museum tickets, train fares, park entry).
+   - "Typical" — well-established market rate with some variance, confirmed via search (metered taxi, chain hotel breakfast, common street food).
+   - "Estimated" — no reliable search result found, or inherently variable (ride-hail surge, informal bargaining, seasonal swings) — must name what could move the price.
 4. Self-honesty rule: these labels reflect genuine confidence based on what search actually returned, not how official something sounds. Do not label something "Fixed" without a real search result backing it.
-5. Round to sensible increments (nearest 1, 5, or 10 in local currency).
-6. For "dining" activities, "restaurants" entries should be real, findable venues confirmed via search.
-7. The sum of all activity costs must match the "food" + "activities" portions of budget_breakdown.
+5. Round to sensible increments (nearest 1, 5, or 10 in local currency) unless an official rate is exact. Never fabricate false precision (e.g. "23.47").
+6. For "dining" activities, "restaurants" entries should be real, findable venues confirmed via search, or realistic venue *types* for the area if no specific venue is confirmed — never fabricated proper names presented as fact.
+7. The sum of all activity costs must match the "food" + "activities" portions of budget_breakdown. Recompute if they drift.
 
 Return ONLY a JSON object with EXACTLY this shape:
 {{
@@ -1083,12 +1069,7 @@ Return ONLY a JSON object with EXACTLY this shape:
         {{
           "time": "09:00",
           "name": "Place or activity name",
-          "description": "2-3 engaging sentences covering historical/cultural highlights, architecture, and top things to see.",
           "tip": "Short practical tip",
-          "opening_hours": "09:00 AM – 06:00 PM or Open 24 hours",
-          "directions": "~10 mins by Taxi / Auto • Uber available",
-          "entry_cost": "Free or ~{currency} amount (approx)",
-          "guided_option": "GetYourGuide: ~{currency} amount (approx) or Get Guide",
           "cost": "{currency} amount or 'Free'",
           "price_source": "Named source actually found via search (site/publisher/official page)",
           "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",
@@ -1098,7 +1079,7 @@ Return ONLY a JSON object with EXACTLY this shape:
             {{
               "name": "Restaurant Name",
               "cuisine": "Cuisine type (e.g. Seafood, Italian, Local)",
-              "price_range": "~ {currency} 25 - 45 (approx) or $$",
+              "price_range": "{currency} 25 - 45 or $$",
               "rating": "4.6 ★",
               "tip": "Short booking tip or signature dish"
             }}
@@ -1110,11 +1091,11 @@ Return ONLY a JSON object with EXACTLY this shape:
 }}
 
 Rules for "type" field in each activity:
-- "transport": Travel/transit between locations. Cost = estimated fare e.g. "~ {currency} {amount} (approx)".
+- "transport": Travel/transit between locations. Cost = estimated fare.
 - "attraction": Ticketed landmarks, museums, temples, parks. Cost = ticket price.
 - "dining": Meals (Breakfast, Lunch, Dinner). Cost = estimated meal cost. MUST include "restaurants" array with 2-4 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
 - "exploration": Free self-guided walking, public markets, viewpoints. Cost = "Free".
-- "accommodation": Hotel check-in/check-out. Cost = "Included in Stay" (room cost lives in budget_breakdown).
+- "accommodation": Hotel check-in/check-out. Cost = "Free" (room cost lives in budget_breakdown).
 - "other": Any other activity.
 
 General rules:
