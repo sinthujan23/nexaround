@@ -1165,11 +1165,22 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (act.cost.isNotEmpty) ...[
-                    _buildPriceWithSource(context, act),
+                  // 1. Dual / Contextual Pricing & Access Pills (matching mockup)
+                  _buildPriceAndAccessRow(context, act, dayIndex, activityIndex),
+                  const SizedBox(height: 6),
+
+                  // 2. Rich description (with fallback to tip)
+                  if (act.description.isNotEmpty) ...[
+                    Text(
+                      act.description,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.35,
+                        color: Colors.black87,
+                      ),
+                    ),
                     const SizedBox(height: 6),
-                  ],
-                  if (act.tip.isNotEmpty) ...[
+                  ] else if (act.tip.isNotEmpty) ...[
                     Text(
                       act.tip,
                       style: const TextStyle(
@@ -1180,10 +1191,68 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     ),
                     const SizedBox(height: 6),
                   ],
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: _buildActionButton(act, dayIndex, activityIndex),
-                  ),
+
+                  // 3. Opening hours & Directions chips
+                  if (act.openingHours.isNotEmpty || act.directions.isNotEmpty) ...[
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        if (act.openingHours.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.schedule_rounded, size: 11.5, color: Color(0xFF64748B)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  act.openingHours.startsWith('Open:') || act.openingHours.startsWith('Check-')
+                                      ? act.openingHours
+                                      : 'Open: ${act.openingHours}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF334155),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        if (act.directions.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.directions_car_outlined, size: 11.5, color: Color(0xFF64748B)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  act.directions,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF334155),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                  ],
+
                   if (act.visited && widget.onActualCostChanged != null) ...[
                     const SizedBox(height: 8),
                     _buildActualCostInput(dayIndex, activityIndex, act),
@@ -1197,22 +1266,185 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// Builds the type-specific action button for an activity.
-  Widget _buildActionButton(OdysseyActivity act, int dayIndex, int activityIndex) {
-    switch (act.type) {
-      case ActivityType.transport:
-        return _buildTransportButton(act);
-      case ActivityType.attraction:
-        return _buildAttractionButton(act);
-      case ActivityType.accommodation:
-        return _buildAccommodationButton(act);
-      case ActivityType.dining:
-        return _buildDiningButton(act, dayIndex, activityIndex);
-      case ActivityType.exploration:
-        return _buildExplorationButton(act);
-      case ActivityType.other:
-        return const SizedBox.shrink();
+  /// Builds the dual-access and pricing pill row matching the client's design mockup:
+  /// e.g. [ Free | Self-Guided ⓘ ] | [ Paid | Get Guide ⓘ ] [ GYG ]
+  Widget _buildPriceAndAccessRow(BuildContext context, OdysseyActivity act, int dayIndex, int activityIndex) {
+    final ctx = _resolvePriceContext(act);
+    final isFree = ctx.$4;
+    final displayCost = ctx.$7;
+    final lowerName = act.name.toLowerCase();
+
+    final bool isAttraction = act.type == ActivityType.attraction ||
+        act.entryCost.isNotEmpty ||
+        act.guidedOption.isNotEmpty ||
+        lowerName.contains('church') ||
+        lowerName.contains('basilica') ||
+        lowerName.contains('temple') ||
+        lowerName.contains('fort') ||
+        lowerName.contains('museum') ||
+        lowerName.contains('palace') ||
+        lowerName.contains('park') ||
+        lowerName.contains('sanctuary') ||
+        lowerName.contains('cathedral');
+
+    if (isAttraction) {
+      final String selfGuidedLabel = (isFree || act.entryCost.toLowerCase().contains('free'))
+          ? 'Free'
+          : (act.entryCost.isNotEmpty ? act.entryCost : displayCost);
+
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          // 1. Left Pill: Free / Entry (Self-Guided)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _showPriceSourceInfo(context, act),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBBF7D0), width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    selfGuidedLabel,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF166534),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Self-Guided',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF15803D),
+                    ),
+                  ),
+                  const SizedBox(width: 3),
+                  const Icon(
+                    Icons.info_outline_rounded,
+                    size: 10.5,
+                    color: Color(0xFF15803D),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 2. Green Vertical Divider
+          Container(
+            width: 2,
+            height: 14,
+            decoration: BoxDecoration(
+              color: const Color(0xFF84CC16),
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+
+          // 3. Right Pill: Paid (Get Guide)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () async {
+              final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
+              final query = Uri.encodeComponent('${act.name} tickets$dest');
+              final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF0FDF4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFBBF7D0), width: 0.8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Paid',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF166534),
+                    ),
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Get Guide',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF15803D),
+                    ),
+                  ),
+                  SizedBox(width: 3),
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 10.5,
+                    color: Color(0xFF15803D),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 4. Partner Badge: GetYourGuide Logo
+          _buildAttractionButton(act),
+        ],
+      );
     }
+
+    // Transport Activities
+    if (act.type == ActivityType.transport) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          _buildPriceWithSource(context, act),
+          _buildTransportButton(act),
+        ],
+      );
+    }
+
+    // Dining Activities
+    if (act.type == ActivityType.dining) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          _buildPriceWithSource(context, act),
+          _buildDiningButton(act, dayIndex, activityIndex),
+        ],
+      );
+    }
+
+    // Accommodation Activities
+    if (act.type == ActivityType.accommodation) {
+      return Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          _buildPriceWithSource(context, act),
+          _buildAccommodationButton(act),
+        ],
+      );
+    }
+
+    // Exploration & Default Activities
+    return _buildPriceWithSource(context, act);
   }
 
   /// Uber button for transport activities (shows clean logo only, no box/container).
@@ -1220,7 +1452,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
-        // Strip directional prefix and append destination for accurate geocoding
         final placeName = act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim();
         final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
         final fullAddress = dest.isNotEmpty ? '$placeName, $dest' : placeName;
@@ -1241,22 +1472,26 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// Headout button for ticketed attraction activities (shows clean logo only, no box/container).
+  /// GetYourGuide button for ticketed attraction activities (shows clean circular logo).
   Widget _buildAttractionButton(OdysseyActivity act) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () async {
         final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
         final query = Uri.encodeComponent('${act.name} tickets$dest');
-        final url = Uri.parse('https://www.headout.com/search/?q=$query');
+        final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
         if (await canLaunchUrl(url)) {
           await launchUrl(url, mode: LaunchMode.externalApplication);
         }
       },
-      child: Image.asset(
-        'assets/images/headout.png',
-        height: 20,
-        fit: BoxFit.contain,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(100),
+        child: Image.asset(
+          'assets/images/getyourguide.png',
+          height: 20,
+          width: 20,
+          fit: BoxFit.contain,
+        ),
       ),
     );
   }
@@ -1341,26 +1576,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// GetYourGuide logo button for exploration activities (shows clean logo only).
-  Widget _buildExplorationButton(OdysseyActivity act) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () async {
-        final placeName = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
-        final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
-        final query = Uri.encodeComponent('$placeName guided tour$dest');
-        final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-        }
-      },
-      child: Image.asset(
-        'assets/images/getyourguide.png',
-        height: 22,
-        fit: BoxFit.contain,
-      ),
-    );
-  }
 
   /// Actual cost input field shown when an activity is marked visited.
   Widget _buildActualCostInput(int dayIndex, int activityIndex, OdysseyActivity act) {
@@ -1400,12 +1615,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0') ||
         lowerCost.endsWith(' 0.00');
 
-    // Format displayCost: e.g. "1500" -> "LKR 1,500"
+    // Format displayCost: e.g. "1500" -> "~ LKR 1,500 (approx)"
     String displayCost = rawCost;
     if (!isFree && displayCost.isNotEmpty) {
       final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
       if (!hasCurrency && widget.odyssey.currency.isNotEmpty) {
         displayCost = '${widget.odyssey.currency} $displayCost';
+      }
+      if (!displayCost.startsWith('~') && act.priceConfidence != 'Fixed' && act.type != ActivityType.accommodation) {
+        displayCost = '~ $displayCost (approx)';
       }
     }
 
@@ -1926,15 +2144,21 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                               const Divider(height: 1, color: Color(0xFFE2E8F0)),
                               const SizedBox(height: 10),
                               Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Icon(icon, size: 15, color: iconColor),
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 1.5),
+                                    child: Icon(icon, size: 15, color: iconColor),
+                                  ),
                                   const SizedBox(width: 6),
-                                  Text(
-                                    'Source: $sourceTag',
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: Colors.black87,
+                                  Expanded(
+                                    child: Text(
+                                      'Source: $sourceTag',
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.black87,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -1976,7 +2200,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                         width: 32,
                                         height: 32,
                                         decoration: BoxDecoration(
-                                          color: link.$4.withOpacity(0.1),
+                                          color: link.$4.withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: Icon(link.$3, size: 18, color: link.$4),
