@@ -131,7 +131,15 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
     _loadEmergencyCache();
     context.read<BudgetBloc>().add(FetchBudget());
-    _initLocationAndFetch();
+    // IndexedStack builds every tab page up front, so this widget exists (and
+    // initState runs) the moment the app opens on the Explore tab, well before
+    // the user has ever looked at Discover. Firing the fetch unconditionally
+    // here fired a second, redundant round of the same requests Around You
+    // was already making at that exact moment. didUpdateWidget (below) already
+    // fires this the instant the tab actually becomes active, so a deep link
+    // straight into Discover (isActive true from the start) still fetches
+    // immediately here — nothing is lost, only the duplicate is.
+    if (widget.isActive) _initLocationAndFetch();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTab(_selectedTab));
   }
 
@@ -457,10 +465,19 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
               Expanded(
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
-                    final isLoading = _tabs[_selectedTab] != 'Emergency' && state.status == MapStatus.loading;
-                    
                     final activeTab = _tabs[_selectedTab];
                     final sections = PlaceSections.sectionsFrom(state);
+
+                    // Only shimmer while this specific tab has nothing to show
+                    // yet. Gating on the global status alone used to shimmer
+                    // every tab together (even ones whose data had already
+                    // arrived) and re-blanked a tab that already had good data
+                    // during a background refresh.
+                    final activeSectionKey =
+                        activeTab == 'Food' ? 'Food & Drink' : activeTab;
+                    final isLoading = activeTab != 'Emergency' &&
+                        state.status == MapStatus.loading &&
+                        (sections[activeSectionKey] ?? []).isEmpty;
 
                     if (activeTab == 'POI') {
                       _poiList = sections['POI'] ?? [];

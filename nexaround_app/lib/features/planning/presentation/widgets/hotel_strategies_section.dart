@@ -185,7 +185,7 @@ class HotelStrategiesSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        formatPriceString(hs.pricePerNight),
+                        formatPriceString(hs.pricePerNight, targetCurrency: odyssey.currency),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
@@ -241,7 +241,7 @@ class HotelStrategiesSection extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Est. Total: ${formatPriceString(hs.totalEstimatedCost)}',
+                      'Est. Total: ${formatPriceString(hs.totalEstimatedCost, targetCurrency: odyssey.currency)}',
                       style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
                     ),
                   ),

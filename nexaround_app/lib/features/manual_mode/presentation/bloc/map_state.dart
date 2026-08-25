@@ -18,7 +18,12 @@ class MapState extends Equatable {
   /// Empty until [FetchBandedPlaces] completes; the sections fall back to
   /// grouping [allAttractions] themselves until then.
   final Map<String, List<List<AttractionEntity>>> bandedPlaces;
-  final bool isLoadingBands;
+
+  /// Category names whose banded fetch is still in flight. A category is
+  /// removed from this set the moment its OWN fetch resolves, independent of
+  /// the other five — so a card/tab can show its data as soon as it's ready
+  /// instead of waiting for the slowest category in the batch.
+  final Set<String> loadingBandCategories;
 
   const MapState({
     this.status = MapStatus.initial,
@@ -30,7 +35,7 @@ class MapState extends Equatable {
     this.errorMessage,
     this.isSatellite = false,
     this.bandedPlaces = const {},
-    this.isLoadingBands = false,
+    this.loadingBandCategories = const {},
   });
 
   MapState copyWith({
@@ -43,7 +48,7 @@ class MapState extends Equatable {
     String? errorMessage,
     bool? isSatellite,
     Map<String, List<List<AttractionEntity>>>? bandedPlaces,
-    bool? isLoadingBands,
+    Set<String>? loadingBandCategories,
   }) {
     return MapState(
       status: status ?? this.status,
@@ -55,21 +60,21 @@ class MapState extends Equatable {
       errorMessage: errorMessage ?? this.errorMessage,
       isSatellite: isSatellite ?? this.isSatellite,
       bandedPlaces: bandedPlaces ?? this.bandedPlaces,
-      isLoadingBands: isLoadingBands ?? this.isLoadingBands,
+      loadingBandCategories: loadingBandCategories ?? this.loadingBandCategories,
     );
   }
 
   @override
   List<Object?> get props => [
-    status, 
-    attractions, 
+    status,
+    attractions,
     allAttractions,
-    categories, 
+    categories,
     selectedAttraction,
     selectedCategoryId,
     errorMessage,
     isSatellite,
     bandedPlaces,
-    isLoadingBands
+    loadingBandCategories,
   ];
 }

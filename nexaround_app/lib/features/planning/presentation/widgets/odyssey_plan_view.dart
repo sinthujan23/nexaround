@@ -1464,19 +1464,21 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0') ||
         lowerCost.endsWith(' 0.00');
 
+    final planCurr = widget.odyssey.currency.isNotEmpty ? widget.odyssey.currency : 'USD';
+
     // Format displayCost: e.g. "1500" -> "~ LKR 1,500"
-    String displayCost = formatPriceString(rawCost);
+    String displayCost = formatPriceString(rawCost, targetCurrency: planCurr);
     if (!isFree && displayCost.isNotEmpty) {
-      final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
-      if (!hasCurrency && widget.odyssey.currency.isNotEmpty) {
-        displayCost = '${widget.odyssey.currency} $displayCost';
+      final hasCurrency = RegExp(r'[A-Za-z]').hasMatch(displayCost);
+      if (!hasCurrency && planCurr.isNotEmpty) {
+        displayCost = '$planCurr $displayCost';
       }
       if (!displayCost.startsWith('~') &&
           !displayCost.toLowerCase().contains('included') &&
           !displayCost.toLowerCase().contains('approx')) {
         displayCost = '~ $displayCost';
       }
-      displayCost = formatPriceString(displayCost);
+      displayCost = formatPriceString(displayCost, targetCurrency: planCurr);
     }
 
     final lowerName = act.name.toLowerCase();
@@ -1503,7 +1505,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           if (match != null) {
             final rate = match.group(1)?.trim();
             if (rate != null && rate.isNotEmpty) {
-              displayCost = rate.startsWith('~') ? rate : '~ $rate';
+              final formattedRate = formatPriceString(rate, targetCurrency: planCurr);
+              displayCost = formattedRate.startsWith('~') ? formattedRate : '~ $formattedRate';
             }
           }
         }
@@ -1545,7 +1548,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         if (match != null) {
           final rate = match.group(1)?.trim();
           if (rate != null && rate.isNotEmpty) {
-            accCost = rate.startsWith('~') ? rate : '~ $rate';
+            final formattedRate = formatPriceString(rate, targetCurrency: planCurr);
+            accCost = formattedRate.startsWith('~') ? formattedRate : '~ $formattedRate';
           }
         }
       }

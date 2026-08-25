@@ -138,7 +138,7 @@ class FlightStrategiesSection extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            formatPriceString(fs.estimatedSavings),
+                            formatPriceString(fs.estimatedSavings, targetCurrency: odyssey.currency),
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -184,7 +184,7 @@ class FlightStrategiesSection extends StatelessWidget {
                   if (fs.priceRange.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
-                      formatPriceString(fs.priceRange),
+                      formatPriceString(fs.priceRange, targetCurrency: odyssey.currency),
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w800,

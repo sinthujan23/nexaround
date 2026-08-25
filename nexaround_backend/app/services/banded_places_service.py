@@ -364,42 +364,44 @@ async def get_nearby_banded(
     ]
 
     source = "database"
-    defer_fill = False
+    defer_bands: list[int] = []
 
     # ── Step 2: Google, only for bands the database could not cover ──────────
+    # The near band (index 0) is what the user actually looks at first, so it
+    # is the only one worth making this caller wait for. Any short far band
+    # always falls through to the background fill below — regardless of
+    # whether the near band also needed filling — so a cold far band can never
+    # add its latency to the response the user is staring at.
     if short_bands and key not in _active_fills:
         allowed, reason = await spend_guard.allowed(None)
         if not allowed:
             print(f"skipping banded Google fill: {reason}")
-        elif len(pool) < place_bands.quota_for_band(0):
-            # Nothing worth showing yet — fill inline so this caller gets a
-            # populated section rather than an empty one.
-            _active_fills.add(key)
-            try:
-                filled = await asyncio.gather(*(
-                    _google_fill_band(
+        else:
+            if 0 in short_bands:
+                _active_fills.add(key)
+                try:
+                    near_filled = await _google_fill_band(
                         latitude=latitude,
                         longitude=longitude,
                         category=category,
-                        band_index=i,
-                        band_min=bands[i][0],
-                        band_max=bands[i][1],
+                        band_index=0,
+                        band_min=bands[0][0],
+                        band_max=bands[0][1],
                     )
-                    for i in short_bands
-                ))
-            finally:
-                _active_fills.discard(key)
-            for got in filled:
-                pool.extend(got)
-            source = "google"
-        else:
-            # There is already enough to render. Fill the gaps after responding
-            # and let the next request serve the richer result. Deferred rather
-            # than spawned here: the background task retires this cache key when
-            # it finishes, and it must not be able to do so before the write
-            # below has happened, or the thinner list would serve out the whole
-            # 14-day TTL.
-            defer_fill = True
+                finally:
+                    _active_fills.discard(key)
+                pool.extend(near_filled)
+                source = "google"
+
+            far_short = [i for i in short_bands if i != 0]
+            if far_short:
+                # Fill the gaps after responding and let the next request serve
+                # the richer result. Deferred rather than spawned here: the
+                # background task retires this cache key when it finishes, and
+                # it must not be able to do so before the write below has
+                # happened, or the thinner list would serve out the whole
+                # 14-day TTL.
+                defer_bands = far_short
 
     # Dedupe: the DB rows and a fresh Google fetch can describe the same place.
     deduped: list[dict] = []
@@ -420,12 +422,12 @@ async def get_nearby_banded(
 
     await place_cache_service.set_cached(key, deduped)
 
-    if defer_fill:
+    if defer_bands:
         places_service.spawn_background(_fill_bands_bg(
             latitude=latitude,
             longitude=longitude,
             category=category,
-            band_indices=short_bands,
+            band_indices=defer_bands,
             bands=bands,
             key=key,
         ))

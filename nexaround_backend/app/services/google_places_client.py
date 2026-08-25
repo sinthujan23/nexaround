@@ -3,6 +3,7 @@
 Only this module ever sees GOOGLE_API_KEY. The mobile client never receives
 the key, never sees a googleapis.com URL.
 """
+import asyncio
 import math
 from typing import Optional
 import httpx
@@ -12,6 +13,38 @@ from app.services import telemetry
 
 
 _BASE = "https://maps.googleapis.com/maps/api"
+
+# Shared, connection-pooled client reused by every call in this module instead
+# of each one opening (and TLS-handshaking) a brand new connection. Created
+# lazily — not at import time — because it binds to whichever event loop is
+# running on first use.
+_http_client: Optional[httpx.AsyncClient] = None
+_http_client_lock = asyncio.Lock()
+
+# Bulkhead: caps how many Google Places/Maps HTTP calls can be in flight at
+# once across the whole process. Without this, one cold screen-open can fan
+# out 50+ concurrent requests across all bands and categories, which risks
+# tripping Google's per-key rate limit (billed retries) and slows down the
+# very calls a user is actually waiting on.
+_GOOGLE_CALL_CONCURRENCY = 10
+_google_call_semaphore = asyncio.Semaphore(_GOOGLE_CALL_CONCURRENCY)
+
+
+async def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        async with _http_client_lock:
+            if _http_client is None:
+                _http_client = httpx.AsyncClient(timeout=15.0)
+    return _http_client
+
+
+async def aclose_http_client() -> None:
+    """Called once from the app's shutdown hook to release pooled connections."""
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
 
 # The grid `place_cache_service` and the Google Maps proxy both snap coordinates
 # to before building a cache key (~500m). Duplicated as a one-liner rather than
@@ -431,15 +464,16 @@ async def nearby_search(
     if included_types:
         body["includedTypes"] = list(included_types)
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        # Self-heal: the Places API (New) rejects the WHOLE request with 400 if
-        # any single includedType isn't supported (e.g. legacy 'place_of_worship').
-        # Strip the type(s) Google names and retry, so the valid types still
-        # return results instead of the category coming back empty.
-        resp = None
-        for _attempt in range(len(included_types) + 1):
-            # Tracked per attempt, not per call: the self-heal retry issues a
-            # fresh request each time, and each successful one is billed.
+    client = await _get_http_client()
+    # Self-heal: the Places API (New) rejects the WHOLE request with 400 if
+    # any single includedType isn't supported (e.g. legacy 'place_of_worship').
+    # Strip the type(s) Google names and retry, so the valid types still
+    # return results instead of the category coming back empty.
+    resp = None
+    for _attempt in range(len(included_types) + 1):
+        # Tracked per attempt, not per call: the self-heal retry issues a
+        # fresh request each time, and each successful one is billed.
+        async with _google_call_semaphore:
             async with telemetry.track(
                 "google_maps", "nearby_search",
                 sku="nearby_search_new",
@@ -455,30 +489,30 @@ async def nearby_search(
                     headers=headers,
                 )
                 t.upstream(resp)
-            if resp.status_code == 200:
-                break
+        if resp.status_code == 200:
+            break
 
-            bad = _unsupported_types(resp) if resp.status_code == 400 else set()
-            if not bad:
-                break  # not a recoverable type error — fall through to raise
+        bad = _unsupported_types(resp) if resp.status_code == 400 else set()
+        if not bad:
+            break  # not a recoverable type error — fall through to raise
 
-            included_types = [t for t in included_types if t not in bad]
-            print(f"⚠️ Dropping unsupported includedTypes {sorted(bad)}; "
-                  f"retrying with {len(included_types)} type(s)")
-            if included_types:
-                body["includedTypes"] = list(included_types)
-            else:
-                # All types were unsupported — fall back to an untyped nearby
-                # search rather than failing the whole category.
-                body.pop("includedTypes", None)
+        included_types = [t for t in included_types if t not in bad]
+        print(f"⚠️ Dropping unsupported includedTypes {sorted(bad)}; "
+              f"retrying with {len(included_types)} type(s)")
+        if included_types:
+            body["includedTypes"] = list(included_types)
+        else:
+            # All types were unsupported — fall back to an untyped nearby
+            # search rather than failing the whole category.
+            body.pop("includedTypes", None)
 
-        if resp.status_code != 200:
-            # Log Google's verbatim error (API-not-enabled / billing disabled /
-            # key restriction) so the cause is visible in server logs instead of
-            # surfacing as a blind 500.
-            print(f"❌ Google searchNearby HTTP {resp.status_code}: {resp.text[:600]}")
-            resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code != 200:
+        # Log Google's verbatim error (API-not-enabled / billing disabled /
+        # key restriction) so the cause is visible in server logs instead of
+        # surfacing as a blind 500.
+        print(f"❌ Google searchNearby HTTP {resp.status_code}: {resp.text[:600]}")
+        resp.raise_for_status()
+    data = resp.json()
 
     return data.get("places", [])
 
@@ -525,7 +559,8 @@ async def text_search(
         }
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    client = await _get_http_client()
+    async with _google_call_semaphore:
         async with telemetry.track(
             "google_maps", "text_search",
             sku="text_search_new",
@@ -534,10 +569,10 @@ async def text_search(
         ) as t:
             resp = await client.post("https://places.googleapis.com/v1/places:searchText", json=body, headers=headers)
             t.upstream(resp)
-        if resp.status_code != 200:
-            print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
-            resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code != 200:
+        print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
+        resp.raise_for_status()
+    data = resp.json()
 
     return data.get("places", [])
 
@@ -589,7 +624,8 @@ async def nearby_search_typed(
         }
     }
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    client = await _get_http_client()
+    async with _google_call_semaphore:
         async with telemetry.track(
             "google_maps", "nearby_search_typed",
             sku="nearby_search_new",
@@ -603,13 +639,13 @@ async def nearby_search_typed(
             )
             t.upstream(resp)
 
-        if resp.status_code == 400 and _unsupported_types(resp):
-            print(f"⚠️ Google type '{place_type}' unsupported for near-me search — falling back to text search")
-            return None
-        if resp.status_code != 200:
-            print(f"❌ Google searchNearby (typed) HTTP {resp.status_code}: {resp.text[:600]}")
-            resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code == 400 and _unsupported_types(resp):
+        print(f"⚠️ Google type '{place_type}' unsupported for near-me search — falling back to text search")
+        return None
+    if resp.status_code != 200:
+        print(f"❌ Google searchNearby (typed) HTTP {resp.status_code}: {resp.text[:600]}")
+        resp.raise_for_status()
+    data = resp.json()
 
     return data.get("places", [])
 
@@ -779,7 +815,8 @@ async def nearby_search_legacy(
     if legacy_type:
         params["type"] = legacy_type
 
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    client = await _get_http_client()
+    async with _google_call_semaphore:
         async with telemetry.track(
             "google_maps", "nearby_search_legacy",
             sku="nearby_search_legacy",
@@ -788,10 +825,10 @@ async def nearby_search_legacy(
         ) as t:
             resp = await client.get("https://maps.googleapis.com/maps/api/place/nearbysearch/json", params=params)
             t.upstream(resp)
-        if resp.status_code != 200:
-            print(f"❌ Google nearbysearch legacy HTTP {resp.status_code}: {resp.text[:600]}")
-            resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code != 200:
+        print(f"❌ Google nearbysearch legacy HTTP {resp.status_code}: {resp.text[:600]}")
+        resp.raise_for_status()
+    data = resp.json()
 
     return data.get("results", [])
 
@@ -884,36 +921,37 @@ async def fetch_photo_bytes(photo_reference: str, maxwidth: int = 800) -> tuple[
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key")
 
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
-        if photo_reference.startswith("places/"):
-            # New Places API Photo endpoint
-            url = f"https://places.googleapis.com/v1/{photo_reference}/media"
-            params = {
-                "key": google_maps_key,
-                "maxWidthPx": maxwidth,
-            }
-        else:
-            # Legacy Places API Photo endpoint
-            url = f"{_BASE}/place/photo"
-            params = {
-                "maxwidth": maxwidth,
-                "photo_reference": photo_reference,
-                "key": google_maps_key,
-            }
+    client = await _get_http_client()
+    if photo_reference.startswith("places/"):
+        # New Places API Photo endpoint
+        url = f"https://places.googleapis.com/v1/{photo_reference}/media"
+        params = {
+            "key": google_maps_key,
+            "maxWidthPx": maxwidth,
+        }
+    else:
+        # Legacy Places API Photo endpoint
+        url = f"{_BASE}/place/photo"
+        params = {
+            "maxwidth": maxwidth,
+            "photo_reference": photo_reference,
+            "key": google_maps_key,
+        }
 
-        # Reaching here always means a disk-cache miss — photo_cache_service
-        # only calls this when it has nothing to serve.
+    # Reaching here always means a disk-cache miss — photo_cache_service
+    # only calls this when it has nothing to serve.
+    async with _google_call_semaphore:
         async with telemetry.track(
             "google_maps", "place_photo",
             sku="place_photo",
             cache_key=f"photo:{photo_reference[:180]}:{maxwidth}",
         ) as t:
-            resp = await client.get(url, params=params)
+            resp = await client.get(url, params=params, timeout=20.0, follow_redirects=True)
             t.upstream(resp)
 
-        resp.raise_for_status()
-        ctype = resp.headers.get("content-type", "image/jpeg")
-        photo_bytes = resp.content
+    resp.raise_for_status()
+    ctype = resp.headers.get("content-type", "image/jpeg")
+    photo_bytes = resp.content
 
     # 3. Cache the photo bytes (7-day TTL = 604800 seconds)
     try:
@@ -978,7 +1016,8 @@ async def find_place_id_legacy(
     cache_key = f"fpt:{clean_name.lower()}|{bias_key}"
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        client = await _get_http_client()
+        async with _google_call_semaphore:
             async with telemetry.track(
                 "google_maps", "findplacefromtext",
                 sku="find_place_basic",
@@ -986,8 +1025,8 @@ async def find_place_id_legacy(
             ) as t:
                 resp = await client.get(f"{_BASE}/place/findplacefromtext/json", params=params)
                 t.upstream(resp)
-            resp.raise_for_status()
-            data = resp.json()
+        resp.raise_for_status()
+        data = resp.json()
 
         status = data.get("status")
         if status not in ("OK", "ZERO_RESULTS"):
@@ -1038,7 +1077,8 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        client = await _get_http_client()
+        async with _google_call_semaphore:
             async with telemetry.track(
                 "google_maps", "place_details_legacy",
                 sku="place_details",
@@ -1046,8 +1086,8 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
             ) as t:
                 resp = await client.get(url, params=params)
                 t.upstream(resp)
-            resp.raise_for_status()
-            data = resp.json()
+        resp.raise_for_status()
+        data = resp.json()
 
         status = data.get("status")
         if status != "OK" and status != "ZERO_RESULTS":

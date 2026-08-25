@@ -6640,63 +6640,8 @@ class _ArCameraPageState extends State<ArCameraPage>
     if (_landmarks.isEmpty) {
       final bool stillLoading = !_hasCompletedInitialFetch || _isFetchingPlaces;
       if (stillLoading) {
-        // Genuine loading — show the scanning pulse.
-        return Positioned(
-          left: 0,
-          right: 0,
-          bottom: guideBottom,
-          child: Center(
-            child:
-                ClipRRect(
-                      borderRadius: BorderRadius.circular(30),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 22,
-                            vertical: 11,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.07),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                    width: 6,
-                                    height: 6,
-                                    decoration: const BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: Colors.white38,
-                                    ),
-                                  )
-                                  .animate(
-                                    onPlay: (c) => c.repeat(reverse: true),
-                                  )
-                                  .fade(begin: 0.2, end: 1, duration: 700.ms),
-                              const SizedBox(width: 10),
-                              const Text(
-                                'SCANNING FOR PLACES...',
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .fade(begin: 0.4, end: 1, duration: 900.ms),
-          ),
-        );
+        // Genuine loading — top green pill handles the indicator.
+        return const SizedBox.shrink();
       }
 
       // Fetch finished with nothing to display — explain why and offer a retry,

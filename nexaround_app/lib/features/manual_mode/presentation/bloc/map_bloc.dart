@@ -166,11 +166,14 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     FetchBandedPlaces event,
     Emitter<MapState> emit,
   ) async {
-    emit(state.copyWith(isLoadingBands: true));
+    emit(state.copyWith(loadingBandCategories: bandedCategories.toSet()));
 
     // All six in parallel: they hit independent cache keys on the backend and
-    // one slow category should not hold up the other five.
-    final results = await Future.wait(
+    // one slow category should not hold up the other five. Each closure emits
+    // its own result the moment it lands, rather than the batch waiting for
+    // Future.wait to resolve every one of them — so five fast categories show
+    // up immediately instead of sitting behind the slowest straggler.
+    await Future.wait(
       bandedCategories.map((cat) async {
         final bands = await GooglePlacesService.fetchBandedPlaces(
           latitude: event.latitude,
@@ -180,20 +183,23 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           // Fetch Discovery-depth once; Around You slices its quota off the top.
           perBand: PlaceBands.fetchPerBand,
         );
-        return MapEntry(cat, bands);
+
+        // A category that returned nothing keeps whatever it had rather than
+        // blanking the section — a transient failure should not empty the UI.
+        final merged = Map<String, List<List<AttractionEntity>>>.from(
+          state.bandedPlaces,
+        );
+        if (bands.isNotEmpty) merged[cat] = bands;
+
+        final stillLoading = Set<String>.from(state.loadingBandCategories)
+          ..remove(cat);
+
+        emit(state.copyWith(
+          bandedPlaces: merged,
+          loadingBandCategories: stillLoading,
+        ));
       }),
     );
-
-    // A category that returned nothing keeps whatever it had rather than
-    // blanking the section — a transient failure should not empty the UI.
-    final merged = Map<String, List<List<AttractionEntity>>>.from(
-      state.bandedPlaces,
-    );
-    for (final entry in results) {
-      if (entry.value.isNotEmpty) merged[entry.key] = entry.value;
-    }
-
-    emit(state.copyWith(bandedPlaces: merged, isLoadingBands: false));
   }
 
   Future<void> _onFetchNearbyAttractions(

@@ -108,8 +108,11 @@ class _LivingMapPageState extends State<LivingMapPage>
   void initState() {
     super.initState();
     _loadTravelStories();
-    CacheService.cacheAttractions([]);
-    CacheService.clearLastFetchCoords();
+    // Cache is deliberately left alone here: a repeat visit to the same area
+    // should paint instantly from what's already saved while MapBloc's own
+    // distance/staleness check (see _onFetchNearbyAttractions) decides
+    // whether a fresh fetch is actually needed, instead of every screen open
+    // being forced into a cold fetch regardless of the last one.
     WidgetsBinding.instance.addObserver(this);
     _pulseController = AnimationController(
       vsync: this,
@@ -979,7 +982,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.only(top: 4, bottom: 0),
+                            padding: const EdgeInsets.only(top: 12, bottom: 8),
                             child: _buildMuseumBanner(),
                           ),
                         ),
@@ -1112,7 +1115,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 4, bottom: 0),
+                          padding: const EdgeInsets.only(top: 12, bottom: 8),
                           child: _buildMuseumBanner(),
                         ),
                       ),
@@ -1164,83 +1167,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                       return <Widget>[
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.all(24),
+                            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
                             child: _buildClusterSuggestion(_miniTourPlaces!),
-                          ),
-                        ),
-                      ];
-                    }
-
-                    if (_loadingMiniTour) {
-                      return <Widget>[
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: const EdgeInsets.all(24),
-                            child:
-                                Container(
-                                      width: double.infinity,
-                                      height: 220,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade100,
-                                        borderRadius: BorderRadius.circular(24),
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Padding(
-                                            padding: const EdgeInsets.all(20),
-                                            child: Row(
-                                              children: [
-                                                Container(
-                                                  width: 34,
-                                                  height: 34,
-                                                  decoration: BoxDecoration(
-                                                    shape: BoxShape.circle,
-                                                    color: Colors.grey.shade300,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 12),
-                                                Container(
-                                                  width: 100,
-                                                  height: 14,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey.shade300,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          6,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          ...List.generate(
-                                            3,
-                                            (_) => Padding(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 20,
-                                                    vertical: 6,
-                                                  ),
-                                              child: Container(
-                                                height: 12,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey.shade200,
-                                                  borderRadius:
-                                                      BorderRadius.circular(4),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    )
-                                    .animate(onPlay: (c) => c.repeat())
-                                    .shimmer(
-                                      duration: 1200.ms,
-                                      color: Colors.white54,
-                                    ),
                           ),
                         ),
                       ];
@@ -1251,7 +1179,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ];
                   }(),
 
-                  const SliverToBoxAdapter(child: SizedBox(height: 125)),
+                  const SliverToBoxAdapter(child: SizedBox(height: 90)),
                 ],
               ),
               
@@ -5913,7 +5841,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       );
       debugPrint(
         '⚠️ Around You "$category": no banded data '
-        '(loading=${context.read<MapBloc>().state.isLoadingBands}) — '
+        '(loading=${context.read<MapBloc>().state.loadingBandCategories.contains(category)}) — '
         'falling back to ${local.length} local place(s)',
       );
       grouped[category] = local;
@@ -5930,8 +5858,8 @@ class _LivingMapPageState extends State<LivingMapPage>
         .map((l) => l.length)
         .fold(0, (max, len) => len > max ? len : max);
     final double cardHeight = maxPlaces == 0
-        ? 330.0
-        : (90.0 + maxPlaces * 38.5).clamp(330.0, 720.0);
+        ? 180.0
+        : (68.0 + maxPlaces * 34.0).clamp(180.0, 410.0);
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
@@ -5992,7 +5920,12 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     final int targetDiscoverTab = DiscoverPage.tabIndexFor(categoryName);
 
-    if (status == MapStatus.loading) {
+    // Only shimmer while this specific card has nothing to show yet. Gating
+    // on the global status alone used to blank every card together, and also
+    // re-blanked a card that already had good data during a background
+    // refresh (status briefly goes back to loading while old data is still
+    // perfectly displayable).
+    if (status == MapStatus.loading && places.isEmpty) {
       return Align(
         alignment: Alignment.topCenter,
         child: Container(

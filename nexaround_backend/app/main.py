@@ -112,6 +112,12 @@ async def startup():
                 "Firebase service-account JSON (paste the whole file) for sending push notifications"
             )
 
+
+@app.on_event("shutdown")
+async def shutdown():
+    from app.services import google_places_client
+    await google_places_client.aclose_http_client()
+
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

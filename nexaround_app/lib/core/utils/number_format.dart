@@ -7,12 +7,23 @@ String formatAmount(num value, {int decimals = 0}) {
   return NumberFormat(pattern, 'en_US').format(value);
 }
 
-/// Takes a price or text string containing unformatted numbers (e.g. "LKR 100000 - 150000", "Save LKR 50000")
-/// and adds comma separators to all 4+ digit numbers.
-/// e.g. "LKR 100000" -> "LKR 100,000"
-String formatPriceString(String text) {
+/// Takes a price or text string containing unformatted numbers (e.g. "LKR 100000 - 150000", "$111 / night", "₹2,387 / night")
+/// and adds comma separators to all 4+ digit numbers while normalizing currency symbols (e.g. $, ₹ -> USD, INR).
+String formatPriceString(String text, {String? targetCurrency}) {
   if (text.isEmpty) return text;
-  return text.replaceAllMapped(RegExp(r'\b\d{4,}\b'), (match) {
+  var result = text;
+  final currencyCode = (targetCurrency != null && targetCurrency.isNotEmpty)
+      ? targetCurrency
+      : 'USD';
+
+  // Replace any currency symbol ($, ₹, €, £, ¥, Rs., Rs) with currency code (e.g. "₹2,387" -> "INR 2,387")
+  result = result.replaceAllMapped(
+    RegExp(r'(?:\$|₹|€|£|¥|Rs\.?)\s*([\d,]+)'),
+    (match) => '$currencyCode ${match.group(1)}',
+  );
+
+  // Format 4+ digit numbers with comma separators (e.g. "100000" -> "100,000")
+  return result.replaceAllMapped(RegExp(r'\b\d{4,}\b'), (match) {
     final val = int.tryParse(match.group(0)!) ?? 0;
     return formatAmount(val);
   });

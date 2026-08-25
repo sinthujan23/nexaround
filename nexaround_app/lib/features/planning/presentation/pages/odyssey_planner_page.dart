@@ -48,7 +48,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   void initState() {
     super.initState();
     _daysController.text = _days.toString();
-    _budgetController.text = _budget.toInt().toString();
+    _budgetController.text = formatAmount(_budget.toInt());
     _travelersController.text = _travelers.toString();
     _prefillDestination();
     _loadUserCurrency();
@@ -871,14 +871,22 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             controller: _budgetController,
             keyboardType: TextInputType.number,
             onChanged: (val) {
-              final parsed = double.tryParse(val);
+              final cleanVal = val.replaceAll(',', '').trim();
+              final parsed = double.tryParse(cleanVal);
               if (parsed != null && parsed > 0) {
                 setState(() => _budget = parsed);
+                final formatted = formatAmount(parsed.toInt());
+                if (formatted != val) {
+                  _budgetController.value = TextEditingValue(
+                    text: formatted,
+                    selection: TextSelection.collapsed(offset: formatted.length),
+                  );
+                }
               }
             },
             decoration: InputDecoration(
               labelText: 'Or enter custom budget per person',
-              hintText: 'e.g. 75000',
+              hintText: 'e.g. 75,000',
               prefixText: '$_currency ',
               prefixIcon: const Icon(Icons.wallet_rounded, color: Colors.black54),
               filled: true,
@@ -911,7 +919,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               onChanged: (val) {
                 setState(() {
                   _budget = val;
-                  _budgetController.text = val.toInt().toString();
+                  _budgetController.text = formatAmount(val.toInt());
                 });
               },
             ),
