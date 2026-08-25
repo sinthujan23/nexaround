@@ -40,7 +40,7 @@ async def get_nearby_places(
     current_user: User = Depends(get_current_user),
 ):
     """Return Google Places near a coordinate. Cached server-side for 7 days. Requires authentication."""
-    return await places_service.get_nearby(
+    result = await places_service.get_nearby(
         latitude=lat,
         longitude=lng,
         category=category,
@@ -50,6 +50,10 @@ async def get_nearby_places(
         limit=limit,
         offset=offset,
     )
+    # Buys the first screenful's thumbnails so the list stops rendering category
+    # placeholders. Detached — see warm_list_heroes.
+    places_service.warm_list_heroes(result.places)
+    return result
 
 
 
@@ -87,7 +91,7 @@ async def get_nearby_places_banded(
     and text search all want a flat radius query, and should not inherit band
     semantics or the extra Google requests that filling an outer band can cost.
     """
-    return await banded_places_service.get_nearby_banded(
+    result = await banded_places_service.get_nearby_banded(
         latitude=lat,
         longitude=lng,
         category=category,
@@ -95,6 +99,9 @@ async def get_nearby_places_banded(
         force_refresh=force_refresh,
         per_band=per_band,
     )
+    # `places` is the flattened display order, so this warms what renders first.
+    places_service.warm_list_heroes(result.places)
+    return result
 
 
 @router.get("/search", response_model=PlacesNearbyResponse)

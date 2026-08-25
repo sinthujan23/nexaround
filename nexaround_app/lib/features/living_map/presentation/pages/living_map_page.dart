@@ -5854,11 +5854,20 @@ class _LivingMapPageState extends State<LivingMapPage>
       });
     }
 
-    final int maxPlaces = grouped.values
+    final bool isLoadingAny = status == MapStatus.loading ||
+        context.read<MapBloc>().state.enrichingCategories.isNotEmpty ||
+        context.read<MapBloc>().state.loadingBandCategories.isNotEmpty;
+
+    final int rawMaxPlaces = grouped.values
         .map((l) => l.length)
         .fold(0, (max, len) => len > max ? len : max);
-    final int clampedMaxPlaces = maxPlaces.clamp(0, 10);
-    final double cardHeight = maxPlaces == 0
+
+    final int effectiveMaxPlaces = isLoadingAny
+        ? (rawMaxPlaces < 4 ? 4 : rawMaxPlaces)
+        : rawMaxPlaces;
+
+    final int clampedMaxPlaces = effectiveMaxPlaces.clamp(0, 10);
+    final double cardHeight = clampedMaxPlaces == 0
         ? 180.0
         : (78.0 + clampedMaxPlaces * 40.5).clamp(180.0, 495.0);
 
@@ -6101,7 +6110,10 @@ class _LivingMapPageState extends State<LivingMapPage>
                   Builder(builder: (_) {
                     final displayPlaces = places.take(10).toList();
                     final int loadedCount = displayPlaces.length;
-                    final int itemCount = (isLoadingState ? 10 : loadedCount).clamp(0, 10);
+                    final int targetSlotCount = isLoadingState
+                        ? (loadedCount < 4 ? 4 : loadedCount)
+                        : loadedCount;
+                    final int itemCount = targetSlotCount.clamp(0, 10);
 
                     return ListView.separated(
                       shrinkWrap: true,
