@@ -257,7 +257,14 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // Check status to prevent infinite loading loops if the API returns an empty list.
     final lastLat = CacheService.getLastFetchLat();
     final lastLng = CacheService.getLastFetchLng();
-    bool needsFetch = state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty;
+    // `allAttractions.isEmpty` alone meant "we hold something" was read as
+    // "we are done", so a session that started from a thin cache never went
+    // back to the network. Staleness gives it a way out; the write path
+    // refreshes the timestamp, so this asks for at most one refetch per TTL.
+    bool needsFetch = state.status == MapStatus.initial ||
+        state.status == MapStatus.failure ||
+        state.allAttractions.isEmpty ||
+        !CacheService.isAttractionsCacheFresh();
 
     // The local cache has no per-location tagging — it's just "every place
     // ever fetched," and _getFilteredCache only narrows it to within 50km of
@@ -292,7 +299,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           lastLat,
           lastLng,
         );
-        if (distM < 1000) {
+        // Freshness matters as much as proximity here. Standing still is not a
+        // reason to keep serving a list captured hours ago — and because this
+        // branch returns without touching the network, a thin capture used to
+        // persist for as long as the user stayed within 1km.
+        if (distM < 1000 && CacheService.isAttractionsCacheFresh()) {
           final cachedModels = _getFilteredCache(event.latitude, event.longitude);
           if (cachedModels.isNotEmpty) {
             emit(state.copyWith(

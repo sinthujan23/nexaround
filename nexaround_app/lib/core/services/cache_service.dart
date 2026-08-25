@@ -295,9 +295,30 @@ class CacheService {
     }
   }
 
+  /// How long the cached place list may stand in for a network fetch.
+  ///
+  /// Without a bound this cache never expired, and MapBloc skips the network
+  /// entirely whenever it holds anything and the user has not moved 1km. A thin
+  /// set captured once — a failed category, a sparse first load — therefore
+  /// froze permanently: Discovery kept showing those few places and could never
+  /// recover on its own, because "we have something" was read as "we are done".
+  static const int attractionsCacheTtlMs = 30 * 60 * 1000;
+
   static Future<void> cacheAttractions(List<Map<String, dynamic>> placesJson) async {
     final List<String> list = placesJson.map((p) => json.encode(p)).toList();
     await _prefs.setStringList('cached_attractions_list', list);
+    await _prefs.setInt(
+      'cached_attractions_time', DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// Whether the cached place list is recent enough to serve instead of fetching.
+  ///
+  /// A cache with no recorded time is treated as stale — it predates this, so
+  /// its age is unknown and one refetch is the safe reading.
+  static bool isAttractionsCacheFresh() {
+    final t = _prefs.getInt('cached_attractions_time') ?? 0;
+    if (t == 0) return false;
+    return DateTime.now().millisecondsSinceEpoch - t < attractionsCacheTtlMs;
   }
 
   static Future<void> mergeAndCacheAttractions(List<Map<String, dynamic>> placesJson) async {
