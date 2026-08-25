@@ -478,10 +478,11 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                     // the richer result lands.
                     final activeSectionKey =
                         activeTab == 'Food' ? 'Food & Drink' : activeTab;
-                    final stillEnriching =
+                    final isCategoryLoading =
+                        state.loadingBandCategories.contains(activeSectionKey) ||
                         state.enrichingCategories.contains(activeSectionKey);
                     final isLoading = activeTab != 'Emergency' &&
-                        (state.status == MapStatus.loading || stillEnriching) &&
+                        (state.status == MapStatus.loading || state.status == MapStatus.initial || isCategoryLoading) &&
                         (sections[activeSectionKey] ?? []).isEmpty;
 
                     if (activeTab == 'POI') {

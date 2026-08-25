@@ -323,6 +323,15 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         status: MapStatus.loading,
         attractions: const [],
         allAttractions: const [],
+        // Clearing the two lists above is not enough: Around You and Discovery
+        // both read `bandedPlaces` directly, so on a relocation they kept
+        // rendering the previous city's places under the new location's heading
+        // until each category's refetch landed — minutes later, one section at
+        // a time. Dropping them here makes the sections shimmer instead of
+        // showing somewhere else's results as if they were nearby.
+        bandedPlaces: movedToNewArea
+            ? const <String, List<List<AttractionEntity>>>{}
+            : null,
       ));
 
       // Feeds the map and its markers, so it stays broader than the six

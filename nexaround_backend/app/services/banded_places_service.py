@@ -56,7 +56,15 @@ _BEARING_PHASE_PER_BAND = 40.0
 # handful we show, so the rating sort has something to choose between — and more
 # so now that six categories are drawn from four overlapping pools, where a
 # band's rows are shared with its sibling and thinned by the relevance gate.
-_DB_LIMIT_PER_BAND = 40
+#
+# 40 was sized against Around You's quota (BAND_QUOTAS, 4/3/3). Discovery asks
+# for `per_band=15`, and the relevance gate discards most of what a band pulls —
+# Hospital survived 25 of 120 rows here — so 40 could not fill a 15-place band
+# and Discovery's sections came back short. The rows exist: the same three bands
+# hold roughly 13.9k / 19.8k / 2.2k candidates near Trincomalee, so this is a
+# limit we chose, not data we lack. It is a PostGIS read against a GIST index
+# and costs no upstream calls, so the headroom is cheap.
+_DB_LIMIT_PER_BAND = 150
 
 # Cache keys with a fill already running. Without this, every request arriving
 # for a cold tile before the first fill finishes starts its own — four users

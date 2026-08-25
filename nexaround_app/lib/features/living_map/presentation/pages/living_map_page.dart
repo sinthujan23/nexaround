@@ -680,8 +680,29 @@ class _LivingMapPageState extends State<LivingMapPage>
   /// Runs alongside [FetchNearbyAttractions] rather than replacing it: that
   /// query feeds the map and its markers and wants everything nearby, while the
   /// sections want a handful of places spread deliberately across distance.
+  /// Distance that counts as "somewhere else" for the banded sections.
+  static const double _bandedRelocationM = 1000.0;
+
+  double? _lastBandedLat;
+  double? _lastBandedLng;
+
   void _fetchBandedSections(double lat, double lng, {bool forceRefresh = false}) {
     if (!mounted) return;
+
+    // Relocation is detected here rather than trusted from the caller. Only the
+    // two "user picked a place" paths ever passed forceRefresh; the GPS-driven
+    // ones did not, so a real move left the previous location's sections in
+    // state and Around You and Discovery both went on rendering them under the
+    // new place's heading until each category's refetch landed one by one.
+    if (!forceRefresh && _lastBandedLat != null && _lastBandedLng != null) {
+      final movedM = geo.Geolocator.distanceBetween(
+        _lastBandedLat!, _lastBandedLng!, lat, lng,
+      );
+      if (movedM > _bandedRelocationM) forceRefresh = true;
+    }
+    _lastBandedLat = lat;
+    _lastBandedLng = lng;
+
     context.read<MapBloc>().add(
       FetchBandedPlaces(
         latitude: lat,
@@ -5855,8 +5876,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     final bool isLoadingAny = status == MapStatus.loading ||
+        status == MapStatus.initial ||
         context.read<MapBloc>().state.enrichingCategories.isNotEmpty ||
-        context.read<MapBloc>().state.loadingBandCategories.isNotEmpty;
+        context.read<MapBloc>().state.loadingBandCategories.isNotEmpty ||
+        grouped.values.every((l) => l.isEmpty);
 
     final int rawMaxPlaces = grouped.values
         .map((l) => l.length)
@@ -5932,7 +5955,7 @@ class _LivingMapPageState extends State<LivingMapPage>
     final mapState = context.read<MapBloc>().state;
     final bool isCategoryLoading = mapState.loadingBandCategories.contains(categoryName) ||
         mapState.enrichingCategories.contains(categoryName);
-    final bool isLoadingState = (status == MapStatus.loading || isCategoryLoading);
+    final bool isLoadingState = (status == MapStatus.loading || status == MapStatus.initial || isCategoryLoading);
 
     if (places.isEmpty && !isLoadingState) {
       return Align(
