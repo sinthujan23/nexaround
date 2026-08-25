@@ -890,6 +890,10 @@ async def generate_odyssey(
                 if act_type:
                     act_dict["type"] = act_type
 
+            hours = str(a.get("hours") or "").strip()
+            if hours:
+                act_dict["hours"] = hours
+
             restaurants = []
             if isinstance(a.get("restaurants"), list):
                 for r in a.get("restaurants"):
@@ -1100,6 +1104,7 @@ CRITICAL — LIVE SEARCH GROUNDING RULES:
 4. "price_source" must name the actual source you found via search (the site, publisher, or official page name) — never a generic label like "Official Ticket" or "Menu Avg" with no real anchor behind it.
 5. Do not fabricate deep links to specific hotels, restaurants, or attractions anywhere in the output. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged. If you don't have a verified link, omit it — never guess one.
 6. Prefer official/primary sources (venue's own site, government tourism site, transit authority) over blogs or aggregators when search results offer a choice.
+7. For "attraction", "dining", and "accommodation" activities only, search for the venue's real opening hours and put them in "hours" (e.g. "9:00 AM – 6:00 PM" or "Open until 9:00 PM today"). If search doesn't confidently confirm real hours, leave "hours" as an empty string — never guess or invent them. Leave "hours" empty for "transport"/"exploration"/"other" activities, which aren't a single bookable venue.
 
 CRITICAL BUDGET PRIORITY RULES:
 1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
@@ -1158,6 +1163,7 @@ Return ONLY a JSON object with EXACTLY this shape:
           "time": "09:00",
           "name": "Place or activity name",
           "tip": "Short practical tip",
+          "hours": "Real opening hours if attraction/dining/accommodation and confirmed via search, else ''",
           "cost": "{currency} amount or 'Free'",
           "price_source": "Named source actually found via search (site/publisher/official page)",
           "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",

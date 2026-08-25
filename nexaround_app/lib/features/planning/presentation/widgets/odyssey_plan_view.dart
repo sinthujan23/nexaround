@@ -1275,6 +1275,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       ),
                     ),
                   ),
+                  GestureDetector(
+                    onTap: () => _navigateToSmartMap(context, act.name),
+                    behavior: HitTestBehavior.opaque,
+                    child: const Padding(
+                      padding: EdgeInsets.only(left: 2, right: 2),
+                      child: Icon(Icons.directions_rounded,
+                          size: 19, color: AppColors.brandGreen),
+                    ),
+                  ),
                   if (reorderable)
                     ReorderableDragStartListener(
                       index: rowIndex ?? _rowIndexOf(dayIndex, activityIndex),
@@ -1322,6 +1331,24 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       );
                     },
                   ),
+                  if (act.hours.isNotEmpty) ...[
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 12, color: Colors.black45),
+                        const SizedBox(width: 4),
+                        Text(
+                          act.hours,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.black54,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                  ],
                   if (act.tip.isNotEmpty) ...[
                     Text(
                       act.tip,

@@ -67,6 +67,7 @@ class OdysseyActivity {
   final String actualCost; // user-entered actual cost after completing
   final String bookingUrl; // optional deep link for booking
   final List<RestaurantOption> restaurants; // dining activity restaurant list
+  final String hours; // real opening hours, attraction/dining/accommodation only, if search-confirmed
 
   const OdysseyActivity({
     required this.time,
@@ -81,6 +82,7 @@ class OdysseyActivity {
     this.actualCost = '',
     this.bookingUrl = '',
     this.restaurants = const [],
+    this.hours = '',
   });
 
   OdysseyActivity copyWith({
@@ -104,6 +106,7 @@ class OdysseyActivity {
         actualCost: actualCost ?? this.actualCost,
         bookingUrl: bookingUrl,
         restaurants: restaurants,
+        hours: hours,
       );
 
   factory OdysseyActivity.fromJson(Map<String, dynamic> json) {
@@ -130,6 +133,7 @@ class OdysseyActivity {
           .whereType<Map>()
           .map((r) => RestaurantOption.fromJson(r.cast<String, dynamic>()))
           .toList(),
+      hours: (json['hours'] ?? '').toString(),
     );
   }
 
@@ -147,6 +151,7 @@ class OdysseyActivity {
         'booking_url': bookingUrl,
         if (restaurants.isNotEmpty)
           'restaurants': restaurants.map((r) => r.toJson()).toList(),
+        'hours': hours,
       };
 
   /// Infer activity type from explicit JSON value or name/cost heuristics.
