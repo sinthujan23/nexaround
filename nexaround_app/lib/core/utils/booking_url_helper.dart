@@ -15,6 +15,26 @@ class BookingUrlHelper {
     return 'https://$trimmed';
   }
 
+  /// True when [url] is just a domain root / locale landing page (e.g.
+  /// "agoda.com/en-gb/") rather than a deep link to a specific listing.
+  /// Google Hotels sometimes hands back a bare partner homepage for certain
+  /// listing types instead of the actual property page — trusting it sends
+  /// the traveller to a dead end. Mirrors the backend's same check so trips
+  /// saved before that fix shipped also render a safer link.
+  static bool _looksLikeHomepage(String url) {
+    if (url.trim().isEmpty) return true;
+    Uri uri;
+    try {
+      uri = Uri.parse(_sanitizeUrl(url));
+    } catch (_) {
+      return false;
+    }
+    if (uri.hasQuery) return false;
+    final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+    if (segments.isEmpty) return true;
+    return segments.length == 1 && segments.first.length <= 5;
+  }
+
   /// Try to deduce the provider from the raw URL domain when providerName is
   /// empty or generic (e.g. "Hotel Provider", "Flight Provider").
   static String _deduceProvider(String providerName, String rawUrl) {
@@ -146,7 +166,10 @@ class BookingUrlHelper {
 
     // For Google Travel / Google Hotels
     if (provider.contains('google')) {
-      if (serpApiLink.isNotEmpty) {
+      // Google Hotels aggregates rates from many OTAs, so serpApiLink's
+      // domain here can be anything (agoda.com, hotels.com, ...) — the
+      // provider label is just cosmetic. Still worth the homepage check.
+      if (serpApiLink.isNotEmpty && !_looksLikeHomepage(serpApiLink)) {
         return _sanitizeUrl(serpApiLink);
       }
       var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
@@ -159,7 +182,9 @@ class BookingUrlHelper {
     // For Agoda: only use serpApiLink if it actually points to agoda.com
     // Generic agoda.com/search query URLs redirect to Agoda homepage (dead end)
     if (provider.contains('agoda')) {
-      if (serpApiLink.isNotEmpty && serpApiLink.toLowerCase().contains('agoda')) {
+      if (serpApiLink.isNotEmpty &&
+          serpApiLink.toLowerCase().contains('agoda') &&
+          !_looksLikeHomepage(serpApiLink)) {
         return _sanitizeUrl(serpApiLink);
       }
       // Fallback: Google Travel search (shows all rates including Agoda)
@@ -171,7 +196,7 @@ class BookingUrlHelper {
     }
 
     // For other providers: use SerpAPI direct link if available
-    if (serpApiLink.isNotEmpty) {
+    if (serpApiLink.isNotEmpty && !_looksLikeHomepage(serpApiLink)) {
       return _sanitizeUrl(serpApiLink);
     }
 

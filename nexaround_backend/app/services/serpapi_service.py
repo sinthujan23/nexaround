@@ -7,6 +7,7 @@ prices, real airlines, real hotel names, and automatic airport resolution.
 Sign up at https://serpapi.com for a free API key (250 searches/month).
 """
 import logging
+import urllib.parse
 import httpx
 from app.services import telemetry
 from typing import Dict, Any, List
@@ -14,6 +15,29 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 SERPAPI_BASE = "https://serpapi.com/search.json"
+
+
+def _looks_like_homepage_url(url: str) -> bool:
+    """True when a URL is just a domain root / locale landing page (e.g.
+    "agoda.com/en-gb/") rather than a deep link to a specific listing.
+
+    Google Hotels sometimes hands back a bare partner homepage for certain
+    listing types (vacation rentals especially) instead of the actual
+    property page — trusting it as-is sends the traveller to a dead end.
+    """
+    if not url:
+        return True
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except Exception:
+        return False
+    if parsed.query:
+        return False
+    segments = [s for s in parsed.path.split("/") if s]
+    if not segments:
+        return True
+    # A single short segment is almost always a locale code (en-gb, en-us, de, ...)
+    return len(segments) == 1 and len(segments[0]) <= 5
 
 
 class SerpApiService:
@@ -269,9 +293,12 @@ def extract_hotel_strategies_from_serpapi(
         if not clean_name:
             clean_name = name
 
-        # Booking URL: use SerpAPI's direct Google Hotels property link if available
-        serpapi_link = str(p.get("link") or "").strip()
-        import urllib.parse
+        # Booking URL: use SerpAPI's direct Google Hotels property link if
+        # available, unless it's just a bare partner homepage (see
+        # _looks_like_homepage_url) — a link that dead-ends on Agoda's front
+        # page is worse than no link, so fall back to a named search instead.
+        raw_serpapi_link = str(p.get("link") or "").strip()
+        serpapi_link = "" if _looks_like_homepage_url(raw_serpapi_link) else raw_serpapi_link
         if serpapi_link:
             booking_url = serpapi_link
         else:

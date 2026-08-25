@@ -24,10 +24,17 @@ logger = logging.getLogger(__name__)
 
 
 def _clean_destination(dest: str) -> str:
-    """Deduplicate comma-separated destination tokens (e.g. 'Germany, Germany' -> 'Germany')."""
+    """Deduplicate comma-separated destination tokens (e.g. 'Germany, Germany' -> 'Germany')
+    and strip trailing parenthetical annotations (e.g. 'PEN (LCC)' -> 'PEN') — Gemini's
+    "route" field sometimes tags an airport code with a note like this, and a free-text
+    Google Flights query with a stray "(LCC)" in it can fail to resolve the destination."""
     if not dest:
         return ""
-    parts = [p.strip() for p in dest.split(",") if p.strip()]
+    parts = [
+        re.sub(r"\s*\([^)]*\)\s*$", "", p).strip()
+        for p in dest.split(",")
+    ]
+    parts = [p for p in parts if p]
     unique_parts = []
     for p in parts:
         if not any(p.lower() == existing.lower() for existing in unique_parts):
@@ -48,6 +55,12 @@ def _build_deep_booking_url(
 ) -> str:
     prov_lower = (provider or "").lower()
     dest = _clean_destination(destination)
+    if not dest:
+        # _clean_destination can strip a route segment down to nothing (e.g. a
+        # bare "(LCC)" token) — never let the query end with a blank
+        # destination, since Google's free-text flights search then just
+        # leaves the "Where to?" field empty instead of failing loudly.
+        dest = (destination or "").strip()
     name = (item_name or "").strip()
 
     # Avoid duplicating destination if item_name already contains destination
