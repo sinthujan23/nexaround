@@ -3666,8 +3666,12 @@ class _ArCameraPageState extends State<ArCameraPage>
     }
   }
 
+  // Longer, more specific phrases must come before their bare fallback
+  // ("near me" before "near") — alternation matches the first alternative
+  // that fits at a position, not the longest, so a bare match listed first
+  // would only ever strip "near" and leave a dangling "me".
   static final RegExp _nearMeQualifierRegex = RegExp(
-    r'\b(near\s*me|nearby|close\s*by|around\s*here|around\s*me|in\s*my\s*area)\b',
+    r'\b(near\s*me|nearby|close\s*by|around\s*here|around\s*me|in\s*my\s*area|near|around)\b',
     caseSensitive: false,
   );
 

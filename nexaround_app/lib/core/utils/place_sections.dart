@@ -79,30 +79,53 @@ class PlaceSections {
     'resort',
   ];
 
+  /// Tags that say nothing about what a place is — mirrors the server's
+  /// `_GENERIC_TAGS` in place_bands.py. A row carrying only these (or none at
+  /// all) is untyped in practice, and the stored category name is the only
+  /// signal left to judge it by.
+  static const _genericTags = [
+    'point_of_interest', 'establishment', 'premise', 'geocode',
+  ];
+
   static List<String> tagsOf(AttractionEntity a) =>
       a.tags.map((t) => t.toString().toLowerCase()).toList();
 
+  /// Whether Google gave this place no real signal to classify by at all.
+  ///
+  /// The `cat.contains(...)` fallback below only fires for rows like this —
+  /// e.g. admin-curated places with no Google tags. A row that DOES carry
+  /// real tags is judged by those, never by a possibly-stale stored category:
+  /// the mosque-under-Nature bug was exactly a row whose only "Nature"
+  /// evidence was a wrong category name from an old seeding bug, not any real
+  /// tag Google ever attached to it.
+  static bool _hasNoInformativeTags(AttractionEntity a) =>
+      tagsOf(a).where((t) => !_genericTags.contains(t)).isEmpty;
+
   static bool _hasNatureSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
     final name = a.name.toLowerCase();
     final tags = tagsOf(a);
-    // `park` is gone from the category test too. Narrowing only the tag list
+    // `park` is gone from the tag/word test too. Narrowing only the tag list
     // would have let every generic park back in through the category name,
     // which is how "Ezhilarangu Stadium" reached the Nature tab.
-    return _natureTags.any(tags.contains) ||
-        _natureWords.any(name.contains) ||
-        cat.contains('nature') || cat.contains('beach') ||
+    if (_natureTags.any(tags.contains) || _natureWords.any(name.contains)) {
+      return true;
+    }
+    if (!_hasNoInformativeTags(a)) return false;
+    final cat = (a.categoryName ?? '').toLowerCase();
+    return cat.contains('nature') || cat.contains('beach') ||
         cat.contains('lake') || cat.contains('river') ||
         cat.contains('waterfall') || cat.contains('forest');
   }
 
   static bool _hasHeritageSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
     final name = a.name.toLowerCase();
     final tags = tagsOf(a);
-    return _heritageTags.any(tags.contains) ||
-        _heritageWords.any(name.contains) ||
-        cat.contains('museum') || cat.contains('landmark') ||
+    if (_heritageTags.any(tags.contains) || _heritageWords.any(name.contains)) {
+      return true;
+    }
+    if (!_hasNoInformativeTags(a)) return false;
+    final cat = (a.categoryName ?? '').toLowerCase();
+    return cat.contains('museum') || cat.contains('landmark') ||
         cat.contains('culture') || cat.contains('temple') ||
         cat.contains('art') || cat.contains('historic');
   }
@@ -125,29 +148,31 @@ class PlaceSections {
   static bool isPoi(AttractionEntity a) {
     if (_stayWords.any(a.name.toLowerCase().contains)) return false;
     if (isNature(a)) return false;
-    final cat = (a.categoryName ?? '').toLowerCase();
     final tags = tagsOf(a);
-    return _hasHeritageSignal(a) ||
-        _poiTags.any(tags.contains) ||
-        cat.contains('experience') || cat.contains('zoo') ||
+    if (_hasHeritageSignal(a) || _poiTags.any(tags.contains)) return true;
+    if (!_hasNoInformativeTags(a)) return false;
+    final cat = (a.categoryName ?? '').toLowerCase();
+    return cat.contains('experience') || cat.contains('zoo') ||
         cat.contains('attraction');
   }
 
   static bool _hasMedicalSignal(AttractionEntity a) {
-    final cat = (a.categoryName ?? '').toLowerCase();
     final name = a.name.toLowerCase();
     final tags = tagsOf(a);
-    final bool signal = cat == 'medical' || cat == 'hospital' ||
-        name.contains('medical') || name.contains('hospital') ||
+    bool signal = name.contains('medical') || name.contains('hospital') ||
         name.contains('clinic') || name.contains('pharmacy') ||
         name.contains('dispensary') || name.contains('health centre') ||
         name.contains('health center') || tags.contains('hospital') ||
         tags.contains('pharmacy') || tags.contains('doctor') ||
         tags.contains('dentist') || tags.contains('physiotherapist') ||
         tags.contains('veterinary_care') || tags.contains('health') ||
-        tags.contains('medical_center') || tags.contains('medical_clinic') ||
-        cat.contains('medical') || cat.contains('hospital') ||
-        cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor');
+        tags.contains('medical_center') || tags.contains('medical_clinic');
+    if (!signal && _hasNoInformativeTags(a)) {
+      final cat = (a.categoryName ?? '').toLowerCase();
+      signal = cat == 'medical' || cat == 'hospital' ||
+          cat.contains('medical') || cat.contains('hospital') ||
+          cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor');
+    }
     if (!signal) return false;
     return !_nonMedicalTags.any(tags.contains);
   }
@@ -174,6 +199,7 @@ class PlaceSections {
     if (_nonShoppingTags.any(tags.contains)) return false;
     if (_stayWords.any(a.name.toLowerCase().contains)) return false;
     if (_shoppingTags.any(tags.contains)) return true;
+    if (!_hasNoInformativeTags(a)) return false;
     final cat = (a.categoryName ?? '').toLowerCase();
     return cat.contains('shopping') || cat.contains('mall') ||
         cat.contains('market') || cat.contains('store');
@@ -210,6 +236,7 @@ class PlaceSections {
 
   static bool isFood(AttractionEntity a) {
     if (_foodTags.any(tagsOf(a).contains)) return true;
+    if (!_hasNoInformativeTags(a)) return false;
     final cat = (a.categoryName ?? '').toLowerCase();
     return cat.contains('food') || cat.contains('restaurant') ||
         cat.contains('cafe') || cat.contains('dining') || cat.contains('meal');

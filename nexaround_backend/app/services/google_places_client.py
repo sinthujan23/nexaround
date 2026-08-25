@@ -647,7 +647,18 @@ def to_place_dict(
     category_name: Optional[str],
     photo_url_builder,
 ) -> dict:
-    """Convert a raw Google place (New API format) into the dict that matches PlaceResponse."""
+    """Convert a raw Google place (New API format) into the dict that matches PlaceResponse.
+
+    `category_name`, when given, is trusted only if this specific place's own
+    types actually support it. A category search's included-types filter still
+    lets off-topic places through occasionally (a sub-group query covers
+    several types at once, and Nearby Search itself can spill over), and a
+    caller that persists every raw result — not just the ones it renders —
+    would otherwise stamp that search's category onto a place that plainly
+    isn't one: a mosque returned by a "Nature" query, permanently mislabeled
+    Nature the moment it's written to the database. Falls back to deriving the
+    category from types, same as when no category was requested at all.
+    """
     from datetime import datetime, timezone
 
     loc = place.get("location") or {}
@@ -656,7 +667,14 @@ def to_place_dict(
 
     display_name = place.get("displayName", {}).get("text") or "Unknown"
     types = list(place.get("types") or [])
-    resolved_category = category_name or _resolve_category_from_types(types)
+
+    resolved_category = category_name
+    if resolved_category:
+        from app.services import place_bands
+        if not place_bands.is_relevant(resolved_category, types, display_name):
+            resolved_category = None
+    if not resolved_category:
+        resolved_category = _resolve_category_from_types(types)
 
     photos = place.get("photos") or []
     photo_urls = []
@@ -785,7 +803,11 @@ def to_place_dict_legacy(
     category_name: Optional[str],
     photo_url_builder,
 ) -> dict:
-    """Convert a raw Google place (Legacy API format) into the dict that matches PlaceResponse."""
+    """Convert a raw Google place (Legacy API format) into the dict that matches PlaceResponse.
+
+    See `to_place_dict`'s docstring — same reasoning: `category_name` is only
+    trusted when this specific place's types actually support it.
+    """
     from datetime import datetime, timezone
 
     geom = place.get("geometry") or {}
@@ -795,7 +817,14 @@ def to_place_dict_legacy(
 
     display_name = place.get("name") or "Unknown"
     types = list(place.get("types") or [])
-    resolved_category = category_name or _resolve_category_from_types(types)
+
+    resolved_category = category_name
+    if resolved_category:
+        from app.services import place_bands
+        if not place_bands.is_relevant(resolved_category, types, display_name):
+            resolved_category = None
+    if not resolved_category:
+        resolved_category = _resolve_category_from_types(types)
 
     photos = place.get("photos") or []
     photo_urls = []

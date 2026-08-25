@@ -511,20 +511,33 @@ def _assemble(
 
     for i, (band_min, band_max) in enumerate(bands):
         quota = per_band if per_band is not None else place_bands.quota_for_band(i)
+        band_pool = [
+            p for p in remaining
+            if band_min <= (p.get("distance_m") or 0.0) <= band_max
+        ]
+        # Places quality_score would rank out but that are independently
+        # provable as significant (see priority_ids_for_band) get first claim
+        # on the quota, still taken in quality order among themselves; the
+        # normal pass below then fills whatever's left exactly as before.
+        priority_ids = place_bands.priority_ids_for_band(category, band_pool)
+
         picks = []
-        for p in remaining:
-            dist = p.get("distance_m") or 0.0
-            if not (band_min <= dist <= band_max):
-                continue
+        for p in band_pool:
+            if len(picks) >= quota:
+                break
+            if str(p.get("id") or "") in priority_ids and _claim(p):
+                picks.append(p)
+        for p in band_pool:
+            if len(picks) >= quota:
+                break
             if not _claim(p):
                 continue
             picks.append(p)
-            if len(picks) >= quota:
-                break
         # `remaining` is in selection order (review-weighted quality), and the
         # quota above is taken from the front of it — so `picks` already holds
-        # the band's best. Sorting for display happens once, at the end, after
-        # every band has chosen; sorting here would leave callers that take the
+        # the band's best (plus any priority places pulled in ahead of that
+        # order). Sorting for display happens once, at the end, after every
+        # band has chosen; sorting here would leave callers that take the
         # first N of a band with the nearest N rather than the best N.
         chosen.append(picks)
 

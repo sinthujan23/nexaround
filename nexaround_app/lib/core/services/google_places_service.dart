@@ -904,15 +904,12 @@ class GooglePlacesService {
             rating: rating,
             reviewCount: userRatingsTotal,
             photoUrls: photoUrls,
-            tags: typesList.isNotEmpty
-                ? typesList
-                : (categoryName != null
-                    ? [
-                        categoryName.toLowerCase(),
-                        if (categoryName.toLowerCase().contains('food')) 'food',
-                        if (categoryName.toLowerCase().contains('shop')) 'shopping_mall',
-                      ]
-                    : const []),
+            // A place Google gives no real types for should not inherit a
+            // fabricated one equal to whatever category we were searching
+            // for — that's exactly how a district-name result and an
+            // off-topic place ended up permanently mislabeled under the
+            // wrong section.
+            tags: typesList,
             geofenceRadiusM: 100,
             distanceM: distanceM,
             isActive: true,

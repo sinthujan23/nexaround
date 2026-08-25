@@ -429,6 +429,52 @@ def quality_score(rating: Optional[float], review_count: Optional[int]) -> float
     return (v * r + prior_weight * prior_mean) / (v + prior_weight)
 
 
+# A place with genuinely this many reviews is prominent regardless of how its
+# average rating shook out — accumulating that much engagement takes real
+# footfall. Without an absolute floor, "most-reviewed in a sparse area" would
+# grant priority to a place with three reviews, which proves nothing.
+_PRIORITY_MIN_REVIEWS = 200
+_PRIORITY_TOP_N = 2
+
+
+def priority_ids_for_band(category: Optional[str], band_places: list[dict]) -> set[str]:
+    """Ids to guarantee a slot in their band ahead of pure quality_score order.
+
+    Two independent routes in, either sufficient on its own:
+      - Name: a place whose name marks it as a primary institution (reuses
+        _HOSPITAL_NAME_WORDS — Hospital only for now, the one section with an
+        established name-vocabulary for this).
+      - Review volume: among the band's most-reviewed places by raw count,
+        provided that count clears an absolute floor.
+
+    Both exist because quality_score's Bayesian shrinkage rewards *being
+    highly rated*, not *being significant* — a high-traffic institution with
+    thousands of reviews but a middling average (people complain about wait
+    times at a busy public hospital) can score below a small clinic with fifty
+    near-perfect reviews, even though the review count alone is strong
+    evidence of which one people actually go to.
+    """
+    ids: set[str] = set()
+
+    if category == "Hospital":
+        for p in band_places:
+            pid = str(p.get("id") or "")
+            name = (p.get("name") or "").lower()
+            if pid and any(w in name for w in _HOSPITAL_NAME_WORDS):
+                ids.add(pid)
+
+    ranked_by_reviews = sorted(
+        band_places, key=lambda p: p.get("review_count") or 0, reverse=True
+    )
+    for p in ranked_by_reviews[:_PRIORITY_TOP_N]:
+        if (p.get("review_count") or 0) >= _PRIORITY_MIN_REVIEWS:
+            pid = str(p.get("id") or "")
+            if pid:
+                ids.add(pid)
+
+    return ids
+
+
 def _fmt_km(metres: float) -> str:
     km = metres / 1000.0
     return f"{km:.0f}" if abs(km - round(km)) < 0.05 else f"{km:.1f}"
