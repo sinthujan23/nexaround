@@ -978,7 +978,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ),
                         ),
                         SliverToBoxAdapter(
-                          child: _buildShimmerHiddenGemCards(),
+                          child: _buildHiddenGemCards(masterAttractions, state.status),
                         ),
                         SliverToBoxAdapter(
                           child: Padding(
@@ -5664,7 +5664,6 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   Widget _buildHiddenGemCards(List<AttractionEntity> attractions, MapStatus status) {
-    if (attractions.isEmpty) return const SizedBox.shrink();
 
     // The same split Discovery uses, over the same pool.
     //
