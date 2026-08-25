@@ -1397,8 +1397,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       );
     }
 
-    final targetCount = isLoading ? 9 : loadedCount;
-    final itemCount = targetCount.clamp(0, 9);
+    // The 9 is how many shimmer rows to stand up while a section is still
+    // loading — not a limit on results. Clamping the loaded case to it as well
+    // meant every Discovery section stopped at nine places however many came
+    // back, which is how Discovery ended up showing *fewer* than Around You
+    // despite being the deeper view of the same data: Around You caps at ten on
+    // purpose (BAND_QUOTAS), Discovery is meant to show the whole section.
+    final itemCount = isLoading ? max(loadedCount, 9) : loadedCount;
 
     return Column(
       children: List.generate(itemCount, (index) {
