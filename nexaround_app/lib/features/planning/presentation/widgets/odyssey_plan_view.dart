@@ -1333,16 +1333,19 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   ),
                   if (act.hours.isNotEmpty) ...[
                     Row(
-                      mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.access_time_rounded, size: 12, color: Colors.black45),
                         const SizedBox(width: 4),
-                        Text(
-                          act.hours,
-                          style: const TextStyle(
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black54,
+                        Expanded(
+                          child: Text(
+                            act.hours,
+                            style: const TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.black54,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],
@@ -2355,9 +2358,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         duration: const Duration(seconds: 2),
       ),
     );
-
-    // Close any open bottom sheets first
-    Navigator.of(context, rootNavigator: true).maybePop();
 
     try {
       final results = await GooglePlacesService.searchPlaces(

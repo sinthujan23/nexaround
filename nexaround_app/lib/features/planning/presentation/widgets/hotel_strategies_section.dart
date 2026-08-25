@@ -185,7 +185,7 @@ class HotelStrategiesSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        formatPriceString(hs.pricePerNight, targetCurrency: odyssey.currency),
+                        '~${formatPriceString(hs.pricePerNight, targetCurrency: odyssey.currency)}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
