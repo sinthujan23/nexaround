@@ -75,7 +75,15 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
         return (f"nbl:{_snap_pair(q.get('location',''))}|"
                 f"{q.get('type','all')}|r{q.get('radius','?')}")
     if path.startswith("place/autocomplete"):
-        return f"ac:{(q.get('input') or '').strip().lower()}"
+        # A nearby-biased search and the app's own global (no-location)
+        # fallback for the same text must NOT collide here: colliding meant a
+        # biased search that legitimately found nothing near the user got
+        # negative-cached, and the fallback — which exists precisely to catch
+        # a destination far from the user — immediately reused that same
+        # cached "nothing" instead of ever running its own unbiased query.
+        loc = q.get("location", "")
+        loc_part = f"{_snap_pair(loc)}|r{q.get('radius', '?')}" if loc else "global"
+        return f"ac:{(q.get('input') or '').strip().lower()}|{loc_part}"
     if path.startswith("place/photo"):
         ref = q.get("photo_reference") or q.get("photoreference") or "?"
         return f"photo:{ref[:180]}:{q.get('maxwidth','?')}"
