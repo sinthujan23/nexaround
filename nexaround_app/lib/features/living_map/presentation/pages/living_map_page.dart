@@ -5863,13 +5863,12 @@ class _LivingMapPageState extends State<LivingMapPage>
         .fold(0, (max, len) => len > max ? len : max);
 
     final int effectiveMaxPlaces = isLoadingAny
-        ? (rawMaxPlaces < 4 ? 4 : rawMaxPlaces)
-        : rawMaxPlaces;
+        ? 10
+        : (rawMaxPlaces == 0 ? 0 : rawMaxPlaces.clamp(1, 10));
 
-    final int clampedMaxPlaces = effectiveMaxPlaces.clamp(0, 10);
-    final double cardHeight = clampedMaxPlaces == 0
+    final double cardHeight = effectiveMaxPlaces == 0
         ? 180.0
-        : (78.0 + clampedMaxPlaces * 40.5).clamp(180.0, 495.0);
+        : (78.0 + effectiveMaxPlaces * 40.5).clamp(180.0, 495.0);
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
@@ -5930,17 +5929,10 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     final int targetDiscoverTab = DiscoverPage.tabIndexFor(categoryName);
 
-    // Only shimmer while this specific card has nothing to show yet. Gating
-    // on the global status alone used to blank every card together, and also
-    // re-blanked a card that already had good data during a background
-    // refresh (status briefly goes back to loading while old data is still
-    // perfectly displayable). A category still being enriched in the
-    // background (see MapState.enrichingCategories) also keeps shimmering
-    // instead of briefly flashing "no places found" right before the richer
-    // result lands.
-    final stillEnriching =
-        context.read<MapBloc>().state.enrichingCategories.contains(categoryName);
-    final bool isLoadingState = (status == MapStatus.loading || stillEnriching);
+    final mapState = context.read<MapBloc>().state;
+    final bool isCategoryLoading = mapState.loadingBandCategories.contains(categoryName) ||
+        mapState.enrichingCategories.contains(categoryName);
+    final bool isLoadingState = (status == MapStatus.loading || isCategoryLoading);
 
     if (places.isEmpty && !isLoadingState) {
       return Align(
@@ -6110,9 +6102,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   Builder(builder: (_) {
                     final displayPlaces = places.take(10).toList();
                     final int loadedCount = displayPlaces.length;
-                    final int targetSlotCount = isLoadingState
-                        ? (loadedCount < 4 ? 4 : loadedCount)
-                        : loadedCount;
+                    final int targetSlotCount = isLoadingState ? 10 : loadedCount;
                     final int itemCount = targetSlotCount.clamp(0, 10);
 
                     return ListView.separated(
