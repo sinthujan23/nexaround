@@ -138,9 +138,6 @@ class _ArCameraPageState extends State<ArCameraPage>
   StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
   bool _isPhonePointingDown = false;
   double _pitchAngle = 90.0;
-  double _rollAngle = 0.0;
-  double _lastRenderedPitch = 90.0;
-  double _lastRenderedRoll = 0.0;
   double _heading = 0.0;
   double? _rawHeading; // last raw reading from sensor (pre-smoothing)
   double _lastRenderedHeading = 0.0; // last heading used to trigger a rebuild
@@ -1062,41 +1059,11 @@ class _ArCameraPageState extends State<ArCameraPage>
     _accelerometerSubscription = accelerometerEventStream().listen((event) {
       if (!mounted || !widget.isActive) return;
 
-      final double x = event.x;
       final double y = event.y;
       final double z = event.z;
 
-      final double rawRoll = atan2(x, y);
-      _rollAngle = _rollAngle * 0.75 + rawRoll * 0.25;
-
-      final double xyMagnitude = sqrt(x * x + y * y);
-      final double rawPitch = (atan2(xyMagnitude, z.abs()) * (180 / pi)).abs();
-      _pitchAngle = _pitchAngle * 0.75 + rawPitch * 0.25;
-
-      // 80°-90° Horizon Threshold: Works in both Portrait & Landscape modes!
-      final bool shouldBeDown = (_pitchAngle < 62.0) || (z > 4.5 && xyMagnitude < 7.0);
-      final bool shouldBeUp = (_pitchAngle >= 72.0) && (xyMagnitude >= 7.8 && z <= 4.2);
-
-      bool nextState = _isPhonePointingDown;
-      if (!_isPhonePointingDown && shouldBeDown) {
-        nextState = true;
-      } else if (_isPhonePointingDown && shouldBeUp) {
-        nextState = false;
-      }
-
-      // Trigger rebuild when pitch or roll changed enough for visible card movement.
-      // Without this, pitch/roll values update but cards never actually move!
-      final double pitchDelta = (_pitchAngle - _lastRenderedPitch).abs();
-      final double rollDelta = (_rollAngle - _lastRenderedRoll).abs();
-      final bool needsRebuild = pitchDelta > 0.8 || rollDelta > 0.02;
-
-      if (nextState != _isPhonePointingDown || needsRebuild) {
-        _lastRenderedPitch = _pitchAngle;
-        _lastRenderedRoll = _rollAngle;
-        setState(() {
-          _isPhonePointingDown = nextState;
-        });
-      }
+      final double rawPitch = (atan2(y, z.abs()) * (180 / pi)).abs();
+      _pitchAngle = _pitchAngle * 0.7 + rawPitch * 0.3;
     });
 
     _compassSubscription = FlutterCompass.events?.listen((event) {
@@ -3699,13 +3666,42 @@ class _ArCameraPageState extends State<ArCameraPage>
     }
   }
 
+  static final RegExp _nearMeQualifierRegex = RegExp(
+    r'\b(near\s*me|nearby|close\s*by|around\s*here|around\s*me|in\s*my\s*area)\b',
+    caseSensitive: false,
+  );
+
+  List<Map<String, dynamic>> _attractionsToSearchResults(
+    List<AttractionEntity> places,
+    String fallbackDescription,
+  ) {
+    return places
+        .map((p) => {
+              'place_id': p.id,
+              'main_text': p.name,
+              'description': p.address ?? p.categoryName ?? fallbackDescription,
+              'latitude': p.latitude,
+              'longitude': p.longitude,
+              'rating': p.rating,
+              'category': p.categoryName,
+            })
+        .toList();
+  }
+
   Future<void> _performGoogleSearch(String query) async {
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
 
     final double lat = _currentPosition?.latitude ?? 6.9271;
     final double lng = _currentPosition?.longitude ?? 79.8612;
-    final bool isNearMe = RegExp(r'\b(near\s*me|nearby)\b', caseSensitive: false).hasMatch(trimmed);
+    final bool isNearMe = _nearMeQualifierRegex.hasMatch(trimmed);
+    // Strip the locality phrase but keep the actual subject ("atm",
+    // "restaurant", ...) instead of discarding the whole query — the Places
+    // API has no native understanding of "near me", so sending it as literal
+    // text (or dropping the subject entirely) is why this used to return
+    // nothing, or an unfiltered dump of whatever's physically closest.
+    final String nearMeSubject =
+        isNearMe ? trimmed.replaceAll(_nearMeQualifierRegex, '').trim() : '';
 
     updateState(() {
       _isGoogleSearching = true;
@@ -3716,22 +3712,29 @@ class _ArCameraPageState extends State<ArCameraPage>
     try {
       List<Map<String, dynamic>> results = [];
 
-      if (isNearMe) {
-        // Fetch places within 1-2 km (2000m) for 'near me' query
+      if (isNearMe && nearMeSubject.isEmpty) {
+        // Bare "near me"/"nearby" with no subject — generic nearby browse,
+        // same as before.
         final nearPlaces = await GooglePlacesService.getPlacesNearMe(
           latitude: lat,
           longitude: lng,
           radiusM: 2000.0,
         );
-        results = nearPlaces.map((p) => {
-          'place_id': p.id,
-          'main_text': p.name,
-          'description': p.address ?? p.categoryName ?? 'Nearby attraction',
-          'latitude': p.latitude,
-          'longitude': p.longitude,
-          'rating': p.rating,
-          'category': p.categoryName,
-        }).toList();
+        results = _attractionsToSearchResults(nearPlaces, 'Nearby attraction');
+      } else if (isNearMe) {
+        // A subject remains ("atm", "restaurant", "bakery", ...). The backend
+        // resolves it to a precise Google Places type when it recognizes one
+        // (not just the app's ~10 browse-tab sections) and falls back to a
+        // tightly-biased text search otherwise — never an unfiltered dump of
+        // whatever's nearby regardless of what was actually typed.
+        final textResults = await GooglePlacesService.searchPlaces(
+          query: nearMeSubject,
+          latitude: lat,
+          longitude: lng,
+          radiusM: 2500.0,
+          nearMe: true,
+        );
+        results = _attractionsToSearchResults(textResults, 'Nearby attraction');
       } else {
         results = await GooglePlacesService.getAutocompleteSuggestions(
           input: trimmed,
@@ -3746,15 +3749,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             latitude: lat,
             longitude: lng,
           );
-          results = textResults.map((p) => {
-            'place_id': p.id,
-            'main_text': p.name,
-            'description': p.address ?? p.categoryName ?? 'Attraction nearby',
-            'latitude': p.latitude,
-            'longitude': p.longitude,
-            'rating': p.rating,
-            'category': p.categoryName,
-          }).toList();
+          results = _attractionsToSearchResults(textResults, 'Attraction nearby');
         }
       }
 
@@ -4590,155 +4585,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     return Positioned.fill(child: IgnorePointer(child: _AnimatedScanLines()));
   }
 
-  // ── LIFT PHONE UP OVERLAY (Holographic Horizon Ring - Point Phone Up) ──
-  Widget _buildLiftPhoneOverlay() {
-    return Positioned.fill(
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Holographic Horizon Ring with pulsing concentric glow
-            Stack(
-              alignment: Alignment.center,
-              children: [
-                // Outer glowing pulse ring
-                Container(
-                  width: 110,
-                  height: 110,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: AppColors.brandGreen.withValues(alpha: 0.35),
-                      width: 1.8,
-                    ),
-                  ),
-                )
-                    .animate(onPlay: (c) => c.repeat())
-                    .scale(
-                      begin: const Offset(0.85, 0.85),
-                      end: const Offset(1.35, 1.35),
-                      duration: 1800.ms,
-                      curve: Curves.easeOutCubic,
-                    )
-                    .fade(begin: 0.8, end: 0.0, duration: 1800.ms),
 
-                // Middle glowing neon ring
-                Container(
-                  width: 88,
-                  height: 88,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        const Color(0xFF38BDF8).withValues(alpha: 0.25),
-                        AppColors.brandGreen.withValues(alpha: 0.05),
-                      ],
-                    ),
-                    border: Border.all(
-                      color: const Color(0xFF38BDF8).withValues(alpha: 0.6),
-                      width: 2.0,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF38BDF8).withValues(alpha: 0.4),
-                        blurRadius: 20,
-                        spreadRadius: 3,
-                      ),
-                    ],
-                  ),
-                ),
-
-                // Oscillating 3D device tilt icon
-                const Icon(
-                  Icons.phone_android_rounded,
-                  size: 40,
-                  color: Color(0xFF38BDF8),
-                )
-                    .animate(onPlay: (c) => c.repeat(reverse: true))
-                    .rotate(
-                      begin: 0.35, // Tilted forward towards ground
-                      end: 0.0, // Pointing straight up at horizon
-                      duration: 1400.ms,
-                      curve: Curves.easeInOutCubic,
-                    )
-                    .moveY(
-                      begin: 5,
-                      end: -7,
-                      duration: 1400.ms,
-                      curve: Curves.easeInOutCubic,
-                    ),
-
-                // Upward glowing wave arrow
-                Positioned(
-                  top: 4,
-                  child: const Icon(
-                    Icons.keyboard_double_arrow_up_rounded,
-                    size: 22,
-                    color: AppColors.brandGreen,
-                  )
-                      .animate(onPlay: (c) => c.repeat())
-                      .moveY(
-                        begin: 6,
-                        end: -9,
-                        duration: 1200.ms,
-                        curve: Curves.easeOut,
-                      )
-                      .fade(begin: 0.3, end: 1.0, duration: 600.ms),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 20),
-
-            // Futuristic Glass Horizon Pill
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: const Color(0xFF38BDF8).withValues(alpha: 0.5),
-                  width: 1.5,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF38BDF8).withValues(alpha: 0.3),
-                    blurRadius: 18,
-                    spreadRadius: 2,
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 10,
-                    height: 10,
-                    decoration: const BoxDecoration(
-                      color: AppColors.brandGreen,
-                      shape: BoxShape.circle,
-                    ),
-                  )
-                      .animate(onPlay: (c) => c.repeat(reverse: true))
-                      .fade(begin: 0.4, end: 1.0, duration: 800.ms),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Point Phone Up',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -4780,9 +4627,7 @@ class _ArCameraPageState extends State<ArCameraPage>
           ),
 
           // EXPLORE MODE: Floating AR markers (compass-driven).
-          // Hide floating 3D place markers in camera view when phone is pointing down towards ground.
-          if (!_isPhonePointingDown &&
-              !_isIdentifying &&
+          if (!_isIdentifying &&
               !_isSearching &&
               !_showInfoCard &&
               !_isNavigating)
@@ -4790,14 +4635,9 @@ class _ArCameraPageState extends State<ArCameraPage>
               (e) => _buildLandmarkMarker(e.key, e.value),
             ),
 
-          // Google Maps Live View style: Minimal hint overlay when phone points down
-          if (_isPhonePointingDown)
-            _buildLiftPhoneOverlay(),
-
           // EXPLORE MODE: If we have places nearby but none in the view cone,
           // guide the user to rotate toward the closest one.
-          if (!_isPhonePointingDown &&
-              !_isNavigating &&
+          if (!_isNavigating &&
               !_isIdentifying &&
               !_isSearching &&
               !_isMapping &&
@@ -4808,19 +4648,18 @@ class _ArCameraPageState extends State<ArCameraPage>
             _buildRotateToDiscoverOverlay(),
 
           // DISCOVER MODE: Show single closest place with lock-on animation
-          if (!_isPhonePointingDown &&
-              _isIdentifying &&
+          if (_isIdentifying &&
               !_showInfoCard &&
               !_isNevaAnalyzing &&
               !_isNavigating &&
               !_isSearching)
             _buildDiscoveryTarget(),
 
-          // Top HUD (Back button) - ALWAYS VISIBLE (unless navigating/neva results)
+          // Top HUD (Back button) - HIDE IF NAVIGATING OR SHOWING NEVA RESULTS
           if (!_minimalHud && !_isNavigating && _nevaSearchResult == null)
             _buildTopHUD(),
 
-          // Filter chip bar - ALWAYS VISIBLE (chip counts show 0 when pointing down)
+          // Filter chip bar - hide when mapping, showing detail, or navigating
           if (!_minimalHud &&
               !_isMapping &&
               _nevaSearchResult == null &&
@@ -4829,7 +4668,7 @@ class _ArCameraPageState extends State<ArCameraPage>
               !_isNavigating)
             _buildArFilterBar(),
 
-          // Range slider - ALWAYS VISIBLE
+          // Range slider - sits just below filter chips
           if (!_minimalHud &&
               !_isMapping &&
               _nevaSearchResult == null &&
@@ -4839,7 +4678,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             _buildRangeSlider(),
 
           // Dynamic Loading Indicator for Range/Places Fetching
-          if (!_isPhonePointingDown && _isFetchingPlaces && !_isSearching)
+          if (_isFetchingPlaces && !_isSearching)
             Positioned(
               top: MediaQuery.of(context).padding.top + 146,
               left: 0,
@@ -4848,16 +4687,15 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
 
           // Selected place direction guidance (card floating on screen + turn chevrons)
-          if (!_isPhonePointingDown &&
-              !_isSearching &&
+          if (!_isSearching &&
               _showInfoCard &&
               _selectedLandmark >= 0 &&
               _selectedLandmark < _landmarks.length &&
               !_isNavigating)
             _buildSelectedPlaceGuidanceOverlay(screenW, screenH),
 
-          // Tap-triggered place detail card (compact bottom card) - Hide 3D place cards when pointing down
-          if (!_isPhonePointingDown && !_isSearching) ...[
+          // Tap-triggered place detail card (compact bottom card)
+          if (!_isSearching) ...[
             if (_isNavigating && _navigationTarget != null)
               _buildInfoCard(_navigationTarget!)
             else if (_showInfoCard &&
@@ -4866,15 +4704,15 @@ class _ArCameraPageState extends State<ArCameraPage>
               _buildInfoCard(_landmarks[_selectedLandmark]),
           ],
 
-          // Redesigned persistent Bottom Navigation Row - ALWAYS VISIBLE!
+          // Redesigned persistent Bottom Navigation Row
           if (!_minimalHud && !_isMapping && !_isSearching && _nevaSearchResult == null)
             _buildBottomNavigationRow(),
 
           // Floating Search Suggestions Overlay
-          if (!_isPhonePointingDown && _isSearching && (_searchResults.isNotEmpty || _isGoogleSearching) && !_isNavigating)
+          if (_isSearching && (_searchResults.isNotEmpty || _isGoogleSearching) && !_isNavigating)
             _buildBottomSearchSuggestionsOverlay(),
 
-          // Bottom Search Bar - ALWAYS VISIBLE!
+          // Bottom Search Bar - easy thumb access while driving
           if (!_minimalHud &&
               !_isMapping &&
               !_isNavigating &&
@@ -4882,11 +4720,11 @@ class _ArCameraPageState extends State<ArCameraPage>
             _buildBottomSearchBar(),
 
           // DISCOVERY CROSSHAIR (Only in Mapping Mode)
-          if (!_isPhonePointingDown && _isMapping && !_isSearching) _buildDiscoveryCrosshair(),
-          if (!_isPhonePointingDown && _isMapping && !_isSearching) _buildMappingOverlay(),
+          if (_isMapping && !_isSearching) _buildDiscoveryCrosshair(),
+          if (_isMapping && !_isSearching) _buildMappingOverlay(),
 
           // NEVA DISCOVERY MODE - Analysis overlay only
-          if (!_isPhonePointingDown && _isNevaAnalyzing && !_isSearching) _buildNevaAnalysisOverlay(),
+          if (_isNevaAnalyzing && !_isSearching) _buildNevaAnalysisOverlay(),
 
           // CAMERA FLASH EFFECT
           if (_isCapturing)
@@ -5068,8 +4906,8 @@ class _ArCameraPageState extends State<ArCameraPage>
               final label = f['label'] as String;
               final icon = f['icon'] as IconData;
               final selected = _selectedFilter == id;
-              // Count from master list so chip numbers stay rock-stable (0 when phone points down).
-              final count = _isPhonePointingDown ? 0 : _countForFilter(id);
+              // Count from master list so chip numbers stay rock-stable.
+              final count = _countForFilter(id);
 
               return GestureDetector(
                 onTap: () {
@@ -5351,71 +5189,27 @@ class _ArCameraPageState extends State<ArCameraPage>
     int currentSlot = _visibleCount;
     _visibleCount++;
 
-    // === WORLD-ANCHORED 3D POSITIONING (Google Maps Live View style) ===
-    // Places are projected onto the camera view as if they exist in 3D space.
-    // The phone's pitch determines where the horizon line sits on screen.
-    // Nearby places appear lower (you look "down" at them); far places are
-    // near the horizon. Tilting the phone up/down moves ALL cards together.
-
-    // --- Vertical FOV & projection constants ---
-    const double verticalFovDeg = 50.0;
-    final double pixelsPerDeg = screenH / verticalFovDeg;
-
-    // --- Place elevation: exaggerated so cards at different distances
-    // are visually separated. Real elevation angles are too small (<2°)
-    // to see, so we use a perceptual spread based on distance tiers. ---
-    final double distM = landmark.distanceM.clamp(10.0, 50000.0);
-    // Map distance → degrees below horizon: nearby=lower, far=higher.
-    // log10 gives nice spread: 10m→1, 100m→2, 1000m→3
-    // Invert so close places have larger negative angle (lower on screen).
-    final double distLog = log(distM) / ln10; // log10(distM)
-    // Range: 10m → distLog=1 → elev=-12°, 100m → -8°, 1km → -4°, 10km → 0°
-    final double placeElevDeg = -(4.0 - distLog).clamp(0.0, 15.0) * 4.0;
-
-    // --- Phone pitch → horizon offset ---
-    // _pitchAngle: 90° = pointing at horizon, 0° = pointing at ground.
-    final double phonePitchFromHorizon = _pitchAngle - 90.0;
-
-    // Angular delta between where phone points and where place is
-    final double verticalAngleDelta = placeElevDeg - phonePitchFromHorizon;
-
-    // Project to screen Y: center = where phone points, offset by angle
-    double rawTopPos = (screenH * 0.5) - (verticalAngleDelta * pixelsPerDeg);
-
-    // Anti-overlap nudge for cards at similar positions
-    rawTopPos += currentSlot * 18.0;
-
+    // === COMPACT LAYOUT ===
+    // Cards are stacked one per row. rowHeight MUST stay >= the rendered card
+    // height (name pill + thumbnail card + tether ≈ 97 px) or consecutive cards
+    // overlap. 104 leaves a small gap. Combined with [_maxVisibleOnScreen] this
+    // keeps every visible label clear of its neighbours.
+    // Notch-relative: must clear the top HUD row (~48px), the filter chip bar,
+    // the XP badge AND the "popular places" notice banner below them, with a
+    // comfortable gap — otherwise the first cards render behind the banner
+    // (client report). Starting at +184 keeps every label fully visible below it.
+    final double topStart = MediaQuery.of(context).padding.top + 184;
+    const double rowHeight = 104.0;
     const double cardW = 120.0;
 
-    double rawLeftPos = (screenW * dx) - (cardW / 2);
+    double topPos = topStart + (currentSlot * rowHeight);
+    double leftPos = (screenW * dx) - (cardW / 2);
+    leftPos = leftPos.clamp(8.0, screenW - cardW - 8.0);
 
     // Stagger alternating markers horizontally
     if (currentSlot % 2 == 1) {
-      rawLeftPos += 30;
+      leftPos = (leftPos + 30).clamp(8.0, screenW - cardW - 8.0);
     }
-
-    // === ROLL-ROTATED WORLD ANCHORING ===
-    // Rotate the card POSITION around the screen center by the device roll
-    // angle. This is what makes cards track the real world when the phone
-    // is tilted sideways or held in landscape — exactly like Google Maps
-    // Live View. Without this, cards stay at screen-fixed positions.
-    final double centerX = screenW / 2;
-    final double centerY = screenH / 2;
-    final double relX = (rawLeftPos + cardW / 2) - centerX;
-    final double relY = rawTopPos - centerY;
-
-    final double cosR = cos(_rollAngle);
-    final double sinR = sin(_rollAngle);
-    final double rotatedX = relX * cosR - relY * sinR;
-    final double rotatedY = relX * sinR + relY * cosR;
-
-    double leftPos = (rotatedX + centerX - cardW / 2).clamp(8.0, screenW - cardW - 8.0);
-    double topPos = rotatedY + centerY;
-
-    // Clamp within safe zone (below top HUD, above bottom nav)
-    final double minTop = MediaQuery.of(context).padding.top + 130;
-    final double maxTop = screenH - 150;
-    topPos = topPos.clamp(minTop, maxTop);
 
     // Direction badge
     final cardinal = _cardinalFromHeading(landmark.bearing);
@@ -5424,11 +5218,8 @@ class _ArCameraPageState extends State<ArCameraPage>
     return Positioned(
           left: leftPos,
           top: topPos,
-          child: Transform.rotate(
-            angle: -_rollAngle,
-            alignment: Alignment.bottomCenter,
-            child: GestureDetector(
-              onTap: () {
+          child: GestureDetector(
+            onTap: () {
               final i = _landmarks.indexWhere((l) => l.name == landmark.name);
               if (i >= 0) {
                 setState(() {
@@ -5605,9 +5396,8 @@ class _ArCameraPageState extends State<ArCameraPage>
               ],
             ),
           ),
-        ),
-      )
-      .animate()
+        )
+        .animate()
         .fade(duration: 350.ms)
         .moveX(begin: -20, end: 0, curve: Curves.easeOutBack);
   }
@@ -6846,8 +6636,63 @@ class _ArCameraPageState extends State<ArCameraPage>
     if (_landmarks.isEmpty) {
       final bool stillLoading = !_hasCompletedInitialFetch || _isFetchingPlaces;
       if (stillLoading) {
-        // Genuine loading — top green pill handles the indicator.
-        return const SizedBox.shrink();
+        // Genuine loading — show the scanning pulse.
+        return Positioned(
+          left: 0,
+          right: 0,
+          bottom: guideBottom,
+          child: Center(
+            child:
+                ClipRRect(
+                      borderRadius: BorderRadius.circular(30),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 11,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.07),
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.12),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white38,
+                                    ),
+                                  )
+                                  .animate(
+                                    onPlay: (c) => c.repeat(reverse: true),
+                                  )
+                                  .fade(begin: 0.2, end: 1, duration: 700.ms),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'SCANNING FOR PLACES...',
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 1.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                    .animate(onPlay: (c) => c.repeat(reverse: true))
+                    .fade(begin: 0.4, end: 1, duration: 900.ms),
+          ),
+        );
       }
 
       // Fetch finished with nothing to display — explain why and offer a retry,

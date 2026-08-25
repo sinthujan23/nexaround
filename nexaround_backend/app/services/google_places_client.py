@@ -219,6 +219,124 @@ def canonical_category(category: Optional[str]) -> Optional[str]:
     return _CATEGORY_ALIASES.get(lower, key)
 
 
+# Free-text "near me" search subject → single Google Places type (New API).
+#
+# Deliberately separate from CATEGORY_TYPES_MAP/_CATEGORY_ALIASES above: those
+# group many types under one of the app's ~10 browse-tab sections ("Food &
+# Drink"), which only resolves if the user's word happens to name a section.
+# A search bar has to answer "atm", "bakery", "gym", "parking" too — none of
+# which are section names — so this maps individual nouns straight to the one
+# Google type that answers them. Every value here already appears verbatim in
+# CATEGORY_TYPES_MAP above (so it is already known-valid against Places API
+# (New)) or is one of Google's other well-established Table A types.
+NEARBY_TERM_TYPES: dict[str, str] = {
+    # Finance
+    "atm": "atm", "atms": "atm",
+    "bank": "bank", "banks": "bank",
+    # Fuel & auto
+    "gas station": "gas_station", "gas stations": "gas_station",
+    "petrol station": "gas_station", "petrol": "gas_station", "fuel station": "gas_station",
+    "parking": "parking", "car park": "parking", "parking lot": "parking",
+    "car wash": "car_wash",
+    "car repair": "car_repair", "mechanic": "car_repair",
+    "car rental": "car_rental", "car hire": "car_rental",
+    "car dealer": "car_dealer",
+    # Food & drink (specific dish/venue types, not the whole section)
+    "restaurant": "restaurant", "restaurants": "restaurant",
+    "bakery": "bakery", "bakeries": "bakery",
+    "cafe": "cafe", "cafes": "cafe", "coffee shop": "cafe", "coffee": "cafe",
+    "bar": "bar", "bars": "bar", "pub": "bar", "pubs": "bar",
+    "night club": "night_club", "nightclub": "night_club",
+    "ice cream": "ice_cream_shop", "ice cream shop": "ice_cream_shop",
+    "fast food": "fast_food_restaurant",
+    "food court": "food_court",
+    # Shopping
+    "supermarket": "supermarket", "grocery": "supermarket",
+    "groceries": "supermarket", "grocery store": "supermarket",
+    "convenience store": "convenience_store",
+    "department store": "department_store",
+    "electronics store": "electronics_store",
+    "hardware store": "hardware_store",
+    "market": "market",
+    "mall": "shopping_mall", "shopping mall": "shopping_mall",
+    "book store": "book_store", "bookstore": "book_store", "books": "book_store",
+    "clothing store": "clothing_store", "clothes shop": "clothing_store", "clothes": "clothing_store",
+    "jewelry store": "jewelry_store", "jeweller": "jewelry_store", "jewellery": "jewelry_store",
+    "shoe store": "shoe_store", "shoes": "shoe_store",
+    "furniture store": "furniture_store", "furniture": "furniture_store",
+    "pet store": "pet_store", "pet shop": "pet_store",
+    "gift shop": "gift_shop",
+    # Medical
+    "pharmacy": "pharmacy", "pharmacies": "pharmacy", "chemist": "pharmacy", "drugstore": "pharmacy",
+    "hospital": "hospital", "hospitals": "hospital",
+    "clinic": "medical_clinic", "clinics": "medical_clinic", "medical clinic": "medical_clinic",
+    "dentist": "dentist", "dental clinic": "dental_clinic",
+    "doctor": "doctor", "doctors": "doctor",
+    "physiotherapist": "physiotherapist",
+    "vet": "veterinary_care", "veterinary": "veterinary_care", "veterinary clinic": "veterinary_care",
+    # Lodging
+    "hotel": "lodging", "hotels": "lodging", "motel": "lodging",
+    "hostel": "hostel",
+    "guest house": "guest_house",
+    "campground": "campground", "camping": "campground", "camp site": "campground",
+    # Transport
+    "bus station": "bus_station", "bus stop": "bus_station",
+    "train station": "train_station",
+    "subway station": "subway_station", "subway": "subway_station",
+    "metro station": "subway_station", "metro": "subway_station",
+    "airport": "airport",
+    "taxi stand": "taxi_stand", "taxi": "taxi_stand",
+    "ferry terminal": "ferry_terminal", "ferry": "ferry_terminal",
+    "light rail station": "light_rail_station",
+    # Entertainment / leisure
+    "museum": "museum", "museums": "museum",
+    "zoo": "zoo",
+    "aquarium": "aquarium",
+    "amusement park": "amusement_park", "theme park": "amusement_park",
+    "water park": "water_park",
+    "movie theater": "movie_theater", "movie theatre": "movie_theater", "cinema": "movie_theater",
+    "bowling alley": "bowling_alley", "bowling": "bowling_alley",
+    "casino": "casino",
+    "gym": "gym", "gyms": "gym", "fitness center": "gym", "fitness centre": "gym",
+    "spa": "spa",
+    "golf course": "golf_course", "golf": "golf_course",
+    # Worship
+    "church": "church", "churches": "church",
+    "mosque": "mosque", "mosques": "mosque",
+    "temple": "hindu_temple", "hindu temple": "hindu_temple",
+    "synagogue": "synagogue",
+    "buddhist temple": "buddhist_temple",
+    # Services
+    "post office": "post_office",
+    "police": "police", "police station": "police",
+    "fire station": "fire_station",
+    "library": "library", "libraries": "library",
+    "laundry": "laundry", "laundromat": "laundry",
+    "salon": "hair_salon", "hair salon": "hair_salon", "hairdresser": "hair_salon",
+    # Nature
+    "beach": "beach", "beaches": "beach",
+    "national park": "national_park",
+    "hiking area": "hiking_area", "hiking trail": "hiking_area", "trail": "hiking_area",
+    "lake": "lake",
+    "river": "river",
+    "botanical garden": "botanical_garden",
+    "park": "park", "parks": "park",
+}
+
+
+def resolve_nearby_term(term: str) -> Optional[str]:
+    """Map a free-text 'near me' search subject to a single Google Places type.
+
+    Distinct from canonical_category(): that resolves a UI section name ('Food
+    & Drink') to a list of types for the browse tabs. This resolves what a user
+    actually types into a search box ("atm", "bakery") to the one type that
+    answers it. Returns None for anything not in the table (cuisines, brand
+    names, free-form phrases) — the caller is expected to fall back to Text
+    Search for those, not to search unfiltered.
+    """
+    return NEARBY_TERM_TYPES.get(term.strip().lower())
+
+
 def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     R = 6371000.0
     dlat = math.radians(lat2 - lat1)
@@ -370,8 +488,15 @@ async def text_search(
     query: str,
     latitude: float,
     longitude: float,
+    radius_m: Optional[float] = None,
 ) -> list[dict]:
-    """Call Google Text Search (New). Returns the raw places list (unfiltered)."""
+    """Call Google Text Search (New). Returns the raw places list (unfiltered).
+
+    `radius_m` narrows the (soft) location bias — omitted, it keeps the
+    long-standing 50km bias used by the general search bar; a "near me"
+    triggered search passes a tight radius (2-5km) so a term with no exact
+    match nearby doesn't surface a same-name result three cities away.
+    """
     async with async_session() as db:
         settings_service = SettingsService(db)
         google_maps_key = await settings_service.get_setting("google_maps_api_key")
@@ -386,6 +511,7 @@ async def text_search(
         "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.rating,places.userRatingCount"
     }
 
+    bias_radius = float(min(max(radius_m, 500.0), 50000.0)) if radius_m else 50000.0
     body = {
         "textQuery": query,
         "locationBias": {
@@ -394,7 +520,7 @@ async def text_search(
                     "latitude": latitude,
                     "longitude": longitude
                 },
-                "radius": 50000.0
+                "radius": bias_radius
             }
         }
     }
@@ -410,6 +536,78 @@ async def text_search(
             t.upstream(resp)
         if resp.status_code != 200:
             print(f"❌ Google searchText HTTP {resp.status_code}: {resp.text[:600]}")
+            resp.raise_for_status()
+        data = resp.json()
+
+    return data.get("places", [])
+
+
+async def nearby_search_typed(
+    *,
+    latitude: float,
+    longitude: float,
+    place_type: str,
+    radius: int,
+) -> Optional[list[dict]]:
+    """Typed Nearby Search (New) for exactly one Google Places type.
+
+    Backs the free-text "near me" search path for a term resolved via
+    `resolve_nearby_term` (atm, bakery, gym, ...) that isn't one of the app's
+    ~10 browse-tab sections. Returns None — not [] — when Google rejects
+    `place_type` as unsupported, so the caller can fall back to Text Search
+    instead of silently treating "unsupported type" the same as "zero nearby".
+    Deliberately skips `nearby_search()`'s self-heal-and-retry loop: there is
+    only one type here, so a 400 means this call is over, not "drop one and
+    retry the rest".
+    """
+    eff_radius = float(min(max(radius, 1), 50000))
+
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — returning no places")
+        return []
+
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": google_maps_key,
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.photos,places.rating,places.userRatingCount"
+    }
+    body = {
+        "maxResultCount": 20,
+        "includedTypes": [place_type],
+        "locationRestriction": {
+            "circle": {
+                "center": {
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "radius": eff_radius
+            }
+        }
+    }
+
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        async with telemetry.track(
+            "google_maps", "nearby_search_typed",
+            sku="nearby_search_new",
+            cache_key=f"nbt:{latitude:.4f}:{longitude:.4f}:{place_type}:{radius}",
+            params=body,
+        ) as t:
+            resp = await client.post(
+                "https://places.googleapis.com/v1/places:searchNearby",
+                json=body,
+                headers=headers,
+            )
+            t.upstream(resp)
+
+        if resp.status_code == 400 and _unsupported_types(resp):
+            print(f"⚠️ Google type '{place_type}' unsupported for near-me search — falling back to text search")
+            return None
+        if resp.status_code != 200:
+            print(f"❌ Google searchNearby (typed) HTTP {resp.status_code}: {resp.text[:600]}")
             resp.raise_for_status()
         data = resp.json()
 

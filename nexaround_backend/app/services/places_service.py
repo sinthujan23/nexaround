@@ -844,9 +844,63 @@ async def search(
     query: str,
     latitude: float,
     longitude: float,
+    radius_m: Optional[float] = None,
+    near_me: bool = False,
 ) -> PlacesNearbyResponse:
     snap_lat = place_cache_service._snap(latitude)
     snap_lng = place_cache_service._snap(longitude)
+
+    # 0. "near me"-triggered searches only: the client has already stripped the
+    # locality phrase (e.g. "atm near me" -> "atm") and flagged this as such.
+    # If the remaining subject names a specific Google Places type — not one of
+    # the app's ~10 browse-tab sections, but a real noun like "atm" or "bakery"
+    # — resolve it directly with a typed Nearby Search instead of falling
+    # through to a name match / Text Search that has nothing to match against,
+    # or (previously) an unfiltered nearby dump that ignored the subject
+    # entirely. Gated on `near_me` so every other caller of this endpoint
+    # (findPlaceByName, trending resolution, the general search bar) is
+    # unaffected — they search by proper name, where an exact hit against a
+    # bare noun like "spa" would be a false resolution, not a fix.
+    if near_me:
+        resolved_type = google_places_client.resolve_nearby_term(query)
+        if resolved_type:
+            typed_radius = int(radius_m) if radius_m else 2000
+            typed_key = f"places:search:type:{resolved_type}:{snap_lat}:{snap_lng}:{typed_radius}"
+
+            cached = await place_cache_service.get_cached(typed_key)
+            if cached is not None:
+                async with telemetry.track(
+                    "internal", "place_search_typed", cache_key=typed_key
+                ) as t:
+                    t.hit("redis")
+                return PlacesNearbyResponse(
+                    places=[PlaceResponse.model_validate(p) for p in cached],
+                    cached=True,
+                    source="cache",
+                )
+
+            raw_typed = await google_places_client.nearby_search_typed(
+                latitude=latitude,
+                longitude=longitude,
+                place_type=resolved_type,
+                radius=typed_radius,
+            )
+            if raw_typed:
+                place_dicts = [
+                    google_places_client.to_place_dict(p, latitude, longitude, None, _photo_url)
+                    for p in raw_typed
+                ]
+                place_dicts.sort(key=lambda p: p.get("distance_m") or 0)
+                await place_cache_service.set_cached(typed_key, place_dicts)
+                return PlacesNearbyResponse(
+                    places=[PlaceResponse.model_validate(p) for p in place_dicts],
+                    cached=False,
+                    source="google",
+                )
+            # Unsupported type, or genuinely nothing of that type within the
+            # tight radius — fall through to the name match / Text Search path
+            # below using the raw query text, same as an unresolved term would.
+
     clean_query = query.strip().lower().replace(" ", "_")
     key = f"places:search:{snap_lat}:{snap_lng}:{clean_query}"
 
@@ -903,6 +957,7 @@ async def search(
         query=query,
         latitude=latitude,
         longitude=longitude,
+        radius_m=radius_m,
     )
 
     place_dicts = [

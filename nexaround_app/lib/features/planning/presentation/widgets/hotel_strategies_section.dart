@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/booking_url_helper.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 
 class HotelStrategiesSection extends StatelessWidget {
@@ -184,7 +185,7 @@ class HotelStrategiesSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        hs.pricePerNight,
+                        formatPriceString(hs.pricePerNight),
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
@@ -240,7 +241,7 @@ class HotelStrategiesSection extends StatelessWidget {
                   const SizedBox(width: 4),
                   Expanded(
                     child: Text(
-                      'Est. Total: ${hs.totalEstimatedCost}',
+                      'Est. Total: ${formatPriceString(hs.totalEstimatedCost)}',
                       style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
                     ),
                   ),

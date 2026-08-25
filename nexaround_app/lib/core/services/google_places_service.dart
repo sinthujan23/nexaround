@@ -432,15 +432,29 @@ class GooglePlacesService {
   }
 
   /// Search places by text query biased towards current coordinates (New API)
+  ///
+  /// [radiusM] tightens the location bias (default 50km) — pass a small value
+  /// (2000-5000) for a "near me"-triggered search. [nearMe] must be set
+  /// alongside it: it tells the backend `query` is already a locality-stripped
+  /// subject ("atm", not "atm near me"), so it can resolve specific POI types
+  /// (atm, bakery, gym, ...) directly instead of treating it as a proper name.
   static Future<List<AttractionEntity>> searchPlaces({
     required String query,
     required double latitude,
     required double longitude,
+    double? radiusM,
+    bool nearMe = false,
   }) async {
     try {
       final response = await ApiClient.instance.get(
         '${ApiConstants.apiVersion}/places/search',
-        queryParameters: {'query': query, 'lat': latitude, 'lng': longitude},
+        queryParameters: {
+          'query': query,
+          'lat': latitude,
+          'lng': longitude,
+          if (radiusM != null) 'radius_m': radiusM,
+          if (nearMe) 'near_me': true,
+        },
       );
 
       if (response.statusCode == 200) {

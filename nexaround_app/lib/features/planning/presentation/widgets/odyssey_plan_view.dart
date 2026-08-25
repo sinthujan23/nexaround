@@ -1465,7 +1465,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0.00');
 
     // Format displayCost: e.g. "1500" -> "~ LKR 1,500"
-    String displayCost = rawCost;
+    String displayCost = formatPriceString(rawCost);
     if (!isFree && displayCost.isNotEmpty) {
       final hasCurrency = RegExp(r'[A-Za-z\$\€\£\¥\₹]').hasMatch(displayCost);
       if (!hasCurrency && widget.odyssey.currency.isNotEmpty) {
@@ -1476,6 +1476,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           !displayCost.toLowerCase().contains('approx')) {
         displayCost = '~ $displayCost';
       }
+      displayCost = formatPriceString(displayCost);
     }
 
     final lowerName = act.name.toLowerCase();

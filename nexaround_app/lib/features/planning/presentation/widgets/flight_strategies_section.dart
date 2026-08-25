@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/booking_url_helper.dart';
+import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -137,7 +138,7 @@ class FlightStrategiesSection extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            fs.estimatedSavings,
+                            formatPriceString(fs.estimatedSavings),
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w800,
@@ -183,7 +184,7 @@ class FlightStrategiesSection extends StatelessWidget {
                   if (fs.priceRange.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(
-                      fs.priceRange,
+                      formatPriceString(fs.priceRange),
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w800,

@@ -102,6 +102,19 @@ async def search_places(
     query: str = Query(..., min_length=1, description="Text search query"),
     lat: float = Query(..., ge=-90.0, le=90.0),
     lng: float = Query(..., ge=-180.0, le=180.0),
+    radius_m: Optional[float] = Query(
+        None, ge=500, le=50000,
+        description="Location bias radius in meters. Omitted, keeps the "
+                    "default 50km bias; a near_me search should pass a tight "
+                    "radius (2-5km) instead.",
+    ),
+    near_me: bool = Query(
+        False,
+        description="Set when `query` is a locality-stripped 'near me' "
+                    "subject (e.g. 'atm' from 'atm near me'), not a proper "
+                    "place name — enables direct type resolution (atm, "
+                    "bakery, gym, ...) ahead of the name match / Text Search.",
+    ),
     current_user: User = Depends(get_current_user),
 ):
     """Search Google Places near a coordinate by text query. Cached server-side for 7 days. Requires authentication."""
@@ -109,6 +122,8 @@ async def search_places(
         query=query,
         latitude=lat,
         longitude=lng,
+        radius_m=radius_m,
+        near_me=near_me,
     )
 
 
