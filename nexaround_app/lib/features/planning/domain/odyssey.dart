@@ -325,6 +325,120 @@ class OdysseyBookingPartner {
       };
 }
 
+/// A real citation Gemini's Google Search grounding actually found — the
+/// non-fabricated alternative to per-activity deep links, which the backend
+/// deliberately refuses to invent.
+class VerifiedSource {
+  final String title;
+  final String uri;
+
+  const VerifiedSource({required this.title, required this.uri});
+
+  factory VerifiedSource.fromJson(Map<String, dynamic> json) => VerifiedSource(
+        title: (json['title'] ?? '').toString(),
+        uri: (json['uri'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {'title': title, 'uri': uri};
+}
+
+/// Upfront feasibility read: is the budget/timing realistic, and what's the
+/// single biggest risk. `budgetTightness`/`minimumRequired` are computed
+/// server-side from the deterministic cost floor; `biggestRisk` is Gemini's.
+class OdysseyVerdict {
+  final bool feasible;
+  final String budgetTightness; // "tight" | "comfortable" | "unknown"
+  final double? minimumRequired;
+  final String biggestRisk;
+  final String recommendation;
+
+  const OdysseyVerdict({
+    this.feasible = true,
+    this.budgetTightness = 'unknown',
+    this.minimumRequired,
+    this.biggestRisk = '',
+    this.recommendation = '',
+  });
+
+  factory OdysseyVerdict.fromJson(Map<String, dynamic> json) => OdysseyVerdict(
+        feasible: json['feasible'] == null ? true : json['feasible'] == true,
+        budgetTightness: (json['budget_tightness'] ?? 'unknown').toString(),
+        minimumRequired: (json['minimum_required'] as num?)?.toDouble(),
+        biggestRisk: (json['biggest_risk'] ?? '').toString(),
+        recommendation: (json['recommendation'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'feasible': feasible,
+        'budget_tightness': budgetTightness,
+        'minimum_required': minimumRequired,
+        'biggest_risk': biggestRisk,
+        'recommendation': recommendation,
+      };
+}
+
+class OdysseyPracticalInfo {
+  final String money;
+  final String connectivity;
+  final String safety;
+  final String customs;
+
+  const OdysseyPracticalInfo({
+    this.money = '',
+    this.connectivity = '',
+    this.safety = '',
+    this.customs = '',
+  });
+
+  bool get isEmpty =>
+      money.isEmpty && connectivity.isEmpty && safety.isEmpty && customs.isEmpty;
+
+  factory OdysseyPracticalInfo.fromJson(Map<String, dynamic> json) => OdysseyPracticalInfo(
+        money: (json['money'] ?? '').toString(),
+        connectivity: (json['connectivity'] ?? '').toString(),
+        safety: (json['safety'] ?? '').toString(),
+        customs: (json['customs'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'money': money,
+        'connectivity': connectivity,
+        'safety': safety,
+        'customs': customs,
+      };
+}
+
+/// One priority-ordered checklist row, e.g. label "BOOK NOW", item "Check
+/// into Hotel X". Assembled server-side from data already generated —
+/// booking partners, confirmed flight/hotel, visa line — not a new LLM call.
+class OdysseyBookingPlanItem {
+  final String label; // BOOK NOW | BOOK AFTER VISA | BOOK CLOSER TO TRAVEL | CAN WAIT
+  final String item;
+  final String reason;
+  final String url;
+
+  const OdysseyBookingPlanItem({
+    required this.label,
+    required this.item,
+    this.reason = '',
+    this.url = '',
+  });
+
+  factory OdysseyBookingPlanItem.fromJson(Map<String, dynamic> json) => OdysseyBookingPlanItem(
+        label: (json['label'] ?? '').toString(),
+        item: (json['item'] ?? '').toString(),
+        reason: (json['reason'] ?? '').toString(),
+        url: (json['url'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'label': label,
+        'item': item,
+        'reason': reason,
+        'url': url,
+      };
+}
+
 class FlightStrategy {
   final int rank;
   final String strategy;
@@ -500,6 +614,11 @@ class Odyssey {
   final int travelers;
   final Map<String, double> budgetBreakdown;
   final String budgetAdvisory;
+  final OdysseyVerdict? verdict;
+  final Map<String, Map<String, double>> budgetScenarios;
+  final OdysseyPracticalInfo practicalInfo;
+  final List<OdysseyBookingPlanItem> bookingPlan;
+  final List<VerifiedSource> verifiedSources;
 
   const Odyssey({
     this.id,
@@ -531,6 +650,11 @@ class Odyssey {
     this.travelers = 1,
     this.budgetBreakdown = const {},
     this.budgetAdvisory = '',
+    this.verdict,
+    this.budgetScenarios = const {},
+    this.practicalInfo = const OdysseyPracticalInfo(),
+    this.bookingPlan = const [],
+    this.verifiedSources = const [],
   });
 
   Odyssey copyWith({
@@ -550,6 +674,11 @@ class Odyssey {
     String? departureCity,
     int? travelers,
     Map<String, double>? budgetBreakdown,
+    OdysseyVerdict? verdict,
+    Map<String, Map<String, double>>? budgetScenarios,
+    OdysseyPracticalInfo? practicalInfo,
+    List<OdysseyBookingPlanItem>? bookingPlan,
+    List<VerifiedSource>? verifiedSources,
   }) =>
       Odyssey(
         id: id ?? this.id,
@@ -580,6 +709,12 @@ class Odyssey {
         departureCity: departureCity ?? this.departureCity,
         travelers: travelers ?? this.travelers,
         budgetBreakdown: budgetBreakdown ?? this.budgetBreakdown,
+        budgetAdvisory: budgetAdvisory,
+        verdict: verdict ?? this.verdict,
+        budgetScenarios: budgetScenarios ?? this.budgetScenarios,
+        practicalInfo: practicalInfo ?? this.practicalInfo,
+        bookingPlan: bookingPlan ?? this.bookingPlan,
+        verifiedSources: verifiedSources ?? this.verifiedSources,
       );
 
   // ── Trip progress (per-place check-off) ──────────────────────────────────
@@ -742,6 +877,11 @@ class Odyssey {
           'travelers': travelers,
           'budget_breakdown': budgetBreakdown,
           'budget_advisory': budgetAdvisory,
+          'verdict': verdict?.toJson() ?? {},
+          'budget_scenarios': budgetScenarios,
+          'practical_info': practicalInfo.toJson(),
+          'booking_plan': bookingPlan.map((b) => b.toJson()).toList(),
+          'verified_sources': verifiedSources.map((s) => s.toJson()).toList(),
         },
         ...dayPlans.map((d) => d.toJson()),
       ];
@@ -801,6 +941,36 @@ class Odyssey {
         ? (hotelStrategiesRaw['best_areas'] ?? '').toString()
         : '';
 
+    final verdictRaw = meta['verdict'];
+    final OdysseyVerdict? verdict = (verdictRaw is Map && verdictRaw.isNotEmpty)
+        ? OdysseyVerdict.fromJson(verdictRaw.cast<String, dynamic>())
+        : null;
+
+    final budgetScenariosRaw = meta['budget_scenarios'];
+    final Map<String, Map<String, double>> budgetScenarios = budgetScenariosRaw is Map
+        ? budgetScenariosRaw.map((k, v) => MapEntry(
+            k.toString(),
+            v is Map
+                ? v.map((ik, iv) => MapEntry(ik.toString(), (iv as num?)?.toDouble() ?? 0.0))
+                : <String, double>{},
+          ))
+        : const {};
+
+    final practicalInfoRaw = meta['practical_info'];
+    final OdysseyPracticalInfo practicalInfo = practicalInfoRaw is Map
+        ? OdysseyPracticalInfo.fromJson(practicalInfoRaw.cast<String, dynamic>())
+        : const OdysseyPracticalInfo();
+
+    final List<OdysseyBookingPlanItem> bookingPlan = ((meta['booking_plan'] ?? const []) as List)
+        .whereType<Map>()
+        .map((b) => OdysseyBookingPlanItem.fromJson(b.cast<String, dynamic>()))
+        .toList();
+
+    final List<VerifiedSource> verifiedSources = ((meta['verified_sources'] ?? const []) as List)
+        .whereType<Map>()
+        .map((s) => VerifiedSource.fromJson(s.cast<String, dynamic>()))
+        .toList();
+
     return Odyssey(
       id: json['id']?.toString(),
       title: (meta['title'] ?? json['title'] ?? 'Odyssey').toString(),
@@ -840,6 +1010,11 @@ class Odyssey {
             )
           : const {},
       budgetAdvisory: (meta['budget_advisory'] ?? '').toString(),
+      verdict: verdict,
+      budgetScenarios: budgetScenarios,
+      practicalInfo: practicalInfo,
+      bookingPlan: bookingPlan,
+      verifiedSources: verifiedSources,
     );
   }
 

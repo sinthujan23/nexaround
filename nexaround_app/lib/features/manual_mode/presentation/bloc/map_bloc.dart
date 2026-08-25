@@ -166,7 +166,18 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     FetchBandedPlaces event,
     Emitter<MapState> emit,
   ) async {
-    emit(state.copyWith(loadingBandCategories: bandedCategories.toSet()));
+    emit(state.copyWith(
+      loadingBandCategories: bandedCategories.toSet(),
+      // forceRefresh on this event only ever means "the user picked a
+      // genuinely different location" (see living_map_page.dart's
+      // _fetchBandedSections call sites — a plain pull-to-refresh never sets
+      // it). The old location's sections are wiped here rather than left in
+      // place: without this, a category that comes back empty for the new
+      // spot keeps showing the previous location's places under the new
+      // "0-50km" label — e.g. Trincomalee hospitals 2,000km away still
+      // listed under a Penang search.
+      bandedPlaces: event.forceRefresh ? const {} : state.bandedPlaces,
+    ));
 
     // All six in parallel: they hit independent cache keys on the backend and
     // one slow category should not hold up the other five. Each closure emits
@@ -248,7 +259,15 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     final lastLng = CacheService.getLastFetchLng();
     bool needsFetch = state.status == MapStatus.initial || state.status == MapStatus.failure || state.allAttractions.isEmpty;
 
-    if (!needsFetch && lastLat != null && lastLng != null) {
+    // The local cache has no per-location tagging — it's just "every place
+    // ever fetched," and _getFilteredCache only narrows it to within 50km of
+    // whatever coordinates are asked for right now. So a genuinely new area
+    // that happens to sit within 50km of somewhere visited earlier would show
+    // a mix of both places instead of just the new area's, unless the stale
+    // entries are cleared out when a real relocation is detected.
+    bool movedToNewArea = false;
+
+    if (lastLat != null && lastLng != null) {
       final double distM = geo.Geolocator.distanceBetween(
         event.latitude,
         event.longitude,
@@ -257,10 +276,15 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       );
       if (distM > 1000) {
         needsFetch = true;
+        movedToNewArea = true;
       }
     }
 
     if (needsFetch || event.forceRefresh) {
+      if (movedToNewArea) {
+        await CacheService.cacheAttractions(const []);
+      }
+
       if (lastLat != null && lastLng != null && !event.forceRefresh) {
         final double distM = geo.Geolocator.distanceBetween(
           event.latitude,

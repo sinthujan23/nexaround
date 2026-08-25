@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
+import 'package:nexaround_app/features/planning/presentation/widgets/trip_info_section.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
@@ -72,7 +73,9 @@ class OdysseyPlanView extends StatefulWidget {
 }
 
 class _OdysseyPlanViewState extends State<OdysseyPlanView> {
-
+  // 'minimum' | 'recommended' | 'comfortable' — only meaningful when
+  // odyssey.budgetScenarios is non-empty (legacy Odysseys have none).
+  String _selectedScenario = 'recommended';
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +85,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool hasHotels = widget.odyssey.hotelStrategies.isNotEmpty ||
         widget.odyssey.hotelGeneralTips.isNotEmpty ||
         widget.odyssey.hotelBestAreas.isNotEmpty;
+    final bool hasTripInfo = !widget.odyssey.practicalInfo.isEmpty ||
+        widget.odyssey.bookingPlan.isNotEmpty ||
+        widget.odyssey.verifiedSources.isNotEmpty;
 
     Widget buildTabItem({required IconData icon, required String label}) {
       return Tab(
@@ -101,6 +107,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final List<Widget> tabs = [
       buildTabItem(icon: Icons.dashboard_outlined, label: 'Overview'),
       buildTabItem(icon: Icons.map_outlined, label: 'Itinerary'),
+      if (hasTripInfo)
+        buildTabItem(icon: Icons.info_outline_rounded, label: 'Info'),
       if (hasFlights)
         buildTabItem(icon: Icons.flight_outlined, label: 'Flights'),
       if (hasHotels)
@@ -110,6 +118,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final List<Widget> tabViews = [
       _buildOverviewTab(context),
       _buildItineraryTab(context),
+      if (hasTripInfo) _buildInfoTab(context),
       if (hasFlights) _buildFlightsTab(context),
       if (hasHotels) _buildStaysTab(context),
     ];
@@ -430,6 +439,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildCinematicHeroCard(context),
+          if (widget.odyssey.verdict != null) _verdictBanner(widget.odyssey.verdict!),
           if (widget.odyssey.formattedDateRange.isNotEmpty) ...[
             _infoCard(
               'Trip Dates',
@@ -465,6 +475,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _budgetBreakdownCard(context),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoTab(BuildContext context) {
+    return SingleChildScrollView(
+      padding: widget.padding,
+      child: TripInfoSection(odyssey: widget.odyssey),
     );
   }
 
@@ -674,6 +691,66 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  /// Upfront feasibility read, right under the hero card. Reuses the same
+  /// amber warning-card language as the pre-generation budget-shortfall
+  /// notice (`odyssey_planner_page.dart`) and the transit-heavy notice below
+  /// in this file, so a traveller sees one consistent "pay attention" visual
+  /// language rather than three different ones.
+  Widget _verdictBanner(OdysseyVerdict verdict) {
+    final bool warn = !verdict.feasible || verdict.budgetTightness == 'tight';
+    final Color bg = warn ? const Color(0xFFFFF4E5) : AppColors.brandGreenLight;
+    final Color border =
+        warn ? const Color(0xFFFFB74D) : AppColors.brandGreen.withValues(alpha: 0.35);
+    final Color iconColor = warn ? const Color(0xFFE65100) : AppColors.brandGreen;
+    final Color textColor = warn ? const Color(0xFF8D4E00) : AppColors.brandGreenDark;
+    final IconData icon = !verdict.feasible
+        ? Icons.error_outline_rounded
+        : (warn ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+
+    final lines = <String>[
+      if (verdict.recommendation.isNotEmpty) verdict.recommendation,
+      if (verdict.biggestRisk.isNotEmpty) 'Watch out: ${verdict.biggestRisk}',
+    ];
+    if (lines.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: iconColor, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < lines.length; i++)
+                  Padding(
+                    padding: EdgeInsets.only(top: i > 0 ? 6 : 0),
+                    child: Text(
+                      lines[i],
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: i == 0 ? FontWeight.w700 : FontWeight.w500,
+                        height: 1.4,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _infoCard(String label, String value, IconData icon) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -715,8 +792,60 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  Widget _scenarioToggle() {
+    const options = [
+      ('minimum', 'Minimum'),
+      ('recommended', 'Recommended'),
+      ('comfortable', 'Comfortable'),
+    ];
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: options.map((opt) {
+          final selected = _selectedScenario == opt.$1;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() => _selectedScenario = opt.$1),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(11),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  opt.$2,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: selected ? Colors.black : Colors.black45,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
   Widget _budgetBreakdownCard(BuildContext context) {
-    final bd = widget.odyssey.budgetBreakdown;
+    final scenarios = widget.odyssey.budgetScenarios;
+    final bd = scenarios[_selectedScenario] ?? widget.odyssey.budgetBreakdown;
     final currency = widget.odyssey.currency;
     final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : widget.odyssey.budget;
 
@@ -868,6 +997,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   ),
                 ],
               ),
+              if (scenarios.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _scenarioToggle(),
+              ],
               const SizedBox(height: 16),
               categoryBar('Stay / Accommodation', '🏨', stay, const Color(0xFF2563EB)),
               categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),

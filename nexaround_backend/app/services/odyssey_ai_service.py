@@ -12,7 +12,7 @@ import logging
 import re
 import urllib.parse
 import httpx
-from app.services import telemetry
+from app.services import telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -106,6 +106,10 @@ _MODELS = [
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 
+# Budget-scenario multipliers applied through the same waterfall allocation
+# used for the "recommended" (as-submitted) budget — gives Minimum/Comfortable
+# scenarios without an extra Gemini call.
+_SCENARIO_MULTIPLIERS = {"minimum": 0.7, "comfortable": 1.4}
 
 
 def _model_url(model: str) -> str:
@@ -164,6 +168,10 @@ def build_meta_item(
     budget_breakdown: dict = None,
     budget_advisory: str = "",
     verified_sources: list[dict] = None,
+    verdict: dict = None,
+    budget_scenarios: dict = None,
+    practical_info: dict = None,
+    booking_plan: list[dict] = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -190,6 +198,10 @@ def build_meta_item(
         "budget_breakdown": budget_breakdown or {},
         "budget_advisory": budget_advisory,
         "verified_sources": verified_sources or [],
+        "verdict": verdict or {},
+        "budget_scenarios": budget_scenarios or {},
+        "practical_info": practical_info or {},
+        "booking_plan": booking_plan or [],
     }
 
 
@@ -668,31 +680,49 @@ async def generate_odyssey(
         if h_costs:
             cheapest_hotel_cost = min(h_costs)
 
-    # Base budget allocation
+    # Base budget allocation. Parameterized on `total` so the same waterfall
+    # can price out Minimum/Comfortable scenarios below without a second
+    # Gemini call — `cheapest_flight_cost`/`cheapest_hotel_cost` stay fixed
+    # (a confirmed live quote doesn't change with the scenario) while `total`
+    # scales.
+    def _waterfall(total: float) -> dict:
+        tot_ = total if total > 0 else 1.0
+
+        if cheapest_flight_cost > 0:
+            transit_amt_ = min(cheapest_flight_cost, round(tot_ * 0.85, 2))
+        else:
+            transit_amt_ = round(tot_ * 0.30, 2)
+
+        rem_after_transit_ = max(tot_ - transit_amt_, round(tot_ * 0.15, 2))
+
+        if cheapest_hotel_cost > 0:
+            stay_amt_ = min(cheapest_hotel_cost, round(rem_after_transit_ * 0.60, 2))
+        else:
+            stay_amt_ = round(rem_after_transit_ * 0.45, 2)
+
+        rem_for_food_act_ = max(tot_ - (transit_amt_ + stay_amt_), round(tot_ * 0.05, 2))
+        food_amt_ = round(rem_for_food_act_ * 0.60, 2)
+        activities_amt_ = round(tot_ - (stay_amt_ + transit_amt_ + food_amt_), 2)
+
+        return {
+            "stay": stay_amt_,
+            "transit": transit_amt_,
+            "food": food_amt_,
+            "activities": activities_amt_,
+            "total": tot_,
+        }
+
     tot = float(budget) if budget > 0 else 1.0
-    
-    if cheapest_flight_cost > 0:
-        transit_amt = min(cheapest_flight_cost, round(tot * 0.85, 2))
-    else:
-        transit_amt = round(tot * 0.30, 2)
+    budget_breakdown = _waterfall(tot)
+    stay_amt = budget_breakdown["stay"]
+    transit_amt = budget_breakdown["transit"]
+    food_amt = budget_breakdown["food"]
+    activities_amt = budget_breakdown["activities"]
 
-    rem_after_transit = max(tot - transit_amt, round(tot * 0.15, 2))
-
-    if cheapest_hotel_cost > 0:
-        stay_amt = min(cheapest_hotel_cost, round(rem_after_transit * 0.60, 2))
-    else:
-        stay_amt = round(rem_after_transit * 0.45, 2)
-
-    rem_for_food_act = max(tot - (transit_amt + stay_amt), round(tot * 0.05, 2))
-    food_amt = round(rem_for_food_act * 0.60, 2)
-    activities_amt = round(tot - (stay_amt + transit_amt + food_amt), 2)
-
-    budget_breakdown = {
-        "stay": stay_amt,
-        "transit": transit_amt,
-        "food": food_amt,
-        "activities": activities_amt,
-        "total": tot,
+    budget_scenarios = {
+        "minimum": _waterfall(tot * _SCENARIO_MULTIPLIERS["minimum"]),
+        "recommended": budget_breakdown,
+        "comfortable": _waterfall(tot * _SCENARIO_MULTIPLIERS["comfortable"]),
     }
 
     stay_pct = round((stay_amt / tot) * 100)
@@ -708,17 +738,64 @@ async def generate_odyssey(
             len(verified_sources),
         )
 
+    final_currency = str(plan.get("currency") or currency)
+    visa_text = str(plan.get("visa") or plan.get("visa_status") or "")
+
+    # Verdict: "is the budget realistic" is answered deterministically by the
+    # same cost floor that already gates generation in itineraries.py — no
+    # need to ask Gemini to judge it. Only "biggest_risk" comes from the model.
+    floor = trip_cost_floor.minimum_budget(
+        destination=final_destination,
+        days=g_days,
+        travelers=travelers,
+        currency=final_currency,
+        departure_country=departure_country,
+        include_flights=include_flights,
+    )
+    feasible = floor is None or budget >= floor["minimum"]
+    minimum_required = floor["minimum"] if floor else None
+    if floor is None:
+        budget_tightness = "unknown"
+    elif (budget - floor["minimum"]) / floor["minimum"] < 0.2:
+        budget_tightness = "tight"
+    else:
+        budget_tightness = "comfortable"
+    if not feasible:
+        recommendation = (
+            f"Reconsider — raise the budget to at least {final_currency} "
+            f"{minimum_required:,.0f} to realistically cover this trip."
+        )
+    elif budget_tightness == "tight":
+        recommendation = "Proceed, but budget is tight — there's little buffer for extras."
+    else:
+        recommendation = "Proceed — budget and timing look workable."
+    verdict = {
+        "feasible": feasible,
+        "budget_tightness": budget_tightness,
+        "minimum_required": minimum_required,
+        "biggest_risk": str(plan.get("biggest_risk") or "").strip(),
+        "recommendation": recommendation,
+    }
+
+    practical_info = _practical_info(plan.get("practical_info"))
+    booking_plan = _assemble_booking_plan(
+        primary_flight=primary_flight,
+        primary_hotel=primary_hotel,
+        booking_partners=plan.get("booking_partners") or [],
+        visa_text=visa_text,
+    )
+
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
         budget=budget,
-        currency=str(plan.get("currency") or currency),
+        currency=final_currency,
         days=g_days,
         nights=nights,
         travelers=travelers,
         summary=str(plan.get("summary") or ""),
         budget_split=harmonized_budget_split,
-        visa=str(plan.get("visa") or plan.get("visa_status") or ""),
+        visa=visa_text,
         logistics=_logistics_text(plan.get("logistics")),
         booking_partners=plan.get("booking_partners") or [],
         cover_url=cover_url,
@@ -730,6 +807,10 @@ async def generate_odyssey(
         budget_breakdown=budget_breakdown,
         budget_advisory="",
         verified_sources=verified_sources,
+        verdict=verdict,
+        budget_scenarios=budget_scenarios,
+        practical_info=practical_info,
+        booking_plan=booking_plan,
     )
 
     day_items: list[dict] = []
@@ -1055,7 +1136,14 @@ Return ONLY a JSON object with EXACTLY this shape:
     "total": {int(budget)}
   }},
   "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
+  "biggest_risk": "One sentence (under 20 words) naming the single biggest risk/watch-out specific to this trip — peak-season crowding, monsoon/weather timing, visa processing lead time, etc. Do not just restate the visa line.",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
+  "practical_info": {{
+    "money": "1-2 sentences: cash vs card norms, ATM availability, typical tipping.",
+    "connectivity": "1-2 sentences: local SIM/eSIM options or WiFi availability.",
+    "safety": "1-2 sentences: general safety notes or areas needing caution.",
+    "customs": "1-2 sentences: key local etiquette to respect."
+  }},
   "booking_partners": [
     {{ "name": "Booking.com", "type": "hotels", "url": "https://www.booking.com" }},
     {{ "name": "Viator", "type": "tours", "url": "https://www.viator.com" }},
@@ -1259,6 +1347,67 @@ def _logistics_text(raw) -> str:
     if isinstance(raw, list):
         return "\n".join(f"{i + 1}. {step}" for i, step in enumerate(raw))
     return ""
+
+
+def _practical_info(raw) -> dict:
+    d = raw if isinstance(raw, dict) else {}
+    return {k: str(d.get(k) or "").strip() for k in ("money", "connectivity", "safety", "customs")}
+
+
+def _assemble_booking_plan(
+    *,
+    primary_flight: dict | None,
+    primary_hotel: dict | None,
+    booking_partners: list,
+    visa_text: str,
+) -> list[dict]:
+    """Turns already-generated flight/hotel/partner data into a priority-ordered
+    checklist. No LLM call — everything here was already fetched or generated."""
+    visa_lower = visa_text.lower()
+    visa_required = bool(visa_text.strip()) and not any(
+        p in visa_lower for p in ("no visa", "visa-free", "visa free", "domestic")
+    )
+    booking_label = "BOOK AFTER VISA" if visa_required else "BOOK NOW"
+
+    plan: list[dict] = []
+    if visa_required:
+        plan.append({
+            "label": "BOOK AFTER VISA",
+            "item": "Any non-refundable booking",
+            "reason": visa_text,
+            "url": "",
+        })
+    if primary_flight and primary_flight.get("name"):
+        plan.append({
+            "label": booking_label,
+            "item": str(primary_flight.get("name") or "Flight"),
+            "reason": visa_text if visa_required else "Confirmed live fare — prices move, lock it in early.",
+            "url": str(primary_flight.get("booking_url") or ""),
+        })
+    if primary_hotel and primary_hotel.get("name"):
+        plan.append({
+            "label": booking_label,
+            "item": str(primary_hotel.get("name") or "Hotel"),
+            "reason": visa_text if visa_required else "Confirmed live rate — lock it in early.",
+            "url": str(primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link") or ""),
+        })
+    for p in booking_partners:
+        if not isinstance(p, dict):
+            continue
+        p_type = str(p.get("type") or "").strip().lower()
+        if p_type == "tours":
+            label, reason = "BOOK CLOSER TO TRAVEL", "Tours and activities are usually flexible closer to the date."
+        elif p_type == "transit":
+            label, reason = "CAN WAIT", "Local transit is easy to arrange on arrival."
+        else:
+            continue
+        plan.append({
+            "label": label,
+            "item": str(p.get("name") or ""),
+            "reason": reason,
+            "url": str(p.get("url") or ""),
+        })
+    return plan
 
 
 def _as_int(value, default: int) -> int:
