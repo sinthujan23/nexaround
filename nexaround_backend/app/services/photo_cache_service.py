@@ -19,14 +19,38 @@ _CACHE_DIR = Path("app/static/photo_cache")
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def _safe_name(photo_reference: str, maxwidth: int) -> str:
-    # photo_references can be hundreds of chars; hash to a stable short name.
-    h = hashlib.sha256(f"{photo_reference}:{maxwidth}".encode()).hexdigest()
+def _stable_identity(photo_reference: str, index: int) -> str:
+    """The part of a photo reference that survives a refetch.
+
+    Places API (New) mints a *fresh token per response*, so the reference as a
+    whole names one reply, not one photo: ask for the same place twice and the
+    same image comes back under two different names. Keyed on that, the cache
+    could never hit twice — every refetch re-keyed every image to a filename
+    nothing had ever written, which is why 6k cached photos were serving a 16%
+    hit rate and most places fell through to their category placeholder.
+
+    What does hold is the place and the photo's position within it. Verified
+    rather than assumed: photo[0] fetched through two independently obtained
+    references returned byte-identical data.
+    """
+    if photo_reference.startswith("places/") and "/photos/" in photo_reference:
+        place_id = photo_reference.split("/", 2)[1]
+        return f"{place_id}#{index}"
+    # Legacy bare references were stable, and rows still carry ~4k of them, so
+    # they stay keyed on themselves and keep hitting the files already on disk.
+    return photo_reference
+
+
+def _safe_name(photo_reference: str, maxwidth: int, index: int = 0) -> str:
+    # References run to hundreds of chars; hash the stable identity to a short name.
+    h = hashlib.sha256(
+        f"{_stable_identity(photo_reference, index)}:{maxwidth}".encode()
+    ).hexdigest()
     return f"{h}.jpg"
 
 
-def cached_path(photo_reference: str, maxwidth: int) -> Path:
-    return _CACHE_DIR / _safe_name(photo_reference, maxwidth)
+def cached_path(photo_reference: str, maxwidth: int, index: int = 0) -> Path:
+    return _CACHE_DIR / _safe_name(photo_reference, maxwidth, index)
 
 
 # Lock per filename so a thundering herd doesn't fetch the same photo twice.
@@ -41,10 +65,14 @@ def _lock_for(name: str) -> asyncio.Lock:
     return lock
 
 
-async def get_or_fetch(photo_reference: str, maxwidth: int = 800) -> Optional[Path]:
+async def get_or_fetch(
+    photo_reference: str, maxwidth: int = 800, index: int = 0
+) -> Optional[Path]:
     """Return the local cached file path. Downloads from Google on first hit."""
-    path = cached_path(photo_reference, maxwidth)
-    cache_key = f"photo:{photo_reference[:180]}:{maxwidth}"
+    path = cached_path(photo_reference, maxwidth, index)
+    # Grouped on the stable identity too, so the dashboard counts one photo
+    # once instead of once per token it has ever been handed out under.
+    cache_key = f"photo:{_stable_identity(photo_reference, index)}:{maxwidth}"
     if path.exists() and path.stat().st_size > 0:
         # ~99% of photo requests land here. Recording them is what turns the
         # disk cache from invisible into the strongest number on the dashboard.

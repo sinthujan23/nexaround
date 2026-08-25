@@ -474,9 +474,21 @@ class GooglePlacesService {
       if (response.statusCode == 200) {
         final data = response.data;
         final List<dynamic> placesList = data['places'] as List? ?? [];
-        final models = placesList
+        final rawModels = placesList
             .map((p) => AttractionModel.fromJson(p))
             .toList();
+
+        // Deduplicate search results
+        final Set<String> seenKeys = {};
+        final models = <AttractionModel>[];
+        for (final m in rawModels) {
+          final idKey = m.id.trim().toLowerCase();
+          final nameKey = m.name.trim().toLowerCase();
+          final key = idKey.isNotEmpty ? idKey : nameKey;
+          if (key.isNotEmpty && seenKeys.add(key)) {
+            models.add(m);
+          }
+        }
 
         // Sort by distance ascending if available
         models.sort((a, b) {
@@ -679,6 +691,19 @@ class GooglePlacesService {
           }
         } catch (_) {}
       }
+
+      // Deduplicate results
+      final Set<String> seenAutoKeys = {};
+      final List<Map<String, dynamic>> uniqueResults = [];
+      for (final item in results) {
+        final placeId = (item['place_id'] ?? '').toString().trim().toLowerCase();
+        final mainText = (item['main_text'] ?? item['name'] ?? item['description'] ?? '').toString().trim().toLowerCase();
+        final key = placeId.isNotEmpty ? placeId : mainText;
+        if (key.isNotEmpty && seenAutoKeys.add(key)) {
+          uniqueResults.add(item);
+        }
+      }
+      results = uniqueResults;
 
       // Store in memory cache
       if (results.isNotEmpty) {
@@ -1228,21 +1253,35 @@ Respond ONLY with a JSON array containing objects with these fields (do NOT wrap
   static List<AttractionEntity> _filterAndDeduplicate(
       List<AttractionEntity> places, String categoryName) {
     final List<AttractionEntity> finalPlaces = [];
-    final Set<String> seenShoppingNames = {};
+    final Set<String> seenIds = {};
+    final Set<String> seenNames = {};
 
     for (final p in places) {
-      final nameLower = p.name.toLowerCase();
+      final idLower = p.id.trim().toLowerCase();
+      final nameLower = p.name.trim().toLowerCase();
+
+      // Deduplicate by place ID if present
+      if (idLower.isNotEmpty && seenIds.contains(idLower)) {
+        continue;
+      }
+      // Deduplicate by exact place name
+      if (nameLower.isNotEmpty && seenNames.contains(nameLower)) {
+        continue;
+      }
+
       if (categoryName == 'Shopping') {
         bool isDuplicate = false;
-        for (final seen in seenShoppingNames) {
+        for (final seen in seenNames) {
           if (nameLower.contains(seen) || seen.contains(nameLower)) {
             isDuplicate = true;
             break;
           }
         }
         if (isDuplicate) continue;
-        seenShoppingNames.add(nameLower);
       }
+
+      if (idLower.isNotEmpty) seenIds.add(idLower);
+      if (nameLower.isNotEmpty) seenNames.add(nameLower);
       finalPlaces.add(p);
     }
     return finalPlaces;

@@ -90,6 +90,147 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
     return None
 
 
+# Places API (New) stand-ins for two legacy endpoints. The legacy Places API is
+# deprecated, and on this project it is quota-capped: every legacy
+# `place/autocomplete` and `place/details` call comes back OVER_QUERY_LIMIT
+# ("exceeded your daily request quota for this API") while Places API (New)
+# answers the same questions on the same key without complaint — which is why
+# /places/search and /places/nearby, already on New, kept working throughout.
+#
+# The proxy calls New upstream and reshapes the answer back into the legacy
+# envelope the app already parses (`predictions[]`, `result{}`), so no client
+# release is needed and the cache keys, SKUs and spend accounting are unchanged.
+_PLACES_NEW_AUTOCOMPLETE = "https://places.googleapis.com/v1/places:autocomplete"
+_PLACES_NEW_DETAILS = "https://places.googleapis.com/v1/places"
+
+# What the app reads off a details result. Requested explicitly because New
+# bills by field mask, so asking for everything would cost more than the legacy
+# call it replaces.
+_DETAILS_FIELD_MASK = (
+    "id,displayName,formattedAddress,location,rating,userRatingCount,photos"
+)
+
+
+def _to_legacy_autocomplete(data: dict) -> dict:
+    """Reshape a Places API (New) autocomplete answer into the legacy envelope."""
+    predictions = []
+    for suggestion in data.get("suggestions") or []:
+        # `queryPrediction` entries carry no place_id, and the app's next step is
+        # always a details lookup by id, so they are dropped rather than shown.
+        pred = suggestion.get("placePrediction")
+        if not pred:
+            continue
+        text = (pred.get("text") or {}).get("text") or ""
+        fmt = pred.get("structuredFormat") or {}
+        main = (fmt.get("mainText") or {}).get("text") or text
+        secondary = (fmt.get("secondaryText") or {}).get("text") or ""
+        predictions.append({
+            "description": text,
+            "place_id": pred.get("placeId")
+                        or (pred.get("place") or "").replace("places/", ""),
+            "structured_formatting": {
+                "main_text": main,
+                "secondary_text": secondary,
+            },
+            "types": pred.get("types") or [],
+        })
+    return {
+        "status": "OK" if predictions else "ZERO_RESULTS",
+        "predictions": predictions,
+    }
+
+
+def _to_legacy_details(data: dict) -> dict:
+    """Reshape a Places API (New) place into the legacy `result` envelope."""
+    loc = data.get("location") or {}
+    # New names a photo `places/X/photos/Y`; that is exactly what
+    # /places/photo already accepts and what google_places_client builds its
+    # media URL from, so the reference passes through unchanged.
+    photos = [
+        {"photo_reference": ph["name"]}
+        for ph in (data.get("photos") or [])
+        if ph.get("name")
+    ]
+    return {
+        "status": "OK",
+        "result": {
+            "place_id": data.get("id") or "",
+            "name": (data.get("displayName") or {}).get("text") or "",
+            "formatted_address": data.get("formattedAddress") or "",
+            "geometry": {
+                "location": {
+                    "lat": loc.get("latitude"),
+                    "lng": loc.get("longitude"),
+                }
+            },
+            "rating": data.get("rating"),
+            "user_ratings_total": data.get("userRatingCount"),
+            "photos": photos,
+        },
+    }
+
+
+def _legacy_error(data: dict) -> dict:
+    """Carry a New-API error across in the legacy shape, so the app's existing
+    "non-OK means show what you have" handling still applies."""
+    err = data.get("error") or {}
+    return {
+        "status": err.get("status") or "UNKNOWN_ERROR",
+        "error_message": err.get("message") or "",
+        "predictions": [],
+    }
+
+
+async def _google_places_new(
+    client: httpx.AsyncClient, path: str, params: dict, api_key: str
+) -> tuple[httpx.Response, str]:
+    """Serve a legacy Places path off Places API (New).
+
+    Returns the upstream response — so telemetry still reads the real HTTP
+    status and any provider-level error out of it — alongside the legacy-shaped
+    body to cache and return.
+    """
+    headers = {"X-Goog-Api-Key": api_key, "Content-Type": "application/json"}
+
+    if path.startswith("place/autocomplete"):
+        body: dict = {"input": (params.get("input") or "").strip()}
+        if params.get("language"):
+            body["languageCode"] = params["language"]
+        # A *bias*, never a restriction: the whole point of the app's two-phase
+        # search is that a destination far from the user still has to match, so
+        # narrowing the search area here would reintroduce the bug the
+        # location-aware cache key was added to fix.
+        lat, _, lng = (params.get("location") or "").partition(",")
+        if lat and lng:
+            try:
+                body["locationBias"] = {"circle": {
+                    "center": {"latitude": float(lat), "longitude": float(lng)},
+                    "radius": min(float(params.get("radius") or 50000), 50000.0),
+                }}
+            except (TypeError, ValueError):
+                pass
+        resp = await client.post(
+            _PLACES_NEW_AUTOCOMPLETE, json=body, headers=headers, timeout=30.0)
+        data = resp.json()
+        shaped = _legacy_error(data) if "error" in data else _to_legacy_autocomplete(data)
+        return resp, json.dumps(shaped)
+
+    place_id = (params.get("place_id") or params.get("placeid") or "").strip()
+    place_id = place_id.replace("places/", "")
+    resp = await client.get(
+        f"{_PLACES_NEW_DETAILS}/{place_id}",
+        headers={**headers, "X-Goog-FieldMask": _DETAILS_FIELD_MASK},
+        params={"languageCode": params["language"]} if params.get("language") else None,
+        timeout=30.0,
+    )
+    data = resp.json()
+    if "error" in data:
+        err = _legacy_error(data)
+        err.pop("predictions", None)
+        return resp, json.dumps(err)
+    return resp, json.dumps(_to_legacy_details(data))
+
+
 # How long a cached answer stays good, per operation. These are properties of
 # the data, not guesses: a place's identity and its coordinates do not change,
 # a route does when traffic does.
@@ -336,12 +477,28 @@ async def proxy_google_maps(
                                             status_code=200,
                                             media_type="application/json")
 
-                    resp = await client.get(url, params=params, timeout=30.0)
+                    # Autocomplete and details are answered by Places API (New)
+                    # and translated back; everything else still goes to the
+                    # legacy endpoint it was written against.
+                    if path.startswith(("place/autocomplete", "place/details")):
+                        resp, body = await _google_places_new(
+                            client, path, params, api_key)
+                    else:
+                        resp = await client.get(url, params=params, timeout=30.0)
+                        body = resp.text
                     t.upstream(resp)
 
                     if redis_key and resp.status_code == 200:
-                        body = resp.text
-                        status = telemetry._extract_provider_status(resp)
+                        # For the translated paths the verdict lives in the
+                        # reshaped body: Places API (New) reports "found
+                        # nothing" as an empty result set with no status field
+                        # at all, which read off the raw response would look
+                        # like success and get cached for the full day instead
+                        # of the minute a negative answer is worth.
+                        if path.startswith(("place/autocomplete", "place/details")):
+                            status = json.loads(body).get("status")
+                        else:
+                            status = telemetry._extract_provider_status(resp)
                         if status in (None, "OK"):
                             await place_cache_service.set_raw(redis_key, body, ttl=ttl)
                         elif status == "ZERO_RESULTS":
@@ -349,7 +506,7 @@ async def proxy_google_maps(
                             # nothing is still billed, and the app retries it.
                             await place_cache_service.set_raw(
                                 redis_key, body, ttl=_NEGATIVE_TTL)
-                    return Response(content=resp.content, status_code=resp.status_code, media_type="application/json")
+                    return Response(content=body, status_code=resp.status_code, media_type="application/json")
         except HTTPException:
             raise
         except Exception as e:

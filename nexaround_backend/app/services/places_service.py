@@ -21,12 +21,16 @@ from app.utils.geo_utils import create_point, get_lat_lng
 from sqlalchemy import select, update
 
 
-def _photo_url(photo_reference: str) -> str:
+def _photo_url(photo_reference: str, index: int = 0) -> str:
     """Public URL the mobile app should hit to retrieve a photo.
 
     Routes through our backend so the Google API key never leaves the server.
+
+    `index` carries the photo's position so the disk cache can key on place +
+    position: the reference itself is reissued under a new token on every
+    Google response and is therefore useless as a cache identity.
     """
-    return f"/api/v1/places/photo?ref={photo_reference}"
+    return f"/api/v1/places/photo?ref={photo_reference}&i={index}"
 
 
 def _google_id_of(place: dict) -> Optional[str]:

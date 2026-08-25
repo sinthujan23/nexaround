@@ -348,8 +348,14 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
       if (additions.isNotEmpty && mounted) {
         setState(() {
-          _landmarks = [..._landmarks, ...additions];
-          _allLandmarks = [..._allLandmarks, ...additions];
+          final Set<String> seenLms = {};
+          _landmarks = [..._landmarks, ...additions]
+              .where((l) => seenLms.add(l.name.trim().toLowerCase()))
+              .toList();
+          final Set<String> seenAllLms = {};
+          _allLandmarks = [..._allLandmarks, ...additions]
+              .where((l) => seenAllLms.add(l.name.trim().toLowerCase()))
+              .toList();
           _capCache.clear();
         });
       }
@@ -2377,8 +2383,16 @@ class _ArCameraPageState extends State<ArCameraPage>
       // Helper: push whatever we have so far to the UI immediately
       void _pushProgressiveUpdate() {
         if (!mounted || collected.isEmpty) return;
+        final Set<String> seenLandmarkNames = {};
+        final uniqueCollected = <_ArLandmark>[];
+        for (final lm in collected) {
+          final nameKey = lm.name.trim().toLowerCase();
+          if (nameKey.isNotEmpty && seenLandmarkNames.add(nameKey)) {
+            uniqueCollected.add(lm);
+          }
+        }
         // Sort by distance for a clean display order
-        final sorted = List<_ArLandmark>.from(collected)
+        final sorted = uniqueCollected
           ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
         setState(() {
           _landmarks = sorted;
@@ -2412,7 +2426,12 @@ class _ArCameraPageState extends State<ArCameraPage>
             if (places.isNotEmpty) {
               for (final p in places) {
                 final lm = _toLandmark(p, radius.toDouble());
-                if (lm != null) collected.add(lm);
+                if (lm != null) {
+                  final nameKey = lm.name.trim().toLowerCase();
+                  if (!collected.any((e) => e.name.trim().toLowerCase() == nameKey)) {
+                    collected.add(lm);
+                  }
+                }
               }
               _pushProgressiveUpdate();
             }
@@ -3635,20 +3654,25 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     localMatches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
 
-    final localResults = localMatches
-        .take(8)
-        .map((lm) => {
-              'place_id': lm.name,
-              'main_text': lm.name,
-              'description': lm.description.isNotEmpty ? lm.description : lm.category,
-              'latitude': lm.lat,
-              'longitude': lm.lng,
-              'rating': lm.rating,
-              'category': lm.category,
-              'distance_m': lm.distanceM,
-              'distance_text': lm.distance,
-            })
-        .toList();
+    final Set<String> seenLocalNames = {};
+    final localResults = <Map<String, dynamic>>[];
+    for (final lm in localMatches) {
+      final nameKey = lm.name.trim().toLowerCase();
+      if (nameKey.isNotEmpty && seenLocalNames.add(nameKey)) {
+        localResults.add({
+          'place_id': lm.name,
+          'main_text': lm.name,
+          'description': lm.description.isNotEmpty ? lm.description : lm.category,
+          'latitude': lm.lat,
+          'longitude': lm.lng,
+          'rating': lm.rating,
+          'category': lm.category,
+          'distance_m': lm.distanceM,
+          'distance_text': lm.distance,
+        });
+      }
+      if (localResults.length >= 8) break;
+    }
 
     if (localResults.isNotEmpty) {
       updateState(() {
@@ -3760,7 +3784,17 @@ class _ArCameraPageState extends State<ArCameraPage>
       if (mounted) {
         updateState(() {
           if (results.isNotEmpty) {
-            _searchResults = results;
+            final Set<String> seenKeys = {};
+            final List<Map<String, dynamic>> uniqueResults = [];
+            for (final r in results) {
+              final idKey = (r['place_id'] ?? '').toString().trim().toLowerCase();
+              final textKey = (r['main_text'] ?? r['name'] ?? r['description'] ?? '').toString().trim().toLowerCase();
+              final key = idKey.isNotEmpty ? idKey : textKey;
+              if (key.isNotEmpty && seenKeys.add(key)) {
+                uniqueResults.add(r);
+              }
+            }
+            _searchResults = uniqueResults;
           }
           _isGoogleSearching = false;
         });

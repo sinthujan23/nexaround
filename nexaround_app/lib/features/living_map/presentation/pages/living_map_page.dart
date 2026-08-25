@@ -5844,16 +5844,8 @@ class _LivingMapPageState extends State<LivingMapPage>
       // size of the local pool standing in for it — a card quietly showing five
       // weak places instead of the backend's ten looks like bad data rather
       // than a fetch that never landed, and the two need telling apart.
-      final local = selectBandedPlaces(
-        allPlaces: grouped[category] ?? [],
-        category: category,
-      );
-      debugPrint(
-        '⚠️ Around You "$category": no banded data '
-        '(loading=${context.read<MapBloc>().state.loadingBandCategories.contains(category)}) — '
-        'falling back to ${local.length} local place(s)',
-      );
-      grouped[category] = local;
+      // Do not fall back to past locations; show fresh data for current position only
+      grouped[category] = [];
     }
 
     final allGroupedPlaces = grouped.values.expand((x) => x).toList();
@@ -5940,40 +5932,9 @@ class _LivingMapPageState extends State<LivingMapPage>
     // result lands.
     final stillEnriching =
         context.read<MapBloc>().state.enrichingCategories.contains(categoryName);
-    if ((status == MapStatus.loading || stillEnriching) && places.isEmpty) {
-      return Align(
-        alignment: Alignment.topCenter,
-        child: Container(
-          width: 320,
-          height: 310,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withOpacity(0.92),
-                Colors.white.withOpacity(0.70),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: themeColor.withOpacity(0.24),
-              width: 1.2,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Center(child: CircularProgressIndicator(color: themeColor)),
-        ),
-      );
-    }
-    
-    if (places.isEmpty) {
+    final bool isLoadingState = (status == MapStatus.loading || stillEnriching);
+
+    if (places.isEmpty && !isLoadingState) {
       return Align(
         alignment: Alignment.topCenter,
         child: Container(
@@ -6140,13 +6101,19 @@ class _LivingMapPageState extends State<LivingMapPage>
                   const SizedBox(height: 12),
                   Builder(builder: (_) {
                     final displayPlaces = places.take(10).toList();
+                    final int loadedCount = displayPlaces.length;
+                    final int itemCount = (isLoadingState ? 10 : loadedCount).clamp(0, 10);
+
                     return ListView.separated(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
                       padding: EdgeInsets.zero,
-                      itemCount: displayPlaces.length,
+                      itemCount: itemCount,
                       separatorBuilder: (context, index) => const SizedBox(height: 5),
                       itemBuilder: (context, index) {
+                        if (index >= loadedCount) {
+                          return WaveSkeletonRow(themeColor: themeColor);
+                        }
                         final place = displayPlaces[index];
                       final distKm = _getAccurateDistanceM(place) / 1000.0;
                       final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()}m' : '${distKm.toStringAsFixed(1)}km';
@@ -7185,4 +7152,92 @@ class AiExperience {
     required this.bestFor,
     required this.confidence,
   });
+}
+
+class WaveSkeletonRow extends StatefulWidget {
+  final Color themeColor;
+  final double height;
+
+  const WaveSkeletonRow({
+    Key? key,
+    required this.themeColor,
+    this.height = 34.0,
+  }) : super(key: key);
+
+  @override
+  State<WaveSkeletonRow> createState() => _WaveSkeletonRowState();
+}
+
+class _WaveSkeletonRowState extends State<WaveSkeletonRow>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, child) {
+        final v = _controller.value;
+        return Container(
+          height: widget.height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: widget.themeColor.withOpacity(0.12),
+              width: 0.8,
+            ),
+            gradient: LinearGradient(
+              begin: Alignment(-1.0 + (v * 3.0), -0.2),
+              end: Alignment(-0.2 + (v * 3.0), 0.2),
+              colors: [
+                Colors.white.withOpacity(0.45),
+                widget.themeColor.withOpacity(0.20),
+                Colors.white.withOpacity(0.45),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            child: Row(
+              children: [
+                Container(
+                  width: 110,
+                  height: 11,
+                  decoration: BoxDecoration(
+                    color: widget.themeColor.withOpacity(0.22),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  width: 35,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: widget.themeColor.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 }

@@ -131,6 +131,13 @@ async def search_places(
 async def get_place_photo(
     ref: str = Query(..., min_length=10, description="Google photo_reference"),
     maxwidth: int = Query(800, ge=100, le=1600),
+    i: int = Query(
+        0, ge=0, le=9,
+        description="Which of the place's photos this is. The cache is keyed on "
+                    "place + position because the reference itself is reissued "
+                    "under a new token on every Google response. Defaults to 0 "
+                    "so URLs minted before this keep resolving.",
+    ),
     current_user: Optional[User] = Depends(get_current_user_optional),
 ):
     """Stream a Place Photo via our cache.
@@ -145,7 +152,7 @@ async def get_place_photo(
     signed-in caller may trigger the first fetch for a photo we do not hold yet.
     """
     if current_user is None:
-        path = photo_cache_service.cached_path(ref, maxwidth)
+        path = photo_cache_service.cached_path(ref, maxwidth, i)
         cached = path.exists() and path.stat().st_size > 0
         # Recorded here rather than left to get_or_fetch, which this branch
         # deliberately skips. Anonymous image loads are the bulk of photo
@@ -153,14 +160,14 @@ async def get_place_photo(
         # effective than it is.
         async with telemetry.track(
             "internal", "place_photo",
-            cache_key=f"photo:{ref[:180]}:{maxwidth}",
+            cache_key=f"photo:{photo_cache_service._stable_identity(ref, i)}:{maxwidth}",
         ) as t:
             t.hit("disk" if cached else "negative")
         if not cached:
             # Not cached and no credentials to justify buying it.
             raise HTTPException(status_code=404, detail="Photo not cached")
     else:
-        path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth)
+        path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth, index=i)
         if path is None:
             raise HTTPException(status_code=502, detail="Photo unavailable")
 

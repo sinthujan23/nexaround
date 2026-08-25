@@ -715,10 +715,10 @@ def to_place_dict(
     photos = place.get("photos") or []
     photo_urls = []
     if photos and photo_url_builder:
-        for ph in photos[:2]:
+        for idx, ph in enumerate(photos[:2]):
             ref = ph.get("name")
             if ref:
-                photo_urls.append(photo_url_builder(ref))
+                photo_urls.append(photo_url_builder(ref, idx))
 
     return {
         "id": place.get("id") or "",
@@ -866,10 +866,10 @@ def to_place_dict_legacy(
     photos = place.get("photos") or []
     photo_urls = []
     if photos and photo_url_builder:
-        for ph in photos[:2]:
+        for idx, ph in enumerate(photos[:2]):
             ref = ph.get("photo_reference")
             if ref:
-                photo_urls.append(photo_url_builder(ref))
+                photo_urls.append(photo_url_builder(ref, idx))
 
     return {
         "id": place.get("place_id") or "",
@@ -997,14 +997,19 @@ async def find_place_id_legacy(
         print("⚠️ google_maps_api_key not set in admin settings — cannot resolve place id")
         return None
 
-    params = {
-        "input": clean_name,
-        "inputtype": "textquery",
-        "fields": "place_id",
-        "key": google_maps_key,
-    }
+    # Places API (New) Text Search stands in for legacy Find Place, whose quota
+    # is capped on this project — an unresolved id meant the detail page fell
+    # back to the sparse local row for every attraction predating
+    # `google_place_id`. One result is all this needs: it is resolving an
+    # identifier, not offering a choice.
+    body: dict = {"textQuery": clean_name, "maxResultCount": 1}
     if latitude is not None and longitude is not None:
-        params["locationbias"] = f"circle:200@{latitude},{longitude}"
+        # Same tight circle as before, and for the same reason: the stored names
+        # are generic enough that a wide bias matches the wrong branch.
+        body["locationBias"] = {"circle": {
+            "center": {"latitude": latitude, "longitude": longitude},
+            "radius": 200.0,
+        }}
 
     # Same shape and same ~500m grid the proxy uses for its own Find Place key,
     # so both paths land in one group in the duplicates panel instead of looking
@@ -1019,32 +1024,113 @@ async def find_place_id_legacy(
         client = await _get_http_client()
         async with _google_call_semaphore:
             async with telemetry.track(
-                "google_maps", "findplacefromtext",
+                "google_maps", "resolve_place_id",
                 sku="find_place_basic",
                 cache_key=cache_key,
             ) as t:
-                resp = await client.get(f"{_BASE}/place/findplacefromtext/json", params=params)
+                resp = await client.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    json=body,
+                    headers={
+                        "X-Goog-Api-Key": google_maps_key,
+                        "Content-Type": "application/json",
+                        "X-Goog-FieldMask": "places.id",
+                    },
+                )
                 t.upstream(resp)
         resp.raise_for_status()
         data = resp.json()
 
-        status = data.get("status")
-        if status not in ("OK", "ZERO_RESULTS"):
-            print(f"⚠️ Find Place legacy status {status}: {data.get('error_message')}")
+        if "error" in data:
+            err = data.get("error") or {}
+            print(f"⚠️ Places API (New) text search {err.get('status')}: {err.get('message')}")
             return None
 
-        candidates = data.get("candidates") or []
+        candidates = data.get("places") or []
         if not candidates:
             return None
-        return candidates[0].get("place_id") or None
+        return candidates[0].get("id") or None
     except Exception as e:
         print(f"⚠️ Error resolving place id for {clean_name!r}: {e}")
         return None
 
 
+# Fields the detail page renders, named as Places API (New) names them. New
+# bills by the tier the mask reaches into, so this is the same bargain the
+# legacy `fields` list struck: Essentials/Pro for identity and geometry,
+# Enterprise for opening hours, Enterprise+Atmosphere for rating, reviews and
+# price. Nothing here is fetched that the page does not draw.
+_DETAILS_FIELD_MASK_NEW = (
+    "id,displayName,formattedAddress,location,rating,userRatingCount,"
+    "reviews,regularOpeningHours,priceLevel,photos"
+)
+
+_PRICE_LEVEL_TO_LEGACY = {
+    "PRICE_LEVEL_FREE": 0,
+    "PRICE_LEVEL_INEXPENSIVE": 1,
+    "PRICE_LEVEL_MODERATE": 2,
+    "PRICE_LEVEL_EXPENSIVE": 3,
+    "PRICE_LEVEL_VERY_EXPENSIVE": 4,
+}
+
+
+def _new_details_to_legacy_result(data: dict) -> dict:
+    """Reshape a Places API (New) place into the legacy `result` object.
+
+    The parsing below this was written against legacy and is correct — the
+    closing-time regex, the price table, the photo-reference handling. Adapting
+    the payload instead of rewriting that keeps the change to the transport.
+
+    One thing survives the move unchanged by luck rather than design, and is
+    worth naming: `weekdayDescriptions` starts on Monday exactly as legacy's
+    `weekday_text` did, so the `datetime.weekday()` index into it still lines up.
+    """
+    loc = data.get("location") or {}
+    hours = data.get("regularOpeningHours") or {}
+    return {
+        "place_id": data.get("id") or "",
+        "name": (data.get("displayName") or {}).get("text") or "",
+        "formatted_address": data.get("formattedAddress") or "",
+        "geometry": {"location": {
+            "lat": loc.get("latitude"),
+            "lng": loc.get("longitude"),
+        }},
+        "rating": data.get("rating"),
+        "user_ratings_total": data.get("userRatingCount"),
+        "reviews": [
+            {
+                "author_name": (r.get("authorAttribution") or {}).get("displayName"),
+                "rating": r.get("rating"),
+                # `text` is the localised rendering, `originalText` the language
+                # it was written in; the page shows whichever exists.
+                "text": (r.get("text") or {}).get("text")
+                        or (r.get("originalText") or {}).get("text") or "",
+                "relative_time_description": r.get("relativePublishTimeDescription"),
+            }
+            for r in (data.get("reviews") or [])
+        ],
+        "opening_hours": {
+            "open_now": hours.get("openNow"),
+            "weekday_text": hours.get("weekdayDescriptions") or [],
+        },
+        "price_level": _PRICE_LEVEL_TO_LEGACY.get(data.get("priceLevel")),
+        # New names a photo `places/X/photos/Y`, which is what /places/photo
+        # already accepts and what the media URL is built from downstream.
+        "photos": [
+            {"photo_reference": ph["name"]}
+            for ph in (data.get("photos") or []) if ph.get("name")
+        ],
+    }
+
+
 async def fetch_place_details(place_id: str) -> Optional[dict]:
-    """Fetch rich place details (reviews, opening_hours, photos) from Google Places
-    API (Legacy) using strict field filtering to minimize API billing.
+    """Fetch rich place details (reviews, opening_hours, photos) from Places API
+    (New), reshaped into the legacy result the parsing below expects.
+
+    Was legacy Place Details until that API's quota was capped on this project
+    and every call started returning OVER_QUERY_LIMIT — which is what emptied
+    the detail page of its photo, hours and reviews while the name and rating,
+    served from our own table, kept rendering.
     """
     async with async_session() as db:
         settings_service = SettingsService(db)
@@ -1056,47 +1142,34 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
 
     # Handle place ID (strip 'places/' if duplicated, then format for API)
     raw_id = place_id.replace("places/", "")
-    url = "https://maps.googleapis.com/maps/api/place/details/json"
-    
-    # Legacy Place Details bills per data *tier*, not per field, so trimming
-    # within a tier we already pay for saves nothing — this list is scoped to
-    # what the detail page actually renders so the payload and the parsing stay
-    # honest about it. Tiers engaged: Basic (place_id/name/address/geometry/
-    # photos), Contact (opening_hours), Atmosphere (rating/user_ratings_total/
-    # reviews/price_level). Dropped `editorial_summary`, `website` and both
-    # phone fields: fetched since the endpoint was written, never read by any
-    # caller.
-    fields = (
-        "place_id,name,formatted_address,geometry,rating,user_ratings_total,"
-        "reviews,opening_hours,photos,price_level"
-    )
-    params = {
-        "place_id": raw_id,
-        "fields": fields,
-        "key": google_maps_key,
-    }
 
     try:
         client = await _get_http_client()
         async with _google_call_semaphore:
             async with telemetry.track(
-                "google_maps", "place_details_legacy",
+                "google_maps", "place_details_rich",
                 sku="place_details",
-                cache_key=f"pdl:{raw_id}",
+                cache_key=f"pdr:{raw_id}",
             ) as t:
-                resp = await client.get(url, params=params)
+                resp = await client.get(
+                    f"https://places.googleapis.com/v1/places/{raw_id}",
+                    params={"languageCode": "en"},
+                    headers={
+                        "X-Goog-Api-Key": google_maps_key,
+                        "X-Goog-FieldMask": _DETAILS_FIELD_MASK_NEW,
+                    },
+                )
                 t.upstream(resp)
         resp.raise_for_status()
         data = resp.json()
 
-        status = data.get("status")
-        if status != "OK" and status != "ZERO_RESULTS":
-            print(f"⚠️ Google Place Details Legacy status {status}: {data.get('error_message')}")
-            if status != "ZERO_RESULTS":
-                return None
+        if "error" in data:
+            err = data.get("error") or {}
+            print(f"⚠️ Places API (New) details {err.get('status')}: {err.get('message')}")
+            return None
 
-        result = data.get("result") or {}
-        if not result:
+        result = _new_details_to_legacy_result(data)
+        if not result.get("place_id"):
             return None
 
         # Parse Places API (Legacy) response into normalized dict
@@ -1149,10 +1222,10 @@ async def fetch_place_details(place_id: str) -> Optional[dict]:
         # Photos (cap at 3)
         photos = result.get("photos") or []
         photo_urls = []
-        for ph in photos[:3]:
+        for idx, ph in enumerate(photos[:3]):
             ref = ph.get("photo_reference")
             if ref:
-                photo_urls.append(f"/api/v1/places/photo?ref={ref}")
+                photo_urls.append(f"/api/v1/places/photo?ref={ref}&i={idx}")
 
         return {
             "id": result.get("place_id") or place_id,

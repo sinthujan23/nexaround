@@ -735,18 +735,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         const SizedBox(height: 28),
         const Text('Nature Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_natureList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No natural spots found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._natureList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Nature', emoji: '🌳');
-          }),
+        _buildPlaceListWithSkeleton(
+          places: _natureList,
+          isLoading: isLoading,
+          emptyMessage: 'No natural spots found nearby.',
+          defaultCategory: 'Nature',
+          emoji: '🌳',
+        ),
       ],
     );
   }
@@ -798,18 +793,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         const SizedBox(height: 28),
         const Text('Hospitals Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_hospitalList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No hospitals found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._hospitalList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Hospital', emoji: '🏥');
-          }),
+        _buildPlaceListWithSkeleton(
+          places: _hospitalList,
+          isLoading: isLoading,
+          emptyMessage: 'No hospitals found nearby.',
+          defaultCategory: 'Hospital',
+          emoji: '🏥',
+        ),
       ],
     );
   }
@@ -1076,18 +1066,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         // Restaurant list
         const Text('Food & Dining Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_foodList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No food places found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._foodList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Food & Drink', emoji: '🍽');
-          }),
+        _buildPlaceListWithSkeleton(
+          places: _foodList,
+          isLoading: isLoading,
+          emptyMessage: 'No food places found nearby.',
+          defaultCategory: 'Food & Drink',
+          emoji: '🍽',
+        ),
       ],
     );
   }
@@ -1396,15 +1381,36 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     ).animate(onPlay: (controller) => controller.repeat()).shimmer(duration: 1200.ms, color: Colors.white54);
   }
 
-
-
-  Widget _buildPoiTab(bool isLoading) {
-    if (isLoading) {
-      return Column(
-        children: List.generate(5, (index) => _buildShimmerItemCard()),
+  Widget _buildPlaceListWithSkeleton({
+    required List<AttractionEntity> places,
+    required bool isLoading,
+    required String emptyMessage,
+    required String defaultCategory,
+    required String emoji,
+  }) {
+    final loadedCount = places.length;
+    if (loadedCount == 0 && !isLoading) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 40),
+        child: Center(child: Text(emptyMessage, style: const TextStyle(color: AppColors.textTertiary))),
       );
     }
 
+    final targetCount = isLoading ? 9 : loadedCount;
+    final itemCount = targetCount.clamp(0, 9);
+
+    return Column(
+      children: List.generate(itemCount, (index) {
+        if (index < loadedCount) {
+          final place = places[index];
+          return _buildExperienceCard(place, index, defaultCategory: defaultCategory, emoji: emoji);
+        }
+        return _buildShimmerItemCard();
+      }),
+    );
+  }
+
+  Widget _buildPoiTab(bool isLoading) {
     final pois = _poiList;
 
     return Column(
@@ -1463,16 +1469,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         // Curated List
         const Text('Points of Interest Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (pois.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No points of interest found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ...pois.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key);
-          }),
+        _buildPlaceListWithSkeleton(
+          places: pois,
+          isLoading: isLoading,
+          emptyMessage: 'No points of interest found nearby.',
+          defaultCategory: 'POI',
+          emoji: '📍',
+        ),
       ],
     );
   }
@@ -1822,18 +1825,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         const SizedBox(height: 28),
         const Text('Markets & Shops Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_shoppingList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No shops found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._shoppingList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Shopping', emoji: '🛍');
-          }),
+        _buildPlaceListWithSkeleton(
+          places: _shoppingList,
+          isLoading: isLoading,
+          emptyMessage: 'No shops found nearby.',
+          defaultCategory: 'Shopping',
+          emoji: '🛍',
+        ),
       ],
     );
   }
@@ -1895,18 +1893,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         const SizedBox(height: 28),
         const Text('Pharmacies & Clinics Around You', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
         const SizedBox(height: 14),
-        if (isLoading)
-          ...List.generate(5, (index) => _buildShimmerItemCard())
-        else if (_medicalList.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: Text('No medical facilities found nearby.', style: TextStyle(color: AppColors.textTertiary))),
-          )
-        else
-          ..._medicalList.asMap().entries.map((e) {
-            final a = e.value;
-            return _buildExperienceCard(a, e.key, defaultCategory: 'Medical', emoji: '💊');
-          }),
+        _buildPlaceListWithSkeleton(
+          places: _medicalList,
+          isLoading: isLoading,
+          emptyMessage: 'No medical facilities found nearby.',
+          defaultCategory: 'Medical',
+          emoji: '💊',
+        ),
       ],
     );
   }
