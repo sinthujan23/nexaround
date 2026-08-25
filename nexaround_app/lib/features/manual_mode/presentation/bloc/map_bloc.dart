@@ -175,7 +175,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // up immediately instead of sitting behind the slowest straggler.
     await Future.wait(
       bandedCategories.map((cat) async {
-        final bands = await GooglePlacesService.fetchBandedPlaces(
+        final result = await GooglePlacesService.fetchBandedPlaces(
           latitude: event.latitude,
           longitude: event.longitude,
           categoryName: cat,
@@ -189,7 +189,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         final merged = Map<String, List<List<AttractionEntity>>>.from(
           state.bandedPlaces,
         );
-        if (bands.isNotEmpty) merged[cat] = bands;
+        if (result.bands.isNotEmpty) merged[cat] = result.bands;
 
         final stillLoading = Set<String>.from(state.loadingBandCategories)
           ..remove(cat);
@@ -198,6 +198,42 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           bandedPlaces: merged,
           loadingBandCategories: stillLoading,
         ));
+
+        if (!result.pending) return;
+
+        // The near band was fast enough to answer with, but the farther bands
+        // came up short and are being filled in the background on the server.
+        // One best-effort catch-up, not a poll loop: by the time this fires,
+        // the background fill has almost always already landed and refreshed
+        // the server's own cache, so this re-fetch is a cheap read rather than
+        // a new Google call.
+        await Future.delayed(const Duration(seconds: 9));
+
+        // Skip the catch-up if the user has since moved somewhere else —
+        // otherwise a stale delayed result could overwrite a newer location's
+        // data for the same category key.
+        final lastLat = CacheService.getLastFetchLat();
+        final lastLng = CacheService.getLastFetchLng();
+        if (lastLat != null && lastLng != null) {
+          final movedM = geo.Geolocator.distanceBetween(
+            event.latitude, event.longitude, lastLat, lastLng,
+          );
+          if (movedM > 1000) return;
+        }
+
+        final catchUp = await GooglePlacesService.fetchBandedPlaces(
+          latitude: event.latitude,
+          longitude: event.longitude,
+          categoryName: cat,
+          perBand: PlaceBands.fetchPerBand,
+        );
+        if (catchUp.bands.isNotEmpty) {
+          final mergedAgain = Map<String, List<List<AttractionEntity>>>.from(
+            state.bandedPlaces,
+          );
+          mergedAgain[cat] = catchUp.bands;
+          emit(state.copyWith(bandedPlaces: mergedAgain));
+        }
       }),
     );
   }
@@ -269,11 +305,53 @@ class MapBloc extends Bloc<MapEvent, MapState> {
       ];
 
       final Map<String, AttractionEntity> uniqueAttractions = {};
+      // Phase A's raw per-category dedup map, carried into Phase B so a
+      // category that needs enriching resumes from exactly what Phase A had —
+      // not a second, disconnected merge.
+      final Map<String, Map<String, AttractionEntity>> categoryMergedMaps = {};
+      // Categories whose fast (database) layer alone came up short — same
+      // `< 15` threshold the single-phase code always used to decide whether
+      // to escalate to Google. These get a background enrichment pass in
+      // Phase B instead of making everyone wait for them up front.
+      final Set<String> categoriesNeedingEnrichment = {};
+
+      // Writes whatever was newly fetched THIS landing to the local cache
+      // (merge-safe — see CacheService.mergeAndCacheAttractions), then reloads
+      // the full merged cache and emits it. Called once after Phase A (fast)
+      // and again, independently, after each Phase B category that needed
+      // enrichment lands — so five fast categories are never held up by a
+      // sixth slow one.
+      Future<void> persistAndEmit(
+        List<AttractionEntity> newlyFetched, {
+        required Set<String> enriching,
+      }) async {
+        if (newlyFetched.isNotEmpty) {
+          final jsons = newlyFetched.map((a) => _attractionEntityToJson(a)).toList();
+          await CacheService.mergeAndCacheAttractions(jsons);
+        }
+        final mergedModels = _getFilteredCache(event.latitude, event.longitude);
+        final filteredAttractions = (event.categoryName != null && event.categoryName != 'All')
+            ? mergedModels.where((a) => _matchesCategory(a, event.categoryName)).toList()
+            : mergedModels;
+        emit(state.copyWith(
+          status: MapStatus.success,
+          attractions: filteredAttractions,
+          allAttractions: mergedModels,
+          selectedCategoryId: event.categoryId,
+          enrichingCategories: enriching,
+        ));
+      }
 
       try {
-        final mainFutures = categoriesToFetch.map((cat) async {
+        // ── PHASE A — fast layer only, all 7 categories in parallel ────────
+        // Just the database/cache step (plus its useLegacy retry) that used to
+        // be "step 1" of a 4-step chain. No Google calls here, so this is
+        // quick even on a cold location — the map/Around You/Discover paint
+        // with whatever the database already has while Phase B (below)
+        // quietly enriches whichever categories came up short.
+        final phaseAFutures = categoriesToFetch.map((cat) async {
           final targetCategories = ['POI', 'Food & Drink', 'Food', 'Attractions', 'Medical', 'Shopping', 'Hospital', 'Nature'];
-          
+
           if (targetCategories.contains(cat)) {
             // --- LAYER 1: Backend Database & Cache (Primary — 0 AI cost on hit) ---
             // Radius comes from the band table so the map fetch and the section
@@ -301,7 +379,6 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               repoList = repoRes.fold((_) => <AttractionEntity>[], (r) => r);
             }
 
-            var mergedList = repoList;
             final Map<String, AttractionEntity> mergedMap = {};
             void addPlaceToMerged(AttractionEntity p) {
               final normName = p.name.trim().toLowerCase();
@@ -317,102 +394,26 @@ class MapBloc extends Bloc<MapEvent, MapState> {
               }
               mergedMap[targetKey] = p;
             }
-
             for (final p in repoList) {
               addPlaceToMerged(p);
             }
+            categoryMergedMaps[cat] = mergedMap;
 
-            // --- LAYER 2: GOOGLE DISCOVERY (Fallback if < 15) ---
-            if (mergedList.length < 15) {
-              // POI was missing from this list, so its Google fallback searched
-              // 15 km while the primary query searched 50 — the outer band had
-              // nothing to draw on whenever the fallback was the path taken.
-              final discoveryRadius = _radiusForCategory(cat).round();
-              final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
+            // Matches the original "< 15" escalation threshold exactly — this
+            // is what used to gate Layer 2 inline; now it gates Phase B.
+            final needsEnrichment = repoList.length < 15;
+            if (needsEnrichment) categoriesNeedingEnrichment.add(cat);
 
-              // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)
-              try {
-                print('🔄 Primary method returned only ${mergedList.length} results for $cat. Falling back to fetchNearbyPlaces...');
-                final discoveryFallback = await GooglePlacesService.fetchNearbyPlaces(
-                  latitude: event.latitude,
-                  longitude: event.longitude,
-                  categoryName: discoveryCategory,
-                  radius: discoveryRadius,
-                );
-                for (final p in discoveryFallback) {
-                  // Force category name match for UI
-                  final correctedP = AttractionModel(
-                    id: p.id, name: p.name, description: p.description, history: p.history,
-                    latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
-                    categoryName: cat, address: p.address, openingHours: p.openingHours, 
-                    entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
-                    photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
-                  );
-                  addPlaceToMerged(correctedP);
-                }
-                mergedList = mergedMap.values.toList();
-                print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
-              } catch (e) {
-                print('⚠️ fetchNearbyPlaces fallback failed for $cat: $e');
-              }
-
-              // Fallback 2: Direct Google Nearby Search legacy API if still under 15
-              if (mergedList.length < 15) {
-                try {
-                  print('🔄 Still only ${mergedList.length} results for $cat. Falling back to Google legacy Nearby Search...');
-                  final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
-                    latitude: event.latitude,
-                    longitude: event.longitude,
-                    categoryName: discoveryCategory,
-                    radius: discoveryRadius,
-                  );
-                  for (final p in legacyFallback) {
-                    final correctedP = AttractionModel(
-                      id: p.id, name: p.name, description: p.description, history: p.history,
-                      latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
-                      categoryName: cat, address: p.address, openingHours: p.openingHours, 
-                      entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
-                      photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                      distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
-                    );
-                    addPlaceToMerged(correctedP);
-                  }
-                  mergedList = mergedMap.values.toList();
-                  print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
-                } catch (e) {
-                  print('⚠️ Google legacy fallback also failed for $cat: $e');
-                }
-              }
-
-              // Recalculate distances and sort by proximity
-              mergedList = mergedList.map((p) {
-                final distM = geo.Geolocator.distanceBetween(
-                  event.latitude, event.longitude,
-                  p.latitude, p.longitude,
-                );
-                return AttractionModel(
-                  id: p.id, name: p.name, description: p.description, history: p.history,
-                  latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
-                  categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
-                  entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
-                  photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
-                  distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
-                );
-              }).toList();
-              mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-              print('✅ Final: ${mergedList.length} results for $cat (sorted by distance)');
-            }
+            // Same value the single-phase code showed when Layer 1 alone was
+            // already enough (raw repoList); otherwise the deduped map — Phase
+            // B builds further enrichment on top of this same mergedMap.
+            var mergedList = needsEnrichment ? mergedMap.values.toList() : repoList;
 
             if (cat == 'Nature' && mergedList.isNotEmpty) {
               mergedList = mergedList.where((p) => _isValidPlace(p.name, cat)).toList();
-              print('🛡️ Exclusion Filter applied for Nature: retained ${mergedList.length} places');
             }
 
-            if (mergedList.isNotEmpty) {
-              return mergedList;
-            }
-            return <AttractionEntity>[];
+            return mergedList.isNotEmpty ? mergedList : <AttractionEntity>[];
           } else {
             var repoRes = await _repository.getNearbyAttractions(
               latitude: event.latitude,
@@ -438,17 +439,18 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           }
         }).toList();
 
-        final results = await Future.wait(mainFutures);
+        final phaseAResults = await Future.wait(phaseAFutures);
 
-        final fetched = results.expand((x) => x).toList();
-        for (final a in fetched) {
-          // Use a composite key of name + categoryName so that the same physical
-          // place fetched under different categories is stored separately, each
-          // retaining its correct categoryName. Previously using only a.name
-          // caused the last-written category to overwrite earlier ones, which
-          // was the root cause of non-hospital places appearing in the Hospital tab.
-          final dedupeKey = '${a.name.trim().toLowerCase()}__${(a.categoryName ?? '').toLowerCase()}';
-          uniqueAttractions[dedupeKey] = a;
+        for (final list in phaseAResults) {
+          for (final a in list) {
+            // Use a composite key of name + categoryName so that the same physical
+            // place fetched under different categories is stored separately, each
+            // retaining its correct categoryName. Previously using only a.name
+            // caused the last-written category to overwrite earlier ones, which
+            // was the root cause of non-hospital places appearing in the Hospital tab.
+            final dedupeKey = '${a.name.trim().toLowerCase()}__${(a.categoryName ?? '').toLowerCase()}';
+            uniqueAttractions[dedupeKey] = a;
+          }
         }
 
         // Recompute user-centric distances relative to original lat/lng coordinates
@@ -486,8 +488,12 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           }
         }
 
-        if (attractionsList.isEmpty) {
-          // If network results are completely empty (offline/no network), load cache
+        // Only a genuine dead end — nothing fetched AND nothing left to try in
+        // Phase B — falls back to cache. Checking this against Phase A alone
+        // (without categoriesNeedingEnrichment) would wrongly short-circuit a
+        // brand-new location before Phase B ever gets a chance to run, which
+        // is exactly the case this whole restructuring is for.
+        if (attractionsList.isEmpty && categoriesNeedingEnrichment.isEmpty) {
           final cachedModels = _getFilteredCache(event.latitude, event.longitude);
           if (cachedModels.isNotEmpty) {
             emit(state.copyWith(
@@ -501,25 +507,141 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         }
 
         attractionsList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-
-        // Save successfully loaded network attractions to local persistent cache
-        final attractionJsons = attractionsList.map((a) => _attractionEntityToJson(a)).toList();
-        await CacheService.mergeAndCacheAttractions(attractionJsons);
         await CacheService.saveLastFetchCoords(event.latitude, event.longitude);
+        await persistAndEmit(attractionsList, enriching: categoriesNeedingEnrichment);
 
-        // Load the fully merged cache so we don't lose categories that failed to fetch this time
-        final mergedModels = _getFilteredCache(event.latitude, event.longitude);
+        if (categoriesNeedingEnrichment.isEmpty) return;
 
-        final filteredAttractions = (event.categoryName != null && event.categoryName != 'All')
-            ? mergedModels.where((a) => _matchesCategory(a, event.categoryName)).toList()
-            : mergedModels;
+        // ── PHASE B — background enrichment, one closure per short category ─
+        // Same Google-fallback chain the single-phase code always ran for a
+        // category under 15 results — just no longer blocking Phase A's emit.
+        // Each closure emits for itself the moment it lands, mirroring
+        // _onFetchBandedPlaces above.
+        await Future.wait(categoriesNeedingEnrichment.map((cat) async {
+          try {
+            final mergedMap = categoryMergedMaps[cat]!;
+            void addPlaceToMerged(AttractionEntity p) {
+              final normName = p.name.trim().toLowerCase();
+              final placeId = p.id.trim();
+              String targetKey = normName.isNotEmpty ? normName : placeId;
+              for (final existingKey in mergedMap.keys) {
+                final item = mergedMap[existingKey]!;
+                if ((normName.isNotEmpty && item.name.trim().toLowerCase() == normName) ||
+                    (placeId.isNotEmpty && item.id.trim() == placeId)) {
+                  targetKey = existingKey;
+                  break;
+                }
+              }
+              mergedMap[targetKey] = p;
+            }
 
-        emit(state.copyWith(
-          status: MapStatus.success,
-          attractions: filteredAttractions,
-          allAttractions: mergedModels,
-          selectedCategoryId: event.categoryId,
-        ));
+            var mergedList = mergedMap.values.toList();
+
+            // POI was missing from this list, so its Google fallback searched
+            // 15 km while the primary query searched 50 — the outer band had
+            // nothing to draw on whenever the fallback was the path taken.
+            final discoveryRadius = _radiusForCategory(cat).round();
+            final discoveryCategory = cat == 'Attractions' ? 'Experiences' : (cat == 'Food' ? 'Food & Drink' : cat);
+
+            // Fallback 1: Backend-cached Google Places (fetchNearbyPlaces)
+            try {
+              print('🔄 Primary method returned only ${mergedList.length} results for $cat. Falling back to fetchNearbyPlaces...');
+              final discoveryFallback = await GooglePlacesService.fetchNearbyPlaces(
+                latitude: event.latitude,
+                longitude: event.longitude,
+                categoryName: discoveryCategory,
+                radius: discoveryRadius,
+              );
+              for (final p in discoveryFallback) {
+                // Force category name match for UI
+                final correctedP = AttractionModel(
+                  id: p.id, name: p.name, description: p.description, history: p.history,
+                  latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                  categoryName: cat, address: p.address, openingHours: p.openingHours,
+                  entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                  photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                  distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                );
+                addPlaceToMerged(correctedP);
+              }
+              mergedList = mergedMap.values.toList();
+              print('📊 After fetchNearbyPlaces fallback: ${mergedList.length} results for $cat');
+            } catch (e) {
+              print('⚠️ fetchNearbyPlaces fallback failed for $cat: $e');
+            }
+
+            // Fallback 2: Direct Google Nearby Search legacy API if still under 15
+            if (mergedList.length < 15) {
+              try {
+                print('🔄 Still only ${mergedList.length} results for $cat. Falling back to Google legacy Nearby Search...');
+                final legacyFallback = await GooglePlacesService.fetchNearbyPlacesLegacy(
+                  latitude: event.latitude,
+                  longitude: event.longitude,
+                  categoryName: discoveryCategory,
+                  radius: discoveryRadius,
+                );
+                for (final p in legacyFallback) {
+                  final correctedP = AttractionModel(
+                    id: p.id, name: p.name, description: p.description, history: p.history,
+                    latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                    categoryName: cat, address: p.address, openingHours: p.openingHours,
+                    entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                    photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                    distanceM: p.distanceM, isActive: p.isActive, createdAt: p.createdAt,
+                  );
+                  addPlaceToMerged(correctedP);
+                }
+                mergedList = mergedMap.values.toList();
+                print('📊 After Google legacy fallback: ${mergedList.length} results for $cat');
+              } catch (e) {
+                print('⚠️ Google legacy fallback also failed for $cat: $e');
+              }
+            }
+
+            // Recalculate distances and sort by proximity
+            mergedList = mergedList.map((p) {
+              final distM = geo.Geolocator.distanceBetween(
+                event.latitude, event.longitude,
+                p.latitude, p.longitude,
+              );
+              return AttractionModel(
+                id: p.id, name: p.name, description: p.description, history: p.history,
+                latitude: p.latitude, longitude: p.longitude, categoryId: p.categoryId,
+                categoryName: p.categoryName, address: p.address, openingHours: p.openingHours,
+                entryFee: p.entryFee, currency: p.currency, rating: p.rating, reviewCount: p.reviewCount,
+                photoUrls: p.photoUrls, tags: p.tags, geofenceRadiusM: p.geofenceRadiusM,
+                distanceM: distM, isActive: p.isActive, createdAt: p.createdAt,
+              );
+            }).toList();
+            mergedList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+            print('✅ Final: ${mergedList.length} results for $cat (sorted by distance)');
+
+            if (cat == 'Nature' && mergedList.isNotEmpty) {
+              mergedList = mergedList.where((p) => _isValidPlace(p.name, cat)).toList();
+              print('🛡️ Exclusion Filter applied for Nature: retained ${mergedList.length} places');
+            }
+
+            // Skip the emit if the user has since moved to a different area —
+            // otherwise a stale late-arriving result could overwrite a newer
+            // location's data for this same category.
+            final currentLastLat = CacheService.getLastFetchLat();
+            final currentLastLng = CacheService.getLastFetchLng();
+            if (currentLastLat != null && currentLastLng != null) {
+              final movedM = geo.Geolocator.distanceBetween(
+                event.latitude, event.longitude, currentLastLat, currentLastLng,
+              );
+              if (movedM > 1000) return;
+            }
+
+            final stillEnriching = Set<String>.from(state.enrichingCategories)..remove(cat);
+            await persistAndEmit(mergedList, enriching: stillEnriching);
+          } catch (e) {
+            // Never let one category's enrichment failure reach the outer
+            // catch below — that one is reserved for "the whole fetch
+            // failed," and Phase A has already emitted a good state by now.
+            print('⚠️ Phase B enrichment crashed for $cat: $e');
+          }
+        }));
       } catch (e) {
         // Fallback to cache if network failed/threw SocketException
         final cachedModels = _getFilteredCache(event.latitude, event.longitude);

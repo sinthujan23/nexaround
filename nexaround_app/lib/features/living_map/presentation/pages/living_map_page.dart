@@ -1115,7 +1115,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
                       SliverToBoxAdapter(
                         child: Padding(
-                          padding: const EdgeInsets.only(top: 12, bottom: 8),
+                          padding: const EdgeInsets.only(top: 18, bottom: 14),
                           child: _buildMuseumBanner(),
                         ),
                       ),
@@ -2903,12 +2903,16 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           const SizedBox(width: 8),
         ],
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
+        Flexible(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
           ),
         ),
         if (onTitleTap != null) ...[
@@ -2925,16 +2929,20 @@ class _LivingMapPageState extends State<LivingMapPage>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        onTitleTap != null
-            ? GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: onTitleTap,
-                child: headerContent,
-              )
-            : headerContent,
-        if (customAction != null)
-          customAction
-        else if (action != null && action.isNotEmpty)
+        Expanded(
+          child: onTitleTap != null
+              ? GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onTitleTap,
+                  child: headerContent,
+                )
+              : headerContent,
+        ),
+        if (customAction != null) ...[
+          const SizedBox(width: 8),
+          customAction,
+        ] else if (action != null && action.isNotEmpty) ...[
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: onTap ?? () {},
             child: ShaderMask(
@@ -2951,6 +2959,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
             ),
           ),
+        ],
       ],
     );
   }
@@ -5857,9 +5866,10 @@ class _LivingMapPageState extends State<LivingMapPage>
     final int maxPlaces = grouped.values
         .map((l) => l.length)
         .fold(0, (max, len) => len > max ? len : max);
+    final int clampedMaxPlaces = maxPlaces.clamp(0, 10);
     final double cardHeight = maxPlaces == 0
         ? 180.0
-        : (68.0 + maxPlaces * 34.0).clamp(180.0, 410.0);
+        : (78.0 + clampedMaxPlaces * 40.5).clamp(180.0, 495.0);
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
@@ -5924,8 +5934,13 @@ class _LivingMapPageState extends State<LivingMapPage>
     // on the global status alone used to blank every card together, and also
     // re-blanked a card that already had good data during a background
     // refresh (status briefly goes back to loading while old data is still
-    // perfectly displayable).
-    if (status == MapStatus.loading && places.isEmpty) {
+    // perfectly displayable). A category still being enriched in the
+    // background (see MapState.enrichingCategories) also keeps shimmering
+    // instead of briefly flashing "no places found" right before the richer
+    // result lands.
+    final stillEnriching =
+        context.read<MapBloc>().state.enrichingCategories.contains(categoryName);
+    if ((status == MapStatus.loading || stillEnriching) && places.isEmpty) {
       return Align(
         alignment: Alignment.topCenter,
         child: Container(
@@ -6123,14 +6138,16 @@ class _LivingMapPageState extends State<LivingMapPage>
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ListView.separated(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    padding: EdgeInsets.zero,
-                    itemCount: places.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 5),
-                    itemBuilder: (context, index) {
-                      final place = places[index];
+                  Builder(builder: (_) {
+                    final displayPlaces = places.take(10).toList();
+                    return ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      padding: EdgeInsets.zero,
+                      itemCount: displayPlaces.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 5),
+                      itemBuilder: (context, index) {
+                        final place = displayPlaces[index];
                       final distKm = _getAccurateDistanceM(place) / 1000.0;
                       final distStr = distKm < 1.0 ? '${(distKm * 1000).toInt()}m' : '${distKm.toStringAsFixed(1)}km';
                       final direction = _getDirectionString(_userLatitude, _userLongitude, place.latitude ?? 0.0, place.longitude ?? 0.0);
@@ -6263,7 +6280,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                         ),
                       );
                     },
-                  ),
+                  );
+                }),
                 ],
               ),
             ),

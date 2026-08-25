@@ -435,6 +435,7 @@ async def get_nearby_banded(
     return _assemble(
         latitude, longitude, category, bands, deduped, max_photos,
         cached_flag=False, source=source, per_band=per_band,
+        pending=bool(defer_bands),
     )
 
 
@@ -483,6 +484,7 @@ def _assemble(
     cached_flag: bool,
     source: str,
     per_band: Optional[int] = None,
+    pending: bool = False,
 ) -> BandedPlacesResponse:
     """Fill each band to its quota, then backfill to ten from whatever is left.
 
@@ -603,4 +605,5 @@ def _assemble(
         places=flat,
         cached=cached_flag,
         source=source,
+        pending=pending,
     )

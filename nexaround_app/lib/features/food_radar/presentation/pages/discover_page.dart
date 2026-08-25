@@ -472,11 +472,16 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                     // yet. Gating on the global status alone used to shimmer
                     // every tab together (even ones whose data had already
                     // arrived) and re-blanked a tab that already had good data
-                    // during a background refresh.
+                    // during a background refresh. A tab still being enriched
+                    // in the background (MapState.enrichingCategories) also
+                    // keeps shimmering instead of flashing empty right before
+                    // the richer result lands.
                     final activeSectionKey =
                         activeTab == 'Food' ? 'Food & Drink' : activeTab;
+                    final stillEnriching =
+                        state.enrichingCategories.contains(activeSectionKey);
                     final isLoading = activeTab != 'Emergency' &&
-                        state.status == MapStatus.loading &&
+                        (state.status == MapStatus.loading || stillEnriching) &&
                         (sections[activeSectionKey] ?? []).isEmpty;
 
                     if (activeTab == 'POI') {

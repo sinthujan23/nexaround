@@ -67,6 +67,14 @@ class BandedPlacesResponse(BaseModel):
     )
     cached: bool = False
     source: str = Field("database", description="cache | database | google")
+    pending: bool = Field(
+        False,
+        description="True when a farther band came up short and is being "
+                    "filled in the background — this response is the fast, "
+                    "near-band-only answer. A client that cares about the "
+                    "full quota should re-fetch once, a few seconds later, "
+                    "to pick up what the background fill adds.",
+    )
 
 
 class TrendingExperiencesResponse(BaseModel):

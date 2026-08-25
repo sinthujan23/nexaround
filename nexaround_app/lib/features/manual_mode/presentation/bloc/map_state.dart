@@ -25,6 +25,14 @@ class MapState extends Equatable {
   /// instead of waiting for the slowest category in the batch.
   final Set<String> loadingBandCategories;
 
+  /// Category names whose base fetch (`FetchNearbyAttractions`) came back thin
+  /// from the database and is being enriched from Google in the background. A
+  /// category leaves this set the moment its own enrichment lands (or gives
+  /// up). Lets a card/tab that's genuinely still filling show its shimmer a
+  /// little longer instead of briefly flashing "nothing found" before the
+  /// richer result arrives.
+  final Set<String> enrichingCategories;
+
   const MapState({
     this.status = MapStatus.initial,
     this.attractions = const [],
@@ -36,6 +44,7 @@ class MapState extends Equatable {
     this.isSatellite = false,
     this.bandedPlaces = const {},
     this.loadingBandCategories = const {},
+    this.enrichingCategories = const {},
   });
 
   MapState copyWith({
@@ -49,6 +58,7 @@ class MapState extends Equatable {
     bool? isSatellite,
     Map<String, List<List<AttractionEntity>>>? bandedPlaces,
     Set<String>? loadingBandCategories,
+    Set<String>? enrichingCategories,
   }) {
     return MapState(
       status: status ?? this.status,
@@ -61,6 +71,7 @@ class MapState extends Equatable {
       isSatellite: isSatellite ?? this.isSatellite,
       bandedPlaces: bandedPlaces ?? this.bandedPlaces,
       loadingBandCategories: loadingBandCategories ?? this.loadingBandCategories,
+      enrichingCategories: enrichingCategories ?? this.enrichingCategories,
     );
   }
 
@@ -76,5 +87,6 @@ class MapState extends Equatable {
     isSatellite,
     bandedPlaces,
     loadingBandCategories,
+    enrichingCategories,
   ];
 }

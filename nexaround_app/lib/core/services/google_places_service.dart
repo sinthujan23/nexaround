@@ -21,6 +21,16 @@ class PlacesFetchException implements Exception {
   String toString() => 'PlacesFetchException';
 }
 
+/// Result of a banded-places fetch: the bands themselves, plus whether a
+/// farther band came up short and is still being filled in the background.
+/// `pending: true` tells the caller this is the fast, near-band-only answer —
+/// worth asking again shortly to pick up what the background fill adds.
+class BandedFetchResult {
+  final List<List<AttractionEntity>> bands;
+  final bool pending;
+  const BandedFetchResult({required this.bands, required this.pending});
+}
+
 /// Service to fetch real place data from Google Maps Places API
 /// and reverse-geocode current location via backend proxy.
 class GooglePlacesService {
@@ -172,7 +182,7 @@ class GooglePlacesService {
   /// radius query returns whatever is closest, and the outer bands stay empty
   /// however large the radius, because Google ranks its twenty results by
   /// prominence around the centre.
-  static Future<List<List<AttractionEntity>>> fetchBandedPlaces({
+  static Future<BandedFetchResult> fetchBandedPlaces({
     required double latitude,
     required double longitude,
     required String categoryName,
@@ -191,7 +201,9 @@ class GooglePlacesService {
         },
       );
 
-      if (response.statusCode != 200) return const [];
+      if (response.statusCode != 200) {
+        return const BandedFetchResult(bands: [], pending: false);
+      }
 
       final data = response.data;
       final bands = (data['bands'] as List? ?? [])
@@ -199,21 +211,23 @@ class GooglePlacesService {
               .map((p) => AttractionModel.fromJson(p) as AttractionEntity)
               .toList())
           .toList();
+      final pending = data['pending'] as bool? ?? false;
 
       final total = bands.fold<int>(0, (sum, b) => sum + b.length);
       debugPrint(
         '✅ Banded places for $categoryName: $total across ${bands.length} bands '
-        '(${bands.map((b) => b.length).join('/')}) source=${data['source']}',
+        '(${bands.map((b) => b.length).join('/')}) source=${data['source']} '
+        'pending=$pending',
       );
-      return bands;
+      return BandedFetchResult(bands: bands, pending: pending);
     } on DioException catch (e) {
       final msg = 'status=${e.response?.statusCode} body=${e.response?.data}';
       debugPrint('❌ Banded places fetch failed for $categoryName: $msg');
       _recordCategoryError(categoryName, 'Could not load $categoryName nearby.');
-      return const [];
+      return const BandedFetchResult(bands: [], pending: false);
     } catch (e) {
       debugPrint('❌ Banded places fetch error for $categoryName: $e');
-      return const [];
+      return const BandedFetchResult(bands: [], pending: false);
     }
   }
 
