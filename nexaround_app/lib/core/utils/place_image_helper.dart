@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/auth_token_cache.dart';
 
 /// Central utility to handle place images with category-specific fallback assets.
 class PlaceImageHelper {
@@ -28,6 +29,11 @@ class PlaceImageHelper {
     if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
       imageWidget = CachedNetworkImage(
         imageUrl: resolvedUrl,
+        // Without this the backend sees an anonymous request and will only
+        // serve a photo it already holds on disk, 404-ing otherwise — so a
+        // place nobody had opened before could never load its picture. With
+        // the token attached the server fetches it from Google on the spot.
+        httpHeaders: AuthTokenCache.headersFor(resolvedUrl),
         fit: fit,
         width: width,
         height: height,
@@ -65,7 +71,10 @@ class PlaceImageHelper {
       }
     }
     if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
-      return CachedNetworkImageProvider(resolvedUrl);
+      return CachedNetworkImageProvider(
+        resolvedUrl,
+        headers: AuthTokenCache.headersFor(resolvedUrl),
+      );
     }
     return AssetImage(getAssetPath(category, name));
   }

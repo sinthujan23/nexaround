@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
+import 'package:nexaround_app/core/network/auth_token_cache.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Handles FCM messages while the app is backgrounded/terminated. Must be a
@@ -31,6 +32,11 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Before the first screen builds: image widgets read the token synchronously
+  // to authenticate photo requests, and an unauthenticated one is served from
+  // the server's disk cache only.
+  await AuthTokenCache.load();
 
   // Initialize DI
   await configureDependencies();

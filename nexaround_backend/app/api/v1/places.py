@@ -50,9 +50,6 @@ async def get_nearby_places(
         limit=limit,
         offset=offset,
     )
-    # Buys the first screenful's thumbnails so the list stops rendering category
-    # placeholders. Detached — see warm_list_heroes.
-    places_service.warm_list_heroes(result.places)
     return result
 
 
@@ -99,8 +96,6 @@ async def get_nearby_places_banded(
         force_refresh=force_refresh,
         per_band=per_band,
     )
-    # `places` is the flattened display order, so this warms what renders first.
-    places_service.warm_list_heroes(result.places)
     return result
 
 

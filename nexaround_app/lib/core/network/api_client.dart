@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/network/auth_token_cache.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiClient {
@@ -36,6 +37,9 @@ class ApiClient {
       onRequest: (options, handler) async {
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString('access_token');
+        // Mirror it where widgets can read it synchronously — image requests
+        // need the same header and cannot await storage mid-build.
+        AuthTokenCache.set(token);
         if (token != null) {
           options.headers['Authorization'] = 'Bearer $token';
         }
@@ -117,6 +121,7 @@ class ApiClient {
 
         if (newAccess != null) {
           await prefs.setString('access_token', newAccess);
+          AuthTokenCache.set(newAccess);
           if (newRefresh != null) {
             await prefs.setString('refresh_token', newRefresh);
           }

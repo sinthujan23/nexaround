@@ -1,3 +1,4 @@
+import 'package:nexaround_app/core/network/auth_token_cache.dart';
 import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -223,6 +224,7 @@ class AuthRepositoryImpl implements AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('access_token');
     await prefs.remove('refresh_token');
+    AuthTokenCache.clear();
     await CacheService.setLoggedIn(false);
     await CacheService.clearUserData();
   }
@@ -240,6 +242,8 @@ class AuthRepositoryImpl implements AuthRepository {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('access_token', accessToken);
     await prefs.setString('refresh_token', refreshToken);
+    // Images authenticate off this copy, so it has to move with the token.
+    AuthTokenCache.set(accessToken);
     await CacheService.setLoggedIn(true);
   }
 

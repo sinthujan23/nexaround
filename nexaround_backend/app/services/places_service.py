@@ -1574,46 +1574,6 @@ async def _warm_hero_photo(details: dict) -> None:
         print(f"⚠️ hero photo warm failed: {e}")
 
 
-#: How many of a list's places get their hero bought. The first screenful, not
-#: the whole page — beyond that we would be paying for photos nobody scrolls to.
-_LIST_WARM_LIMIT = 6
-
-
-def warm_list_heroes(places, limit: int = _LIST_WARM_LIMIT) -> None:
-    """Pull the hero photo of a list's first few places into the disk cache.
-
-    Detached on purpose, unlike the detail page's warm: a list is not waiting on
-    its thumbnails, and blocking a seven-category AR fetch on 42 photo downloads
-    would cost more in latency than the images are worth. The trade is that these
-    land for the *next* render rather than this one — a list scrolled twice, or
-    revisited, comes back complete.
-
-    Bounded twice over: `limit` caps how many places are touched, and each photo
-    is bought once ever — `get_or_fetch` returns from disk on every later call,
-    so a place already seen costs nothing no matter how often it is listed.
-    """
-    for place in (places or [])[:limit]:
-        urls = getattr(place, "photo_urls", None) or []
-        if not urls:
-            continue
-        first = urls[0]
-        if "ref=" not in first:
-            continue
-        ref = first.split("ref=", 1)[1].split("&", 1)[0]
-        if ref:
-            spawn_background(_warm_photo_ref(ref))
-
-
-async def _warm_photo_ref(ref: str) -> None:
-    ok, reason = await spend_guard.allowed(None)
-    if not ok:
-        return
-    try:
-        await photo_cache_service.get_or_fetch(ref, maxwidth=800, index=0)
-    except Exception as e:
-        print(f"⚠️ list hero warm failed: {e}")
-
-
 async def get_place_details(
     place_id: str,
     *,
