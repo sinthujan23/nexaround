@@ -5776,24 +5776,58 @@ class _LivingMapPageState extends State<LivingMapPage>
       final List<AttractionEntity> selected = [];
       final Set<String> addedIds = {};
 
+      // Most-reviewed first within each band.
+      //
+      // Around You is the quick-access strip and is meant to read as the places
+      // people actually go to, so it ranks on how many people have been rather
+      // than on how well they rated it. The band arrives in the backend's own
+      // order — a Bayesian rating score — which answers "which is best?", not
+      // "which is well known?": there, six reviews at 4.5 outrank seven at 3.0,
+      // and two at 5.0 outrank both.
+      //
+      // Re-ordering here rather than in the backend is deliberate. That band
+      // order also decides which fifteen places per band Discovery receives, so
+      // changing it there pushed places out of Discovery entirely — Hospital
+      // lost all thirty of its unreviewed ones — instead of moving them to it.
+      // Choosing differently from the same fifteen leaves Discovery untouched.
+      //
+      // Unreviewed places sort to the bottom on a count of zero, so they are
+      // taken only once a band has nothing else left. That is the sparse-area
+      // fallback: a short section is worse than an unreviewed place.
       for (var i = 0; i < banded.length; i++) {
         final quota = PlaceBands.quotaForBand(i);
+        final byPopularity = [...banded[i]]..sort((a, b) {
+            final byReviews = b.reviewCount.compareTo(a.reviewCount);
+            if (byReviews != 0) return byReviews;
+            final byRating = b.rating.compareTo(a.rating);
+            if (byRating != 0) return byRating;
+            return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
+          });
         var taken = 0;
-        for (final p in banded[i]) {
+        for (final p in byPopularity) {
+          if (taken >= quota) break;
           if (addedIds.contains(p.id)) continue;
           selected.add(p);
           addedIds.add(p.id);
-          if (++taken >= quota) break;
+          taken++;
         }
       }
 
-      // Backfill nearest-first when a band is genuinely empty — no hospital
-      // within 25–50 km is a real answer, and the honest substitute is another
-      // close place rather than a short section.
+      // Backfill when a band is genuinely empty — no hospital within 25–50 km
+      // is a real answer, and the honest substitute is another close place
+      // rather than a short section.
+      //
+      // Ordered the same way as the bands above — most-reviewed first, distance
+      // only as a tiebreak. Sorting this purely by distance let the backfill
+      // pull in an unreviewed place while better-known ones sat unused, quietly
+      // undoing the ordering the section is meant to have.
       if (selected.length < PlaceBands.totalPerCategory) {
         final spare = [...banded.expand((b) => b), ...leftovers]
-          ..sort((a, b) =>
-              _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+          ..sort((a, b) {
+            final byReviews = b.reviewCount.compareTo(a.reviewCount);
+            if (byReviews != 0) return byReviews;
+            return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
+          });
         for (final p in spare) {
           if (addedIds.contains(p.id)) continue;
           selected.add(p);

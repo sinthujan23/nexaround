@@ -220,9 +220,18 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
 
   void _fetchForTab(int index) {
     if (_currentPosition == null && CacheService.getLastFetchLat() == null) return;
-    
-    final lat = CacheService.getLastFetchLat() ?? _currentPosition?.latitude;
-    final lng = CacheService.getLastFetchLng() ?? _currentPosition?.longitude;
+
+    // `_currentPosition` is already the resolved answer — the explored location
+    // if the user picked one, a live fix otherwise (_initLocationAndFetch) — so
+    // it has to win. `last_fetch_lat` is cache bookkeeping, "where we last
+    // completed a full network fetch", and it only advances on that one path
+    // (map_bloc's saveLastFetchCoords); every cache short-circuit returns before
+    // it. Reading it first is what showed Colombo's places while exploring
+    // Kinniya, and kept showing them: if the refetch found nothing, the
+    // coordinate never advanced. It stays only as the cold-start fallback for
+    // when there is no fix and no override yet.
+    final lat = _currentPosition?.latitude ?? CacheService.getLastFetchLat();
+    final lng = _currentPosition?.longitude ?? CacheService.getLastFetchLng();
     if (lat == null || lng == null) return;
 
     // Tab label to the canonical category the API expects. Emergency has no
@@ -288,8 +297,10 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
   }
 
   Future<void> _fetchEmergencyData() async {
-    final lat = CacheService.getLastFetchLat() ?? _currentPosition?.latitude;
-    final lng = CacheService.getLastFetchLng() ?? _currentPosition?.longitude;
+    // Same precedence as _fetchForTab, and it matters more here: a hospital list
+    // for the wrong city is worse than no list at all.
+    final lat = _currentPosition?.latitude ?? CacheService.getLastFetchLat();
+    final lng = _currentPosition?.longitude ?? CacheService.getLastFetchLng();
     if (lat == null || lng == null || _isLoadingEmergency) return;
     // Load cache first for instant display
     await _loadEmergencyCache();

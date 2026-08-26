@@ -162,10 +162,32 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   /// The six sections shown by Around You and the Discovery tabs.
   static const List<String> bandedCategories = PlaceBands.sections;
 
+  /// Coordinates of the most recent banded request.
+  ///
+  /// The six category fetches run in parallel and each emits on its own, and one
+  /// of them can also come back 9s later for a catch-up. All of that is in
+  /// flight while the user is free to move, so a result has to prove it belongs
+  /// to the location currently being viewed before it writes into state.
+  ///
+  /// This is compared against rather than `CacheService.getLastFetchLat()`,
+  /// which the catch-up used to use: that value is cache bookkeeping and only
+  /// advances when a *full* fetch succeeds, so after a move it still held the
+  /// old location — the guard compared the old location against itself, found
+  /// no movement, and let the stale result through. That is what put a single
+  /// previous-location section among five correct ones.
+  double? _latestBandedLat;
+  double? _latestBandedLng;
+
+  bool _isStaleBandedResult(FetchBandedPlaces event) =>
+      event.latitude != _latestBandedLat || event.longitude != _latestBandedLng;
+
   Future<void> _onFetchBandedPlaces(
     FetchBandedPlaces event,
     Emitter<MapState> emit,
   ) async {
+    _latestBandedLat = event.latitude;
+    _latestBandedLng = event.longitude;
+
     emit(state.copyWith(
       loadingBandCategories: bandedCategories.toSet(),
       // forceRefresh on this event only ever means "the user picked a
@@ -195,6 +217,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           perBand: PlaceBands.fetchPerBand,
         );
 
+        // The user may have moved while these six were in flight. A result for
+        // where they used to be must not land in a section now labelled
+        // somewhere else.
+        if (_isStaleBandedResult(event)) return;
+
         // A category that returned nothing keeps whatever it had rather than
         // blanking the section — a transient failure should not empty the UI.
         final merged = Map<String, List<List<AttractionEntity>>>.from(
@@ -221,16 +248,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
         await Future.delayed(const Duration(seconds: 9));
 
         // Skip the catch-up if the user has since moved somewhere else —
-        // otherwise a stale delayed result could overwrite a newer location's
-        // data for the same category key.
-        final lastLat = CacheService.getLastFetchLat();
-        final lastLng = CacheService.getLastFetchLng();
-        if (lastLat != null && lastLng != null) {
-          final movedM = geo.Geolocator.distanceBetween(
-            event.latitude, event.longitude, lastLat, lastLng,
-          );
-          if (movedM > 1000) return;
-        }
+        // otherwise a stale delayed result overwrites a newer location's data
+        // for the same category key, which is exactly how one section ended up
+        // showing the previous location while the other five were correct.
+        if (_isStaleBandedResult(event)) return;
 
         final catchUp = await GooglePlacesService.fetchBandedPlaces(
           latitude: event.latitude,
@@ -238,6 +259,10 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           categoryName: cat,
           perBand: PlaceBands.fetchPerBand,
         );
+        // Checked again: the catch-up request is itself a round trip the user
+        // can move during.
+        if (_isStaleBandedResult(event)) return;
+
         if (catchUp.bands.isNotEmpty) {
           final mergedAgain = Map<String, List<List<AttractionEntity>>>.from(
             state.bandedPlaces,

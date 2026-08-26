@@ -80,7 +80,17 @@ def _cache_key(latitude: float, longitude: float, category: Optional[str]) -> st
 
 
 def _rank_for_selection(place: dict) -> tuple:
-    """Best-first within a band: review-weighted quality, then closest."""
+    """Best-first within a band: review-weighted quality, then closest.
+
+    Deliberately *not* ordered reviewed-first. Around You wants only its
+    notable places, but this order also decides which slice of the pool
+    Discovery receives — 15 per band, not the whole thing — so demoting
+    unreviewed places here pushed them out of that window entirely wherever a
+    band held 15 or more reviewed ones. Hospital lost all 30 of its unreviewed
+    places from Discovery, which is the opposite of showing them there.
+    Around You applies its own preference when it takes its quota off the front
+    (see living_map_page.dart), leaving this slice untouched.
+    """
     score = place_bands.quality_score(
         place.get("rating"), place.get("review_count")
     )
