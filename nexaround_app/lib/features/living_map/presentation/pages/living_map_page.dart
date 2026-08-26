@@ -5710,138 +5710,9 @@ class _LivingMapPageState extends State<LivingMapPage>
 
 
     // ── Distance-band selection ────────────────────────────────────────────
-    // Each section fills from the category's three distance bands on the
-    // quotas in PlaceBands.bandQuotas,
-    // so the list reads as a progression outward instead of a dozen variations
-    // on whatever happens to be closest.
-    //
-    // Used when the backend's own band ordering has not arrived. The pool it
-    // works over already includes whatever banded places have landed, so this
-    // is a re-banding of the same data rather than a poorer substitute.
-    List<AttractionEntity> selectBandedPlaces({
-      required List<AttractionEntity> allPlaces,
-      required String category,
-    }) {
-      if (allPlaces.isEmpty) return [];
-
-      final bands = PlaceBands.forCategory(category);
-
-      // Prefer well-backed places, but only while enough of them remain to fill
-      // the section — in a sparse area a 3.8 is better than a blank card.
-      // Filtering on the raw rating let unreviewed 5.0s through and dropped
-      // genuinely popular 3.9s, so the threshold is on the weighted score.
-      List<AttractionEntity> candidatePool = allPlaces
-          .where((p) => PlaceBands.qualityScore(p.rating, p.reviewCount) >= 4.0)
-          .toList();
-      if (candidatePool.length < PlaceBands.totalPerCategory) {
-        candidatePool = List.from(allPlaces);
-      }
-
-      bool isMall(AttractionEntity p) {
-        final lowerName = p.name.toLowerCase();
-        final lowerTags = p.tags.map((t) => t.toString().toLowerCase()).toList();
-        return lowerName.contains('mall') || lowerTags.contains('shopping_mall');
-      }
-
-      candidatePool.sort((a, b) {
-        if (category == 'Shopping') {
-          final aMall = isMall(a);
-          final bMall = isMall(b);
-          if (aMall && !bMall) return -1;
-          if (!aMall && bMall) return 1;
-        }
-        // Within a band the best-backed place should lead, matching how the
-        // backend orders the list this is standing in for.
-        final qa = PlaceBands.qualityScore(a.rating, a.reviewCount);
-        final qb = PlaceBands.qualityScore(b.rating, b.reviewCount);
-        if ((qa - qb).abs() > 0.01) return qb.compareTo(qa);
-        return compareDistanceAndRating(a, b);
-      });
-
-      // Partition into the category's bands.
-      final List<List<AttractionEntity>> banded =
-          List.generate(bands.length, (_) => <AttractionEntity>[]);
-      final List<AttractionEntity> leftovers = [];
-
-      for (final p in candidatePool) {
-        final distKm = _getAccurateDistanceM(p) / 1000.0;
-        final idx = bands.indexWhere((b) => b.contains(distKm));
-        if (idx >= 0) {
-          banded[idx].add(p);
-        } else {
-          leftovers.add(p);
-        }
-      }
-
-      final List<AttractionEntity> selected = [];
-      final Set<String> addedIds = {};
-
-      // Most-reviewed first within each band.
-      //
-      // Around You is the quick-access strip and is meant to read as the places
-      // people actually go to, so it ranks on how many people have been rather
-      // than on how well they rated it. The band arrives in the backend's own
-      // order — a Bayesian rating score — which answers "which is best?", not
-      // "which is well known?": there, six reviews at 4.5 outrank seven at 3.0,
-      // and two at 5.0 outrank both.
-      //
-      // Re-ordering here rather than in the backend is deliberate. That band
-      // order also decides which fifteen places per band Discovery receives, so
-      // changing it there pushed places out of Discovery entirely — Hospital
-      // lost all thirty of its unreviewed ones — instead of moving them to it.
-      // Choosing differently from the same fifteen leaves Discovery untouched.
-      //
-      // Unreviewed places sort to the bottom on a count of zero, so they are
-      // taken only once a band has nothing else left. That is the sparse-area
-      // fallback: a short section is worse than an unreviewed place.
-      for (var i = 0; i < banded.length; i++) {
-        final quota = PlaceBands.quotaForBand(i);
-        final byPopularity = [...banded[i]]..sort((a, b) {
-            final byReviews = b.reviewCount.compareTo(a.reviewCount);
-            if (byReviews != 0) return byReviews;
-            final byRating = b.rating.compareTo(a.rating);
-            if (byRating != 0) return byRating;
-            return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
-          });
-        var taken = 0;
-        for (final p in byPopularity) {
-          if (taken >= quota) break;
-          if (addedIds.contains(p.id)) continue;
-          selected.add(p);
-          addedIds.add(p.id);
-          taken++;
-        }
-      }
-
-      // Backfill when a band is genuinely empty — no hospital within 25–50 km
-      // is a real answer, and the honest substitute is another close place
-      // rather than a short section.
-      //
-      // Ordered the same way as the bands above — most-reviewed first, distance
-      // only as a tiebreak. Sorting this purely by distance let the backfill
-      // pull in an unreviewed place while better-known ones sat unused, quietly
-      // undoing the ordering the section is meant to have.
-      if (selected.length < PlaceBands.totalPerCategory) {
-        final spare = [...banded.expand((b) => b), ...leftovers]
-          ..sort((a, b) {
-            final byReviews = b.reviewCount.compareTo(a.reviewCount);
-            if (byReviews != 0) return byReviews;
-            return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
-          });
-        for (final p in spare) {
-          if (addedIds.contains(p.id)) continue;
-          selected.add(p);
-          addedIds.add(p.id);
-          if (selected.length >= PlaceBands.totalPerCategory) break;
-        }
-      }
-
-      selected.sort((a, b) =>
-          _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
-      return selected.take(PlaceBands.totalPerCategory).toList();
-    }
-
-    // Fill each section from its three distance bands.
+    // Each section fills from the category's three distance bands on the quotas
+    // in PlaceBands.bandQuotas, so the list reads as a progression outward
+    // instead of a dozen variations on whatever happens to be closest.
     //
     // The backend's banded result is preferred where it has arrived: it can
     // issue extra Google requests aimed at a band that came up short, which
@@ -5849,6 +5720,44 @@ class _LivingMapPageState extends State<LivingMapPage>
     // 25–50 km band however wide the radius. Where it hasn't arrived yet, the
     // map's own places are banded locally so the section still fills.
     final bandedFromBackend = context.read<MapBloc>().state.bandedPlaces;
+
+    // Claimed across every section, not just within one.
+    //
+    // The database holds the same real place under several rows — "Pasikudah
+    // Beach" exists twice under POI and once under Attractions — so a place can
+    // occupy a slot in two cards at once and read as a duplicate. Sections are
+    // filled in PlaceBands.sections order and the first to claim a place keeps
+    // it. Names are matched alongside ids because the duplicate rows have
+    // different ids; what they share is the name and the coordinates.
+    //
+    // This cannot catch rows that are the same place spelled differently
+    // ("Pasikuda Beach" vs "Pasikudah Beach", 832m apart) — those are distinct
+    // to every check available here, and only a merge in the database fixes it.
+    final claimedIds = <String>{};
+    final claimedNames = <String>{};
+    bool claim(AttractionEntity p) {
+      final name = p.name.trim().toLowerCase();
+      if (claimedIds.contains(p.id) || claimedNames.contains(name)) return false;
+      claimedIds.add(p.id);
+      claimedNames.add(name);
+      return true;
+    }
+
+    // A band keeps its reserved slots only while it can fill them with places
+    // clearing this bar; below it the slot goes back to a nearer band. The
+    // quotas assume places thin out with distance, which is true in the country
+    // and false in a town: Batticaloa's shops are all inside 7km, so reserving
+    // three slots for 10–15km dragged in a tailor with 3 reviews while Abans
+    // (73 reviews, 0.7km) went unused.
+    const int minReviewsForBandSlot = 10;
+
+    int byPopularity(AttractionEntity a, AttractionEntity b) {
+      final byReviews = b.reviewCount.compareTo(a.reviewCount);
+      if (byReviews != 0) return byReviews;
+      final byRating = b.rating.compareTo(a.rating);
+      if (byRating != 0) return byRating;
+      return _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b));
+    }
 
     for (final category in PlaceBands.sections) {
       final fromBackend = bandedFromBackend[category];
@@ -5858,32 +5767,54 @@ class _LivingMapPageState extends State<LivingMapPage>
         // its quota off the top of each band — the rest stays in state for the
         // Discovery tabs to list.
         //
-        // Each band arrives in selection order, best first, so taking from the
-        // front takes the band's best. It is then sorted for reading: without
-        // that the card would list its ten in quality order rather than as a
-        // walk outward.
+        // Ordered by review count rather than the backend's rating score: this
+        // card is meant to read as the places people actually go to, and that
+        // order answers "which is best rated?" instead — two reviews at 5.0
+        // outrank seven at 3.0. Reordering here leaves Discovery's slice, which
+        // is decided by that same backend order, untouched.
         final trimmed = <AttractionEntity>[];
-        final takenIds = <String>{};
-        for (var i = 0; i < fromBackend.length; i++) {
-          for (final p in fromBackend[i].take(PlaceBands.quotaForBand(i))) {
-            if (takenIds.add(p.id)) trimmed.add(p);
+        final ranked = [
+          for (final band in fromBackend) [...band]..sort(byPopularity)
+        ];
+
+        var spareSlots = 0;
+        for (var i = 0; i < ranked.length; i++) {
+          final quota = PlaceBands.quotaForBand(i);
+          var taken = 0;
+          for (final p in ranked[i]) {
+            if (taken >= quota) break;
+            if (p.reviewCount < minReviewsForBandSlot) continue;
+            if (!claim(p)) continue;
+            trimmed.add(p);
+            taken++;
+          }
+          spareSlots += quota - taken;
+        }
+
+        // Nearest band first, so a slot a far band could not earn is spent on
+        // the closest strong place rather than the next-farthest weak one.
+        for (var i = 0; i < ranked.length && spareSlots > 0; i++) {
+          for (final p in ranked[i]) {
+            if (spareSlots <= 0) break;
+            if (p.reviewCount < minReviewsForBandSlot) continue;
+            if (!claim(p)) continue;
+            trimmed.add(p);
+            spareSlots--;
           }
         }
 
         // A band can hold fewer places than its quota — central Colombo has
         // only three pharmacies inside 10 km — and the shortfall would
-        // otherwise just shrink the card. Make it up from the bands that do
-        // have spare, nearest first, so the count holds at ten.
+        // otherwise just shrink the card. Make it up from whatever is left,
+        // best-known first, so the count holds at ten even where nothing clears
+        // the bar.
         if (trimmed.length < PlaceBands.totalPerCategory) {
-          final spare = fromBackend
-              .expand((band) => band)
-              .where((p) => !takenIds.contains(p.id))
-              .toList()
-            ..sort((a, b) =>
-                _getAccurateDistanceM(a).compareTo(_getAccurateDistanceM(b)));
+          final spare = fromBackend.expand((band) => band).toList()
+            ..sort(byPopularity);
           for (final p in spare) {
             if (trimmed.length >= PlaceBands.totalPerCategory) break;
-            if (takenIds.add(p.id)) trimmed.add(p);
+            if (!claim(p)) continue;
+            trimmed.add(p);
           }
         }
 

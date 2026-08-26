@@ -1657,13 +1657,19 @@ async def get_place_details(
     if local_id:
         await _persist_details(local_id, details)
 
-    # Awaited, not detached. Detaching lost a race it could never win: the client
-    # asks for the hero the moment this response lands, the warm had not finished,
-    # and the anonymous photo branch answered 404 — so the first view of every
-    # place showed its category placeholder and only the second view showed the
-    # photo. One tap is worth the ~300ms; the whole point of this call is the
-    # page the user just asked for.
-    await _warm_hero_photo(details)
+    # Detached, and it has to stay that way. Awaiting it put a Google photo
+    # download — 3.5s on average, 10s at worst — inside this request, and the
+    # caller's database connection is held for the whole request by the auth
+    # dependency. At six categories fetched in parallel that drained the pool
+    # and the detail page failed with "QueuePool limit reached" after a 30s wait.
+    #
+    # It was awaited to win a race against the client asking for the hero photo
+    # before the warm finished. That race no longer exists: image requests now
+    # carry the auth header (AuthTokenCache), so /places/photo fetches on demand
+    # for a signed-in caller instead of 404-ing on a cache miss. This warm is now
+    # only an optimisation — it saves the client's first request a round trip —
+    # and must never be something the response waits on.
+    spawn_background(_warm_hero_photo(details))
 
     details["cached"] = False
     return details
