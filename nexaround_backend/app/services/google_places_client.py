@@ -109,7 +109,15 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
     # Medical section people open when they want one, and leaving the type here
     # listed every pharmacy in the area under Shopping as well.
     "Shopping": [
-        "supermarket", "store", "department_store",
+        # `shopping_mall` leads deliberately. It was missing entirely, and a mall
+        # carries nothing else this list recognises — One Galle Face is tagged
+        # only `shopping_mall, point_of_interest, establishment`, and the two
+        # generic tags are stripped before the relevance test. So the largest
+        # mall in the country, with 26,685 reviews, was dropped from Shopping,
+        # along with 114 of the 142 malls near it. The legacy type map has
+        # always searched Shopping as `shopping_mall`; only this list disagreed.
+        "shopping_mall", "department_store",
+        "supermarket", "store",
         "convenience_store", "electronics_store", "market",
         "grocery_store", "home_goods_store",
         "hardware_store"

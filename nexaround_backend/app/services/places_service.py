@@ -380,36 +380,13 @@ async def seed_places_from_google_bg(
                             await session.flush()
                         cat_id = cat_obj.id
 
-                    # Check duplicate coordinates
-                    dup_coords = False
-                    for (alat, alng), _ in existing_records:
-                        if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
-                            dup_coords = True
-                            break
-                    if not dup_coords:
-                        dup = await repo.find_duplicate_by_coordinates(plat, plng)
-                        if dup:
-                            dup_coords = True
-                    is_active = not dup_coords
-
-                    new_attr = Attraction(
-                        name=p_name,
-                        google_place_id=_google_id_of(p),
-                        description=p.get("description") or "",
-                        location=create_point(plat, plng),
+                    # Update the row we already hold rather than laying an inactive
+                    # copy beside it — see upsert_seeded_place.
+                    await upsert_seeded_place(
+                        session, repo, p,
+                        name=p_name, latitude=plat, longitude=plng,
                         category_id=cat_id,
-                        address=p.get("address") or "",
-                        opening_hours=p.get("opening_hours") or {},
-                        entry_fee=p.get("entry_fee") or 0.0,
-                        currency=p.get("currency") or "USD",
-                        rating=p.get("rating") or 0.0,
-                        review_count=p.get("review_count") or 0,
-                        photo_urls=p.get("photo_urls") or [],
-                        tags=p.get("tags") or [],
-                        geofence_radius_m=100,
-                        is_active=is_active,
                     )
-                    session.add(new_attr)
 
             await session.commit()
 
@@ -435,6 +412,84 @@ async def seed_places_from_google_bg(
     finally:
         _active_seed_tasks.discard(key)
 
+
+
+async def upsert_seeded_place(
+    session,
+    repo,
+    place: dict,
+    *,
+    name: str,
+    latitude: float,
+    longitude: float,
+    category_id,
+) -> None:
+    """Fold a freshly-fetched place into `attractions`, updating what is already
+    there rather than shadowing it.
+
+    Seeding used to insert a *second* row whenever one already existed at these
+    coordinates, and mark the newcomer inactive so an admin could approve it.
+    Nothing ever approved them. Browsing re-seeds, so every visit laid down
+    another dead copy: 49,847 duplicate rows, 38,101 of them switched off, and
+    385 places — One Galle Face among them — with no active row left at all.
+    It also froze the data it was meant to refresh, because each new review
+    count arrived in a row nothing reads.
+
+    Matching prefers `google_place_id`: it is the identity Google itself uses
+    and survives the few-metre coordinate drift between refreshes that a
+    0.000001-degree comparison does not.
+
+    Updates only ever add. A thinner fetch cannot blank a photo set, a name or
+    an admin's edits, so re-seeding can improve a row but never degrade one.
+    `is_active` is deliberately untouched on an existing row — whether a place
+    should be visible is not a seeder's decision.
+    """
+    gid = _google_id_of(place)
+
+    existing = None
+    if gid:
+        existing = await repo.find_by_google_place_id(gid)
+    if existing is None:
+        existing = await repo.find_duplicate_by_coordinates(latitude, longitude)
+
+    if existing is not None:
+        # Freshness — this is the half the old path silently discarded.
+        if (place.get("review_count") or 0) > 0:
+            existing.review_count = place["review_count"]
+        if (place.get("rating") or 0) > 0:
+            existing.rating = place["rating"]
+        # Everything below fills a gap, never replaces content.
+        if gid and not existing.google_place_id:
+            existing.google_place_id = gid
+        if place.get("photo_urls") and not (existing.photo_urls or []):
+            existing.photo_urls = place["photo_urls"]
+        if place.get("tags") and not (existing.tags or []):
+            existing.tags = place["tags"]
+        if place.get("address") and not (existing.address or ""):
+            existing.address = place["address"]
+        if place.get("opening_hours") and not (existing.opening_hours or {}):
+            existing.opening_hours = place["opening_hours"]
+        return
+
+    session.add(
+        Attraction(
+            name=name,
+            google_place_id=gid,
+            description=place.get("description") or "",
+            location=create_point(latitude, longitude),
+            category_id=category_id,
+            address=place.get("address") or "",
+            opening_hours=place.get("opening_hours") or {},
+            entry_fee=place.get("entry_fee") or 0.0,
+            currency=place.get("currency") or "USD",
+            rating=place.get("rating") or 0.0,
+            review_count=place.get("review_count") or 0,
+            photo_urls=place.get("photo_urls") or [],
+            tags=place.get("tags") or [],
+            geofence_radius_m=100,
+            is_active=True,
+        )
+    )
 
 
 def attraction_to_place_dict(attraction: Attraction, distance_m: float) -> dict:
@@ -767,36 +822,13 @@ async def get_nearby(
                         await session.flush()
                     cat_id = cat_obj.id
 
-                # Check duplicate coordinates
-                dup_coords = False
-                for (alat, alng), _ in existing_records:
-                    if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
-                        dup_coords = True
-                        break
-                if not dup_coords:
-                    dup = await repo.find_duplicate_by_coordinates(plat, plng)
-                    if dup:
-                        dup_coords = True
-                is_active = not dup_coords
-
-                new_attr = Attraction(
-                    name=p_name,
-                    google_place_id=_google_id_of(p),
-                    description=p.get("description") or "",
-                    location=create_point(plat, plng),
+                # Update the row we already hold rather than laying an inactive
+                # copy beside it — see upsert_seeded_place.
+                await upsert_seeded_place(
+                    session, repo, p,
+                    name=p_name, latitude=plat, longitude=plng,
                     category_id=cat_id,
-                    address=p.get("address") or "",
-                    opening_hours=p.get("opening_hours") or {},
-                    entry_fee=p.get("entry_fee") or 0.0,
-                    currency=p.get("currency") or "USD",
-                    rating=p.get("rating") or 0.0,
-                    review_count=p.get("review_count") or 0,
-                    photo_urls=p.get("photo_urls") or [],
-                    tags=p.get("tags") or [],
-                    geofence_radius_m=100,
-                    is_active=is_active,
                 )
-                session.add(new_attr)
 
         await session.commit()
 
@@ -1030,36 +1062,13 @@ async def _save_search_results_bg(place_dicts: list[dict], latitude: float, long
                             await session.flush()
                         cat_id = cat_obj.id
 
-                    dup_coords = False
-                    for attraction, _ in nearby_db_attractions:
-                        alat, alng = get_lat_lng(attraction.location)
-                        if abs(plat - alat) < 0.000001 and abs(plng - alng) < 0.000001:
-                            dup_coords = True
-                            break
-                    if not dup_coords:
-                        dup = await repo.find_duplicate_by_coordinates(plat, plng)
-                        if dup:
-                            dup_coords = True
-                    is_active = not dup_coords
-
-                    new_attr = Attraction(
-                        name=p_name,
-                        google_place_id=_google_id_of(p),
-                        description=p.get("description") or "",
-                        location=create_point(plat, plng),
+                    # Update the row we already hold rather than laying an inactive
+                    # copy beside it — see upsert_seeded_place.
+                    await upsert_seeded_place(
+                        session, repo, p,
+                        name=p_name, latitude=plat, longitude=plng,
                         category_id=cat_id,
-                        address=p.get("address") or "",
-                        opening_hours=p.get("opening_hours") or {},
-                        entry_fee=p.get("entry_fee") or 0.0,
-                        currency=p.get("currency") or "USD",
-                        rating=p.get("rating") or 0.0,
-                        review_count=p.get("review_count") or 0,
-                        photo_urls=p.get("photo_urls") or [],
-                        tags=p.get("tags") or [],
-                        geofence_radius_m=100,
-                        is_active=is_active,
                     )
-                    session.add(new_attr)
 
             await session.commit()
     except Exception as e:

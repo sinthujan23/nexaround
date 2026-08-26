@@ -26,6 +26,25 @@ class AttractionRepository:
         )
         return result.scalar_one_or_none()
 
+    async def find_by_google_place_id(
+        self, google_place_id: str
+    ) -> Optional[Attraction]:
+        """The row for an upstream place, if we already hold it.
+
+        Preferred over a coordinate match when seeding: it is the identity
+        Google itself uses, so it still matches after a place's coordinates are
+        nudged by a few metres between refreshes — which a 0.000001-degree
+        coordinate comparison does not.
+        """
+        stmt = (
+            select(Attraction)
+            .where(Attraction.google_place_id == google_place_id)
+            .order_by(Attraction.is_active.desc())
+            .limit(1)
+        )
+        result = await self.db.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def find_duplicate_by_coordinates(
         self, 
         latitude: float, 

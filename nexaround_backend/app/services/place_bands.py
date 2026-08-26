@@ -295,6 +295,11 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
 # only these is untyped in practice and must not satisfy the relevance gate.
 _GENERIC_TAGS = {"point_of_interest", "establishment", "premise", "geocode"}
 
+# What counts as a mall for Shopping's priority pass. Kept narrow on purpose:
+# a supermarket or a hardware shop is a shop, not the destination the section
+# is meant to lead with.
+_MALL_TYPES = {"shopping_mall", "department_store"}
+
 # Last resort for places Google itself types wrongly — a guest house tagged
 # `hospital` passes every tag check there is, and only its name gives it away.
 # A veto applies unless the name also carries a word from the same category, so
@@ -461,6 +466,18 @@ def priority_ids_for_band(category: Optional[str], band_places: list[dict]) -> s
             pid = str(p.get("id") or "")
             name = (p.get("name") or "").lower()
             if pid and any(w in name for w in _HOSPITAL_NAME_WORDS):
+                ids.add(pid)
+
+    # A mall is the thing people mean by "shopping" in a city, and it is one
+    # place standing in for the hundred shops inside it — several of which are
+    # in this table separately and compete with it for the same slots. Google
+    # tags it `shopping_mall` and nothing else useful, so it carries no signal
+    # this section would otherwise rank on.
+    if category == "Shopping":
+        for p in band_places:
+            pid = str(p.get("id") or "")
+            tags = {str(t).lower() for t in (p.get("tags") or [])}
+            if pid and tags & _MALL_TYPES:
                 ids.add(pid)
 
     ranked_by_reviews = sorted(

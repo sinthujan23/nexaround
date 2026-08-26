@@ -109,9 +109,11 @@ async def _category_ids_for(session, category: Optional[str]) -> list:
 async def _seed_place_dicts(place_dicts: list[dict]) -> None:
     """Persist Google results so later requests in this tile never pay for them.
 
-    Deliberately conservative: a place already at these coordinates is skipped
-    rather than updated, because this path runs opportunistically and should
-    never be the reason an admin-curated attraction gets overwritten.
+    Deliberately conservative: this path runs opportunistically and must never
+    be the reason an admin-curated attraction changes. The coordinate scan below
+    skips anything already stored, and `upsert_seeded_place` only ever fills a
+    blank field or refreshes a review count — a name, description or photo set
+    already on the row is left alone.
     """
     if not place_dicts:
         return
@@ -169,23 +171,14 @@ async def _seed_place_dicts(place_dicts: list[dict]) -> None:
                         cat_cache[resolved] = cat_obj
                     cat_id = cat_cache[resolved].id
 
-                session.add(Attraction(
-                    name=name,
-                    google_place_id=places_service._google_id_of(p),
-                    description=p.get("description") or "",
-                    location=create_point(plat, plng),
+                # This path had no duplicate check at all, so every band fill
+                # re-inserted places it already held. Shares the seeder used by
+                # places_service so both refresh a row instead of stacking copies.
+                await places_service.upsert_seeded_place(
+                    session, repo, p,
+                    name=name, latitude=plat, longitude=plng,
                     category_id=cat_id,
-                    address=p.get("address") or "",
-                    opening_hours=p.get("opening_hours") or {},
-                    entry_fee=p.get("entry_fee") or 0.0,
-                    currency=p.get("currency") or "USD",
-                    rating=p.get("rating") or 0.0,
-                    review_count=p.get("review_count") or 0,
-                    photo_urls=p.get("photo_urls") or [],
-                    tags=p.get("tags") or [],
-                    geofence_radius_m=100,
-                    is_active=True,
-                ))
+                )
             await session.commit()
     except Exception as e:
         print(f"⚠️ banded seed failed: {e}")
