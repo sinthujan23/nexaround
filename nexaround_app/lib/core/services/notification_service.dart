@@ -50,7 +50,7 @@ class NotificationService {
       // iOS: getToken() throws/returns null until the APNs token is set (the
       // plugin registers for remote notifications during requestPermission).
       // Wait briefly for it. Android has no APNs step.
-      if (Platform.isIOS) {
+      if (!kIsWeb && Platform.isIOS) {
         debugStatus = 'Fetching APNs token...';
         String? apns = await _fm.getAPNSToken();
         for (int i = 0; i < 10 && apns == null; i++) {

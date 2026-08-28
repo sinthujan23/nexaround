@@ -14,6 +14,7 @@ from app.models.museum import Museum, MuseumMasterpiece
 from app.models.telemetry import (
     ApiEvent, ApiUsageHourly, ApiUsageUserDaily, ApiSkuRate, ApiAlert,
 )
+from app.models.excluded_keyword import ExcludedKeyword
 
 __all__ = [
     "User", "Attraction", "Category", "Review", "Itinerary", "Media",
@@ -22,4 +23,5 @@ __all__ = [
     "TravelStoryLike", "TravelStoryComment", "DiscoveryHistory",
     "Museum", "MuseumMasterpiece",
     "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate", "ApiAlert",
+    "ExcludedKeyword",
 ]

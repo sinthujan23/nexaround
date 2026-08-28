@@ -3,7 +3,6 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:io' show Platform;
 import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:nexaround_app/core/services/google_directions_service.dart';

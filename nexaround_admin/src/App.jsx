@@ -8,10 +8,11 @@ import Payments from './pages/Payments';
 import Engagement from './pages/Engagement';
 import Attractions from './pages/Attractions';
 import Categories from './pages/Categories';
+import ExcludeKeywords from './pages/ExcludeKeywords';
 import Media from './pages/Media';
 import Settings from './pages/Settings';
 import ApiUsage from './pages/ApiUsage';
-import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon } from './components/Icons';
+import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon } from './components/Icons';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('admin_token'));
@@ -95,6 +96,8 @@ function App() {
         return <Attractions />;
       case 'categories':
         return <Categories />;
+      case 'excludekeywords':
+        return <ExcludeKeywords />;
       case 'media':
         return <Media />;
       case 'users':
@@ -122,6 +125,8 @@ function App() {
         return 'Manage Attractions';
       case 'categories':
         return 'Manage Categories';
+      case 'excludekeywords':
+        return 'Exclude Keywords';
       case 'media':
         return 'Media Library';
       case 'users':
@@ -162,6 +167,9 @@ function App() {
           </div>
           <div className={`nav-item ${activePage === 'categories' ? 'active' : ''}`} onClick={() => setActivePage('categories')}>
             <FolderIcon className="icon" /> Categories
+          </div>
+          <div className={`nav-item ${activePage === 'excludekeywords' ? 'active' : ''}`} onClick={() => setActivePage('excludekeywords')}>
+            <EyeOffIcon className="icon" /> Exclude Keywords
           </div>
           <div className={`nav-item ${activePage === 'media' ? 'active' : ''}`} onClick={() => setActivePage('media')}>
             <ImageIcon className="icon" /> Media Library

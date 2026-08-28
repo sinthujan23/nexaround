@@ -13,8 +13,10 @@ from app.core.security import create_access_token, decode_token
 from app.services.user_service import UserService
 from app.services.attraction_service import AttractionService
 from app.services.settings_service import SettingsService
+from app.services import excluded_keyword_service
 from app.schemas.user import UserResponse
 from app.schemas.attraction import AttractionResponse, AttractionListResponse, AttractionCreate
+from app.schemas.excluded_keyword import ExcludedKeywordResponse, ExcludedKeywordCreate
 from app.models.user import User
 from app.models.attraction import Attraction
 from app.models.system_setting import ApiRequestLog
@@ -403,6 +405,39 @@ async def reject_attraction(
     """Reject and delete a submitted attraction."""
     service = AttractionService(db)
     success = await service.delete_attraction(attraction_id)
+    return {"status": "success" if success else "failed"}
+
+
+@router.get("/excluded-keywords", response_model=List[ExcludedKeywordResponse])
+async def list_excluded_keywords(
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Keywords that hide a matching place from the Around You cards."""
+    return await excluded_keyword_service.list_all(db)
+
+
+@router.post("/excluded-keywords", response_model=ExcludedKeywordResponse, status_code=status.HTTP_201_CREATED)
+async def create_excluded_keyword(
+    data: ExcludedKeywordCreate,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Add a keyword. Matches whole-word, case-insensitive, against a place's name."""
+    try:
+        return await excluded_keyword_service.create(db, data)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.delete("/excluded-keywords/{keyword_id}")
+async def delete_excluded_keyword(
+    keyword_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _ = Depends(verify_admin_token)
+):
+    """Remove a keyword, so matching places show in Around You again."""
+    success = await excluded_keyword_service.delete(db, keyword_id)
     return {"status": "success" if success else "failed"}
 
 

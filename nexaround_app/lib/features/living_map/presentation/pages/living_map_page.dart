@@ -1,6 +1,5 @@
 import 'dart:math';
 import 'dart:ui';
-import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -5760,8 +5759,18 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
 
     for (final category in PlaceBands.sections) {
-      final fromBackend = bandedFromBackend[category];
-      if (fromBackend != null && fromBackend.isNotEmpty) {
+      final fromBackendRaw = bandedFromBackend[category];
+      if (fromBackendRaw != null && fromBackendRaw.isNotEmpty) {
+        // Admin-managed exclude keywords (see the admin panel's "Exclude
+        // Keywords" section) hide a place from this card only. Discover reads
+        // the same `bandedFromBackend` pool through PlaceSections.sectionsFrom
+        // and never looks at `excludedByKeyword`, so a keyword-excluded place
+        // still shows there — that duplication is the whole point of the
+        // keyword existing.
+        final fromBackend = [
+          for (final band in fromBackendRaw)
+            band.where((p) => !p.excludedByKeyword).toList()
+        ];
         // The backend is asked for Discovery-depth bands so one fetch serves
         // both surfaces. Around You is the quick-access strip, so it takes only
         // its quota off the top of each band — the rest stays in state for the

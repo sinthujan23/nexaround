@@ -18,6 +18,7 @@ This table is mirrored in the Flutter client at
 `lib/core/constants/place_bands.dart`. Keep the two in sync — the server uses
 it to decide what to fetch, the client uses it to decide what to show.
 """
+import re
 from typing import Optional
 
 
@@ -490,6 +491,22 @@ def priority_ids_for_band(category: Optional[str], band_places: list[dict]) -> s
                 ids.add(pid)
 
     return ids
+
+
+def matches_excluded_keyword(name: Optional[str], keywords: list[str]) -> bool:
+    """Whether an admin-managed keyword hits this place's name, whole-word only.
+
+    Whole-word so a short keyword like "pond" hides "Pond View" without also
+    catching "Pondicherry Cafe". `keywords` comes from `excluded_keyword_service`
+    and only ever affects the Around You cards — see
+    `banded_places_service.get_nearby_banded`.
+    """
+    if not name or not keywords:
+        return False
+    return any(
+        re.search(rf"\b{re.escape(kw)}\b", name, re.IGNORECASE)
+        for kw in keywords if kw
+    )
 
 
 def _fmt_km(metres: float) -> str:

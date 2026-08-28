@@ -31,6 +31,12 @@ class PlaceResponse(BaseModel):
     distance_m: Optional[float] = None
     is_active: bool = True
     created_at: datetime
+    excluded_by_keyword: bool = Field(
+        False,
+        description="Matches an admin-managed exclude keyword. Only the Around "
+                    "You cards honor this — Discover and every other surface "
+                    "ignore it and keep showing the place.",
+    )
 
 
 class PlacesNearbyResponse(BaseModel):

@@ -52,6 +52,7 @@ class AttractionModel extends AttractionEntity {
     super.distanceM,
     super.isActive,
     required super.createdAt,
+    super.excludedByKeyword,
   });
 
   factory AttractionModel.fromJson(Map<String, dynamic> json) {
@@ -82,6 +83,7 @@ class AttractionModel extends AttractionEntity {
       distanceM: json['distance_m'] != null ? (json['distance_m'] as num).toDouble() : null,
       isActive: json['is_active'] as bool? ?? true,
       createdAt: DateTime.parse(json['created_at'] as String),
+      excludedByKeyword: json['excluded_by_keyword'] as bool? ?? false,
     );
   }
 
@@ -107,6 +109,7 @@ class AttractionModel extends AttractionEntity {
       'distance_m': distanceM,
       'is_active': isActive,
       'created_at': createdAt.toIso8601String(),
+      'excluded_by_keyword': excludedByKeyword,
     };
   }
 }

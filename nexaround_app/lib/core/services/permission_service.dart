@@ -35,7 +35,7 @@ class PermissionService {
 
     if (status.isGranted || status.isLimited) return true;
 
-    if (status.isPermanentlyDenied || (Platform.isIOS && status.isDenied && CacheService.hasRequestedCamera())) {
+    if (status.isPermanentlyDenied || (!kIsWeb && Platform.isIOS && status.isDenied && CacheService.hasRequestedCamera())) {
       // On iOS, after the first denial, `isDenied` persists and `.request()`
       // won't re-trigger the system dialog. We need to check if we can still
       // show the dialog or must redirect to Settings.
@@ -63,7 +63,7 @@ class PermissionService {
 
     if (status.isGranted || status.isLimited) return true;
 
-    if (status.isPermanentlyDenied || (Platform.isIOS && status.isDenied && CacheService.hasRequestedLocation())) {
+    if (status.isPermanentlyDenied || (!kIsWeb && Platform.isIOS && status.isDenied && CacheService.hasRequestedLocation())) {
       final result = await Permission.locationWhenInUse.request();
       if (result.isGranted || result.isLimited) return true;
 

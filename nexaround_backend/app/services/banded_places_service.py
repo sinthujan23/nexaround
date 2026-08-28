@@ -28,6 +28,7 @@ from app.models.category import Category
 from app.repositories.attraction_repository import AttractionRepository
 from app.schemas.place import BandedPlacesResponse, PlaceBand
 from app.services import (
+    excluded_keyword_service,
     google_places_client,
     place_bands,
     place_cache_service,
@@ -70,6 +71,20 @@ _DB_LIMIT_PER_BAND = 150
 # for a cold tile before the first fill finishes starts its own — four users
 # opening the app on the same street corner would each buy the same places.
 _active_fills: set[str] = set()
+
+
+def _tag_excluded(pool: list[dict], keywords: list[str]) -> None:
+    """Mark each place an admin keyword hits, in place.
+
+    Computed fresh on every call rather than stored in the cached payload, so
+    an admin's edit takes effect on the next request with no cache
+    invalidation. Only the Around You cards read this flag — see
+    `living_map_page.dart`'s `_buildHiddenGemCards`.
+    """
+    for p in pool:
+        p["excluded_by_keyword"] = place_bands.matches_excluded_keyword(
+            p.get("name"), keywords
+        )
 
 
 def _cache_key(latitude: float, longitude: float, category: Optional[str]) -> str:
@@ -318,6 +333,7 @@ async def get_nearby_banded(
     category = google_places_client.canonical_category(category)
     bands = place_bands.bands_for(category)
     key = _cache_key(latitude, longitude, category)
+    excluded_keywords = await excluded_keyword_service.get_active_keywords()
 
     if not force_refresh:
         cached = await place_cache_service.get_cached(key)
@@ -326,6 +342,7 @@ async def get_nearby_banded(
                 "internal", "nearby_banded", cache_key=key
             ) as t:
                 t.hit("redis")
+            _tag_excluded(cached, excluded_keywords)
             return _assemble(
                 latitude, longitude, category, bands, cached, max_photos,
                 cached_flag=True, source="cache", per_band=per_band,
@@ -432,6 +449,7 @@ async def get_nearby_banded(
         deduped.append(p)
 
     await place_cache_service.set_cached(key, deduped)
+    _tag_excluded(deduped, excluded_keywords)
 
     if defer_bands:
         places_service.spawn_background(_fill_bands_bg(

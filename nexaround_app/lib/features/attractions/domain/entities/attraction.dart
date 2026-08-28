@@ -35,6 +35,7 @@ class AttractionEntity {
   final double? distanceM;
   final bool isActive;
   final DateTime createdAt;
+  final bool excludedByKeyword;
 
   const AttractionEntity({
     required this.id,
@@ -57,5 +58,6 @@ class AttractionEntity {
     this.distanceM,
     this.isActive = true,
     required this.createdAt,
+    this.excludedByKeyword = false,
   });
 }

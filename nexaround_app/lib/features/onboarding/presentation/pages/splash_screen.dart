@@ -1,5 +1,6 @@
 import 'dart:io' show Platform;
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -23,7 +24,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
   }
 
   void _navigateToNext() async {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       return;
     }
 
@@ -56,7 +57,7 @@ class _AnimatedSplashScreenState extends State<AnimatedSplashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       return const Scaffold(
         body: Center(
           child: Text('Splash Screen (Test)'),
