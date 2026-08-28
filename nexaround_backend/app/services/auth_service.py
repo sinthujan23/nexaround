@@ -284,6 +284,10 @@ class AuthService:
             raise UnauthorizedException(detail="Invalid Apple token: unrecognised key ID")
 
         allowed_auds = [a for a in settings.APPLE_CLIENT_IDS if a]
+        if not allowed_auds:
+            raise UnauthorizedException(
+                detail="Apple login is not configured. APPLE_CLIENT_IDS must be set."
+            )
         try:
             payload = jwt.decode(
                 apple_id_token,
@@ -294,18 +298,17 @@ class AuthService:
             )
 
             # Manually validate audience against allowed Apple Client IDs
-            if allowed_auds:
-                token_aud = payload.get("aud")
-                if isinstance(token_aud, list):
-                    if not any(aud in allowed_auds for aud in token_aud):
-                        raise UnauthorizedException(
-                            detail=f"Invalid Apple token: audience {token_aud} not in allowed client IDs"
-                        )
-                else:
-                    if token_aud not in allowed_auds:
-                        raise UnauthorizedException(
-                            detail=f"Invalid Apple token: audience '{token_aud}' not in allowed client IDs"
-                        )
+            token_aud = payload.get("aud")
+            if isinstance(token_aud, list):
+                if not any(aud in allowed_auds for aud in token_aud):
+                    raise UnauthorizedException(
+                        detail=f"Invalid Apple token: audience {token_aud} not in allowed client IDs"
+                    )
+            else:
+                if token_aud not in allowed_auds:
+                    raise UnauthorizedException(
+                        detail=f"Invalid Apple token: audience '{token_aud}' not in allowed client IDs"
+                    )
 
             return payload
         except UnauthorizedException:

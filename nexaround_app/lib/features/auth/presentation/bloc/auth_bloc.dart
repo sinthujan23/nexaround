@@ -100,11 +100,21 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     emit(const AuthLoading());
+    final startedAt = DateTime.now();
     try {
       final credential = await _socialAuthService.signInWithApple();
-      
+
+      final identityToken = credential.identityToken;
+      if (identityToken == null || identityToken.isEmpty) {
+        emit(const AuthError(
+          'Apple did not return an identity token. Check that Sign In with '
+          'Apple is enabled for this app in the Apple Developer portal.',
+        ));
+        return;
+      }
+
       final result = await _authRepository.appleLogin(
-        idToken: credential.identityToken ?? '',
+        idToken: identityToken,
         authorizationCode: credential.authorizationCode,
         givenName: credential.givenName,
         familyName: credential.familyName,
@@ -122,10 +132,28 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(AuthError(failure.message));
       }
     } catch (e) {
-      if (e is SignInWithAppleAuthorizationException &&
-          e.code == AuthorizationErrorCode.canceled) {
-        emit(const AuthUnauthenticated());
-        return;
+      if (e is SignInWithAppleAuthorizationException) {
+        debugPrint('Apple Sign-In failed: ${e.code} - ${e.message}');
+        if (e.code == AuthorizationErrorCode.canceled) {
+          // Apple reports both a real user dismissal and a server-side
+          // rejection of the request as code 1001. They are told apart by
+          // timing: dismissing the sheet by hand takes a moment, whereas a
+          // rejected request (Sign In with Apple not enabled for the bundle
+          // ID, or a provisioning profile issued before it was) comes back
+          // almost immediately. Only the slow case is a real cancellation —
+          // reporting the fast one as one hides a configuration failure.
+          if (DateTime.now().difference(startedAt) >
+              const Duration(milliseconds: 1500)) {
+            emit(const AuthUnauthenticated());
+            return;
+          }
+          emit(const AuthError(
+            'Apple rejected the sign-in request (error 1001). Sign In with '
+            'Apple is likely not enabled for this app\'s bundle ID, or the '
+            'provisioning profile was issued before it was enabled.',
+          ));
+          return;
+        }
       }
       emit(AuthError('Apple Sign-In failed: ${e.toString()}'));
     }

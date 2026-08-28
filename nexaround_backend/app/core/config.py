@@ -1,3 +1,4 @@
+import json
 from typing import List, Union
 from pydantic import AnyHttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -99,13 +100,22 @@ class Settings(BaseSettings):
     @classmethod
     def assemble_client_ids(cls, v: Union[str, List[str]]) -> List[str]:
         if isinstance(v, str):
+            v = v.strip()
             if not v:
                 return []
-            if not v.startswith("["):
+            if v.startswith("["):
+                # A JSON array in .env. Parsing it (rather than falling through
+                # to an empty list) matters: an empty list disables OAuth
+                # audience validation entirely.
+                try:
+                    v = json.loads(v)
+                except json.JSONDecodeError as e:
+                    raise ValueError(f"Invalid JSON list for client IDs: {e}") from e
+            else:
                 return [i.strip() for i in v.split(",") if i.strip()]
-        elif isinstance(v, list):
+        if isinstance(v, list):
             return [str(i).strip() for i in v if str(i).strip()]
-        return []
+        raise ValueError(f"Unsupported client ID value of type {type(v).__name__}")
 
 
     # Firebase push notifications. Provide ONE of these (via .env / server env,

@@ -66,12 +66,14 @@ import UserNotifications
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
+    // Set the environment explicitly. Do NOT also assign `.apnsToken` here:
+    // that setter re-registers the token with type .unknown and discards the
+    // type selected below.
     #if DEBUG
     Messaging.messaging().setAPNSToken(deviceToken, type: .sandbox)
     #else
     Messaging.messaging().setAPNSToken(deviceToken, type: .prod)
     #endif
-    Messaging.messaging().apnsToken = deviceToken
     super.application(application, didRegisterForRemoteNotificationsWithDeviceToken: deviceToken)
   }
 

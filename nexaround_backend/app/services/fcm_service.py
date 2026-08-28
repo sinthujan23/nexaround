@@ -20,6 +20,24 @@ logger = logging.getLogger(__name__)
 _app = None  # cached firebase_admin app instance
 
 
+def _is_dead_token(name: str, msg: str) -> bool:
+    """True when FCM says this registration token can never be delivered to
+    again, so the caller should prune it.
+
+    ``SenderIdMismatch`` is included deliberately: after a Firebase project
+    switch every token minted by the old project reports it, and leaving those
+    rows in place means every send retries them forever.
+    """
+    lowered = msg.lower()
+    return (
+        "Unregistered" in name
+        or "SenderIdMismatch" in name
+        or "not a valid FCM" in msg
+        or "not found" in lowered
+        or "senderid mismatch" in lowered
+    )
+
+
 def _resolve_credential(db_json: Optional[str]) -> Optional[dict]:
     """Resolve the service-account JSON from the most secure source available:
       1) a file path on the server   (FIREBASE_SERVICE_ACCOUNT_FILE)
@@ -74,6 +92,12 @@ def _ensure_app(db_json: Optional[str]):
             _app = firebase_admin.get_app()
         except ValueError:
             _app = firebase_admin.initialize_app(cred)
+        logger.info(
+            "FCM initialised for Firebase project "
+            f"{data.get('project_id')!r} — this MUST match the project in the "
+            "app's google-services.json / GoogleService-Info.plist, otherwise "
+            "every send fails with SenderIdMismatch or PermissionDenied."
+        )
     except Exception as e:
         logger.error(f"FCM init failed: {e}")
         _app = None
@@ -125,8 +149,8 @@ async def _send_one(token, title, body, data):
         name = type(e).__name__
         msg = str(e)
         # Stale/invalid token → prune it.
-        if "Unregistered" in name or "not a valid FCM" in msg or "not found" in msg.lower():
-            logger.warning(f"FCM ⚠️ token unregistered (will prune): {token[:14]}…")
+        if _is_dead_token(name, msg):
+            logger.warning(f"FCM ⚠️ token dead, will prune ({name}): {token[:14]}…")
             return False, "UNREGISTERED"
         # APNs key / Team-ID / Key-ID / environment problem (iOS-specific).
         if "ThirdPartyAuth" in name or "APNS" in msg or "APNs" in msg or "BadDeviceToken" in msg:
@@ -227,7 +251,7 @@ async def send_multicast(
             name = type(err).__name__ if err else ""
             msg = str(err) if err else ""
             logger.error(f"FCM ❌ push failed for token {tok_snippet}...: {name} - {msg}")
-            if "Unregistered" in name or "not a valid FCM" in msg or "not found" in msg.lower():
+            if _is_dead_token(name, msg):
                 unregistered.append(batch[idx])
                 token_status[batch[idx]] = "unregistered"
             else:

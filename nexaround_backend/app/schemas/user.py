@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 # --- Request Schemas ---
@@ -24,10 +24,14 @@ class GoogleLoginRequest(BaseModel):
 
 
 class AppleLoginRequest(BaseModel):
+    # The app posts snake_case ("family_name"). The camelCase alias is kept so
+    # builds already in the wild that post "familyName" keep working.
+    model_config = ConfigDict(populate_by_name=True)
+
     id_token: str
     authorization_code: str
     given_name: Optional[str] = None
-    familyName: Optional[str] = None
+    family_name: Optional[str] = Field(default=None, alias="familyName")
 
 
 class VerifyOTPRequest(BaseModel):

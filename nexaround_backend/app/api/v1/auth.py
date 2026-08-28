@@ -96,7 +96,7 @@ async def apple_login(data: AppleLoginRequest, db: AsyncSession = Depends(get_db
         data.id_token,
         data.authorization_code,
         data.given_name,
-        data.familyName,
+        data.family_name,
     )
 
 
@@ -117,7 +117,7 @@ async def apple_callback(
     if state:
         params["state"] = state
     query_str = urllib.parse.urlencode(params)
-    redirect_url = f"intent://callback?{query_str}#Intent;package=com.nexaround.nexaround_app;scheme=signinwithapple;end"
+    redirect_url = f"intent://callback?{query_str}#Intent;package=com.nexaround.app;scheme=signinwithapple;end"
     return RedirectResponse(url=redirect_url, status_code=303)
 
 
