@@ -560,12 +560,46 @@ def _assemble(
                 break
             if str(p.get("id") or "") in priority_ids and _claim(p):
                 picks.append(p)
-        for p in band_pool:
-            if len(picks) >= quota:
-                break
-            if not _claim(p):
-                continue
-            picks.append(p)
+
+        if category == "Medical":
+            # Client-requested even mix: pharmacy / medical_center / other,
+            # round-robin rather than pure quality order, so a band doesn't
+            # fill up entirely with whichever subtype has the deepest pool
+            # here. Each group is still walked in `band_pool`'s existing
+            # quality order internally. A group that runs dry just drops out
+            # of the rotation — the shortfall that leaves in `picks` is made
+            # up by the unmodified total-shortfall backfill below, which is
+            # where "fall back to the major sub category" falls out for free:
+            # it pulls next-best from whatever's left overall, which in
+            # practice is the subtype with supply.
+            groups: dict[str, list[dict]] = {
+                "pharmacy": [], "medical_center": [], "other": [],
+            }
+            for p in band_pool:
+                groups[place_bands.medical_subgroup(p.get("tags"), p.get("name"))].append(p)
+            order = ["pharmacy", "medical_center", "other"]
+            idx = {g: 0 for g in order}
+            while len(picks) < quota:
+                progressed = False
+                for g in order:
+                    if len(picks) >= quota:
+                        break
+                    items = groups[g]
+                    while idx[g] < len(items) and not _claim(items[idx[g]]):
+                        idx[g] += 1
+                    if idx[g] < len(items):
+                        picks.append(items[idx[g]])
+                        idx[g] += 1
+                        progressed = True
+                if not progressed:
+                    break
+        else:
+            for p in band_pool:
+                if len(picks) >= quota:
+                    break
+                if not _claim(p):
+                    continue
+                picks.append(p)
         # `remaining` is in selection order (review-weighted quality), and the
         # quota above is taken from the front of it — so `picks` already holds
         # the band's best (plus any priority places pulled in ahead of that

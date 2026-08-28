@@ -509,6 +509,54 @@ def matches_excluded_keyword(name: Optional[str], keywords: list[str]) -> bool:
     )
 
 
+# Client-requested even mix for the Medical section's Around You / Discovery
+# picks (see banded_places_service._assemble): pharmacy, medical_center and a
+# catch-all "other" for the remaining Medical types (dentist, physiotherapist,
+# chiropractor, medical_lab, veterinary_care). Tags decide it outright when
+# they say anything specific — name words are consulted only when no tag
+# lands in any of the three buckets, otherwise a generic word like "clinic"
+# in "Dental Clinic" would override the far more specific `dentist` tag and
+# misfile it as a medical center.
+_PHARMACY_TYPES = {"pharmacy", "drugstore"}
+_PHARMACY_NAME_WORDS = (
+    "pharmacy", "pharmacies", "chemist", "drug store", "drugstore", "dispensary",
+)
+_MEDICAL_CENTER_TYPES = {"medical_clinic", "doctor", "medical_center"}
+_MEDICAL_CENTER_NAME_WORDS = (
+    "medical centre", "medical center", "clinic", "surgery", "ayurved",
+)
+_OTHER_MEDICAL_TYPES = {
+    "dentist", "dental_clinic", "physiotherapist", "chiropractor",
+    "medical_lab", "veterinary_care",
+}
+
+
+def medical_subgroup(tags, name: Optional[str] = None) -> str:
+    """"pharmacy" | "medical_center" | "other" — which third of the Medical mix.
+
+    Only meaningful once `is_relevant` has already confirmed the place belongs
+    to Medical at all; this just decides which bucket it fills.
+    """
+    tag_set = {str(t).lower() for t in (tags or [])}
+
+    if tag_set & _PHARMACY_TYPES:
+        return "pharmacy"
+    if tag_set & _MEDICAL_CENTER_TYPES:
+        return "medical_center"
+    if tag_set & _OTHER_MEDICAL_TYPES:
+        return "other"
+
+    # No tag landed in any bucket — untyped or generically-typed row. Only
+    # here does a name word get a say, same last-resort role `_reads_as_clinic`
+    # already plays for the Medical/Hospital split.
+    lowered = (name or "").lower()
+    if any(w in lowered for w in _PHARMACY_NAME_WORDS):
+        return "pharmacy"
+    if any(w in lowered for w in _MEDICAL_CENTER_NAME_WORDS):
+        return "medical_center"
+    return "other"
+
+
 def _fmt_km(metres: float) -> str:
     km = metres / 1000.0
     return f"{km:.0f}" if abs(km - round(km)) < 0.05 else f"{km:.1f}"
