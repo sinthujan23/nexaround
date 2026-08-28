@@ -218,12 +218,15 @@ async def send_multicast(
         success += resp.success_count
         failure += resp.failure_count
         for idx, r in enumerate(resp.responses):
+            tok_snippet = batch[idx][:15] if batch[idx] else "empty"
             if r.success:
                 token_status[batch[idx]] = "sent"
+                logger.info(f"FCM ✅ push delivered to token {tok_snippet}...")
                 continue
             err = r.exception
             name = type(err).__name__ if err else ""
             msg = str(err) if err else ""
+            logger.error(f"FCM ❌ push failed for token {tok_snippet}...: {name} - {msg}")
             if "Unregistered" in name or "not a valid FCM" in msg or "not found" in msg.lower():
                 unregistered.append(batch[idx])
                 token_status[batch[idx]] = "unregistered"

@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
@@ -28,15 +30,18 @@ class SocialAuthService {
 
   Future<AuthorizationCredentialAppleID> signInWithApple() async {
     try {
+      final isNativeIOS = !kIsWeb && Platform.isIOS;
       return await SignInWithApple.getAppleIDCredential(
         scopes: [
           AppleIDAuthorizationScopes.email,
           AppleIDAuthorizationScopes.fullName,
         ],
-        webAuthenticationOptions: WebAuthenticationOptions(
-          clientId: 'com.nexaround.app.service',
-          redirectUri: Uri.parse('https://api.nexaround.com/api/v1/auth/apple/callback'),
-        ),
+        webAuthenticationOptions: isNativeIOS
+            ? null
+            : WebAuthenticationOptions(
+                clientId: 'com.nexaround.app.service',
+                redirectUri: Uri.parse('https://api.nexaround.com/api/v1/auth/apple/callback'),
+              ),
       );
     } catch (e) {
       rethrow;

@@ -11,6 +11,8 @@ import 'package:nexaround_app/core/services/config_key_service.dart';
 import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 import 'package:nexaround_app/core/error/failures.dart';
 
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
   final SocialAuthService _socialAuthService = SocialAuthService();
@@ -120,6 +122,11 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(AuthError(failure.message));
       }
     } catch (e) {
+      if (e is SignInWithAppleAuthorizationException &&
+          e.code == AuthorizationErrorCode.canceled) {
+        emit(const AuthUnauthenticated());
+        return;
+      }
       emit(AuthError('Apple Sign-In failed: ${e.toString()}'));
     }
   }
