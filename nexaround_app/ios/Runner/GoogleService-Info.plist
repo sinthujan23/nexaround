@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.nexaround.nexaroundApp.5X9A8V7S49</string>
+	<string>com.nexaround.app</string>
 	<key>PROJECT_ID</key>
 	<string>nexaround-fb321</string>
 	<key>STORAGE_BUCKET</key>
