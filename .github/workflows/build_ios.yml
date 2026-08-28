@@ -82,34 +82,33 @@ jobs:
             PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" profile.plist)
             APP_IDENTIFIER=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" profile.plist)
             BUNDLE_ID=$(echo $APP_IDENTIFIER | sed 's/^[^\.]*\.//')
-            TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" profile.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.team-identifier" profile.plist 2>/dev/null || echo "5X9A8V7S49")
+            TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" profile.plist 2>/dev/null || /usr/libexec/PlistBuddy -c "Print :Entitlements:com.apple.developer.team-identifier" profile.plist 2>/dev/null || echo "R9YFWBF946")
             
             echo "Using Profile Name: $PROFILE_NAME"
             echo "Using Bundle ID: $BUNDLE_ID"
             echo "Using Team ID: $TEAM_ID"
+            
+            # Create base ExportOptions.plist
+            echo '<?xml version="1.0" encoding="UTF-8"?>' > ios/ExportOptions.plist
+            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> ios/ExportOptions.plist
+            echo '<plist version="1.0">' >> ios/ExportOptions.plist
+            echo '<dict>' >> ios/ExportOptions.plist
+            echo '    <key>method</key><string>app-store</string>' >> ios/ExportOptions.plist
+            echo '    <key>signingStyle</key><string>manual</string>' >> ios/ExportOptions.plist
+            echo '    <key>destination</key><string>export</string>' >> ios/ExportOptions.plist
+            echo '    <key>provisioningProfiles</key><dict/>' >> ios/ExportOptions.plist
+            echo '</dict>' >> ios/ExportOptions.plist
+            echo '</plist>' >> ios/ExportOptions.plist
+
+            /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" ios/ExportOptions.plist 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:$BUNDLE_ID string $PROFILE_NAME" ios/ExportOptions.plist 2>/dev/null || true
             
             # Dynamically ensure project.pbxproj matches the exact provisioned profile name and team
             sed -i '' "s/PROVISIONING_PROFILE_SPECIFIER = .*/PROVISIONING_PROFILE_SPECIFIER = \"$PROFILE_NAME\";/g" ios/Runner.xcodeproj/project.pbxproj
             if [ -n "$TEAM_ID" ]; then
               sed -i '' "s/DEVELOPMENT_TEAM = .*/DEVELOPMENT_TEAM = $TEAM_ID;/g" ios/Runner.xcodeproj/project.pbxproj
             fi
-            
-            # Create ExportOptions.plist with explicit provisioning profile mapping
-            python3 -c "
-              import plistlib
-              data = {
-                  'method': 'app-store',
-                  'signingStyle': 'manual',
-                  'teamID': '$TEAM_ID',
-                  'destination': 'export',
-                  'provisioningProfiles': {
-                      '$BUNDLE_ID': '$PROFILE_NAME'
-                  }
-              }
-              with open('ios/ExportOptions.plist', 'wb') as f:
-                  plistlib.dump(data, f)
-              "
-            
+
             # Build and archive via Flutter
             flutter build ipa --release --export-options-plist=ios/ExportOptions.plist || echo "Flutter build ipa had an issue"
             
