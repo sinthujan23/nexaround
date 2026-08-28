@@ -98,8 +98,10 @@ class DiscoverPage extends StatefulWidget {
 
 class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderStateMixin {
   late int _selectedTab;
+  late PageController _pageController;
   late AnimationController _radarController;
   final ScrollController _tabScrollController = ScrollController();
+  final ScrollController _contentScrollController = ScrollController();
   Position? _currentPosition;
 
   List<AttractionEntity> _poiList = [];
@@ -128,25 +130,20 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
   void initState() {
     super.initState();
     _selectedTab = widget.initialTab.clamp(0, _tabs.length - 1);
+    _pageController = PageController(initialPage: _selectedTab);
     _radarController = AnimationController(vsync: this, duration: const Duration(seconds: 3))..repeat();
     _loadEmergencyCache();
     context.read<BudgetBloc>().add(FetchBudget());
-    // IndexedStack builds every tab page up front, so this widget exists (and
-    // initState runs) the moment the app opens on the Explore tab, well before
-    // the user has ever looked at Discover. Firing the fetch unconditionally
-    // here fired a second, redundant round of the same requests Around You
-    // was already making at that exact moment. didUpdateWidget (below) already
-    // fires this the instant the tab actually becomes active, so a deep link
-    // straight into Discover (isActive true from the start) still fetches
-    // immediately here — nothing is lost, only the duplicate is.
     if (widget.isActive) _initLocationAndFetch();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTab(_selectedTab));
   }
 
   @override
   void dispose() {
+    _pageController.dispose();
     _radarController.dispose();
     _tabScrollController.dispose();
+    _contentScrollController.dispose();
     super.dispose();
   }
 
@@ -158,6 +155,10 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         _selectedTab = widget.initialTab.clamp(0, _tabs.length - 1);
         _clearSubCategories();
       });
+      if (_pageController.hasClients) {
+        _pageController.jumpToPage(_selectedTab);
+      }
+      _resetContentScroll();
       _fetchForTab(_selectedTab);
       if (_tabs[_selectedTab] == 'Emergency') _fetchEmergencyData();
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToTab(_selectedTab));
@@ -177,6 +178,12 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     _selectedShoppingCategory = null;
     _selectedMedicalCategory = null;
     _selectedHospitalCategory = null;
+  }
+
+  void _resetContentScroll() {
+    if (_contentScrollController.hasClients) {
+      _contentScrollController.jumpTo(0.0);
+    }
   }
 
   void _scrollToTab(int index) {
@@ -436,12 +443,21 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                       final isActive = _selectedTab == index;
                       return GestureDetector(
                         onTap: () {
-                          setState(() {
-                            _selectedTab = index;
-                            _clearSubCategories();
-                          });
-                          _fetchForTab(index);
-                          if (_tabs[index] == 'Emergency') _fetchEmergencyData();
+                          if (_selectedTab != index) {
+                            setState(() {
+                              _selectedTab = index;
+                              _clearSubCategories();
+                            });
+                            if (_pageController.hasClients) {
+                              _pageController.animateToPage(
+                                index,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeInOut,
+                              );
+                            }
+                            _fetchForTab(index);
+                            if (_tabs[index] == 'Emergency') _fetchEmergencyData();
+                          }
                         },
                         child: AnimatedContainer(
                           duration: const Duration(milliseconds: 300),
@@ -471,170 +487,49 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                   ),
                 ),
               ),
-
               // Content
               Expanded(
                 child: BlocBuilder<MapBloc, MapState>(
                   builder: (context, state) {
-                    final activeTab = _tabs[_selectedTab];
                     final sections = PlaceSections.sectionsFrom(state);
 
-                    // Only shimmer while this specific tab has nothing to show
-                    // yet. Gating on the global status alone used to shimmer
-                    // every tab together (even ones whose data had already
-                    // arrived) and re-blanked a tab that already had good data
-                    // during a background refresh. A tab still being enriched
-                    // in the background (MapState.enrichingCategories) also
-                    // keeps shimmering instead of flashing empty right before
-                    // the richer result lands.
-                    final activeSectionKey =
-                        activeTab == 'Food' ? 'Food & Drink' : activeTab;
-                    final isCategoryLoading =
-                        state.loadingBandCategories.contains(activeSectionKey) ||
-                        state.enrichingCategories.contains(activeSectionKey);
-                    final isLoading = activeTab != 'Emergency' &&
-                        (state.status == MapStatus.loading || state.status == MapStatus.initial || isCategoryLoading) &&
-                        (sections[activeSectionKey] ?? []).isEmpty;
+                    _poiList = _preparePoiList(sections['POI'] ?? []);
+                    _natureList = _prepareNatureList(sections['Nature'] ?? []);
+                    _foodList = _prepareFoodList(sections['Food & Drink'] ?? []);
+                    _shoppingList = _prepareShoppingList(sections['Shopping'] ?? []);
+                    _medicalList = _prepareMedicalList(sections['Medical'] ?? []);
+                    _hospitalList = _prepareHospitalList(sections['Hospital'] ?? []);
 
-                    if (activeTab == 'POI') {
-                      _poiList = sections['POI'] ?? [];
-                      if (_selectedPoiCategory != null) {
-                        _poiList = _poiList.where((a) {
-                          final cat = (a.categoryName ?? '').toLowerCase();
-                          final name = a.name.toLowerCase();
-                          final tags = PlaceSections.tagsOf(a);
-                          if (_selectedPoiCategory == 'Landmarks') {
-                            return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
-                          } else if (_selectedPoiCategory == 'Culture') {
-                            return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
-                          } else if (_selectedPoiCategory == 'Museums') {
-                            return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
-                          } else if (_selectedPoiCategory == 'Leisure') {
-                            return tags.contains('zoo') || tags.contains('aquarium') || tags.contains('amusement_park') || tags.contains('water_park') || tags.contains('planetarium') || tags.contains('performing_arts_theater') || cat.contains('zoo') || cat.contains('experience') || name.contains('zoo') || name.contains('aquarium') || name.contains('theatre') || name.contains('theater');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _poiList.sort((a, b) {
-                        int ratingComp = b.rating.compareTo(a.rating);
-                        if (ratingComp != 0) return ratingComp;
-                        return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                      });
-                      _poiList = _deduplicateAttractions(_poiList);
-                    } else if (activeTab == 'Nature') {
-                      _natureList = sections['Nature'] ?? [];
-                      if (_selectedNatureCategory != null) {
-                        _natureList = _natureList.where((a) {
-                          final cat = (a.categoryName ?? '').toLowerCase();
-                          final name = a.name.toLowerCase();
-                          final tags = PlaceSections.tagsOf(a);
-                          if (_selectedNatureCategory == 'Beaches') {
-                            return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
-                          } else if (_selectedNatureCategory == 'Parks') {
-                            return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('national_park') || tags.contains('botanical_garden') || tags.contains('garden');
-                          } else if (_selectedNatureCategory == 'Waterfalls') {
-                            return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
-                          } else if (_selectedNatureCategory == 'Lakes') {
-                            return cat.contains('lake') || cat.contains('river') || name.contains('lake') || name.contains('river') || name.contains('lagoon') || name.contains('reservoir') || tags.contains('lake') || tags.contains('river');
-                          } else if (_selectedNatureCategory == 'Wildlife') {
-                            return name.contains('sanctuary') || name.contains('safari') || name.contains('wildlife') || tags.contains('wildlife_park') || tags.contains('wildlife_refuge') || tags.contains('hiking_area');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _natureList.sort((a, b) {
-                        int ratingComp = b.rating.compareTo(a.rating);
-                        if (ratingComp != 0) return ratingComp;
-                        return (a.distanceM ?? 0).compareTo(b.distanceM ?? 0);
-                      });
-                      _natureList = _deduplicateAttractions(_natureList);
-                    } else if (activeTab == 'Food') {
-                      _foodList = sections['Food & Drink'] ?? [];
-                      if (_selectedFoodCategory != null) {
-                        _foodList = _foodList.where((a) {
-                          final cat = (a.categoryName ?? '').toLowerCase();
-                          final name = a.name.toLowerCase();
-                          if (_selectedFoodCategory == 'Street Food') {
-                            return cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || cat.contains('snack') || name.contains('street') || name.contains('burger') || name.contains('kiosk');
-                          } else if (_selectedFoodCategory == 'Fine Dining') {
-                            final isCafeOrStreet = cat.contains('cafe') || cat.contains('coffee') || cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || name.contains('cafe') || name.contains('street');
-                            return !isCafeOrStreet && (cat.contains('dining') || cat.contains('restaurant') || cat.contains('bistro') || cat.contains('hotel') || name.contains('fine') || name.contains('restaurant') || name.contains('hotel') || name.contains('grill'));
-                          } else if (_selectedFoodCategory == 'Cafés') {
-                            return cat.contains('cafe') || cat.contains('coffee') || cat.contains('tea') || cat.contains('bakery') || cat.contains('dessert') || name.contains('cafe') || name.contains('coffee') || name.contains('bakery');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _foodList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                      _foodList = _deduplicateAttractions(_foodList);
-                    } else if (activeTab == 'Shopping') {
-                      _shoppingList = sections['Shopping'] ?? [];
-                      if (_selectedShoppingCategory != null) {
-                        _shoppingList = _shoppingList.where((a) {
-                          final cat = (a.categoryName ?? '').toLowerCase();
-                          final name = a.name.toLowerCase();
-                          if (_selectedShoppingCategory == 'Tech') {
-                            return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
-                          } else if (_selectedShoppingCategory == 'Local') {
-                            return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _shoppingList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                      _shoppingList = _deduplicateAttractions(_shoppingList);
-                    } else if (activeTab == 'Medical') {
-                      _medicalList = sections['Medical'] ?? [];
-                      if (_selectedMedicalCategory != null) {
-                        _medicalList = _medicalList.where((a) {
-                          final cat = (a.categoryName ?? '').toLowerCase();
-                          final name = a.name.toLowerCase();
-                          final tags = PlaceSections.tagsOf(a);
-                          if (_selectedMedicalCategory == 'Clinics') {
-                            return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
-                          } else if (_selectedMedicalCategory == 'Pharmacies') {
-                            return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
-                          } else if (_selectedMedicalCategory == 'Dental') {
-                            return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
-                          } else if (_selectedMedicalCategory == 'Labs') {
-                            return name.contains('laborator') || name.contains('lab ') || name.contains('scan') || tags.contains('medical_lab') || tags.contains('physiotherapist');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _medicalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                      _medicalList = _deduplicateAttractions(_medicalList);
-                    } else if (activeTab == 'Hospital') {
-                      _hospitalList = sections['Hospital'] ?? [];
-                      if (_selectedHospitalCategory != null) {
-                        _hospitalList = _hospitalList.where((a) {
-                          final name = a.name.toLowerCase();
-                          if (_selectedHospitalCategory == 'Government') {
-                            return name.contains('general') || name.contains('base ') || name.contains('district') ||
-                                   name.contains('teaching') || name.contains('national') || name.contains('government');
-                          } else if (_selectedHospitalCategory == 'Private') {
-                            return !(name.contains('general') || name.contains('base ') || name.contains('district') ||
-                                     name.contains('teaching') || name.contains('national') || name.contains('government'));
-                          } else if (_selectedHospitalCategory == 'Maternity') {
-                            return name.contains('maternity') || name.contains('children') || name.contains('women');
-                          }
-                          return true;
-                        }).toList();
-                      }
-                      _hospitalList.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
-                      _hospitalList = _deduplicateAttractions(_hospitalList);
-                    }
+                    return PageView.builder(
+                      controller: _pageController,
+                      onPageChanged: (index) {
+                        if (_selectedTab != index) {
+                          setState(() {
+                            _selectedTab = index;
+                            _clearSubCategories();
+                          });
+                          _scrollToTab(index);
+                          _fetchForTab(index);
+                          if (_tabs[index] == 'Emergency') _fetchEmergencyData();
+                        }
+                      },
+                      itemCount: _tabs.length,
+                      itemBuilder: (context, pageIndex) {
+                        final pageTab = _tabs[pageIndex];
+                        final activeSectionKey = pageTab == 'Food' ? 'Food & Drink' : pageTab;
+                        final isCategoryLoading =
+                            state.loadingBandCategories.contains(activeSectionKey) ||
+                            state.enrichingCategories.contains(activeSectionKey);
+                        final isLoading = pageTab != 'Emergency' &&
+                            (state.status == MapStatus.loading || state.status == MapStatus.initial || isCategoryLoading) &&
+                            (sections[activeSectionKey] ?? []).isEmpty;
 
-                    return Column(
-                      children: [
-                        
-                        Expanded(
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(24),
-                            child: _buildTabContent(isLoading),
-                          ),
-                        ),
-                      ],
+                        return SingleChildScrollView(
+                          key: ValueKey('discover_content_tab_$pageIndex'),
+                          padding: const EdgeInsets.all(24),
+                          child: _buildTabContentForIndex(pageIndex, isLoading),
+                        );
+                      },
                     );
                   },
                 ),
@@ -669,8 +564,8 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     return result;
   }
 
-  Widget _buildTabContent(bool isLoading) {
-    switch (_tabs[_selectedTab]) {
+  Widget _buildTabContentForIndex(int tabIndex, bool isLoading) {
+    switch (_tabs[tabIndex]) {
       case 'POI': return _buildPoiTab(isLoading);
       case 'Nature': return _buildNatureTab(isLoading);
       case 'Food': return _buildFoodTab(isLoading);
@@ -680,6 +575,137 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       case 'Emergency': return _buildEmergencyTab();
       default: return _buildPoiTab(isLoading);
     }
+  }
+
+  List<AttractionEntity> _preparePoiList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedPoiCategory != null) {
+      list = list.where((a) {
+        final cat = (a.categoryName ?? '').toLowerCase();
+        final name = a.name.toLowerCase();
+        final tags = PlaceSections.tagsOf(a);
+        if (_selectedPoiCategory == 'Landmarks') {
+          return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
+        } else if (_selectedPoiCategory == 'Culture') {
+          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
+        } else if (_selectedPoiCategory == 'Museums') {
+          return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
+        } else if (_selectedPoiCategory == 'Leisure') {
+          return tags.contains('zoo') || tags.contains('aquarium') || tags.contains('amusement_park') || tags.contains('water_park') || tags.contains('planetarium') || tags.contains('performing_arts_theater') || cat.contains('zoo') || cat.contains('experience') || name.contains('zoo') || name.contains('aquarium') || name.contains('theatre') || name.contains('theater');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
+  }
+
+  List<AttractionEntity> _prepareNatureList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedNatureCategory != null) {
+      list = list.where((a) {
+        final cat = (a.categoryName ?? '').toLowerCase();
+        final name = a.name.toLowerCase();
+        final tags = PlaceSections.tagsOf(a);
+        if (_selectedNatureCategory == 'Beaches') {
+          return cat.contains('beach') || cat.contains('coast') || cat.contains('sea') || name.contains('beach') || name.contains('coast') || name.contains('bay') || tags.contains('beach');
+        } else if (_selectedNatureCategory == 'Parks') {
+          return cat.contains('park') || cat.contains('garden') || name.contains('park') || name.contains('garden') || tags.contains('park') || tags.contains('national_park') || tags.contains('botanical_garden') || tags.contains('garden');
+        } else if (_selectedNatureCategory == 'Waterfalls') {
+          return cat.contains('waterfall') || name.contains('waterfall') || name.contains('falls');
+        } else if (_selectedNatureCategory == 'Lakes') {
+          return cat.contains('lake') || cat.contains('river') || name.contains('lake') || name.contains('river') || name.contains('lagoon') || name.contains('reservoir') || tags.contains('lake') || tags.contains('river');
+        } else if (_selectedNatureCategory == 'Wildlife') {
+          return name.contains('sanctuary') || name.contains('safari') || name.contains('wildlife') || tags.contains('wildlife_park') || tags.contains('wildlife_refuge') || tags.contains('hiking_area');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
+  }
+
+  List<AttractionEntity> _prepareFoodList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedFoodCategory != null) {
+      list = list.where((a) {
+        final cat = (a.categoryName ?? '').toLowerCase();
+        final name = a.name.toLowerCase();
+        if (_selectedFoodCategory == 'Street Food') {
+          return cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || cat.contains('snack') || name.contains('street') || name.contains('burger') || name.contains('kiosk');
+        } else if (_selectedFoodCategory == 'Fine Dining') {
+          final isCafeOrStreet = cat.contains('cafe') || cat.contains('coffee') || cat.contains('street') || cat.contains('fast') || cat.contains('takeaway') || name.contains('cafe') || name.contains('street');
+          return !isCafeOrStreet && (cat.contains('dining') || cat.contains('restaurant') || cat.contains('bistro') || cat.contains('hotel') || name.contains('fine') || name.contains('restaurant') || name.contains('hotel') || name.contains('grill'));
+        } else if (_selectedFoodCategory == 'Cafés') {
+          return cat.contains('cafe') || cat.contains('coffee') || cat.contains('tea') || cat.contains('bakery') || cat.contains('dessert') || name.contains('cafe') || name.contains('coffee') || name.contains('bakery');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
+  }
+
+  List<AttractionEntity> _prepareShoppingList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedShoppingCategory != null) {
+      list = list.where((a) {
+        final cat = (a.categoryName ?? '').toLowerCase();
+        final name = a.name.toLowerCase();
+        if (_selectedShoppingCategory == 'Tech') {
+          return cat.contains('electronic') || cat.contains('tech') || cat.contains('phone') || cat.contains('computer') || name.contains('tech') || name.contains('mobile') || name.contains('electronic');
+        } else if (_selectedShoppingCategory == 'Local') {
+          return cat.contains('market') || cat.contains('gift') || cat.contains('souvenir') || cat.contains('craft') || cat.contains('local') || name.contains('market') || name.contains('bazaar') || name.contains('gift');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
+  }
+
+  List<AttractionEntity> _prepareMedicalList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedMedicalCategory != null) {
+      list = list.where((a) {
+        final cat = (a.categoryName ?? '').toLowerCase();
+        final name = a.name.toLowerCase();
+        final tags = PlaceSections.tagsOf(a);
+        if (_selectedMedicalCategory == 'Clinics') {
+          return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
+        } else if (_selectedMedicalCategory == 'Pharmacies') {
+          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
+        } else if (_selectedMedicalCategory == 'Dental') {
+          return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
+        } else if (_selectedMedicalCategory == 'Labs') {
+          return name.contains('laborator') || name.contains('lab ') || name.contains('scan') || tags.contains('medical_lab') || tags.contains('physiotherapist');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
+  }
+
+  List<AttractionEntity> _prepareHospitalList(List<AttractionEntity> raw) {
+    var list = raw;
+    if (_selectedHospitalCategory != null) {
+      list = list.where((a) {
+        final name = a.name.toLowerCase();
+        if (_selectedHospitalCategory == 'Government') {
+          return name.contains('general') || name.contains('base ') || name.contains('district') ||
+                 name.contains('teaching') || name.contains('national') || name.contains('government');
+        } else if (_selectedHospitalCategory == 'Private') {
+          return !(name.contains('general') || name.contains('base ') || name.contains('district') ||
+                   name.contains('teaching') || name.contains('national') || name.contains('government'));
+        } else if (_selectedHospitalCategory == 'Maternity') {
+          return name.contains('maternity') || name.contains('children') || name.contains('women');
+        }
+        return true;
+      }).toList();
+    }
+    list.sort((a, b) => (a.distanceM ?? 0).compareTo(b.distanceM ?? 0));
+    return _deduplicateAttractions(list);
   }
 
   // ═══════════════════════════════════════

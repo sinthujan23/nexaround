@@ -500,11 +500,19 @@ def matches_excluded_keyword(name: Optional[str], keywords: list[str]) -> bool:
     catching "Pondicherry Cafe". `keywords` comes from `excluded_keyword_service`
     and only ever affects the Around You cards — see
     `banded_places_service.get_nearby_banded`.
+
+    Uses `(?<!\\w)`/`(?!\\w)` rather than `\\b`: a real keyword like
+    "...Free)" ends on punctuation, and `\\b` requires an actual word/non-word
+    transition on both sides — right after a `)` at the end of the string
+    there is none, so `\\b` silently never matches, even against itself. The
+    lookaround pair only asserts "not adjacent to a word character", which
+    still blocks "Pondicherry" from matching "pond" but doesn't misfire on a
+    keyword that itself starts or ends with punctuation.
     """
     if not name or not keywords:
         return False
     return any(
-        re.search(rf"\b{re.escape(kw)}\b", name, re.IGNORECASE)
+        re.search(rf"(?<!\w){re.escape(kw)}(?!\w)", name, re.IGNORECASE)
         for kw in keywords if kw
     )
 
