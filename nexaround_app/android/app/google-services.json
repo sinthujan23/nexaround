@@ -1,51 +1,26 @@
 {
   "project_info": {
-    "project_number": "501648798743",
-    "project_id": "nexaround-fb321",
-    "storage_bucket": "nexaround-fb321.firebasestorage.app"
+    "project_number": "375268962043",
+    "project_id": "nexaround-e9a5e",
+    "storage_bucket": "nexaround-e9a5e.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:501648798743:android:4641d7b5b8bc3fb68ad852",
+        "mobilesdk_app_id": "1:375268962043:android:7ff91ed6795f9f201d4a5e",
         "android_client_info": {
-          "package_name": "com.nexaround.nexaround_app"
+          "package_name": "com.nexaround.app"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "501648798743-vjrfvouhnk2o0p6qm7ob595hfm68th48.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.nexaround.nexaround_app",
-            "certificate_hash": "0097ad15e7311abd96088e6cfc5a21b24191a41e"
-          }
-        },
-        {
-          "client_id": "501648798743-fpj6ua4dqdgov8hffm7504aekvjne4kh.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDWoZZFEFnvKGRUnwbRe38onXlg3NEHNOA"
+          "current_key": "AIzaSyAvFJwrxZJh8T77k_65a6R5bndlSCgLIG4"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "501648798743-fpj6ua4dqdgov8hffm7504aekvjne4kh.apps.googleusercontent.com",
-              "client_type": 3
-            },
-            {
-              "client_id": "501648798743-fghkh72pqh34u787m2aq2hn8dmnmcuiq.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.nexaround.nexaroundApp"
-              }
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }
