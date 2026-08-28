@@ -76,6 +76,8 @@
 	<string>This app requires location access to show attractions near you and calculate routes on the map.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app requires location access to show attractions near you and calculate routes on the map.</string>
+	<key>GIDClientID</key>
+	<string>375268962043-vb9adud6hglf3jd1vme6dku0dshdch38.apps.googleusercontent.com</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -83,7 +85,7 @@
 			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>com.googleusercontent.apps.501648798743-kqev2d391necv2mvlqeoitmch9i05rv5</string>
+				<string>com.googleusercontent.apps.375268962043-vb9adud6hglf3jd1vme6dku0dshdch38</string>
 				<string>nexaround</string>
 			</array>
 		</dict>

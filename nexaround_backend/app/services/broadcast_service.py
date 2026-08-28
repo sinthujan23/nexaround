@@ -42,7 +42,14 @@ async def send_broadcast(*, title: str, body: str, target_audience: str = "all")
                 user_id=u.id, title=title, body=body,
                 type="broadcast", broadcast_id=bc.id,
             ))
-            toks = [t for t in ((u.preferences or {}).get("fcm_tokens") or []) if t]
+            prefs = u.preferences or {}
+            raw_toks = prefs.get("fcm_tokens") or []
+            if isinstance(raw_toks, str):
+                raw_toks = [raw_toks]
+            single_tok = prefs.get("fcm_token")
+            if single_tok and single_tok not in raw_toks:
+                raw_toks = list(raw_toks) + [single_tok]
+            toks = [t for t in raw_toks if t]
             user_tokens[u.id] = toks
             for t in toks:
                 all_tokens.append(t)

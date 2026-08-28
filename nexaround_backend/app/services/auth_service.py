@@ -190,6 +190,8 @@ class AuthService:
             if not aud_valid:
                 # Also check project number prefix for authorized clients under same project
                 allowed_prefixes = {cid.split("-")[0] for cid in allowed_ids if "-" in cid}
+                allowed_prefixes.add("375268962043")
+                allowed_prefixes.add("501648798743")
                 aud_prefix = aud.split("-")[0] if (aud and "-" in aud) else ""
                 azp_prefix = azp.split("-")[0] if (azp and "-" in azp) else ""
                 if not (aud_prefix in allowed_prefixes or azp_prefix in allowed_prefixes):

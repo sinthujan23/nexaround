@@ -34,7 +34,7 @@ class SocialAuthService {
           AppleIDAuthorizationScopes.fullName,
         ],
         webAuthenticationOptions: WebAuthenticationOptions(
-          clientId: 'com.nexaround.nexaround_app.service',
+          clientId: 'com.nexaround.app.service',
           redirectUri: Uri.parse('https://api.nexaround.com/api/v1/auth/apple/callback'),
         ),
       );
