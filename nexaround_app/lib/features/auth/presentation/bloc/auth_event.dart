@@ -57,6 +57,10 @@ class AuthLogoutRequested extends AuthEvent {
   const AuthLogoutRequested();
 }
 
+class AuthDeleteAccountRequested extends AuthEvent {
+  const AuthDeleteAccountRequested();
+}
+
 class AuthCheckStatus extends AuthEvent {
   const AuthCheckStatus();
 }

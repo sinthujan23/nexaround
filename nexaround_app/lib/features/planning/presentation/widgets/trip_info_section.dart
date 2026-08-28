@@ -24,9 +24,8 @@ class TripInfoSection extends StatelessWidget {
     final info = odyssey.practicalInfo;
     final hasInfo = !info.isEmpty;
     final hasBookingPlan = odyssey.bookingPlan.isNotEmpty;
-    final hasSources = odyssey.verifiedSources.isNotEmpty;
 
-    if (!hasInfo && !hasBookingPlan && !hasSources) {
+    if (!hasInfo && !hasBookingPlan) {
       return const SizedBox.shrink();
     }
 
@@ -51,16 +50,6 @@ class TripInfoSection extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _bookingPlanCard(context),
-          const SizedBox(height: 24),
-        ],
-        if (hasSources) ...[
-          _sectionHeader(
-            Icons.verified_rounded,
-            'SOURCES',
-            'Verified via Google Search',
-          ),
-          const SizedBox(height: 16),
-          _sourcesCard(context),
         ],
       ],
     );
@@ -261,44 +250,6 @@ class TripInfoSection extends StatelessWidget {
               ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _sourcesCard(BuildContext context) {
-    return _card(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: odyssey.verifiedSources.map((s) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: InkWell(
-              onTap: () => _launch(context, s.uri),
-              borderRadius: BorderRadius.circular(12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Padding(
-                    padding: EdgeInsets.only(top: 2),
-                    child: Icon(Icons.link_rounded, size: 15, color: AppColors.brandGreen),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      s.title.isNotEmpty ? s.title : s.uri,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.brandGreen,
-                        decoration: TextDecoration.underline,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }

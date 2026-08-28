@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
@@ -7,7 +6,6 @@ import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/flight_strategies_section.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strategies_section.dart';
-import 'package:nexaround_app/features/planning/presentation/widgets/trip_info_section.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
@@ -85,9 +83,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool hasHotels = widget.odyssey.hotelStrategies.isNotEmpty ||
         widget.odyssey.hotelGeneralTips.isNotEmpty ||
         widget.odyssey.hotelBestAreas.isNotEmpty;
-    final bool hasTripInfo = !widget.odyssey.practicalInfo.isEmpty ||
-        widget.odyssey.bookingPlan.isNotEmpty ||
-        widget.odyssey.verifiedSources.isNotEmpty;
 
     Widget buildTabItem({required IconData icon, required String label}) {
       return Tab(
@@ -107,8 +102,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final List<Widget> tabs = [
       buildTabItem(icon: Icons.dashboard_outlined, label: 'Overview'),
       buildTabItem(icon: Icons.map_outlined, label: 'Itinerary'),
-      if (hasTripInfo)
-        buildTabItem(icon: Icons.info_outline_rounded, label: 'Info'),
       if (hasFlights)
         buildTabItem(icon: Icons.flight_outlined, label: 'Flights'),
       if (hasHotels)
@@ -118,7 +111,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final List<Widget> tabViews = [
       _buildOverviewTab(context),
       _buildItineraryTab(context),
-      if (hasTripInfo) _buildInfoTab(context),
       if (hasFlights) _buildFlightsTab(context),
       if (hasHotels) _buildStaysTab(context),
     ];
@@ -473,16 +465,267 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _infoCard('Budget Summary', widget.odyssey.budgetSplit, Icons.pie_chart_rounded),
           if (widget.odyssey.budget > 0)
             _budgetBreakdownCard(context),
+          if (!widget.odyssey.practicalInfo.isEmpty)
+            _buildPracticalInfoSection(context),
+          if (widget.odyssey.bookingPlan.isNotEmpty)
+            _buildBookingPlanSection(context),
         ],
       ),
     );
   }
 
-  Widget _buildInfoTab(BuildContext context) {
-    return SingleChildScrollView(
-      padding: widget.padding,
-      child: TripInfoSection(odyssey: widget.odyssey),
+  Widget _buildPracticalInfoSection(BuildContext context) {
+    final info = widget.odyssey.practicalInfo;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.info_outline_rounded, color: AppColors.primary, size: 20),
+          ),
+          title: const Text(
+            'Practical Information',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          subtitle: const Text(
+            'Money, Connectivity, Safety & Customs',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          children: [
+            const Divider(height: 1, color: Colors.black12),
+            const SizedBox(height: 14),
+            _practicalInfoContent(info),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _practicalInfoContent(OdysseyPracticalInfo info) {
+    final rows = <MapEntry<String, String>>[
+      if (info.money.isNotEmpty) MapEntry('Money & Payments', info.money),
+      if (info.connectivity.isNotEmpty) MapEntry('Connectivity & SIM', info.connectivity),
+      if (info.safety.isNotEmpty) MapEntry('Safety & Health', info.safety),
+      if (info.customs.isNotEmpty) MapEntry('Local Etiquette & Customs', info.customs),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < rows.length; i++) ...[
+          if (i > 0)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 10),
+              child: Divider(height: 1, color: Colors.black12),
+            ),
+          Text(
+            rows[i].key.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: Colors.black54,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            rows[i].value,
+            style: const TextStyle(fontSize: 13.5, height: 1.45, color: Colors.black87),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildBookingPlanSection(BuildContext context) {
+    final grouped = <String, List<OdysseyBookingPlanItem>>{};
+    for (final item in widget.odyssey.bookingPlan) {
+      grouped.putIfAbsent(item.label, () => []).add(item);
+    }
+    const labelOrder = [
+      'BOOK NOW',
+      'BOOK AFTER VISA',
+      'BOOK CLOSER TO TRAVEL',
+      'CAN WAIT',
+    ];
+    final orderedLabels = [
+      ...labelOrder.where(grouped.containsKey),
+      ...grouped.keys.where((l) => !labelOrder.contains(l)),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.black12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          tilePadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+          childrenPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppColors.brandGreen.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.checklist_rounded, color: AppColors.brandGreen, size: 20),
+          ),
+          title: const Text(
+            'Booking Plan & Timeline',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          subtitle: const Text(
+            'What to book, and when',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          children: [
+            const Divider(height: 1, color: Colors.black12),
+            const SizedBox(height: 14),
+            for (var li = 0; li < orderedLabels.length; li++) ...[
+              if (li > 0) const SizedBox(height: 14),
+              _bookingPlanLabelChip(orderedLabels[li]),
+              const SizedBox(height: 8),
+              for (final item in grouped[orderedLabels[li]]!)
+                _bookingPlanItemRow(context, item),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bookingPlanLabelChip(String label) {
+    Color color;
+    switch (label) {
+      case 'BOOK NOW':
+        color = AppColors.error;
+      case 'BOOK AFTER VISA':
+        color = AppColors.warning;
+      case 'BOOK CLOSER TO TRAVEL':
+        color = AppColors.brandGreen;
+      default:
+        color = Colors.black54;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _bookingPlanItemRow(BuildContext context, OdysseyBookingPlanItem item) {
+    final hasUrl = item.url.trim().isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        onTap: hasUrl ? () => _launchExternalUrl(item.url) : null,
+        borderRadius: BorderRadius.circular(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 6),
+              child: Icon(Icons.circle, size: 6, color: Colors.black45),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.item,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                  ),
+                  if (item.reason.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.reason,
+                      style: const TextStyle(fontSize: 12, color: Colors.black54, height: 1.3),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            if (hasUrl)
+              const Padding(
+                padding: EdgeInsets.only(left: 8, top: 2),
+                child: Icon(Icons.open_in_new_rounded, size: 15, color: Colors.black38),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _launchExternalUrl(String url) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      final uri = Uri.parse(trimmed);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {}
   }
 
   Widget _buildFlightsTab(BuildContext context) {
@@ -682,6 +925,19 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       ),
                     ),
                   ),
+                ],
+                if (_dynamicPartners.isNotEmpty) ...[
+                  const SizedBox(height: 24),
+                  const Text(
+                    'BOOKING PARTNERS & WEBSITES',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 2,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildBookingSection(context, _dynamicPartners),
                 ],
               ],
             ),
@@ -2139,7 +2395,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   Widget _buildPriceWithSource(BuildContext context, OdysseyActivity act) {
     final ctx = _resolvePriceContext(act);
     final sourceTag = ctx.$1;
-    final sourceDetail = ctx.$2;
     final isFree = ctx.$4;
     final displayCost = ctx.$7;
 
@@ -2203,114 +2458,60 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// Returns a list of (label, url, icon, color) verification link tuples
-  /// based on the activity type and destination.
-  List<(String label, String url, IconData icon, Color color)> _getVerifyLinks(
-    OdysseyActivity act,
+  Future<void> _openPricingSourceUrl(
     String sourceTag,
-  ) {
-    final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
+    OdysseyActivity act,
+    String dest,
+  ) async {
+    final lowerTag = sourceTag.toLowerCase();
+    final lowerName = act.name.toLowerCase();
+    final lowerTip = act.tip.toLowerCase();
     final q = Uri.encodeComponent('${act.name} $dest'.trim());
     final destQ = Uri.encodeComponent(dest);
-    final nameQ = Uri.encodeComponent(act.name);
-    final lowerName = act.name.toLowerCase();
+    String targetUrl;
 
-    // Google Maps is universal for all types
-    final gmapsUrl = 'https://www.google.com/maps/search/$q';
-
-    // Accommodation
-    if (act.type == ActivityType.accommodation ||
-        lowerName.contains('hotel') ||
-        lowerName.contains('check-in') ||
-        lowerName.contains('check in') ||
-        lowerName.contains('resort') ||
-        lowerName.contains('hostel') ||
-        lowerName.contains('villa') ||
-        lowerName.contains('guest house')) {
-      return [
-        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
-        ('Booking.com', 'https://www.booking.com/searchresults.html?ss=$q', Icons.hotel_outlined, const Color(0xFF003580)),
-        ('Agoda', 'https://www.agoda.com/search?q=$q', Icons.bed_outlined, const Color(0xFFAB1F2A)),
-      ];
+    if (lowerTag.contains('uber') || lowerTip.contains('uber') || lowerName.contains('uber')) {
+      targetUrl = 'https://m.uber.com/looking?pickup=$destQ';
+    } else if (lowerTag.contains('pickme') || lowerTip.contains('pickme') || lowerName.contains('pickme')) {
+      targetUrl = 'https://pickme.lk';
+    } else if (lowerTag.contains('grab') || lowerTip.contains('grab') || lowerName.contains('grab')) {
+      targetUrl = 'https://www.grab.com';
+    } else if (lowerTag.contains('tfl') || lowerTag.contains('transport for london')) {
+      targetUrl = 'https://tfl.gov.uk/plan-a-journey/';
+    } else if (lowerTag.contains('booking.com')) {
+      targetUrl = 'https://www.booking.com/searchresults.html?ss=$q';
+    } else if (lowerTag.contains('agoda')) {
+      targetUrl = 'https://www.agoda.com/search?q=$q';
+    } else if (lowerTag.contains('google hotels') || lowerTag.contains('hotel')) {
+      targetUrl = 'https://www.google.com/travel/hotels/$destQ?q=$q';
+    } else if (lowerTag.contains('tripadvisor')) {
+      targetUrl = 'https://www.tripadvisor.com/Search?q=$q';
+    } else if (lowerTag.contains('getyourguide')) {
+      targetUrl = 'https://www.getyourguide.com/s/?q=$q';
+    } else {
+      final searchQ = Uri.encodeComponent('$sourceTag ${act.name} $dest'.trim());
+      targetUrl = 'https://www.google.com/search?q=$searchQ';
     }
 
-    // Transport & Airport
-    if (act.type == ActivityType.transport ||
-        lowerName.contains('airport') ||
-        lowerName.contains('arrival') ||
-        lowerName.contains('taxi') ||
-        lowerName.contains('transfer') ||
-        lowerName.contains('drive to') ||
-        lowerName.contains('travel to')) {
-      final links = <(String, String, IconData, Color)>[
-        ('Google Maps', 'https://www.google.com/maps/dir/$destQ/$nameQ', Icons.map_outlined, const Color(0xFF4285F4)),
-      ];
-      // Add ride-hail link
-      if (act.tip.toLowerCase().contains('uber') || lowerName.contains('uber')) {
-        links.add(('Uber', 'https://m.uber.com/looking?pickup=$destQ', Icons.local_taxi_outlined, const Color(0xFF000000)));
-      } else if (act.tip.toLowerCase().contains('pickme') || lowerName.contains('pickme')) {
-        links.add(('PickMe', 'https://pickme.lk', Icons.local_taxi_outlined, const Color(0xFF00A651)));
-      } else if (act.tip.toLowerCase().contains('grab') || lowerName.contains('grab')) {
-        links.add(('Grab', 'https://www.grab.com', Icons.local_taxi_outlined, const Color(0xFF00B14F)));
-      } else {
-        links.add(('Uber', 'https://m.uber.com/looking?pickup=$destQ', Icons.local_taxi_outlined, const Color(0xFF000000)));
+    try {
+      final uri = Uri.parse(targetUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-      return links;
-    }
-
-    // Dining
-    if (act.type == ActivityType.dining ||
-        lowerName.startsWith('lunch') ||
-        lowerName.startsWith('dinner') ||
-        lowerName.startsWith('breakfast') ||
-        lowerName.contains('restaurant') ||
-        lowerName.contains('cafe') ||
-        lowerName.contains('food')) {
-      return [
-        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
-        ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
-      ];
-    }
-
-    // Attractions & Heritage
-    if (act.type == ActivityType.attraction ||
-        lowerName.contains('museum') ||
-        lowerName.contains('temple') ||
-        lowerName.contains('fort') ||
-        lowerName.contains('palace') ||
-        lowerName.contains('cathedral') ||
-        lowerName.contains('church') ||
-        lowerName.contains('castle') ||
-        lowerName.contains('gallery') ||
-        lowerName.contains('park') ||
-        lowerName.contains('sanctuary') ||
-        lowerName.contains('garden')) {
-      return [
-        ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
-        ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
-        ('GetYourGuide', 'https://www.getyourguide.com/s/?q=$q', Icons.confirmation_number_outlined, const Color(0xFFFF5533)),
-      ];
-    }
-
-    // Exploration / generic — just Google Maps + TripAdvisor
-    return [
-      ('Google Maps', gmapsUrl, Icons.map_outlined, const Color(0xFF4285F4)),
-      ('TripAdvisor', 'https://www.tripadvisor.com/Search?q=$q', Icons.star_outline_rounded, const Color(0xFF34E0A1)),
-    ];
+    } catch (_) {}
   }
 
   /// Bottom sheet detailing the source basis for an activity's estimated price
-  /// with clickable verification links to real booking & pricing platforms.
+  /// with a clickable source link.
   void _showPriceSourceInfo(BuildContext context, OdysseyActivity act) {
     final ctx = _resolvePriceContext(act);
     final sourceTag = ctx.$1;
+    final sourceDetail = ctx.$2;
     final icon = ctx.$3;
     final isFree = ctx.$4;
     final iconBg = ctx.$5;
     final iconColor = ctx.$6;
     final displayCost = ctx.$7;
-
-    final verifyLinks = _getVerifyLinks(act, sourceTag);
 
     showModalBottomSheet(
       context: context,
@@ -2392,7 +2593,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ── Rate + Source Tag card ──
+                        // ── Rate + Clickable Source Tag card ──
                         Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
@@ -2436,93 +2637,88 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 12),
                               const Divider(height: 1, color: Color(0xFFE2E8F0)),
-                              const SizedBox(height: 10),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 1.5),
-                                    child: Icon(icon, size: 15, color: iconColor),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      'Source: $sourceTag',
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        // ── Verify on: clickable platform links ──
-                        const Text(
-                          '🔍  Verify price on',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        ...verifyLinks.map((link) => Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: InkWell(
-                                onTap: () async {
-                                  final uri = Uri.parse(link.$2);
-                                  await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                },
-                                borderRadius: BorderRadius.circular(12),
+                              const SizedBox(height: 12),
+                              // Clickable source banner
+                              InkWell(
+                                onTap: () => _openPricingSourceUrl(
+                                  sourceTag,
+                                  act,
+                                  widget.odyssey.destination,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 12),
+                                  padding: const EdgeInsets.all(10),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(12),
-                                    border:
-                                        Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: const Color(0xFFE2E8F0)),
                                   ),
                                   child: Row(
                                     children: [
                                       Container(
-                                        width: 32,
-                                        height: 32,
+                                        padding: const EdgeInsets.all(6),
                                         decoration: BoxDecoration(
-                                          color: link.$4.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(8),
+                                          color: iconBg,
+                                          borderRadius:
+                                              BorderRadius.circular(8),
                                         ),
-                                        child: Icon(link.$3, size: 18, color: link.$4),
+                                        child: Icon(icon,
+                                            size: 16, color: iconColor),
                                       ),
-                                      const SizedBox(width: 12),
+                                      const SizedBox(width: 10),
                                       Expanded(
-                                        child: Text(
-                                          link.$1,
-                                          style: const TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.black87,
-                                          ),
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'PRICING SOURCE',
+                                              style: TextStyle(
+                                                fontSize: 9.5,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.8,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              sourceTag,
+                                              style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.w700,
+                                                color: Colors.black87,
+                                              ),
+                                            ),
+                                            if (sourceDetail.isNotEmpty) ...[
+                                              const SizedBox(height: 2),
+                                              Text(
+                                                sourceDetail,
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.black54,
+                                                  height: 1.3,
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
                                       ),
-                                      Icon(
+                                      const Icon(
                                         Icons.open_in_new_rounded,
                                         size: 16,
-                                        color: link.$4,
+                                        color: Colors.black45,
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
-                            )),
-                        const SizedBox(height: 6),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
                         // ── Disclaimer banner ──
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -2542,7 +2738,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Prices may vary due to seasonal demand, exchange rates & vendor updates. Verify on the platforms above for live rates.',
+                                  'Prices may vary due to seasonal demand, exchange rates & vendor updates.',
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     height: 1.35,

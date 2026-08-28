@@ -24,6 +24,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthGoogleLoginRequested>(_onGoogleLogin);
     on<AuthAppleLoginRequested>(_onAppleLogin);
     on<AuthLogoutRequested>(_onLogout);
+    on<AuthDeleteAccountRequested>(_onDeleteAccount);
     on<UpdateUserPreferences>(_onUpdatePreferences);
     on<AuthForgotPasswordRequested>(_onForgotPassword);
     on<AuthVerifyResetOTPRequested>(_onVerifyResetOTP);
@@ -373,6 +374,19 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     await _authRepository.logout();
     await CacheService.clearUserData();
     emit(const AuthUnauthenticated());
+  }
+
+  Future<void> _onDeleteAccount(
+    AuthDeleteAccountRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    emit(const AuthLoading());
+    final result = await _authRepository.deleteAccount();
+    await CacheService.clearUserData();
+    result.fold(
+      (failure) => emit(AuthError(failure.message)),
+      (_) => emit(const AuthAccountDeleted()),
+    );
   }
 
   Future<void> _onForgotPassword(

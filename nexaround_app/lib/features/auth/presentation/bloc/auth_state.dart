@@ -30,6 +30,15 @@ class AuthUnauthenticated extends AuthState {
   const AuthUnauthenticated();
 }
 
+class AuthAccountDeleted extends AuthState {
+  final String message;
+
+  const AuthAccountDeleted([this.message = 'Your account has been permanently deleted.']);
+
+  @override
+  List<Object?> get props => [message];
+}
+
 class AuthOTPVerificationRequired extends AuthState {
   final String email;
   final String? message;

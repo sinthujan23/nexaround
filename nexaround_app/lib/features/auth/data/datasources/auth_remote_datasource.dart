@@ -162,4 +162,8 @@ class AuthRemoteDatasource {
     }
     return {};
   }
+
+  Future<void> deleteAccount() async {
+    await _dio.delete(ApiConstants.me);
+  }
 }

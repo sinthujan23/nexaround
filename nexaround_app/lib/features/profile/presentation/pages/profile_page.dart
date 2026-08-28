@@ -66,7 +66,30 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<AuthBloc, AuthState>(
+    return BlocConsumer<AuthBloc, AuthState>(
+      listener: (context, state) {
+        if (state is AuthAccountDeleted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginPage()),
+            (route) => false,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else if (state is AuthError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      },
       builder: (context, state) {
         if (state is AuthAuthenticated) {
           final user = state.user;
@@ -537,6 +560,303 @@ class _ProfilePageState extends State<ProfilePage> {
               icon: const Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
               label: const Text('Sign Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
             ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Delete Account (Industry standard data & account purge)
+        SizedBox(
+          width: double.infinity,
+          child: TextButton.icon(
+            onPressed: () => _showDeleteAccountModal(context),
+            icon: const Icon(Icons.delete_forever_rounded, color: AppColors.error, size: 18),
+            label: const Text(
+              'Delete Account',
+              style: TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showDeleteAccountModal(BuildContext context) {
+    final textController = TextEditingController();
+    bool canDelete = false;
+    bool isDeleting = false;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      showDragHandle: false,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setModalState) {
+          return Container(
+            padding: EdgeInsets.fromLTRB(
+              24,
+              20,
+              24,
+              MediaQuery.of(sheetContext).viewInsets.bottom + 24,
+            ),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: AppColors.border,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Header with warning icon
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.12),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.delete_forever_rounded,
+                          color: AppColors.error,
+                          size: 24,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Delete Account & Data',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Permanent and irreversible',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.error,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // Explanatory warning
+                  const Text(
+                    'In compliance with privacy regulations, deleting your account will immediately and permanently purge all associated personal data from our servers:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.45,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // What will be deleted list
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceVariant,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Column(
+                      children: [
+                        _buildDataLossItem(
+                          '🗺️',
+                          'Odyssey Plans & Itineraries',
+                          'All saved travel blueprints, custom plans & bookings',
+                        ),
+                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        _buildDataLossItem(
+                          '📖',
+                          'Travel Journal & Stories',
+                          'All published stories, uploaded photos & journal entries',
+                        ),
+                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        _buildDataLossItem(
+                          '⭐',
+                          'Favourites & Reviews',
+                          'All bookmarked places, ratings & notifications',
+                        ),
+                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        _buildDataLossItem(
+                          '👤',
+                          'Profile & Credentials',
+                          'Your account identity, login credentials & preferences',
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Safety input verification
+                  const Text(
+                    'To confirm deletion, type "DELETE" below:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: textController,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                    ),
+                    onChanged: (val) {
+                      setModalState(() {
+                        canDelete = val.trim().toUpperCase() == 'DELETE';
+                      });
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Type DELETE',
+                      hintStyle: const TextStyle(
+                        color: AppColors.textMuted,
+                        letterSpacing: 1.2,
+                      ),
+                      filled: true,
+                      fillColor: AppColors.surfaceVariant,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(sheetContext),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: AppColors.border),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: canDelete && !isDeleting
+                              ? () async {
+                                  setModalState(() => isDeleting = true);
+                                  Navigator.pop(sheetContext);
+                                  context.read<AuthBloc>().add(const AuthDeleteAccountRequested());
+                                }
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.error,
+                            disabledBackgroundColor: AppColors.error.withValues(alpha: 0.3),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: isDeleting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'Delete Forever',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildDataLossItem(String emoji, String title, String subtitle) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 16)),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  color: AppColors.textTertiary,
+                  height: 1.3,
+                ),
+              ),
+            ],
           ),
         ),
       ],
