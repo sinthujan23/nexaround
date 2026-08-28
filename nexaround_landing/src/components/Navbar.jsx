@@ -1,25 +1,25 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Menu, X, ArrowRight } from 'lucide-react';
+import { Menu, X, Smartphone } from 'lucide-react';
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const navItems = [
     { name: 'Home', path: '/' },
+    { name: 'App Features', path: '/app' },
     { name: 'Services', path: '/services' },
     { name: 'Solutions', path: '/solutions' },
-    { name: 'Flagship App', path: '/app' },
     { name: 'About', path: '/about' },
     { name: 'Contact', path: '/contact' },
   ];
 
   return (
     <header className="navbar-header">
-      <div style={{ maxWidth: '1360px', margin: '0 auto', height: '100%', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div className="navbar-container" style={{ maxWidth: '1320px', margin: '0 auto', height: '100%', padding: '0 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         
-        {/* Left: Brand Mark Container */}
-        <NavLink to="/" className="logo-link" style={{ display: 'flex', alignItems: 'center', gap: '14px', textDecoration: 'none' }}>
+        {/* Left: Brand Logo & Title */}
+        <NavLink to="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
           <div style={{ 
             width: '42px', 
             height: '42px', 
@@ -29,43 +29,49 @@ export default function Navbar() {
             alignItems: 'center', 
             justifyContent: 'center',
             boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
-            border: '1px solid rgba(255, 255, 255, 0.9)'
+            padding: '4px'
           }}>
             <img 
-              src="/tech_logo.png" 
-              alt="NexARound Technologies Logo" 
-              style={{ width: '28px', height: '28px', objectFit: 'contain' }} 
+              src="/logo_2.png" 
+              alt="NexAround Logo" 
+              style={{ width: '32px', height: '32px', objectFit: 'contain' }} 
+              onError={(e) => { e.currentTarget.src = '/app_icon.png'; }}
             />
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.02em', lineHeight: 1.1 }}>
-              NexARound
+            <span style={{ fontSize: '1.28rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+              NexAround
             </span>
-            <span style={{ fontSize: '0.62rem', color: '#60a5fa', fontWeight: 700, letterSpacing: '1.8px', textTransform: 'uppercase' }}>
-              Technologies
+            <span style={{ fontSize: '0.65rem', color: '#00d2d3', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase' }}>
+              Smart Tourism AI & AR
             </span>
           </div>
         </NavLink>
 
-        {/* Center: Desktop Navigation Links */}
-        <nav className="desktop-nav" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+        {/* Center: Desktop Navigation */}
+        <nav className="desktop-nav" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
-              className={({ isActive }) => `qatar-nav-link ${isActive ? 'active' : ''}`}
+              className={({ isActive }) => `nav-link-item ${isActive ? 'active' : ''}`}
             >
               {item.name}
             </NavLink>
           ))}
         </nav>
 
-        {/* Right CTA Button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Right CTA Button -> Navigates to /get-app */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
           
-          <NavLink to="/contact" className="btn-white-pill" style={{ padding: '12px 26px', fontSize: '0.88rem' }}>
-            Get in Touch <ArrowRight style={{ width: '16px', height: '16px' }} />
+          <NavLink 
+            to="/get-app" 
+            className="btn-teal" 
+            style={{ padding: '10px 22px', fontSize: '0.88rem', textDecoration: 'none' }}
+          >
+            <Smartphone style={{ width: '16px', height: '16px' }} />
+            <span>Get App</span>
           </NavLink>
 
           {/* Mobile Toggle Button */}
@@ -76,11 +82,11 @@ export default function Navbar() {
               padding: '9px 13px', 
               borderRadius: '10px', 
               background: 'rgba(255, 255, 255, 0.1)', 
-              border: '1px solid rgba(255, 255, 255, 0.2)',
-              color: '#ffffff',
-              cursor: 'pointer'
+              border: '1px solid rgba(255, 255, 255, 0.2)', 
+              color: '#ffffff', 
+              cursor: 'pointer' 
             }}
-            aria-label="Toggle Navigation Menu"
+            aria-label="Toggle Menu"
           >
             {mobileOpen ? <X style={{ width: '20px', height: '20px' }} /> : <Menu style={{ width: '20px', height: '20px' }} />}
           </button>
@@ -89,28 +95,39 @@ export default function Navbar() {
 
       </div>
 
-      {/* Mobile Menu Drawer */}
+      {/* Mobile Navigation Drawer */}
       {mobileOpen && (
-        <div className="mobile-nav-drawer" style={{
-          display: 'block', position: 'absolute', top: '78px', left: 0, width: '100%',
-          background: 'rgba(10, 22, 40, 0.98)', borderBottom: '1px solid rgba(255, 255, 255, 0.15)',
-          padding: '28px 24px', boxShadow: '0 25px 50px rgba(0, 0, 0, 0.6)', zIndex: 90
+        <div style={{
+          position: 'absolute',
+          top: '80px',
+          left: 0,
+          width: '100%',
+          background: 'rgba(10, 17, 24, 0.98)',
+          borderBottom: '1px solid rgba(0, 122, 124, 0.3)',
+          padding: '24px 28px',
+          boxShadow: '0 25px 50px rgba(0, 0, 0, 0.8)',
+          zIndex: 99
         }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {navItems.map((item) => (
               <NavLink
                 key={item.path}
                 to={item.path}
                 onClick={() => setMobileOpen(false)}
-                className={({ isActive }) => `qatar-nav-link ${isActive ? 'active' : ''}`}
-                style={{ display: 'block', textAlign: 'center', fontSize: '1.05rem', padding: '10px 0' }}
+                className={({ isActive }) => `nav-link-item ${isActive ? 'active' : ''}`}
+                style={{ textAlign: 'left', padding: '12px 18px', fontSize: '1rem' }}
               >
                 {item.name}
               </NavLink>
             ))}
-            <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.15)', marginTop: '8px' }}>
-              <NavLink to="/contact" onClick={() => setMobileOpen(false)} className="btn-white-pill" style={{ width: '100%', justifyContent: 'center' }}>
-                Get in Touch <ArrowRight style={{ width: '16px', height: '16px' }} />
+            <div style={{ paddingTop: '16px', borderTop: '1px solid rgba(255, 255, 255, 0.12)', marginTop: '6px' }}>
+              <NavLink
+                to="/get-app"
+                onClick={() => setMobileOpen(false)}
+                className="btn-teal"
+                style={{ width: '100%', justifyContent: 'center', textDecoration: 'none' }}
+              >
+                <Smartphone style={{ width: '18px', height: '18px' }} /> Download NexAround
               </NavLink>
             </div>
           </div>

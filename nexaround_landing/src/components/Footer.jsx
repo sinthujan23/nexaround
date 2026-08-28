@@ -1,81 +1,171 @@
-import { NavLink } from 'react-router-dom';
-import { Mail, Phone, Globe, ArrowUpRight } from 'lucide-react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Mail, Phone, Globe } from 'lucide-react';
+import StoreButtons from './StoreButtons';
 
 export default function Footer() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleNavClick = (path, hash) => (e) => {
+    e.preventDefault();
+    if (hash) {
+      if (location.pathname === path) {
+        const elem = document.querySelector(hash);
+        if (elem) {
+          elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      } else {
+        navigate(`${path}${hash}`);
+        setTimeout(() => {
+          const elem = document.querySelector(hash);
+          if (elem) {
+            elem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }, 120);
+      }
+    } else {
+      if (location.pathname === path) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        navigate(path);
+      }
+    }
+  };
+
   return (
-    <footer style={{ background: 'var(--navy)', borderTop: '1px solid rgba(255, 255, 255, 0.1)', color: '#ffffff', paddingTop: '80px', paddingBottom: '40px' }}>
-      <div style={{ maxWidth: '1360px', margin: '0 auto', padding: '0 40px' }}>
+    <footer style={{ background: 'var(--dark-charcoal)', borderTop: '1px solid rgba(0, 122, 124, 0.25)', color: '#ffffff', paddingTop: '80px', paddingBottom: '40px', position: 'relative' }}>
+      <div className="container">
         
-        {/* Main Footer 4-Column Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1.2fr', gap: '48px', marginBottom: '64px' }} className="grid-2">
+        {/* Main Footer Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1.2fr', gap: '48px', marginBottom: '64px' }} className="footer-grid">
           
           {/* Brand Info Column */}
           <div style={{ textAlign: 'left' }}>
-            <NavLink to="/" style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', textDecoration: 'none', marginBottom: '20px' }}>
-              <div style={{ width: '38px', height: '38px', borderRadius: '10px', background: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <img src="/tech_logo.png" alt="NexARound Logo" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+            <NavLink to="/" onClick={handleNavClick('/', null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', textDecoration: 'none', marginBottom: '20px' }}>
+              <div style={{ 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '12px', 
+                background: '#ffffff', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
+                padding: '4px'
+              }}>
+                <img src="/logo_2.png" alt="NexAround Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.src = '/app_icon.png'; }} />
               </div>
-              <span style={{ fontSize: '1.2rem', fontWeight: 800, color: '#ffffff' }}>NexARound</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>NexAround</span>
             </NavLink>
 
-            <p style={{ fontSize: '0.9rem', color: 'rgba(255, 255, 255, 0.72)', lineHeight: 1.7, margin: '0 0 24px', maxWidth: '340px' }}>
-              Full-stack software engineering, custom ERPNext enterprise platforms, AI data engines, and spatial mobile ecosystems tailored for global scale.
+            <p style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: 1.7, margin: '0 0 24px', maxWidth: '340px' }}>
+              The next-generation AI & Augmented Reality smart tourism companion. Discover landmarks, generate custom Odyssey itineraries, and explore with your 24/7 AI travel concierge.
             </p>
 
-            <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.6)', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-              Sri Lanka & Global Engineering Operations
+            {/* Store Download Badges */}
+            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <StoreButtons theme="onDark" direction="row" align="flex-start" showRating={false} />
             </div>
           </div>
 
-          {/* Navigation Links Column */}
+          {/* App Feature Modules */}
           <div style={{ textAlign: 'left' }}>
-            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', marginBottom: '20px' }}>Company Navigation</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <li><NavLink to="/" className="footer-link">Home</NavLink></li>
-              <li><NavLink to="/services" className="footer-link">Services</NavLink></li>
-              <li><NavLink to="/solutions" className="footer-link">Solutions</NavLink></li>
-              <li><NavLink to="/app" className="footer-link">Flagship Mobile App</NavLink></li>
-              <li><NavLink to="/about" className="footer-link">About Us</NavLink></li>
-              <li><NavLink to="/contact" className="footer-link">Contact</NavLink></li>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>App Modules</h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <li>
+                <a href="/app#odyssey" onClick={handleNavClick('/app', '#odyssey')} className="footer-link">
+                  Odyssey Trip Planner
+                </a>
+              </li>
+              <li>
+                <a href="/app#camera" onClick={handleNavClick('/app', '#camera')} className="footer-link">
+                  AR Landmark Scanner
+                </a>
+              </li>
+              <li>
+                <a href="/app#neva" onClick={handleNavClick('/app', '#neva')} className="footer-link">
+                  Neva 24/7 AI Concierge
+                </a>
+              </li>
+              <li>
+                <a href="/app#radar" onClick={handleNavClick('/app', '#radar')} className="footer-link">
+                  Around You Proximity Radar
+                </a>
+              </li>
+              <li>
+                <a href="/app#museum" onClick={handleNavClick('/app', '#museum')} className="footer-link">
+                  Curated Museum Guides
+                </a>
+              </li>
+              <li>
+                <a href="/app#stories" onClick={handleNavClick('/app', '#stories')} className="footer-link">
+                  Travel Stories & Journal
+                </a>
+              </li>
             </ul>
           </div>
 
-          {/* Solutions Column */}
+          {/* Company & Platforms */}
           <div style={{ textAlign: 'left' }}>
-            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff', marginBottom: '20px' }}>Solutions Suite</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <li><NavLink to="/solutions" className="footer-link">ERPNext Business Systems</NavLink></li>
-              <li><NavLink to="/solutions" className="footer-link">AI, ML & Data Engines</NavLink></li>
-              <li><NavLink to="/solutions" className="footer-link">Blockchain & Web3</NavLink></li>
-              <li><NavLink to="/solutions" className="footer-link">Cloud & DevOps Engineering</NavLink></li>
-              <li><NavLink to="/app" className="footer-link">nexARound Spatial Platform</NavLink></li>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>Platform & Company</h4>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <li>
+                <a href="/" onClick={handleNavClick('/', null)} className="footer-link">
+                  Home
+                </a>
+              </li>
+              <li>
+                <a href="/app" onClick={handleNavClick('/app', null)} className="footer-link">
+                  Flagship Mobile App
+                </a>
+              </li>
+              <li>
+                <a href="/services" onClick={handleNavClick('/services', null)} className="footer-link">
+                  Enterprise Services
+                </a>
+              </li>
+              <li>
+                <a href="/solutions" onClick={handleNavClick('/solutions', null)} className="footer-link">
+                  Enterprise Solutions
+                </a>
+              </li>
+              <li>
+                <a href="/about" onClick={handleNavClick('/about', null)} className="footer-link">
+                  About NexAround
+                </a>
+              </li>
+              <li>
+                <a href="/contact" onClick={handleNavClick('/contact', null)} className="footer-link">
+                  Contact & Support
+                </a>
+              </li>
             </ul>
           </div>
 
-          {/* Contact Column */}
+          {/* Contact Details */}
           <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h4 style={{ fontSize: '0.78rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#ffffff' }}>Corporate Communications</h4>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3' }}>Connect</h4>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.88rem' }}>
-              <a href="mailto:support@nexaround.com" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(26,86,219,0.15)', border: '1px solid rgba(26,86,219,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Mail style={{ width: '16px', height: '16px', color: '#60a5fa' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <a href="mailto:support@nexaround.com" className="footer-connect-link">
+                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
+                  <Mail style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                support@nexaround.com
+                <span>support@nexaround.com</span>
               </a>
 
-              <a href="tel:+97455816148" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(26,86,219,0.15)', border: '1px solid rgba(26,86,219,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Phone style={{ width: '16px', height: '16px', color: '#60a5fa' }} />
+              <a href="tel:+97455816148" className="footer-connect-link">
+                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
+                  <Phone style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                +974 5581 6148
+                <span>+974 5581 6148</span>
               </a>
 
-              <a href="https://www.nexaround.com" target="_blank" rel="noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none' }}>
-                <div style={{ width: '34px', height: '34px', borderRadius: '8px', background: 'rgba(26,86,219,0.15)', border: '1px solid rgba(26,86,219,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Globe style={{ width: '16px', height: '16px', color: '#60a5fa' }} />
+              <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link">
+                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
+                  <Globe style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                www.nexaround.com
+                <span>nexaround.com</span>
               </a>
             </div>
           </div>
@@ -83,12 +173,12 @@ export default function Footer() {
         </div>
 
         {/* Bottom Row */}
-        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.82rem', color: 'rgba(255, 255, 255, 0.72)', flexWrap: 'wrap', gap: '16px' }}>
-          <p style={{ margin: 0 }}>© {new Date().getFullYear()} NexARound Technologies. All rights reserved.</p>
+        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.65)', flexWrap: 'wrap', gap: '16px' }}>
+          <p style={{ margin: 0 }}>© {new Date().getFullYear()} NexAround Technologies. All rights reserved.</p>
 
           <div style={{ display: 'flex', gap: '24px' }}>
-            <NavLink to="/privacy" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Privacy Policy</NavLink>
-            <NavLink to="/terms" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Terms of Service</NavLink>
+            <NavLink to="/privacy" className="footer-link" style={{ fontSize: '0.85rem' }}>Privacy Policy</NavLink>
+            <NavLink to="/terms" className="footer-link" style={{ fontSize: '0.85rem' }}>Terms of Service</NavLink>
           </div>
         </div>
 

@@ -1,277 +1,252 @@
 import { 
-  Repeat, Code2, Cloud, BrainCircuit, Palette, ShieldCheck, 
-  Users, Wallet, Clock, ArrowRight, Sparkles, CheckCircle2, ChevronRight, Zap, Layers, Cpu
+  Camera, Compass, MessageSquare, MapPin, Landmark, 
+  Ticket, Globe, ShieldCheck, Zap, Layers, Sparkles, 
+  CheckCircle2, ArrowRight, Smartphone, ChevronRight,
+  Headphones, Navigation, Utensils, Cpu, HeartHandshake
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import StoreButtons from '../components/StoreButtons';
 
 export default function Services() {
-  const models = [
-    { 
-      icon: <Users style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />, 
-      title: 'Dedicated Team', 
-      tag: 'Exclusive Talent',
-      desc: 'A dedicated engineering team that works exclusively on your project as an integrated extension of your company.' 
+  const platformServices = [
+    {
+      num: '01',
+      icon: <Camera style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Spatial AR Camera Landmark Vision',
+      desc: 'Edge-accelerated computer vision that identifies ancient temples, heritage ruins, city landmarks, and museum artwork in sub-500ms.',
+      highlights: [
+        'Real-time camera landmark recognition',
+        'Interactive 3D historical & structural overlays',
+        'Spatial vantage point contextual storytelling'
+      ]
     },
-    { 
-      icon: <Wallet style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />, 
-      title: 'Fixed Price', 
-      tag: 'Predictable Scope',
-      desc: 'Well-defined scope, timeline, and deliverables at a fixed price for predictable timelines and budget certainty.' 
+    {
+      num: '02',
+      icon: <Compass style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Odyssey AI Dynamic Itinerary Engine',
+      desc: 'Multi-day personalized travel planner that optimizes routes, adapts to weather, and balances pacing across your preferred budget tier.',
+      highlights: [
+        'Dynamic multi-day route & transit optimization',
+        'Budget matching from backpacker to luxury',
+        'Live opening hours & crowd density sync'
+      ]
     },
-    { 
-      icon: <Clock style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />, 
-      title: 'Time & Material', 
-      tag: 'Agile Flexibility',
-      desc: 'Flexible engagement based on dedicated hourly resources and changing project requirements as your business grows.' 
+    {
+      num: '03',
+      icon: <MessageSquare style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Neva 24/7 AI Smart Concierge',
+      desc: 'Context-aware conversational companion delivering instant local recommendations, phrasebook guidance, and emergency safety support.',
+      highlights: [
+        'Natural conversational voice & text intelligence',
+        'Hyper-local dining & dietary preference filters',
+        'Real-time itinerary adjustments on the fly'
+      ]
     },
-    { 
-      icon: <Repeat style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />, 
-      title: 'Build-Operate-Transfer', 
-      tag: 'Turnkey Transfer',
-      desc: 'We build and operate the solution, then transfer full ownership, IP, and complete operational knowledge to your team.' 
+    {
+      num: '04',
+      icon: <MapPin style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Living Tourism Radar & Proximity Maps',
+      desc: 'Intelligent spatial radar scanning attractions, viewpoints, authentic street food, and verified healthcare facilities in your immediate radius.',
+      highlights: [
+        'Live proximity distance radar around your GPS',
+        'Curated Food, Nature, and Cultural POI filters',
+        'Direct skip-the-line ticket bookings'
+      ]
+    },
+    {
+      num: '05',
+      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Curated Museum & Heritage Guides',
+      desc: 'Interactive exhibit walkthroughs crafted by historians and cultural experts with room-by-room indoor floorplan navigation.',
+      highlights: [
+        'Deep historical storytelling for world wonders',
+        'Room-by-room gallery & exhibit walkthroughs',
+        'Must-see masterworks & verified schedules'
+      ]
+    },
+    {
+      num: '06',
+      icon: <Ticket style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Integrated Bookings & Transit Dispatch',
+      desc: 'Book verified activities, museum tickets, hotels, and Uber rides directly inside your daily itinerary without jumping between multiple apps.',
+      highlights: [
+        'Integrated with Viator, GetYourGuide, Headout',
+        'One-tap Uber & local ride-hailing dispatch',
+        'Zero markups on official landmark tickets'
+      ]
+    }
+  ];
+
+  const enterpriseServices = [
+    {
+      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Heritage & Landmark 3D Digitization',
+      tag: 'For Cultural Ministries & DMOs',
+      desc: 'We create photogrammetric 3D spatial models and historical reconstruction overlays for national heritage sites.'
+    },
+    {
+      icon: <Globe style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Destination Tourism Telemetry',
+      tag: 'For Smart Cities & Tourism Boards',
+      desc: 'Anonymized visitor flow analytics, dwell time tracking, and crowd distribution heatmaps for sustainable destination management.'
+    },
+    {
+      icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Curated Museum Exhibit Guide Production',
+      tag: 'For Museums & Heritage Sites',
+      desc: 'End-to-end research, multilingual exhibit descriptions, and gallery curation for permanent exhibitions and galleries.'
+    },
+    {
+      icon: <HeartHandshake style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
+      title: 'Hospitality Partner White-Labeling',
+      tag: 'For Resorts & Luxury Hotels',
+      desc: 'Customized in-stay guest concierges featuring branded hotel recommendations, wellness schedules, and VIP excursions.'
     }
   ];
 
   return (
-    <div style={{ paddingBottom: '80px' }}>
+    <div style={{ background: '#ffffff', minHeight: '100vh', paddingBottom: '100px' }}>
       
-      {/* Header Section */}
-      <section style={{ textAlign: 'center', maxWidth: '850px', margin: '0 auto', padding: '120px 24px 48px', position: 'relative' }}>
-        <div className="badge badge-blue" style={{ margin: '0 auto 20px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-          <Sparkles style={{ width: '13px', height: '13px' }} /> Enterprise Capabilities
-        </div>
-        <h1 style={{ fontSize: 'clamp(2.4rem, 5.2vw, 3.6rem)', fontWeight: 900, color: 'var(--navy)', margin: '0 0 20px', lineHeight: 1.1, letterSpacing: '-0.03em' }}>
-          Services Engineered for <br />
-          <span className="text-gradient-blue">High-Scale Enterprise</span>
-        </h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '1.15rem', lineHeight: 1.7, margin: 0, maxWidth: '700px', marginLeft: 'auto', marginRight: 'auto' }}>
-          We design, engineer, and deploy future-proof digital architectures. End-to-end capabilities tailored for ambitious global organizations.
-        </p>
-      </section>
-
-      {/* ═══ BENTO BOX GRID ═══ */}
-      <section className="container" style={{ padding: '0 24px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '24px' }}>
-          
-          {/* BENTO 1: Digital Transformation (7 Columns - Dark Glass Highlight) */}
-          <div className="bento-card-dark" style={{ gridColumn: 'span 7' }}>
-            <div style={{ position: 'absolute', top: '-10%', right: '-10%', width: '300px', height: '300px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(26,86,219,0.3) 0%, rgba(10,22,40,0) 70%)', pointerEvents: 'none' }} />
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px', position: 'relative', zIndex: 2 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', background: 'rgba(232, 119, 34, 0.1)', padding: '5px 12px', borderRadius: '9999px', border: '1px solid rgba(232, 119, 34, 0.2)' }}>
-                <Zap style={{ width: '13px', height: '13px' }} /> Core Transformation
-              </div>
-              <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'rgba(255, 255, 255, 0.15)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>01</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#ffffff', margin: '0 0 12px', position: 'relative', zIndex: 2 }}>
-              Digital Transformation
-            </h3>
-            
-            <p style={{ fontSize: '0.95rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: 1.7, margin: '0 0 28px', maxWidth: '520px', position: 'relative', zIndex: 2 }}>
-              Reimagine operations end-to-end with modern, connected systems and clear digital roadmaps. Transition legacy software into intelligent B2B cloud architectures.
-            </p>
-
-            {/* Architecture Flow Visual Pill */}
-            <div style={{ background: 'rgba(255, 255, 255, 0.04)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '16px', padding: '18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', position: 'relative', zIndex: 2 }}>
-              {['Legacy Software', 'API Gateway', 'Cloud Core', 'AI Intelligence'].map((step, idx) => (
-                <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: idx === 3 ? 'var(--blue-light)' : '#ffffff' }}>
-                    {step}
-                  </span>
-                  {idx < 3 && <ChevronRight style={{ width: '14px', height: '14px', color: 'rgba(255,255,255,0.3)' }} />}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* BENTO 2: Software Engineering (5 Columns - White Glass Card) */}
-          <div className="bento-card" style={{ gridColumn: 'span 5', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-                <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(26,86,219,0.1), rgba(26,86,219,0.03))', border: '1px solid rgba(26,86,219,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Code2 style={{ width: '26px', height: '26px', color: 'var(--blue)' }} />
-                </div>
-                <span style={{ fontSize: '2.5rem', fontWeight: 900, color: 'rgba(26,86,219,0.12)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>02</span>
-              </div>
-
-              <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '8px' }}>
-                Full-Stack Excellence
-              </div>
-
-              <h3 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 12px' }}>
-                Software Engineering
-              </h3>
-
-              <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: '0 0 24px' }}>
-                Custom, full-stack development delivered with quality and scalability built in. Modern web, mobile, and backend frameworks.
-              </p>
-            </div>
-
-            {/* Tech Badges */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {['React.js', 'Node.js', 'Python', 'Flutter', 'PostgreSQL'].map((t, idx) => (
-                <span key={idx} style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--navy)', background: 'rgba(26,86,219,0.06)', border: '1px solid rgba(26,86,219,0.1)', padding: '5px 12px', borderRadius: '8px' }}>
-                  {t}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          {/* BENTO 3: AI, ML & Data (4 Columns) */}
-          <div className="bento-card" style={{ gridColumn: 'span 4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(26,86,219,0.1), rgba(232,119,34,0.05))', border: '1px solid rgba(26,86,219,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <BrainCircuit style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />
-              </div>
-              <span style={{ fontSize: '2.2rem', fontWeight: 900, color: 'rgba(26,86,219,0.12)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>03</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 10px' }}>
-              AI, ML & Data
-            </h3>
-
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 20px' }}>
-              Predictive models, automated document processing (LLMs), and live data pipelines that integrate your ERPs.
-            </p>
-
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {['Custom LLMs', 'Analytics', 'PyTorch'].map((t, idx) => (
-                <span key={idx} style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--blue)', background: 'rgba(26,86,219,0.06)', padding: '4px 10px', borderRadius: '6px' }}>{t}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* BENTO 4: Cloud Implementation (4 Columns) */}
-          <div className="bento-card" style={{ gridColumn: 'span 4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(26,86,219,0.1), rgba(26,86,219,0.03))', border: '1px solid rgba(26,86,219,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Cloud style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />
-              </div>
-              <span style={{ fontSize: '2.2rem', fontWeight: 900, color: 'rgba(26,86,219,0.12)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>04</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 10px' }}>
-              Cloud Implementation
-            </h3>
-
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 20px' }}>
-              Cloud-native architectures, DevOps CI/CD pipelines, automated security checks, and zero downtime deployments.
-            </p>
-
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {['AWS & Azure', 'Docker/K8s', 'CI/CD'].map((t, idx) => (
-                <span key={idx} style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--blue)', background: 'rgba(26,86,219,0.06)', padding: '4px 10px', borderRadius: '6px' }}>{t}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* BENTO 5: UI / UX Design (4 Columns) */}
-          <div className="bento-card" style={{ gridColumn: 'span 4' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'linear-gradient(135deg, rgba(26,86,219,0.1), rgba(232,119,34,0.05))', border: '1px solid rgba(26,86,219,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Palette style={{ width: '24px', height: '24px', color: 'var(--blue)' }} />
-              </div>
-              <span style={{ fontSize: '2.2rem', fontWeight: 900, color: 'rgba(26,86,219,0.12)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>05</span>
-            </div>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--navy)', margin: '0 0 10px' }}>
-              UI / UX Design
-            </h3>
-
-            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 20px' }}>
-              Human-centred interfaces built for maximum user adoption. Figma design systems and interactive wireframes.
-            </p>
-
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-              {['Design Systems', 'Prototypes', 'Figma'].map((t, idx) => (
-                <span key={idx} style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--blue)', background: 'rgba(26,86,219,0.06)', padding: '4px 10px', borderRadius: '6px' }}>{t}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* BENTO 6: Quality & Automation (12 Columns Full Width Security Banner) */}
-          <div className="bento-card-dark" style={{ gridColumn: 'span 12', padding: '40px 48px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '32px' }}>
-              <div style={{ maxWidth: '580px' }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 700, color: '#10b981', background: 'rgba(16, 185, 129, 0.1)', padding: '5px 14px', borderRadius: '9999px', border: '1px solid rgba(16, 185, 129, 0.25)', marginBottom: '16px' }}>
-                  <ShieldCheck style={{ width: '15px', height: '15px' }} /> Automated Security & QA Assurance
-                </div>
-                <h3 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#ffffff', margin: '0 0 10px', letterSpacing: '-0.02em' }}>
-                  Quality & Continuous Automation (06)
-                </h3>
-                <p style={{ fontSize: '0.95rem', color: 'rgba(255,255,255,0.7)', lineHeight: 1.7, margin: 0 }}>
-                  Automated testing integrated directly into your build cycles to identify bottlenecks, perform security scans, and ensure zero-defect software releases.
-                </p>
-              </div>
-
-              {/* Security Checkmarks Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '14px', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '16px', padding: '20px 24px' }}>
-                {[
-                  'Automated Integration QA',
-                  'Penetration Security Scans',
-                  'High-Load Stress Testing',
-                  'Continuous Vulnerability Verification'
-                ].map((check, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: '#ffffff', fontWeight: 600 }}>
-                    <CheckCircle2 style={{ width: '16px', height: '16px', color: '#10b981', flexShrink: 0 }} />
-                    {check}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
-      {/* Engagement Models Section */}
-      <section style={{ marginTop: '100px', background: 'var(--bg-light)', padding: '100px 0', position: 'relative', overflow: 'hidden' }}>
+      {/* ═══════════════════════════════════════════════════════ */}
+      {/* ═══ HERO SECTION (MATCHING HOME PAGE LAYOUT) ═══ */}
+      <section className="hero-section" style={{ 
+        position: 'relative', 
+        minHeight: '75vh', 
+        display: 'flex', 
+        alignItems: 'center', 
+        background: '#080a14', 
+        overflow: 'hidden',
+        padding: '170px 0 90px'
+      }}>
         
-        {/* Ambient Glow */}
-        <div style={{ position: 'absolute', top: '15%', right: '-5%', width: '400px', height: '400px', borderRadius: '50%', background: 'radial-gradient(circle, rgba(232,119,34,0.06) 0%, rgba(255,255,255,0) 70%)', pointerEvents: 'none' }} />
+        {/* Background Visual with Directional Soft Left & Bottom Vignette */}
+        <div style={{
+          position: 'absolute',
+          top: '80px',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: 'url(/bg_eiffel_tower.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center 40%',
+          opacity: 0.55,
+          filter: 'brightness(1.1) contrast(1.05)',
+          zIndex: 1,
+          pointerEvents: 'none'
+        }} />
 
-        <div className="container" style={{ padding: '0 24px', position: 'relative', zIndex: 2 }}>
-          
-          <div style={{ textAlign: 'center', maxWidth: '650px', margin: '0 auto 56px' }}>
-            <div className="badge badge-orange" style={{ marginBottom: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-              <Sparkles style={{ width: '13px', height: '13px' }} /> Partnership Frameworks
+        <div style={{
+          position: 'absolute',
+          top: '80px',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(90deg, rgba(8, 10, 20, 0.92) 0%, rgba(8, 10, 20, 0.62) 50%, rgba(8, 10, 20, 0.2) 100%)',
+          zIndex: 2,
+          pointerEvents: 'none'
+        }} />
+
+        <div style={{
+          position: 'absolute',
+          top: '80px',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'linear-gradient(180deg, transparent 40%, rgba(8, 10, 20, 0.5) 75%, rgba(8, 10, 20, 0.98) 100%)',
+          zIndex: 2,
+          pointerEvents: 'none'
+        }} />
+
+        {/* Hero Content (Left-Aligned, Clean Typography Matching Home) */}
+        <div className="container" style={{ position: 'relative', zIndex: 3 }}>
+          <div style={{ maxWidth: '820px', textAlign: 'left' }}>
+            
+            {/* Main Headline */}
+            <h1 style={{ 
+              fontSize: 'clamp(2.6rem, 5.5vw, 4.2rem)', 
+              fontWeight: 300, 
+              color: '#ffffff', 
+              lineHeight: 1.15, 
+              letterSpacing: '-0.03em', 
+              margin: '0 0 20px',
+              textShadow: '0 2px 14px rgba(0,0,0,0.5)'
+            }}>
+              Next-Gen Services for <span style={{ fontWeight: 500, color: '#00d2d3' }}>Modern Tourism</span>.
+            </h1>
+
+            {/* Sub-Headline */}
+            <p style={{ 
+              fontSize: 'clamp(1.05rem, 1.8vw, 1.2rem)', 
+              color: 'rgba(255, 255, 255, 0.88)', 
+              lineHeight: 1.65, 
+              margin: '0 0 38px', 
+              maxWidth: '660px',
+              fontWeight: 300,
+              textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+            }}>
+              Explore the advanced spatial AI, computer vision, dynamic itinerary engines, and heritage exhibit services that make NexAround the ultimate smart tourism companion.
+            </p>
+
+            {/* Action Buttons */}
+            <div className="hero-btn-group" style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <a 
+                href="#services-grid" 
+                onClick={(e) => { 
+                  e.preventDefault(); 
+                  document.getElementById('services-grid')?.scrollIntoView({ behavior: 'smooth' }); 
+                }} 
+                className="btn-white-pill" 
+                style={{ textDecoration: 'none' }}
+              >
+                <span>Explore App Services</span>
+                <ChevronRight style={{ width: '16px', height: '16px' }} />
+              </a>
+              <NavLink to="/app" className="btn-glass" style={{ textDecoration: 'none' }}>
+                View App Modules
+              </NavLink>
             </div>
-            <h2 style={{ fontSize: 'clamp(2rem, 3.8vw, 2.8rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 14px', lineHeight: 1.2, letterSpacing: '-0.02em' }}>
-              Flexible Engagement Models. <br />
-              <span className="text-gradient-orange">Maximum Value.</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══ 6 CORE APP SERVICES GRID ═══ */}
+      <section id="services-grid" className="section-padding" style={{ background: '#ffffff' }}>
+        <div className="container">
+          
+          <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 60px' }}>
+            <div className="badge badge-teal" style={{ marginBottom: '16px' }}>App Capabilities</div>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+              Intelligent Services for <span className="text-gradient-teal">Effortless Travel</span>
             </h2>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '1.02rem', margin: 0, lineHeight: 1.6 }}>
-              Choose the engagement model that best fits your operational needs, project scope, and growth velocity.
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
+              Every service is built into the NexAround mobile application to guide your journey from curiosity to unforgettable memories.
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '20px' }} className="grid-2">
-            {models.map((m, i) => (
-              <div key={i} className="service-page-card" style={{ padding: '30px 24px' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <div style={{
-                      width: '48px', height: '48px', borderRadius: '12px',
-                      background: 'linear-gradient(135deg, rgba(26, 86, 219, 0.1) 0%, rgba(232, 119, 34, 0.05) 100%)', 
-                      border: '1px solid rgba(26, 86, 219, 0.15)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
-                      {m.icon}
-                    </div>
-
-                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--orange)', textTransform: 'uppercase', background: 'rgba(232, 119, 34, 0.08)', padding: '4px 10px', borderRadius: '6px', border: '1px solid rgba(232, 119, 34, 0.15)' }}>
-                      {m.tag}
-                    </span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '28px' }} className="grid-3">
+            {platformServices.map((s, i) => (
+              <div key={i} className="feature-card" style={{ textAlign: 'left', padding: '36px 30px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'rgba(0, 122, 124, 0.2)', fontFamily: 'var(--font-mono)' }}>{s.num}</span>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.2)' }}>
+                    {s.icon}
                   </div>
+                </div>
 
-                  <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--navy)', margin: '0 0 10px', lineHeight: 1.3 }}>
-                    {m.title}
-                  </h3>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 12px', lineHeight: 1.25 }}>
+                  {s.title}
+                </h3>
+                <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 20px' }}>
+                  {s.desc}
+                </p>
 
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
-                    {m.desc}
-                  </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
+                  {s.highlights.map((h, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+                      <CheckCircle2 style={{ width: '14px', height: '14px', color: 'var(--brand-teal)', flexShrink: 0 }} />
+                      <span>{h}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
@@ -280,36 +255,65 @@ export default function Services() {
         </div>
       </section>
 
-      {/* CTA Section */}
-      <section className="container" style={{ padding: '100px 24px 0' }}>
-        <div style={{ 
-          padding: '60px 40px', 
-          textAlign: 'center', 
-          background: 'linear-gradient(135deg, rgba(26,86,219,0.06) 0%, #ffffff 50%, rgba(232,119,34,0.06) 100%)', 
-          border: '1px solid rgba(26,86,219,0.2)',
-          borderRadius: '24px',
-          boxShadow: '0 10px 40px -10px rgba(10,22,40,0.06)',
-          maxWidth: '960px',
-          margin: '0 auto'
-        }}>
-          <div className="badge badge-blue" style={{ marginBottom: '16px', display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <Sparkles style={{ width: '13px', height: '13px' }} /> Consult Our Team
+      {/* ═══ ENTERPRISE & PARTNERSHIP SERVICES ═══ */}
+      <section className="section-padding" style={{ background: 'var(--bg-light)', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+        <div className="container">
+          
+          <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 60px' }}>
+            <div className="badge badge-teal" style={{ marginBottom: '16px' }}>B2B & Partner Solutions</div>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+              Services for <span className="text-gradient-teal">Destinations & Tourism Partners</span>
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
+              Collaborate with NexAround to bring cutting-edge spatial storytelling and digital concierge capabilities to your destination.
+            </p>
           </div>
 
-          <h2 style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.5rem)', fontWeight: 800, color: 'var(--navy)', margin: '0 0 14px', lineHeight: 1.2 }}>
-            Ready to Accelerate Your Digital Growth?
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '24px' }} className="grid-4">
+            {enterpriseServices.map((m, i) => (
+              <div key={i} className="feature-card" style={{ padding: '32px 24px', textAlign: 'left' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
+                  {m.icon}
+                </div>
+                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{m.tag}</span>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '4px 0 12px' }}>{m.title}</h3>
+                <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{m.desc}</p>
+              </div>
+            ))}
+          </div>
+
+        </div>
+      </section>
+
+      {/* ═══ CTA SECTION ═══ */}
+      <section className="container" style={{ padding: '60px 32px 0' }}>
+        <div style={{ 
+          padding: '60px 44px', 
+          textAlign: 'center', 
+          background: 'linear-gradient(135deg, rgba(0, 122, 124, 0.08) 0%, #ffffff 50%, rgba(255, 184, 0, 0.05) 100%)', 
+          border: '1px solid rgba(0, 122, 124, 0.25)',
+          borderRadius: 'var(--radius-xl)',
+          maxWidth: '960px',
+          margin: '0 auto',
+          boxShadow: '0 20px 50px -10px rgba(0, 122, 124, 0.1)'
+        }}>
+          <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
+            <Zap style={{ width: '14px', height: '14px' }} /> Discover What's Next Around You
+          </div>
+
+          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+            Elevate Your Travel with Spatial AI
           </h2>
 
-          <p style={{ color: 'var(--text-secondary)', margin: '0 0 32px', fontSize: '1.02rem', maxWidth: '560px', marginLeft: 'auto', marginRight: 'auto', lineHeight: 1.6 }}>
-            Discuss your custom software engineering, cloud migration, or AI data requirements with our senior architects.
+          <p style={{ color: 'var(--text-secondary)', margin: '0 auto 36px', fontSize: '1.08rem', maxWidth: '620px', lineHeight: 1.7 }}>
+            Download the NexAround mobile app today and experience the world with real-time AR recognition, smart Odyssey itineraries, and Neva 24/7 AI.
           </p>
 
           <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <NavLink to="/contact" className="btn-primary" style={{ padding: '13px 28px', fontSize: '0.92rem', display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-              Get in Touch <ArrowRight style={{ width: '16px', height: '16px' }} />
-            </NavLink>
-            <NavLink to="/solutions" className="btn-secondary" style={{ padding: '13px 28px', fontSize: '0.92rem', display: 'inline-flex', alignItems: 'center' }}>
-              View Flagship Solutions
+            <NavLink to="/get-app" className="btn-teal" style={{ padding: '16px 36px', fontSize: '1rem', textDecoration: 'none' }}>
+              <Smartphone style={{ width: '18px', height: '18px' }} />
+              <span>Get the NexAround App</span>
+              <ArrowRight style={{ width: '16px', height: '16px' }} />
             </NavLink>
           </div>
         </div>
@@ -318,3 +322,4 @@ export default function Services() {
     </div>
   );
 }
+
