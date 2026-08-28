@@ -769,15 +769,30 @@ async def generate_odyssey(
         departure_country=departure_country,
         include_flights=include_flights,
     )
-    feasible = floor is None or budget >= floor["minimum"]
+    min_days = floor.get("min_days", 2) if floor else 2
+    duration_short = floor is not None and g_days < min_days
+    budget_short = floor is not None and budget < floor["minimum"]
+    feasible = floor is None or (not budget_short and not duration_short)
     minimum_required = floor["minimum"] if floor else None
+
     if floor is None:
         budget_tightness = "unknown"
-    elif (budget - floor["minimum"]) / floor["minimum"] < 0.2:
+    elif budget_short or (budget - floor["minimum"]) / floor["minimum"] < 0.2:
         budget_tightness = "tight"
     else:
         budget_tightness = "comfortable"
-    if not feasible:
+
+    if budget_short and duration_short:
+        recommendation = (
+            f"Reconsider — a trip to {final_destination} realistically requires at least {min_days} days "
+            f"and about {final_currency} {minimum_required:,.0f} to cover return flights and standard stay."
+        )
+    elif duration_short:
+        recommendation = (
+            f"Caution on timing — {g_days} days is short for {final_destination}; "
+            f"at least {min_days} days is recommended to account for travel time and sightseeing."
+        )
+    elif budget_short:
         recommendation = (
             f"Reconsider — raise the budget to at least {final_currency} "
             f"{minimum_required:,.0f} to realistically cover this trip."
@@ -786,6 +801,7 @@ async def generate_odyssey(
         recommendation = "Proceed, but budget is tight — there's little buffer for extras."
     else:
         recommendation = "Proceed — budget and timing look workable."
+
     verdict = {
         "feasible": feasible,
         "budget_tightness": budget_tightness,

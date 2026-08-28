@@ -487,6 +487,34 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 250.ms),
+          if (_durationShortfallMessage != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4E5),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFFB74D).withValues(alpha: 0.6)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFE65100)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _durationShortfallMessage!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF8D4E00),
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 32),
           const Text(
             'NUMBER OF TRAVELERS',
@@ -1075,6 +1103,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     return (_budget * _travelers) < minimum ? minimum : null;
   }
 
+  String? get _durationShortfallMessage {
+    final dest = _destinationController.text.trim();
+    if (dest.isEmpty || _startDate == null || _endDate == null) return null;
+    final minDays = TripCostFloor.minimumDaysFor(dest, _departureCountry);
+    if (_days < minDays) {
+      return 'For $dest, a minimum of $minDays days is recommended to account for travel time and sightseeing.';
+    }
+    return null;
+  }
+
   String? get _budgetShortfallMessage {
     final minimum = _budgetShortfall;
     if (minimum == null) return null;
@@ -1088,6 +1126,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       currency: _currency,
       days: _days,
       travelers: _travelers,
+      departureCountry: _departureCountry,
       includesFlight: _includeFlights || crossesBorder,
     );
   }

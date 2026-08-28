@@ -296,6 +296,127 @@ def _round_up(value: float) -> float:
     return float(-(-value // 50000) * 50000)
 
 
+# Geographical regions for route flight cost & duration modeling
+COUNTRY_REGION: dict[str, str] = {
+    # South Asia
+    "IN": "south_asia", "LK": "south_asia", "PK": "south_asia", "BD": "south_asia",
+    "NP": "south_asia", "MV": "south_asia", "BT": "south_asia", "AF": "south_asia",
+    # Southeast Asia
+    "TH": "se_asia", "SG": "se_asia", "MY": "se_asia", "VN": "se_asia",
+    "ID": "se_asia", "PH": "se_asia", "KH": "se_asia", "LA": "se_asia",
+    "MM": "se_asia", "BN": "se_asia", "TL": "se_asia",
+    # East Asia
+    "JP": "east_asia", "KR": "east_asia", "CN": "east_asia", "HK": "east_asia",
+    "TW": "east_asia", "MO": "east_asia", "MN": "east_asia", "KP": "east_asia",
+    # Middle East
+    "AE": "middle_east", "SA": "middle_east", "QA": "middle_east", "OM": "middle_east",
+    "KW": "middle_east", "BH": "middle_east", "TR": "middle_east", "JO": "middle_east",
+    "IL": "middle_east", "LB": "middle_east", "IQ": "middle_east", "IR": "middle_east",
+    "YE": "middle_east", "SY": "middle_east", "PS": "middle_east", "CY": "middle_east",
+    # Europe
+    "GB": "europe", "FR": "europe", "DE": "europe", "IT": "europe", "ES": "europe",
+    "PT": "europe", "NL": "europe", "BE": "europe", "CH": "europe", "AT": "europe",
+    "GR": "europe", "SE": "europe", "NO": "europe", "DK": "europe", "FI": "europe",
+    "PL": "europe", "CZ": "europe", "HU": "europe", "RO": "europe", "BG": "europe",
+    "HR": "europe", "IE": "europe", "AL": "europe", "AM": "europe", "AZ": "europe",
+    "BA": "europe", "BY": "europe", "EE": "europe", "GE": "europe", "IS": "europe",
+    "LI": "europe", "LT": "europe", "LU": "europe", "LV": "europe", "MD": "europe",
+    "ME": "europe", "MK": "europe", "MT": "europe", "RS": "europe", "SK": "europe",
+    "SI": "europe", "SM": "europe", "UA": "europe", "VA": "europe", "XK": "europe",
+    "AD": "europe", "MC": "europe",
+    # Americas
+    "US": "americas", "CA": "americas", "MX": "americas", "BR": "americas",
+    "AR": "americas", "CL": "americas", "CO": "americas", "PE": "americas",
+    "BO": "americas", "CR": "americas", "CU": "americas", "DO": "americas",
+    "EC": "americas", "GT": "americas", "HN": "americas", "HT": "americas",
+    "JM": "americas", "NI": "americas", "PA": "americas", "PY": "americas",
+    "SR": "americas", "SV": "americas", "TT": "americas", "UY": "americas",
+    "VE": "americas", "AG": "americas", "BB": "americas", "BS": "americas",
+    "BZ": "americas", "DM": "americas", "GD": "americas", "GY": "americas",
+    "KN": "americas", "LC": "americas", "VC": "americas",
+    # Oceania
+    "AU": "oceania", "NZ": "oceania", "FJ": "oceania", "PG": "oceania",
+    "SB": "oceania", "VU": "oceania", "WS": "oceania", "TO": "oceania",
+    "TV": "oceania", "KI": "oceania", "NR": "oceania", "PW": "oceania",
+    "MH": "oceania", "FM": "oceania",
+    # Africa
+    "EG": "africa", "ZA": "africa", "KE": "africa", "TZ": "africa", "MA": "africa",
+    "NG": "africa", "GH": "africa", "ET": "africa", "DZ": "africa", "AO": "africa",
+    "BJ": "africa", "BW": "africa", "BF": "africa", "BI": "africa", "CV": "africa",
+    "CM": "africa", "CF": "africa", "TD": "africa", "KM": "africa", "CG": "africa",
+    "CD": "africa", "CI": "africa", "DJ": "africa", "GQ": "africa", "ER": "africa",
+    "SZ": "africa", "GA": "africa", "GM": "africa", "GN": "africa", "GW": "africa",
+    "LS": "africa", "LR": "africa", "LY": "africa", "MG": "africa", "MW": "africa",
+    "ML": "africa", "MR": "africa", "MU": "africa", "MZ": "africa", "NA": "africa",
+    "NE": "africa", "RW": "africa", "ST": "africa", "SN": "africa", "SC": "africa",
+    "SL": "africa", "SO": "africa", "SS": "africa", "SD": "africa", "TG": "africa",
+    "TN": "africa", "UG": "africa", "ZM": "africa", "ZW": "africa",
+}
+
+
+def route_flight_floor_usd(origin_code: str, dest_code: str) -> float:
+    """Realistic flight floor based on distance and geographical regions."""
+    if not origin_code or not dest_code or origin_code == dest_code:
+        return 0.0
+    r_orig = COUNTRY_REGION.get(origin_code, "")
+    r_dest = COUNTRY_REGION.get(dest_code, "")
+    if not r_orig or not r_dest:
+        return INTERNATIONAL_FLIGHT_FLOOR_USD
+    if r_orig == r_dest:
+        return 150.0
+    regional_pairs = {
+        ("south_asia", "se_asia"), ("se_asia", "south_asia"),
+        ("south_asia", "middle_east"), ("middle_east", "south_asia"),
+        ("europe", "middle_east"), ("middle_east", "europe"),
+    }
+    if (r_orig, r_dest) in regional_pairs:
+        return 280.0
+    med_pairs = {
+        ("south_asia", "east_asia"), ("east_asia", "south_asia"),
+        ("se_asia", "east_asia"), ("east_asia", "se_asia"),
+        ("se_asia", "oceania"), ("oceania", "se_asia"),
+        ("middle_east", "africa"), ("africa", "middle_east"),
+        ("europe", "africa"), ("africa", "europe"),
+    }
+    if (r_orig, r_dest) in med_pairs:
+        return 480.0
+    # Long-haul cross continental routes (e.g. India -> Europe, US, Australia)
+    return 700.0
+
+
+def minimum_days_for(destination: str, departure_country: str = "") -> int:
+    """Minimum realistic days needed to travel and experience a destination."""
+    country = country_for(destination)
+    if not country:
+        return 2
+    dep = (departure_country or "").strip().upper()
+    dep_code = dep if len(dep) == 2 else (country_for(departure_country) or "")
+    if not dep_code or dep_code == country:
+        return 2
+    r_orig = COUNTRY_REGION.get(dep_code, "")
+    r_dest = COUNTRY_REGION.get(country, "")
+    if not r_orig or not r_dest or r_orig == r_dest:
+        return 3
+    regional_pairs = {
+        ("south_asia", "se_asia"), ("se_asia", "south_asia"),
+        ("south_asia", "middle_east"), ("middle_east", "south_asia"),
+        ("europe", "middle_east"), ("middle_east", "europe"),
+    }
+    if (r_orig, r_dest) in regional_pairs:
+        return 4
+    med_pairs = {
+        ("south_asia", "east_asia"), ("east_asia", "south_asia"),
+        ("se_asia", "east_asia"), ("east_asia", "se_asia"),
+        ("se_asia", "oceania"), ("oceania", "se_asia"),
+        ("middle_east", "africa"), ("africa", "middle_east"),
+        ("europe", "africa"), ("africa", "europe"),
+    }
+    if (r_orig, r_dest) in med_pairs:
+        return 6
+    # Long-haul cross-continental
+    return 8
+
+
 def minimum_budget(
     *,
     destination: str,
@@ -325,29 +446,32 @@ def minimum_budget(
     daily = DAILY_FLOOR_USD.get(tier, DAILY_FLOOR_USD[DEFAULT_TIER])
     ground_usd = daily * days * travelers
 
-    # A flight floor only applies when the traveller must actually cross a
-    # border. Departure country is often blank, in which case assume domestic:
-    # under-counting keeps a real trip from being blocked.
+    # Flight floor calculated from route and borders
     departure = (departure_country or "").strip().upper()
     departure_code = departure if len(departure) == 2 else (
         country_for(departure_country) or ""
     )
     crosses_border = bool(departure_code) and departure_code != country
-    flight_usd = (
-        INTERNATIONAL_FLIGHT_FLOOR_USD * travelers
-        if (crosses_border or include_flights) and departure_code != country
-        else 0.0
-    )
+
+    flight_usd = 0.0
+    if crosses_border or include_flights:
+        flight_unit = route_flight_floor_usd(departure_code, country)
+        if flight_unit <= 0 and (crosses_border or include_flights) and departure_code != country:
+            flight_unit = INTERNATIONAL_FLIGHT_FLOOR_USD
+        flight_usd = flight_unit * travelers
 
     total_usd = ground_usd + flight_usd
     local = from_usd(total_usd, currency)
     if local is None:
         return None
 
+    min_days = minimum_days_for(destination, departure_country)
+
     return {
         "country": country,
         "tier": tier,
         "days": days,
+        "min_days": min_days,
         "travelers": travelers,
         "minimum_usd": round(total_usd, 2),
         "minimum": _round_up(local),
@@ -361,9 +485,15 @@ def minimum_budget(
 def shortfall_message(floor: dict, destination: str) -> str:
     """One sentence a traveller can act on."""
     days = floor["days"]
-    # Attributive, so always singular: "a 3-day trip", never "a 3-days trip".
+    min_days = floor.get("min_days", 2)
     amount = f"{floor['currency']} {floor['minimum']:,.0f}"
     who = "" if floor["travelers"] == 1 else f" for {floor['travelers']} travellers"
+
+    if days < min_days:
+        return (
+            f"A {days}-day trip to {destination}{who} realistically requires at least {min_days} days "
+            f"and about {amount} for return flights and standard stay. Please adjust your dates or budget to continue."
+        )
     return (
         f"A {days}-day trip to {destination}{who} needs at least "
         f"about {amount} for standard stay and travel. Please raise your budget to continue."

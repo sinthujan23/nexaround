@@ -294,6 +294,126 @@ class TripCostFloor {
     return best;
   }
 
+  /// Geographical regions for route flight cost & duration modeling
+  static const Map<String, String> countryRegion = {
+    // South Asia
+    'IN': 'south_asia', 'LK': 'south_asia', 'PK': 'south_asia', 'BD': 'south_asia',
+    'NP': 'south_asia', 'MV': 'south_asia', 'BT': 'south_asia', 'AF': 'south_asia',
+    // Southeast Asia
+    'TH': 'se_asia', 'SG': 'se_asia', 'MY': 'se_asia', 'VN': 'se_asia',
+    'ID': 'se_asia', 'PH': 'se_asia', 'KH': 'se_asia', 'LA': 'se_asia',
+    'MM': 'se_asia', 'BN': 'se_asia', 'TL': 'se_asia',
+    // East Asia
+    'JP': 'east_asia', 'KR': 'east_asia', 'CN': 'east_asia', 'HK': 'east_asia',
+    'TW': 'east_asia', 'MO': 'east_asia', 'MN': 'east_asia', 'KP': 'east_asia',
+    // Middle East
+    'AE': 'middle_east', 'SA': 'middle_east', 'QA': 'middle_east', 'OM': 'middle_east',
+    'KW': 'middle_east', 'BH': 'middle_east', 'TR': 'middle_east', 'JO': 'middle_east',
+    'IL': 'middle_east', 'LB': 'middle_east', 'IQ': 'middle_east', 'IR': 'middle_east',
+    'YE': 'middle_east', 'SY': 'middle_east', 'PS': 'middle_east', 'CY': 'middle_east',
+    // Europe
+    'GB': 'europe', 'FR': 'europe', 'DE': 'europe', 'IT': 'europe', 'ES': 'europe',
+    'PT': 'europe', 'NL': 'europe', 'BE': 'europe', 'CH': 'europe', 'AT': 'europe',
+    'GR': 'europe', 'SE': 'europe', 'NO': 'europe', 'DK': 'europe', 'FI': 'europe',
+    'PL': 'europe', 'CZ': 'europe', 'HU': 'europe', 'RO': 'europe', 'BG': 'europe',
+    'HR': 'europe', 'IE': 'europe', 'AL': 'europe', 'AM': 'europe', 'AZ': 'europe',
+    'BA': 'europe', 'BY': 'europe', 'EE': 'europe', 'GE': 'europe', 'IS': 'europe',
+    'LI': 'europe', 'LT': 'europe', 'LU': 'europe', 'LV': 'europe', 'MD': 'europe',
+    'ME': 'europe', 'MK': 'europe', 'MT': 'europe', 'RS': 'europe', 'SK': 'europe',
+    'SI': 'europe', 'SM': 'europe', 'UA': 'europe', 'VA': 'europe', 'XK': 'europe',
+    'AD': 'europe', 'MC': 'europe',
+    // Americas
+    'US': 'americas', 'CA': 'americas', 'MX': 'americas', 'BR': 'americas',
+    'AR': 'americas', 'CL': 'americas', 'CO': 'americas', 'PE': 'americas',
+    'BO': 'americas', 'CR': 'americas', 'CU': 'americas', 'DO': 'americas',
+    'EC': 'americas', 'GT': 'americas', 'HN': 'americas', 'HT': 'americas',
+    'JM': 'americas', 'NI': 'americas', 'PA': 'americas', 'PY': 'americas',
+    'SR': 'americas', 'SV': 'americas', 'TT': 'americas', 'UY': 'americas',
+    'VE': 'americas', 'AG': 'americas', 'BB': 'americas', 'BS': 'americas',
+    'BZ': 'americas', 'DM': 'americas', 'GD': 'americas', 'GY': 'americas',
+    'KN': 'americas', 'LC': 'americas', 'VC': 'americas',
+    // Oceania
+    'AU': 'oceania', 'NZ': 'oceania', 'FJ': 'oceania', 'PG': 'oceania',
+    'SB': 'oceania', 'VU': 'oceania', 'WS': 'oceania', 'TO': 'oceania',
+    'TV': 'oceania', 'KI': 'oceania', 'NR': 'oceania', 'PW': 'oceania',
+    'MH': 'oceania', 'FM': 'oceania',
+    // Africa
+    'EG': 'africa', 'ZA': 'africa', 'KE': 'africa', 'TZ': 'africa', 'MA': 'africa',
+    'NG': 'africa', 'GH': 'africa', 'ET': 'africa', 'DZ': 'africa', 'AO': 'africa',
+    'BJ': 'africa', 'BW': 'africa', 'BF': 'africa', 'BI': 'africa', 'CV': 'africa',
+    'CM': 'africa', 'CF': 'africa', 'TD': 'africa', 'KM': 'africa', 'CG': 'africa',
+    'CD': 'africa', 'CI': 'africa', 'DJ': 'africa', 'GQ': 'africa', 'ER': 'africa',
+    'SZ': 'africa', 'GA': 'africa', 'GM': 'africa', 'GN': 'africa', 'GW': 'africa',
+    'LS': 'africa', 'LR': 'africa', 'LY': 'africa', 'MG': 'africa', 'MW': 'africa',
+    'ML': 'africa', 'MR': 'africa', 'MU': 'africa', 'MZ': 'africa', 'NA': 'africa',
+    'NE': 'africa', 'RW': 'africa', 'ST': 'africa', 'SN': 'africa', 'SC': 'africa',
+    'SL': 'africa', 'SO': 'africa', 'SS': 'africa', 'SD': 'africa', 'TG': 'africa',
+    'TN': 'africa', 'UG': 'africa', 'ZM': 'africa', 'ZW': 'africa',
+  };
+
+  /// Realistic flight floor based on distance and geographical regions.
+  static double routeFlightFloorUsd(String originCode, String destCode) {
+    if (originCode.isEmpty || destCode.isEmpty || originCode == destCode) {
+      return 0.0;
+    }
+    final rOrig = countryRegion[originCode] ?? '';
+    final rDest = countryRegion[destCode] ?? '';
+    if (rOrig.isEmpty || rDest.isEmpty) {
+      return internationalFlightFloorUsd;
+    }
+    if (rOrig == rDest) {
+      return 150.0;
+    }
+    const regionalPairs = {
+      'south_asia|se_asia', 'se_asia|south_asia',
+      'south_asia|middle_east', 'middle_east|south_asia',
+      'europe|middle_east', 'middle_east|europe',
+    };
+    if (regionalPairs.contains('$rOrig|$rDest')) {
+      return 280.0;
+    }
+    const medPairs = {
+      'south_asia|east_asia', 'east_asia|south_asia',
+      'se_asia|east_asia', 'east_asia|se_asia',
+      'se_asia|oceania', 'oceania|se_asia',
+      'middle_east|africa', 'africa|middle_east',
+      'europe|africa', 'africa|europe',
+    };
+    if (medPairs.contains('$rOrig|$rDest')) {
+      return 480.0;
+    }
+    // Long-haul cross continental routes (e.g. India -> Europe, US, Australia)
+    return 700.0;
+  }
+
+  /// Minimum realistic days needed to travel and experience a destination.
+  static int minimumDaysFor(String destination, [String departureCountry = '']) {
+    final country = countryFor(destination);
+    if (country == null) return 2;
+    final dep = departureCountry.trim().toUpperCase();
+    final depCode = dep.length == 2 ? dep : (countryFor(departureCountry) ?? '');
+    if (depCode.isEmpty || depCode == country) return 2;
+    final rOrig = countryRegion[depCode] ?? '';
+    final rDest = countryRegion[country] ?? '';
+    if (rOrig.isEmpty || rDest.isEmpty || rOrig == rDest) return 3;
+    const regionalPairs = {
+      'south_asia|se_asia', 'se_asia|south_asia',
+      'south_asia|middle_east', 'middle_east|south_asia',
+      'europe|middle_east', 'middle_east|europe',
+    };
+    if (regionalPairs.contains('$rOrig|$rDest')) return 4;
+    const medPairs = {
+      'south_asia|east_asia', 'east_asia|south_asia',
+      'se_asia|east_asia', 'east_asia|se_asia',
+      'se_asia|oceania', 'oceania|se_asia',
+      'middle_east|africa', 'africa|middle_east',
+      'europe|africa', 'africa|europe',
+    };
+    if (medPairs.contains('$rOrig|$rDest')) return 6;
+    // Long-haul
+    return 8;
+  }
+
   static double _roundUp(double value) {
     if (value <= 0) return 0;
     for (final step in [10, 50, 100, 500, 1000, 5000, 10000]) {
@@ -328,16 +448,20 @@ class TripCostFloor {
     final daily = dailyFloorUsd[tier] ?? dailyFloorUsd[defaultTier]!;
     final groundUsd = daily * d * t;
 
-    // A flight floor applies only when a border is actually crossed. A blank
-    // departure country is treated as domestic: under-counting is the safe
-    // direction.
+    // Flight floor calculated from route and borders
     final departure = departureCountry.trim().toUpperCase();
     final departureCode =
         departure.length == 2 ? departure : (countryFor(departureCountry) ?? '');
     final crossesBorder = departureCode.isNotEmpty && departureCode != country;
-    final flightUsd = ((crossesBorder || includeFlights) && departureCode != country)
-        ? internationalFlightFloorUsd * t
-        : 0.0;
+
+    var flightUsd = 0.0;
+    if (crossesBorder || includeFlights) {
+      var flightUnit = routeFlightFloorUsd(departureCode, country);
+      if (flightUnit <= 0 && (crossesBorder || includeFlights) && departureCode != country) {
+        flightUnit = internationalFlightFloorUsd;
+      }
+      flightUsd = flightUnit * t;
+    }
 
     return _roundUp((groundUsd + flightUsd) * rate);
   }
@@ -349,11 +473,17 @@ class TripCostFloor {
     required String currency,
     required int days,
     int travelers = 1,
+    String departureCountry = '',
     bool includesFlight = false,
   }) {
+    final minDays = minimumDaysFor(destination, departureCountry);
     final amount = '$currency ${_thousands(minimum)}';
     final who = travelers == 1 ? '' : ' for $travelers travellers';
-    // Attributive, so always singular: 'a 3-day trip', never 'a 3-days trip'.
+    
+    if (days < minDays) {
+      return 'A $days-day trip to $destination$who realistically requires at least $minDays days '
+          'and about $amount for return flights and standard stay. Please adjust your dates or budget to continue.';
+    }
     return 'A $days-day trip to $destination$who needs at least '
         'about $amount for standard stay and travel. Please raise your budget to continue.';
   }
