@@ -110,7 +110,7 @@ jobs:
             fi
 
             # Build and archive via Flutter
-            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist || echo "Flutter build ipa had an issue"
+            flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
             
             # Fallback export if needed
             if [ ! -f "build/ios/ipa/*.ipa" ]; then
