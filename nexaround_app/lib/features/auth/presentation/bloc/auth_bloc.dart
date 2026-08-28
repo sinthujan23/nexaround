@@ -133,27 +133,26 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       }
     } catch (e) {
       if (e is SignInWithAppleAuthorizationException) {
-        debugPrint('Apple Sign-In failed: ${e.code} - ${e.message}');
+        // Surface Apple's own code and message verbatim. Apple's sheet only
+        // ever says "Sign-Up Not Completed", which is the same text for a
+        // dozen unrelated causes — the code below is what actually
+        // distinguishes them, and without a Mac this is the only place it
+        // can be read.
+        final detail = '[${e.code.name}] ${e.message}';
+        debugPrint('Apple Sign-In failed: $detail');
         if (e.code == AuthorizationErrorCode.canceled) {
-          // Apple reports both a real user dismissal and a server-side
-          // rejection of the request as code 1001. They are told apart by
-          // timing: dismissing the sheet by hand takes a moment, whereas a
-          // rejected request (Sign In with Apple not enabled for the bundle
-          // ID, or a provisioning profile issued before it was) comes back
-          // almost immediately. Only the slow case is a real cancellation —
-          // reporting the fast one as one hides a configuration failure.
+          // A real dismissal and a server-side rejection share this code.
+          // Dismissing the sheet by hand takes a moment; a rejected request
+          // returns almost immediately. Only the slow case is a genuine
+          // cancellation — treating the fast one as one hides the failure.
           if (DateTime.now().difference(startedAt) >
               const Duration(milliseconds: 1500)) {
             emit(const AuthUnauthenticated());
             return;
           }
-          emit(const AuthError(
-            'Apple rejected the sign-in request (error 1001). Sign In with '
-            'Apple is likely not enabled for this app\'s bundle ID, or the '
-            'provisioning profile was issued before it was enabled.',
-          ));
-          return;
         }
+        emit(AuthError('Apple sign-in failed. $detail'));
+        return;
       }
       emit(AuthError('Apple Sign-In failed: ${e.toString()}'));
     }
