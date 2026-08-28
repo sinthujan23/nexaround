@@ -20,21 +20,17 @@ export default function Contact() {
     <div style={{ background: '#ffffff', minHeight: '100vh', paddingBottom: '100px' }}>
       
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* ═══ HERO SECTION (MATCHING HOME PAGE LAYOUT) ═══ */}
+      {/* ═══ HERO SECTION (EXACT MATCHING HOME PAGE LAYOUT & SIZE - 100VH) ═══ */}
       <section className="hero-section" style={{ 
         position: 'relative', 
-        minHeight: '65vh', 
-        display: 'flex', 
-        alignItems: 'center', 
         background: '#080a14', 
-        overflow: 'hidden',
-        padding: '170px 0 80px'
+        overflow: 'hidden'
       }}>
         
         {/* Background Visual with Directional Soft Left & Bottom Vignette */}
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
@@ -49,22 +45,22 @@ export default function Contact() {
 
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'linear-gradient(90deg, rgba(8, 10, 20, 0.92) 0%, rgba(8, 10, 20, 0.65) 55%, rgba(8, 10, 20, 0.25) 100%)',
+          background: 'linear-gradient(90deg, rgba(8, 10, 20, 0.88) 0%, rgba(8, 10, 20, 0.55) 45%, rgba(8, 10, 20, 0.15) 100%)',
           zIndex: 2,
           pointerEvents: 'none'
         }} />
 
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'linear-gradient(180deg, transparent 40%, rgba(8, 10, 20, 0.5) 75%, rgba(8, 10, 20, 0.98) 100%)',
+          background: 'linear-gradient(180deg, transparent 40%, rgba(8, 10, 20, 0.4) 75%, rgba(8, 10, 20, 0.98) 100%)',
           zIndex: 2,
           pointerEvents: 'none'
         }} />
@@ -75,7 +71,7 @@ export default function Contact() {
             
             {/* Main Headline */}
             <h1 style={{ 
-              fontSize: 'clamp(2.6rem, 5.5vw, 4.2rem)', 
+              fontSize: 'clamp(2.8rem, 6vw, 4.6rem)', 
               fontWeight: 300, 
               color: '#ffffff', 
               lineHeight: 1.15, 
@@ -88,7 +84,7 @@ export default function Contact() {
 
             {/* Sub-Headline */}
             <p style={{ 
-              fontSize: 'clamp(1.05rem, 1.8vw, 1.2rem)', 
+              fontSize: 'clamp(1.05rem, 1.8vw, 1.22rem)', 
               color: 'rgba(255, 255, 255, 0.88)', 
               lineHeight: 1.65, 
               margin: 0, 

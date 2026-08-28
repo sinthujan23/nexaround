@@ -259,18 +259,14 @@ export default function Home() {
     <div style={{ background: '#ffffff', minHeight: '100vh', overflowX: 'hidden' }}>
       
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* ═══ HERO SECTION (MATCHING REFERENCE LAYOUT) ═══ */}
+      {/* ═══ HERO SECTION (MATCHING REFERENCE LAYOUT - 100VH) ═══ */}
       <section className="hero-section" style={{ 
         position: 'relative', 
-        minHeight: '92vh', 
-        display: 'flex', 
-        alignItems: 'center', 
         background: '#080a14', 
-        overflow: 'hidden',
-        padding: '190px 0 100px'
+        overflow: 'hidden'
       }}>
         
-        {/* Background Travel Video (Moved Down with object-position: center 15%) */}
+        {/* Background Travel Video */}
         <video
           ref={videoRef}
           autoPlay
@@ -280,12 +276,12 @@ export default function Home() {
           poster="/homepage_video_poster.jpg"
           style={{
             position: 'absolute',
-            top: '80px',
+            top: 0,
             left: 0,
             width: '100%',
-            height: 'calc(100% - 80px)',
+            height: '100%',
             objectFit: 'cover',
-            objectPosition: 'center 15%',
+            objectPosition: 'center 20%',
             zIndex: 1,
             opacity: 1,
             filter: 'brightness(1.15) contrast(1.05)',
@@ -298,7 +294,7 @@ export default function Home() {
         {/* Directional Soft Left & Bottom Vignette */}
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
@@ -309,7 +305,7 @@ export default function Home() {
 
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,

@@ -1,5 +1,5 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Mail, Phone, Globe } from 'lucide-react';
+import { Mail, Globe } from 'lucide-react';
 import StoreButtons from './StoreButtons';
 
 export default function Footer() {
@@ -134,11 +134,6 @@ export default function Footer() {
                   About NexAround
                 </a>
               </li>
-              <li>
-                <a href="/contact" onClick={handleNavClick('/contact', null)} className="footer-link">
-                  Contact & Support
-                </a>
-              </li>
             </ul>
           </div>
 
@@ -152,13 +147,6 @@ export default function Footer() {
                   <Mail style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
                 <span>support@nexaround.com</span>
-              </a>
-
-              <a href="tel:+97455816148" className="footer-connect-link">
-                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
-                  <Phone style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
-                </div>
-                <span>+974 5581 6148</span>
               </a>
 
               <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link">

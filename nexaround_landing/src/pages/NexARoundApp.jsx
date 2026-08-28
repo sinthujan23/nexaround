@@ -174,21 +174,17 @@ export default function NexARoundApp() {
     <div style={{ background: '#ffffff', minHeight: '100vh', paddingBottom: '80px' }}>
       
       {/* ═══════════════════════════════════════════════════════ */}
-      {/* ═══ HERO SECTION (MATCHING HOME PAGE LAYOUT) ═══ */}
+      {/* ═══ HERO SECTION (EXACT MATCHING HOME PAGE LAYOUT & SIZE - 100VH) ═══ */}
       <section className="hero-section" style={{ 
         position: 'relative', 
-        minHeight: '75vh', 
-        display: 'flex', 
-        alignItems: 'center', 
         background: '#080a14', 
-        overflow: 'hidden',
-        padding: '170px 0 90px'
+        overflow: 'hidden'
       }}>
         
         {/* Background Visual with Directional Soft Left & Bottom Vignette */}
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
@@ -203,22 +199,22 @@ export default function NexARoundApp() {
 
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'linear-gradient(90deg, rgba(8, 10, 20, 0.92) 0%, rgba(8, 10, 20, 0.62) 50%, rgba(8, 10, 20, 0.2) 100%)',
+          background: 'linear-gradient(90deg, rgba(8, 10, 20, 0.88) 0%, rgba(8, 10, 20, 0.55) 45%, rgba(8, 10, 20, 0.15) 100%)',
           zIndex: 2,
           pointerEvents: 'none'
         }} />
 
         <div style={{
           position: 'absolute',
-          top: '80px',
+          top: 0,
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'linear-gradient(180deg, transparent 40%, rgba(8, 10, 20, 0.5) 75%, rgba(8, 10, 20, 0.98) 100%)',
+          background: 'linear-gradient(180deg, transparent 40%, rgba(8, 10, 20, 0.4) 75%, rgba(8, 10, 20, 0.98) 100%)',
           zIndex: 2,
           pointerEvents: 'none'
         }} />
@@ -229,7 +225,7 @@ export default function NexARoundApp() {
             
             {/* Main Headline */}
             <h1 style={{ 
-              fontSize: 'clamp(2.6rem, 5.5vw, 4.2rem)', 
+              fontSize: 'clamp(2.8rem, 6vw, 4.6rem)', 
               fontWeight: 300, 
               color: '#ffffff', 
               lineHeight: 1.15, 
@@ -242,7 +238,7 @@ export default function NexARoundApp() {
 
             {/* Sub-Headline */}
             <p style={{ 
-              fontSize: 'clamp(1.05rem, 1.8vw, 1.2rem)', 
+              fontSize: 'clamp(1.05rem, 1.8vw, 1.22rem)', 
               color: 'rgba(255, 255, 255, 0.88)', 
               lineHeight: 1.65, 
               margin: '0 0 38px', 
@@ -253,15 +249,29 @@ export default function NexARoundApp() {
               An AI-powered smart tourism companion combining real-time AR camera landmark vision, Odyssey itinerary planning, and Neva 24/7 AI travel concierge.
             </p>
 
-            {/* Action Buttons (White pill + Outline Glass) */}
+            {/* Action Buttons (Matching Home Style) */}
             <div className="hero-btn-group" style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
               <NavLink 
                 to="/get-app" 
-                className="btn-white-pill"
-                style={{ textDecoration: 'none' }}
+                style={{ 
+                  background: '#ffffff', 
+                  color: '#000000', 
+                  padding: '14px 28px', 
+                  borderRadius: '9999px', 
+                  fontSize: '15px', 
+                  fontWeight: 600, 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
               >
-                <Smartphone style={{ width: '16px', height: '16px' }} />
-                <span>Get App</span>
+                <span>Get the App</span>
+                <ArrowRight style={{ width: '15px', height: '15px' }} />
               </NavLink>
 
               <a 
@@ -270,8 +280,30 @@ export default function NexARoundApp() {
                   e.preventDefault(); 
                   document.getElementById('modules')?.scrollIntoView({ behavior: 'smooth' }); 
                 }} 
-                className="btn-glass" 
-                style={{ textDecoration: 'none' }}
+                style={{ 
+                  background: 'rgba(255, 255, 255, 0.08)', 
+                  color: '#ffffff', 
+                  border: '1.5px solid rgba(255, 255, 255, 0.45)', 
+                  padding: '14px 28px', 
+                  borderRadius: '9999px', 
+                  fontSize: '15px', 
+                  fontWeight: 500, 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  textDecoration: 'none',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => { 
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)'; 
+                  e.currentTarget.style.transform = 'translateY(-2px)'; 
+                }}
+                onMouseLeave={(e) => { 
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; 
+                  e.currentTarget.style.transform = 'translateY(0)'; 
+                }}
               >
                 <span>Explore 10 Modules</span>
               </a>
