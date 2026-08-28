@@ -96,26 +96,26 @@ jobs:
             
             # Create ExportOptions.plist with explicit provisioning profile mapping
             cat <<EOF > ios/ExportOptions.plist
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>method</key>
-    <string>app-store</string>
-    <key>signingStyle</key>
-    <string>manual</string>
-    <key>teamID</key>
-    <string>$TEAM_ID</string>
-    <key>destination</key>
-    <string>export</string>
-    <key>provisioningProfiles</key>
-    <dict>
-        <key>$BUNDLE_ID</key>
-        <string>$PROFILE_NAME</string>
-    </dict>
-</dict>
-</plist>
-EOF
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+                <key>method</key>
+                <string>app-store</string>
+                <key>signingStyle</key>
+                <string>manual</string>
+                <key>teamID</key>
+                <string>$TEAM_ID</string>
+                <key>destination</key>
+                <string>export</string>
+                <key>provisioningProfiles</key>
+                <dict>
+                    <key>$BUNDLE_ID</key>
+                    <string>$PROFILE_NAME</string>
+                </dict>
+            </dict>
+            </plist>
+            EOF
             
             # Build and archive via Flutter
             flutter build ipa --release --export-options-plist=ios/ExportOptions.plist || echo "Flutter build ipa had an issue"
