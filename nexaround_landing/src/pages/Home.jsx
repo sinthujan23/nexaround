@@ -223,7 +223,7 @@ export default function Home() {
       image: '/bg_pyramids_giza.png',
       badge: 'Ancient Wonder',
       tag: 'Pharaoh Tombs',
-      desc: 'Scan the Great Pyramid and Sphinx for internal chamber cutaways and historical timeline narratives.',
+      desc: 'Scan the Great Pyramid and Sphinx for architectural AR overlays and historical timeline narratives.',
       arEnabled: true
     },
     {

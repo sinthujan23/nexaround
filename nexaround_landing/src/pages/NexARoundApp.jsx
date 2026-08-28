@@ -24,7 +24,7 @@ export default function NexARoundApp() {
       image: '/app_scan_landmark_v4.png',
       highlights: [
         'Sub-500ms visual landmark identification',
-        'Interactive 3D spatial architectural cutaways',
+        'Interactive spatial landmark information overlays',
         'Spatial vantage point landmark storytelling',
         'Works with monuments, ruins & museum paintings'
       ]

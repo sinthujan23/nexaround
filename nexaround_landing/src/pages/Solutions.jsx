@@ -35,11 +35,11 @@ export default function Solutions() {
       tag: 'For DMOs & Cultural Ministries',
       title: 'Smart Heritage Digitization & Visitor Telemetry',
       subtitle: 'Transform historical monuments into interactive spatial learning centers',
-      desc: 'Empower national tourism organizations and cultural ministries to digitize historic monuments, preserve cultural heritage with interactive 3D cutaways, and understand visitor flow patterns without invasive hardware.',
+      desc: 'Empower national tourism organizations and cultural ministries to digitize historic monuments, preserve cultural heritage with interactive AR overlays, and understand visitor flow patterns without invasive hardware.',
       icon: <Landmark style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
-      image: '/bg_sigiriya.png',
+      image: '/app_heritage_dmo_v4.png',
       features: [
-        'Interactive 3D historical & architectural AR overlays',
+        'Interactive historical & architectural AR overlays',
         'Interactive digital exhibit guide preservation',
         'Visitor footfall telemetry & crowd distribution insights',
         'Zero-hardware maintenance: runs natively on traveler smartphones',
@@ -358,15 +358,15 @@ export default function Solutions() {
                       <span>Explore App Features</span>
                       <ArrowRight style={{ width: '16px', height: '16px' }} />
                     </NavLink>
-                    <NavLink to="/contact" className="btn-secondary">
-                      <span>Partner With Us</span>
+                    <NavLink to="/get-app" className="btn-secondary">
+                      <span>Get the App</span>
                     </NavLink>
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'center' }}>
                   <div style={{
-                    maxWidth: sol.id === 'dmo' ? '460px' : '320px',
+                    maxWidth: '320px',
                     width: '100%',
                     borderRadius: '28px',
                     overflow: 'hidden',
