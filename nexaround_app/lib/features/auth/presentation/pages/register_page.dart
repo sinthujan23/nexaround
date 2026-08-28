@@ -9,6 +9,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 
 import 'package:nexaround_app/features/auth/presentation/pages/otp_verification_page.dart';
 
@@ -25,6 +26,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  String? _nationality;
 
   @override
   void dispose() {
@@ -47,12 +49,30 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       return;
     }
+    if (_nationality == null || _nationality!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your nationality')),
+      );
+      return;
+    }
 
     context.read<AuthBloc>().add(AuthRegisterRequested(
           email: email,
           password: password,
           displayName: '$firstName $lastName'.trim(),
+          nationality: _nationality,
         ));
+  }
+
+  Future<void> _pickNationality() async {
+    final picked = await showCountryPickerSheet(
+      context,
+      selectedCountry: _nationality,
+      title: 'Select Nationality',
+    );
+    if (picked != null) {
+      setState(() => _nationality = picked);
+    }
   }
 
   void _handleSocialLogin(String provider) {
@@ -251,6 +271,8 @@ class _RegisterPageState extends State<RegisterPage> {
                                 setState(() => _obscurePassword = !_obscurePassword),
                             delay: 600,
                           ),
+                          const SizedBox(height: 10),
+                          _buildNationalityField(delay: 650),
 
                           const SizedBox(height: 22),
 
@@ -371,6 +393,38 @@ class _RegisterPageState extends State<RegisterPage> {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(color: AppColors.primary.withOpacity(0.6), width: 1.5),
+        ),
+      ),
+    ).animate().fade(delay: delay.ms).slideY(begin: 0.05, end: 0);
+  }
+
+  Widget _buildNationalityField({int delay = 0}) {
+    return InkWell(
+      onTap: _pickNationality,
+      borderRadius: BorderRadius.circular(16),
+      child: InputDecorator(
+        decoration: InputDecoration(
+          hintText: 'Nationality',
+          hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 15),
+          prefixIcon: Icon(Icons.flag_outlined, color: AppColors.textTertiary, size: 20),
+          suffixIcon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textTertiary),
+          filled: true,
+          fillColor: AppColors.surfaceVariant,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide(color: AppColors.border),
+          ),
+        ),
+        child: Text(
+          _nationality ?? 'Nationality',
+          style: TextStyle(
+            color: _nationality == null ? AppColors.textTertiary : AppColors.textPrimary,
+            fontSize: 15,
+          ),
         ),
       ),
     ).animate().fade(delay: delay.ms).slideY(begin: 0.05, end: 0);

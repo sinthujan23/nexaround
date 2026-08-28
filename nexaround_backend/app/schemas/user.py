@@ -11,6 +11,7 @@ class UserRegister(BaseModel):
     password: str = Field(..., min_length=6, max_length=100)
     display_name: str = Field(..., min_length=1, max_length=100)
     language: str = Field(default="en", max_length=10)
+    nationality: Optional[str] = None
 
 
 class UserLogin(BaseModel):
@@ -81,6 +82,7 @@ class UserPreferencesUpdate(BaseModel):
     accessibility_needs: Optional[list[str]] = None
     preferred_transport: Optional[str] = None
     currency: Optional[str] = None
+    nationality: Optional[str] = None
 
 
 class FcmTokenRequest(BaseModel):

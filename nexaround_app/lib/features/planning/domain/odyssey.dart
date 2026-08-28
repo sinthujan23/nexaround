@@ -413,6 +413,55 @@ class OdysseyPracticalInfo {
       };
 }
 
+class OdysseyVisaInfo {
+  final String status; // needed | available | not_needed | unknown
+  final int processingDaysMin;
+  final int processingDaysMax;
+  final String note;
+  final String confidence;
+  final String? recommendedApplyBy;
+  final bool datesTooTight;
+
+  const OdysseyVisaInfo({
+    this.status = 'unknown',
+    this.processingDaysMin = 0,
+    this.processingDaysMax = 0,
+    this.note = '',
+    this.confidence = 'Estimated',
+    this.recommendedApplyBy,
+    this.datesTooTight = false,
+  });
+
+  factory OdysseyVisaInfo.fromRaw(dynamic raw) {
+    if (raw == null) return const OdysseyVisaInfo();
+    if (raw is String) {
+      return OdysseyVisaInfo(status: 'unknown', note: raw);
+    }
+    if (raw is Map<String, dynamic>) {
+      return OdysseyVisaInfo(
+        status: (raw['status'] ?? 'unknown').toString(),
+        processingDaysMin: (raw['processing_days_min'] as num?)?.toInt() ?? 0,
+        processingDaysMax: (raw['processing_days_max'] as num?)?.toInt() ?? 0,
+        note: (raw['note'] ?? '').toString(),
+        confidence: (raw['confidence'] ?? 'Estimated').toString(),
+        recommendedApplyBy: raw['recommended_apply_by']?.toString(),
+        datesTooTight: raw['dates_too_tight'] == true,
+      );
+    }
+    return const OdysseyVisaInfo();
+  }
+
+  Map<String, dynamic> toJson() => {
+        'status': status,
+        'processing_days_min': processingDaysMin,
+        'processing_days_max': processingDaysMax,
+        'note': note,
+        'confidence': confidence,
+        'recommended_apply_by': recommendedApplyBy,
+        'dates_too_tight': datesTooTight,
+      };
+}
+
 /// One priority-ordered checklist row, e.g. label "BOOK NOW", item "Check
 /// into Hotel X". Assembled server-side from data already generated —
 /// booking partners, confirmed flight/hotel, visa line — not a new LLM call.
@@ -600,7 +649,8 @@ class Odyssey {
   final int nights;
   final String summary;
   final String budgetSplit; // e.g. "40% Stay · 30% Food · 30% Experiences"
-  final String visa; // e.g. "ETA required (online)"
+  final OdysseyVisaInfo visaInfo;
+  String get visa => visaInfo.note.isNotEmpty ? visaInfo.note : (visaInfo.status != 'unknown' ? visaInfo.status : '');
   final String logistics; // multi-line blueprint
   final List<OdysseyDay> dayPlans;
   final List<OdysseyBookingPartner> bookingPartners;
@@ -636,7 +686,7 @@ class Odyssey {
     required this.nights,
     required this.summary,
     required this.budgetSplit,
-    required this.visa,
+    this.visaInfo = const OdysseyVisaInfo(),
     required this.logistics,
     required this.dayPlans,
     this.bookingPartners = const [],
@@ -696,7 +746,7 @@ class Odyssey {
         nights: nights,
         summary: summary,
         budgetSplit: budgetSplit,
-        visa: visa,
+        visaInfo: visaInfo,
         logistics: logistics,
         dayPlans: dayPlans ?? this.dayPlans,
         bookingPartners: bookingPartners ?? this.bookingPartners,
@@ -827,7 +877,7 @@ class Odyssey {
       nights: (json['nights'] as num?)?.toInt() ?? (days > 1 ? days - 1 : 0),
       summary: (json['summary'] ?? '').toString(),
       budgetSplit: (json['budget_split'] ?? '').toString(),
-      visa: (json['visa'] ?? json['visa_status'] ?? '').toString(),
+      visaInfo: OdysseyVisaInfo.fromRaw(json['visa'] ?? json['visa_status']),
       logistics: _logisticsToText(json['logistics']),
       dayPlans: ((json['day_plans'] ?? json['plan'] ?? const []) as List)
           .whereType<Map>()
@@ -862,7 +912,7 @@ class Odyssey {
           'nights': nights,
           'summary': summary,
           'budget_split': budgetSplit,
-          'visa': visa,
+          'visa': visaInfo.toJson(),
           'logistics': logistics,
           'booking_partners': bookingPartners.map((bp) => bp.toJson()).toList(),
           'flight_strategies': {
@@ -987,7 +1037,7 @@ class Odyssey {
       nights: (meta['nights'] as num?)?.toInt() ?? 0,
       summary: (meta['summary'] ?? '').toString(),
       budgetSplit: (meta['budget_split'] ?? '').toString(),
-      visa: (meta['visa'] ?? '').toString(),
+      visaInfo: OdysseyVisaInfo.fromRaw(meta['visa']),
       logistics: (meta['logistics'] ?? '').toString(),
       dayPlans: dayItems.map((d) => OdysseyDay.fromJson(d)).toList(),
       bookingPartners: ((meta['booking_partners'] ?? const []) as List)

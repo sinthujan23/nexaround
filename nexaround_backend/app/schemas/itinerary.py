@@ -42,6 +42,7 @@ class OdysseyGenerateRequest(BaseModel):
     include_flights: bool = False
     departure_city: str = ""
     departure_country: str = ""
+    nationality: str = ""
     flight_start_date: Optional[str] = None
     flight_end_date: Optional[str] = None
     include_hotels: bool = False

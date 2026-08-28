@@ -8,6 +8,7 @@ abstract class AuthRepository {
     required String password,
     required String displayName,
     String language,
+    String? nationality,
   });
 
   Future<Either<Failure, AuthTokens>> verifyOtp({

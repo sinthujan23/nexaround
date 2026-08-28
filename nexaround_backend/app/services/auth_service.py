@@ -73,6 +73,7 @@ class AuthService:
             display_name=data.display_name,
             language=data.language,
             is_verified=False,
+            preferences={"nationality": data.nationality} if data.nationality else {},
         )
         user = await self.repo.create(user)
 

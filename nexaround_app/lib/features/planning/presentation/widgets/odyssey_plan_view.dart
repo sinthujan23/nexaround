@@ -467,8 +467,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             ),
           if (widget.odyssey.destination.isNotEmpty)
             _infoCard('Destination', widget.odyssey.destination, Icons.place_rounded),
-          if (widget.odyssey.visa.isNotEmpty)
-            _infoCard('Visa / Entry', widget.odyssey.visa, Icons.description_rounded),
+          if (widget.odyssey.visa.isNotEmpty || widget.odyssey.visaInfo.status != 'unknown')
+            _buildVisaCard(context),
           if (widget.odyssey.budgetSplit.isNotEmpty)
             _infoCard('Budget Summary', widget.odyssey.budgetSplit, Icons.pie_chart_rounded),
           if (widget.odyssey.budget > 0)
@@ -744,6 +744,261 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     ),
                   ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVisaCard(BuildContext context) {
+    final info = widget.odyssey.visaInfo;
+    final String status = info.status;
+    final bool isNeeded = status == 'needed';
+    final bool isAvailable = status == 'available';
+    final bool isNotNeeded = status == 'not_needed';
+
+    Color statusColor;
+    String statusLabel;
+
+    if (isNeeded) {
+      statusColor = const Color(0xFFE53935);
+      statusLabel = 'Visa Needed';
+    } else if (isAvailable) {
+      statusColor = const Color(0xFF00ACC1);
+      statusLabel = 'Visa Available / eVisa';
+    } else if (isNotNeeded) {
+      statusColor = const Color(0xFF43A047);
+      statusLabel = 'Visa Not Needed';
+    } else {
+      statusColor = const Color(0xFF00E5FF);
+      statusLabel = 'Visa Information';
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: info.datesTooTight ? const Color(0xFFE53935).withOpacity(0.5) : Colors.black12,
+          width: info.datesTooTight ? 1.5 : 1.0,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.assignment_ind_rounded, size: 20, color: Colors.black),
+              const SizedBox(width: 12),
+              const Text(
+                'Visa / Entry Requirement',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.black54,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: statusColor.withOpacity(0.4)),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Date Warning Banner if dates are too tight
+          if (info.datesTooTight) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFEBEE),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFEF5350).withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, size: 20, color: Color(0xFFD32F2F)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Travel Date Processing Warning',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFC62828),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Visa processing takes ~${info.processingDaysMin > 0 ? '${info.processingDaysMin}-${info.processingDaysMax}' : '30-40'} days. '
+                          'Recommended to apply by ${info.recommendedApplyBy ?? 'as soon as possible'}.',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFB71C1C),
+                            height: 1.3,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ] else if (info.recommendedApplyBy != null && info.recommendedApplyBy!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F7FA),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF26C6DA).withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_month_rounded, size: 20, color: Color(0xFF00838F)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Recommended Apply By: ${info.recommendedApplyBy} (Processing takes ~${info.processingDaysMin}-${info.processingDaysMax} days)',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF006064),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          if (widget.odyssey.visa.isNotEmpty)
+            Text(
+              widget.odyssey.visa,
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+                height: 1.35,
+              ),
+            ),
+
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Colors.black12),
+          const SizedBox(height: 12),
+
+          // "Visa Agents — Coming Soon" Teaser Card
+          InkWell(
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Visa Agents Marketplace coming soon! We will notify you when verified agents launch.'),
+                  duration: Duration(seconds: 3),
+                ),
+              );
+            },
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFF0F2027),
+                    Color(0xFF203A43),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF00E5FF).withOpacity(0.18),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.support_agent_rounded,
+                      size: 20,
+                      color: Color(0xFF00E5FF),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Verified Visa Agents',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF00E5FF),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'COMING SOON',
+                                style: TextStyle(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.black,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          'Fast-track application processing & expert agent reviews.',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            color: Colors.white.withOpacity(0.7),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    color: Color(0xFF00E5FF),
+                    size: 18,
+                  ),
+                ],
+              ),
             ),
           ),
         ],

@@ -10,6 +10,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
+import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -43,6 +44,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   DateTime? _hotelCheckOutDate;
   String _departureCity = '';
   String _departureCountry = '';
+  String? _nationality;
 
   @override
   void initState() {
@@ -52,6 +54,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     _travelersController.text = _travelers.toString();
     _prefillDestination();
     _loadUserCurrency();
+    _loadUserNationality();
   }
 
   void _loadUserCurrency() {
@@ -63,6 +66,31 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           _currency = userCurrency;
         });
       }
+    }
+  }
+
+  /// Defaults from the signed-in user's profile, same as currency — still
+  /// changeable per trip via the picker under the flight options card.
+  void _loadUserNationality() {
+    final authState = context.read<AuthBloc>().state;
+    if (authState is AuthAuthenticated) {
+      final userNationality = authState.user.preferences['nationality']?.toString();
+      if (userNationality != null && userNationality.isNotEmpty) {
+        setState(() {
+          _nationality = userNationality;
+        });
+      }
+    }
+  }
+
+  Future<void> _pickNationality() async {
+    final picked = await showCountryPickerSheet(
+      context,
+      selectedCountry: _nationality,
+      title: 'Select Nationality',
+    );
+    if (picked != null) {
+      setState(() => _nationality = picked);
     }
   }
 
@@ -203,6 +231,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeFlights: _includeFlights,
         departureCity: _departureCity,
         departureCountry: _departureCountry,
+        nationality: _nationality ?? '',
         flightStartDate: _formatDate(_flightStartDate),
         flightEndDate: _formatDate(_flightEndDate),
         includeHotels: _includeHotels,
@@ -554,23 +583,29 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   const Divider(height: 1, indent: 16, endIndent: 16),
                   Padding(
                     padding: const EdgeInsets.all(16),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildDatePickerTile(
-                            label: 'Start Date',
-                            selectedDate: _flightStartDate,
-                            onTap: _pickFlightDateRange,
-                          ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildDatePickerTile(
+                                label: 'Start Date',
+                                selectedDate: _flightStartDate,
+                                onTap: _pickFlightDateRange,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildDatePickerTile(
+                                label: 'End Date',
+                                selectedDate: _flightEndDate,
+                                onTap: _pickFlightDateRange,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildDatePickerTile(
-                            label: 'End Date',
-                            selectedDate: _flightEndDate,
-                            onTap: _pickFlightDateRange,
-                          ),
-                        ),
+                        const SizedBox(height: 12),
+                        _buildNationalityTile(),
                       ],
                     ),
                   ),
@@ -823,6 +858,52 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
+  /// Nationality feeds the AI's visa guidance for this trip (needed /
+  /// available / not needed, plus processing-time-aware date guidance).
+  /// Defaults from the user's profile (see `_loadUserNationality`) but is
+  /// changeable per trip, since a plan isn't always for the account holder.
+  Widget _buildNationalityTile() {
+    return InkWell(
+      onTap: _pickNationality,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.grey.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _nationality != null ? Colors.black : Colors.black12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.flag_rounded, size: 18, color: _nationality != null ? Colors.black : Colors.black45),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'NATIONALITY (FOR VISA GUIDANCE)',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _nationality ?? 'Select nationality',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: _nationality != null ? FontWeight.bold : FontWeight.normal,
+                      color: _nationality != null ? Colors.black : Colors.black45,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.black45),
+          ],
+        ),
+      ),
+    );
+  }
 
 
   Widget _buildBudgetStep() {

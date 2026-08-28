@@ -12,6 +12,7 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
+import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/features/profile/presentation/pages/help_support_page.dart';
 import 'package:nexaround_app/features/attractions/presentation/pages/attraction_detail_page.dart';
 import 'package:go_router/go_router.dart';
@@ -440,6 +441,12 @@ class _ProfilePageState extends State<ProfilePage> {
           onTap: () => _showCurrencyPicker(context, user),
         ),
         _buildMenuItem(
+          Icons.flag_rounded,
+          'Nationality',
+          user.preferences['nationality']?.toString() ?? 'Not set',
+          onTap: () => _pickNationality(context, user),
+        ),
+        _buildMenuItem(
           Icons.notifications_rounded, 
           'Notifications', 
           CacheService.areNotificationsEnabled() ? 'On' : 'Off',
@@ -534,6 +541,19 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ],
     );
+  }
+
+  Future<void> _pickNationality(BuildContext context, dynamic user) async {
+    final current = user.preferences['nationality']?.toString();
+    final picked = await showCountryPickerSheet(
+      context,
+      selectedCountry: current,
+      title: 'Select Nationality',
+    );
+    if (picked == null || !context.mounted) return;
+    final newPrefs = Map<String, dynamic>.from(user.preferences);
+    newPrefs['nationality'] = picked;
+    context.read<AuthBloc>().add(UpdateUserPreferences(newPrefs));
   }
 
   void _showCurrencyPicker(BuildContext context, dynamic user) {

@@ -19,6 +19,7 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
     required String displayName,
     String language = 'en',
+    String? nationality,
   }) async {
     try {
       final result = await _remoteDatasource.register(
@@ -26,6 +27,7 @@ class AuthRepositoryImpl implements AuthRepository {
         password: password,
         displayName: displayName,
         language: language,
+        nationality: nationality,
       );
       final registeredEmail = result['email'] as String? ?? email;
       return Right(registeredEmail);

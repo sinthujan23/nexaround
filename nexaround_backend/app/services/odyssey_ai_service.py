@@ -169,7 +169,7 @@ def build_meta_item(
     travelers: int = 1,
     summary: str = "",
     budget_split: str = "",
-    visa: str = "",
+    visa: dict = None,
     logistics: str = "",
     booking_partners: list[dict] = None,
     cover_url: str = "",
@@ -199,7 +199,7 @@ def build_meta_item(
         "travelers": travelers,
         "summary": summary,
         "budget_split": budget_split,
-        "visa": visa,
+        "visa": visa or {},
         "logistics": logistics,
         "booking_partners": booking_partners or [],
         "cover_url": cover_url,
@@ -568,6 +568,7 @@ async def generate_odyssey(
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
+    nationality: str = "",
     flight_start_date: str = "",
     flight_end_date: str = "",
     include_hotels: bool = False,
@@ -659,6 +660,7 @@ async def generate_odyssey(
         travelers=travelers,
         confirmed_hotel=primary_hotel,
         confirmed_flight=primary_flight,
+        nationality=nationality,
     )
     text, grounding_chunks = await _call_gemini(
         prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
@@ -752,7 +754,9 @@ async def generate_odyssey(
         )
 
     final_currency = str(plan.get("currency") or currency)
-    visa_text = str(plan.get("visa") or plan.get("visa_status") or "")
+    visa_info = _parse_visa_info(
+        plan.get("visa"), nationality=nationality, final_start_date=final_start_date,
+    )
 
     # Verdict: "is the budget realistic" is answered deterministically by the
     # same cost floor that already gates generation in itineraries.py — no
@@ -795,7 +799,7 @@ async def generate_odyssey(
         primary_flight=primary_flight,
         primary_hotel=primary_hotel,
         booking_partners=plan.get("booking_partners") or [],
-        visa_text=visa_text,
+        visa_info=visa_info,
     )
 
     meta = build_meta_item(
@@ -808,7 +812,7 @@ async def generate_odyssey(
         travelers=travelers,
         summary=str(plan.get("summary") or ""),
         budget_split=harmonized_budget_split,
-        visa=visa_text,
+        visa=visa_info,
         logistics=_logistics_text(plan.get("logistics")),
         booking_partners=plan.get("booking_partners") or [],
         cover_url=cover_url,
@@ -1063,6 +1067,7 @@ def _build_prompt(
     travelers: int = 1,
     confirmed_hotel: dict | None = None,
     confirmed_flight: dict | None = None,
+    nationality: str = "",
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
@@ -1108,8 +1113,16 @@ Trip brief:
 - Group size: {travelers} traveler(s)
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
+- Traveler nationality (passport held): {nationality or "not provided"}
 {hotel_rules}
 {flight_rules}
+CRITICAL — VISA GUIDANCE RULES:
+1. Use the google_search tool to check the actual, current visa policy the destination applies to a traveler holding the "{nationality or "not provided"}" passport — do not recall this from memory/training data, visa policy changes.
+2. If nationality is "not provided", set "visa".status to "unknown" and "visa".note to "Add your nationality in your profile to get visa guidance for this trip." — do not guess a nationality.
+3. "visa".status must be exactly one of: "needed" (an advance visa application is required — e-visas that still take real processing time count as "needed"), "available" (visa on arrival, or an e-visa/ETA that is normally issued within a day or two), "not_needed" (visa-free entry, or the trip is domestic).
+4. Only when status is "needed", set "visa".processing_days_min/processing_days_max to a realistic real-world range for that nationality/destination pair (e.g. an Indian passport applying for a Schengen visa is commonly 30-40 days) — found via search, not invented. Leave both at 0 for "available"/"not_needed"/"unknown".
+5. "visa".confidence follows the same Fixed/Typical/Estimated scale used for prices below — "Fixed" only when search returned an authoritative government/embassy source.
+
 CRITICAL — LIVE SEARCH GROUNDING RULES:
 1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
 2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost. Do not estimate from memory if a search is possible.
@@ -1153,8 +1166,14 @@ Return ONLY a JSON object with EXACTLY this shape:
     "activities": 0,
     "total": {int(budget)}
   }},
-  "visa": "One line on visa/entry needs for this destination (or 'No visa info' if domestic).",
-  "biggest_risk": "One sentence (under 20 words) naming the single biggest risk/watch-out specific to this trip — peak-season crowding, monsoon/weather timing, visa processing lead time, etc. Do not just restate the visa line.",
+  "visa": {{
+    "status": "needed | available | not_needed | unknown",
+    "processing_days_min": 0,
+    "processing_days_max": 0,
+    "note": "One sentence on the requirement/process, specific to this nationality and destination.",
+    "confidence": "Fixed | Typical | Estimated"
+  }},
+  "biggest_risk": "One sentence (under 20 words) naming the single biggest risk/watch-out specific to this trip — peak-season crowding, monsoon/weather timing, visa processing lead time, etc. Do not just restate the visa note.",
   "logistics": ["3-5 short practical tips: transport, money, SIM, entry fees, timing"],
   "practical_info": {{
     "money": "1-2 sentences: cash vs card norms, ATM availability, typical tipping.",
@@ -1373,19 +1392,76 @@ def _practical_info(raw) -> dict:
     return {k: str(d.get(k) or "").strip() for k in ("money", "connectivity", "safety", "customs")}
 
 
+_VISA_STATUSES = {"needed", "available", "not_needed", "unknown"}
+
+
+def _parse_visa_info(raw, *, nationality: str, final_start_date: str) -> dict:
+    """Structured visa guidance for the traveler's nationality vs. the destination.
+
+    `raw` is whatever Gemini put under the "visa" key. The prompt asks for an
+    object (status/processing_days_min/processing_days_max/note/confidence),
+    but a plain string is still handled — either because the model ignored
+    the schema, or because this is parsing a plan generated before this field
+    became structured (`odyssey.dart`'s Flutter side needs the same fallback
+    for the same reason: already-saved itineraries).
+
+    `recommended_apply_by` is computed here, not asked of the model — Gemini
+    is unreliable at exact date arithmetic, so only the day-count estimate is
+    trusted to it, the same split `generate_odyssey`'s `verdict` already uses
+    for budget feasibility.
+    """
+    if isinstance(raw, dict):
+        status = str(raw.get("status") or "unknown").strip().lower()
+        processing_days_min = _as_int(raw.get("processing_days_min"), 0)
+        processing_days_max = _as_int(raw.get("processing_days_max"), 0)
+        note = str(raw.get("note") or "").strip()
+        confidence = str(raw.get("confidence") or "Estimated").strip()
+    elif isinstance(raw, str) and raw.strip():
+        status, processing_days_min, processing_days_max = "unknown", 0, 0
+        note, confidence = raw.strip(), "Estimated"
+    else:
+        status, processing_days_min, processing_days_max = "unknown", 0, 0
+        note, confidence = "", "Estimated"
+
+    if status not in _VISA_STATUSES:
+        status = "unknown"
+    if not nationality:
+        status = "unknown"
+
+    recommended_apply_by = None
+    dates_too_tight = False
+    if status == "needed" and processing_days_max > 0 and final_start_date:
+        try:
+            from datetime import date as _date, timedelta as _timedelta
+            start_d = _date.fromisoformat(final_start_date)
+            apply_by_d = start_d - _timedelta(days=processing_days_max)
+            recommended_apply_by = apply_by_d.isoformat()
+            dates_too_tight = apply_by_d < _date.today()
+        except (ValueError, TypeError):
+            pass
+
+    return {
+        "status": status,
+        "processing_days_min": processing_days_min,
+        "processing_days_max": processing_days_max,
+        "note": note,
+        "confidence": confidence,
+        "recommended_apply_by": recommended_apply_by,
+        "dates_too_tight": dates_too_tight,
+    }
+
+
 def _assemble_booking_plan(
     *,
     primary_flight: dict | None,
     primary_hotel: dict | None,
     booking_partners: list,
-    visa_text: str,
+    visa_info: dict,
 ) -> list[dict]:
     """Turns already-generated flight/hotel/partner data into a priority-ordered
     checklist. No LLM call — everything here was already fetched or generated."""
-    visa_lower = visa_text.lower()
-    visa_required = bool(visa_text.strip()) and not any(
-        p in visa_lower for p in ("no visa", "visa-free", "visa free", "domestic")
-    )
+    visa_required = visa_info.get("status") == "needed"
+    visa_reason = visa_info.get("note") or "A visa is required for this trip."
     booking_label = "BOOK AFTER VISA" if visa_required else "BOOK NOW"
 
     plan: list[dict] = []
@@ -1393,21 +1469,21 @@ def _assemble_booking_plan(
         plan.append({
             "label": "BOOK AFTER VISA",
             "item": "Any non-refundable booking",
-            "reason": visa_text,
+            "reason": visa_reason,
             "url": "",
         })
     if primary_flight and primary_flight.get("name"):
         plan.append({
             "label": booking_label,
             "item": str(primary_flight.get("name") or "Flight"),
-            "reason": visa_text if visa_required else "Confirmed live fare — prices move, lock it in early.",
+            "reason": visa_reason if visa_required else "Confirmed live fare — prices move, lock it in early.",
             "url": str(primary_flight.get("booking_url") or ""),
         })
     if primary_hotel and primary_hotel.get("name"):
         plan.append({
             "label": booking_label,
             "item": str(primary_hotel.get("name") or "Hotel"),
-            "reason": visa_text if visa_required else "Confirmed live rate — lock it in early.",
+            "reason": visa_reason if visa_required else "Confirmed live rate — lock it in early.",
             "url": str(primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link") or ""),
         })
     for p in booking_partners:

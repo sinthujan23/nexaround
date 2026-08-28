@@ -3769,6 +3769,27 @@ class _ArCameraPageState extends State<ArCameraPage>
           longitude: lng,
         );
 
+        if (results.isNotEmpty) {
+          final enriched = await Future.wait(results.map((r) async {
+            final pid = (r['place_id'] ?? '').toString();
+            if (pid.isNotEmpty && (r['latitude'] == null || r['distance_m'] == null)) {
+              final details = await GooglePlacesService.getPlaceDetails(pid);
+              if (details != null && details.latitude != 0.0 && details.longitude != 0.0) {
+                final dM = geo.Geolocator.distanceBetween(lat, lng, details.latitude, details.longitude);
+                return {
+                  ...r,
+                  'latitude': details.latitude,
+                  'longitude': details.longitude,
+                  'distance_m': dM,
+                  'distance_text': dM < 1000 ? '${dM.round()} m' : '${(dM / 1000).toStringAsFixed(1)} km',
+                };
+              }
+            }
+            return r;
+          }));
+          results = enriched;
+        }
+
         // If autocomplete yields no results, fallback to searchPlaces
         if (results.isEmpty) {
           final textResults = await GooglePlacesService.searchPlaces(
@@ -4148,6 +4169,30 @@ class _ArCameraPageState extends State<ArCameraPage>
                             final mainText = (item['main_text'] ?? item['name'] ?? '').toString();
                             final subText = (item['description'] ?? item['address'] ?? '').toString();
 
+                            String distanceText = (item['distance_text'] ?? item['distance'] ?? '').toString();
+                            if (distanceText.isEmpty) {
+                              final num? distM = (item['distance_m'] ?? item['distance_meters'] ?? item['distanceM']) as num?;
+                              if (distM != null && distM > 0) {
+                                distanceText = distM < 1000
+                                    ? '${distM.round()} m'
+                                    : '${(distM / 1000).toStringAsFixed(1)} km';
+                              } else if (item['latitude'] != null && item['longitude'] != null && _currentPosition != null) {
+                                final double plat = (item['latitude'] as num).toDouble();
+                                final double plng = (item['longitude'] as num).toDouble();
+                                if (plat != 0.0 && plng != 0.0) {
+                                  final double dM = geo.Geolocator.distanceBetween(
+                                    _currentPosition!.latitude,
+                                    _currentPosition!.longitude,
+                                    plat,
+                                    plng,
+                                  );
+                                  distanceText = dM < 1000
+                                      ? '${dM.round()} m'
+                                      : '${(dM / 1000).toStringAsFixed(1)} km';
+                                }
+                              }
+                            }
+
                             return Material(
                               color: Colors.transparent,
                               child: ListTile(
@@ -4179,14 +4224,19 @@ class _ArCameraPageState extends State<ArCameraPage>
                                   ),
                                 ),
                                 subtitle: subText.isNotEmpty
-                                    ? Text(
-                                        subText,
-                                        style: TextStyle(
-                                          color: Colors.white.withOpacity(0.6),
-                                          fontSize: 11,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                    ? Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            subText,
+                                            style: TextStyle(
+                                              color: Colors.white.withOpacity(0.6),
+                                              fontSize: 11,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
                                       )
                                     : null,
                                 trailing: Row(
@@ -4198,8 +4248,8 @@ class _ArCameraPageState extends State<ArCameraPage>
                                         color: const Color(0xFF00E5FF).withOpacity(0.15),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Text(
-                                        'SELECT',
+                                      child: Text(
+                                         distanceText.isNotEmpty ? distanceText : '-- km',
                                         style: TextStyle(
                                           color: Color(0xFF00E5FF),
                                           fontSize: 9.5,

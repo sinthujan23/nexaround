@@ -11,6 +11,7 @@ class AuthRemoteDatasource {
     required String password,
     required String displayName,
     String language = 'en',
+    String? nationality,
   }) async {
     final response = await _dio.post(
       ApiConstants.register,
@@ -19,6 +20,7 @@ class AuthRemoteDatasource {
         'password': password,
         'display_name': displayName,
         'language': language,
+        if (nationality != null && nationality.isNotEmpty) 'nationality': nationality,
       },
     );
     if (response.data is Map) {
