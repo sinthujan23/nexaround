@@ -40,6 +40,7 @@ class AuthService:
     """Business logic for authentication and user management."""
 
     def __init__(self, db: AsyncSession):
+        self.db = db
         self.repo = UserRepository(db)
 
     async def register(self, data: UserRegister) -> RegisterPendingResponse:
@@ -465,3 +466,57 @@ class AuthService:
             await redis.delete(f"reset_token:{reset_token}")
 
         return {"message": "Password reset successfully. Please log in with your new password."}
+
+    async def delete_account(self, user_id: uuid.UUID) -> dict:
+        """Permanently delete user and all associated data."""
+        user = await self.repo.get_by_id(user_id)
+        if not user:
+            raise NotFoundException(detail="User account not found")
+
+        from app.models.itinerary import Itinerary
+        from app.models.budget import Budget, Expense
+        from app.models.travel_story import TravelStory, TravelStoryLike, TravelStoryComment
+        from app.models.review import Review
+        from app.models.notification import Notification
+        from app.models.discovery_history import DiscoveryHistory
+        from app.models.analytics import PlaceVisit, UserSession
+        from sqlalchemy import delete, select
+
+        # 1. Delete travel stories, likes and comments
+        await self.db.execute(delete(TravelStoryLike).where(TravelStoryLike.user_id == user_id))
+        await self.db.execute(delete(TravelStoryComment).where(TravelStoryComment.user_id == user_id))
+        user_stories = await self.db.execute(select(TravelStory.id).where(TravelStory.user_id == user_id))
+        story_ids = user_stories.scalars().all()
+        if story_ids:
+            await self.db.execute(delete(TravelStoryLike).where(TravelStoryLike.story_id.in_(story_ids)))
+            await self.db.execute(delete(TravelStoryComment).where(TravelStoryComment.story_id.in_(story_ids)))
+            await self.db.execute(delete(TravelStory).where(TravelStory.id.in_(story_ids)))
+
+        # 2. Itineraries
+        await self.db.execute(delete(Itinerary).where(Itinerary.user_id == user_id))
+
+        # 3. Budgets & expenses
+        user_budgets = await self.db.execute(select(Budget.id).where(Budget.user_id == user_id))
+        budget_ids = user_budgets.scalars().all()
+        if budget_ids:
+            await self.db.execute(delete(Expense).where(Expense.budget_id.in_(budget_ids)))
+        await self.db.execute(delete(Budget).where(Budget.user_id == user_id))
+
+        # 4. Reviews, notifications, discovery history, sessions, analytics
+        await self.db.execute(delete(Review).where(Review.user_id == user_id))
+        await self.db.execute(delete(Notification).where(Notification.user_id == user_id))
+        await self.db.execute(delete(DiscoveryHistory).where(DiscoveryHistory.user_id == user_id))
+        await self.db.execute(delete(UserSession).where(UserSession.user_id == user_id))
+        await self.db.execute(delete(PlaceVisit).where(PlaceVisit.user_id == user_id))
+
+        # 5. Delete the user record
+        await self.repo.delete(user)
+        await self.db.commit()
+
+        # 6. Invalidate any Redis OTPs
+        redis = await get_redis_client()
+        if redis:
+            await redis.delete(f"otp:{user.email}")
+            await redis.delete(f"reset_otp:{user.email}")
+
+        return {"message": "Account and all associated data permanently deleted."}

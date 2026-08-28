@@ -291,3 +291,16 @@ async def remove_recent_location(
     await service.update_preferences(user.id, {"recent_locations": locations})
     return locations
 
+
+@router.delete("/me", response_model=MessageResponse)
+async def delete_account(
+    authorization: str = Header(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """Permanently delete user account and all associated personal data."""
+    token = authorization.replace("Bearer ", "")
+    service = AuthService(db)
+    user = await service.get_current_user(token)
+    res = await service.delete_account(user.id)
+    return MessageResponse(message=res.get("message", "Account and all associated data permanently deleted."))
+
