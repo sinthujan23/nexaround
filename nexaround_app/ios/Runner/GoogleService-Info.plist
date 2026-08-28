@@ -2,24 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CLIENT_ID</key>
-	<string>501648798743-kqev2d391necv2mvlqeoitmch9i05rv5.apps.googleusercontent.com</string>
-	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.501648798743-kqev2d391necv2mvlqeoitmch9i05rv5</string>
-	<key>ANDROID_CLIENT_ID</key>
-	<string>501648798743-0omovnor0thg338btth5n0b7r0oq1r9h.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
-	<string>AIzaSyDmYou02Gnd79gwFuuimfKNgYqN9BgSIck</string>
+	<string>AIzaSyCy-ikdRB75tQil9nyEjLCmkBGbkD1MyVA</string>
 	<key>GCM_SENDER_ID</key>
-	<string>501648798743</string>
+	<string>375268962043</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
 	<string>com.nexaround.app</string>
 	<key>PROJECT_ID</key>
-	<string>nexaround-fb321</string>
+	<string>nexaround-e9a5e</string>
 	<key>STORAGE_BUCKET</key>
-	<string>nexaround-fb321.firebasestorage.app</string>
+	<string>nexaround-e9a5e.firebasestorage.app</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -31,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:501648798743:ios:b2de8027cee96dff8ad852</string>
+	<string>1:375268962043:ios:39603829dc28062e1d4a5e</string>
 </dict>
 </plist>
