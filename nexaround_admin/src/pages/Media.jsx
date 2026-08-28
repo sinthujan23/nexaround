@@ -65,11 +65,8 @@ export default function Media() {
   return (
     <div style={{ position: 'relative' }}>
       <div className="card-header" style={{ marginBottom: '24px' }}>
-        <div>
-          <div className="card-title">Media Library</div>
-          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Review user-submitted places or add missing attractions manually.
-          </div>
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+          Review user-submitted places or add missing attractions manually.
         </div>
         <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setIsModalOpen(true)}>
           <PlusIcon size={16} /> Add Media

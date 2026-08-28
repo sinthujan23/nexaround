@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './index.css';
 import { apiPost } from './api';
 import Dashboard from './pages/Dashboard';
@@ -21,6 +21,18 @@ function App() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const handleUnauthorized = (e) => {
+      localStorage.removeItem('admin_token');
+      setToken(null);
+      setError(e.detail?.message || 'Session expired. Please sign in again.');
+      setActivePage('dashboard');
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();

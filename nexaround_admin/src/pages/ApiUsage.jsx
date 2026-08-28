@@ -270,6 +270,10 @@ export default function ApiUsage() {
         method: 'POST', body,
         headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` },
       });
+      if (res.status === 401) {
+        localStorage.removeItem('admin_token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { message: 'Session expired. Please sign in again.' } }));
+      }
       const j = await res.json();
       if (!res.ok) throw new Error(j.detail || 'Import failed');
       // Rates are re-derived from what Google actually charged, so the estimate
@@ -306,6 +310,10 @@ export default function ApiUsage() {
         `${API_BASE}/admin/telemetry/export.csv?${qs}`,
         { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } },
       );
+      if (res.status === 401) {
+        localStorage.removeItem('admin_token');
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { message: 'Session expired. Please sign in again.' } }));
+      }
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);

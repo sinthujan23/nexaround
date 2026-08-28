@@ -38,10 +38,6 @@ export default function ExcludeKeywords() {
 
   return (
     <div>
-      <div className="card-header" style={{ marginBottom: '20px' }}>
-        <div className="card-title">Exclude Keywords</div>
-      </div>
-
       <div className="card" style={{ padding: '16px', marginBottom: '16px' }}>
         <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '13px' }}>
           A place whose name matches a keyword here (whole word, e.g. "pond" matches

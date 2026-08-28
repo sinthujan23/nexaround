@@ -25,6 +25,14 @@ export async function apiFetch(endpoint, options = {}) {
     } catch {
       // Ignore error parsing
     }
+
+    if (response.status === 401 && !endpoint.includes('/login')) {
+      localStorage.removeItem('admin_token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+        detail: { message: 'Session expired. Please sign in again.' }
+      }));
+    }
+
     throw new Error(errorMsg || `Request failed with status ${response.status}`);
   }
 

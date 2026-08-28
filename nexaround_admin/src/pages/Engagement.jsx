@@ -108,13 +108,8 @@ export default function Engagement() {
 
   return (
     <div style={{ paddingBottom: '40px' }}>
-      <div className="card-header" style={{ marginBottom: '24px' }}>
-        <div>
-          <div className="card-title">Engagement & Reach</div>
-          <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-            Monitor user activity and broadcast announcements via push notifications.
-          </div>
-        </div>
+      <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px' }}>
+        Monitor user activity and broadcast announcements via push notifications.
       </div>
 
       {/* Stats */}

@@ -87,8 +87,8 @@ export default function Footer() {
           <p style={{ margin: 0 }}>© {new Date().getFullYear()} NexARound Technologies. All rights reserved.</p>
 
           <div style={{ display: 'flex', gap: '24px' }}>
-            <NavLink to="/about" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Privacy Policy</NavLink>
-            <NavLink to="/about" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Terms of Service</NavLink>
+            <NavLink to="/privacy" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Privacy Policy</NavLink>
+            <NavLink to="/terms" style={{ color: 'rgba(255, 255, 255, 0.72)', textDecoration: 'none' }}>Terms of Service</NavLink>
           </div>
         </div>
 

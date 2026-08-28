@@ -1,6 +1,6 @@
 import uuid
 from typing import List, Optional
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.excluded_keyword import ExcludedKeyword
 
@@ -18,8 +18,17 @@ class ExcludedKeywordRepository:
         return list(result.scalars().all())
 
     async def get_by_keyword(self, keyword: str) -> Optional[ExcludedKeyword]:
+        """Case-insensitive, because matching is.
+
+        `place_bands.matches_excluded_keyword` searches with IGNORECASE, so
+        "Pigeon" and "pigeon" hide exactly the same places. Comparing exactly
+        here let both be stored, leaving the admin list showing two rows that
+        do one job — and deleting either one hiding nothing.
+        """
         result = await self.db.execute(
-            select(ExcludedKeyword).where(ExcludedKeyword.keyword == keyword)
+            select(ExcludedKeyword).where(
+                func.lower(ExcludedKeyword.keyword) == keyword.lower()
+            )
         )
         return result.scalar_one_or_none()
 

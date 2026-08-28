@@ -63,7 +63,7 @@ export default function Users() {
         boxShadow: '0 8px 24px rgba(0, 122, 124, 0.12)'
       }}>
         <div>
-          <h2 style={{ fontSize: '22px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Explorer Management</h2>
+          <h2 style={{ fontSize: '20px', fontWeight: 800, margin: 0, letterSpacing: '-0.5px' }}>Registered Explorers</h2>
           <p style={{ margin: '4px 0 0 0', opacity: 0.9, fontSize: '13px', fontWeight: 500 }}>
             You have <strong style={{ color: '#fff', background: 'rgba(255,255,255,0.2)', padding: '2px 8px', borderRadius: '12px' }}>{total}</strong> registered explorers on the platform.
           </p>

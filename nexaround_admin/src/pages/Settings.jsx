@@ -123,8 +123,7 @@ export default function Settings() {
 
   return (
     <form onSubmit={handleSave}>
-      <div className="card-header" style={{ marginBottom: '20px' }}>
-        <div className="card-title">General Settings</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
         <button type="submit" className="btn btn-primary" disabled={saving}>
           {saving ? 'Saving Changes...' : 'Save Changes'}
         </button>

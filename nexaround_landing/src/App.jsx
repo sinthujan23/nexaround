@@ -9,6 +9,8 @@ import Solutions from './pages/Solutions';
 import NexARoundApp from './pages/NexARoundApp';
 import About from './pages/About';
 import Contact from './pages/Contact';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -30,6 +32,8 @@ export default function App() {
             <Route path="/app" element={<NexARoundApp />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
           </Routes>
         </main>
         <Footer />

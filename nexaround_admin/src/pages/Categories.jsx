@@ -11,8 +11,7 @@ export default function Categories() {
 
   return (
     <div>
-      <div className="card-header" style={{ marginBottom: '20px' }}>
-        <div className="card-title">Manage Categories</div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
         <button className="btn btn-primary" onClick={() => alert('Opening Add Category Modal...')}>
           <PlusIcon size={16} /> Add Category
         </button>

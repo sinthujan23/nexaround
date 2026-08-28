@@ -118,8 +118,8 @@
           '<div class="footer__col">' +
             '<h4>Support</h4>' +
             '<a href="mailto:support@nexaround.com">support@nexaround.com</a>' +
-            '<a href="#">Privacy Statement</a>' +
-            '<a href="#">Terms of Use</a>' +
+            '<a href="/privacy">Privacy Statement</a>' +
+            '<a href="/terms">Terms of Use</a>' +
           '</div>' +
         '</div>' +
         '<div class="footer__brand">' +
