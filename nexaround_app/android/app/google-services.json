@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "375268962043-qhpf05at8rterq1764ivk65sm579uhot.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nexaround.app",
+            "certificate_hash": "f56fb36166c19c3146686e59b4f0ba29133ee13c"
+          }
+        },
+        {
           "client_id": "375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com",
           "client_type": 3
         }

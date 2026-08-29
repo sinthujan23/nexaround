@@ -93,6 +93,17 @@ export default function Privacy() {
             </p>
           </div>
 
+          {/* Section 4: Data Retention & Account Deletion */}
+          <div style={{ marginBottom: '40px', textAlign: 'left' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <RefreshCw style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
+              4. Data Retention & Account Deletion
+            </h2>
+            <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
+              You may request deletion of your account and associated data directly in the app under <strong>Profile › Delete Account</strong> or by emailing <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 600, textDecoration: 'underline' }}>support@nexaround.com</a>. Deletion requests are permanently processed within 30 days.
+            </p>
+          </div>
+
           {/* Contact Section */}
           <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '32px', textAlign: 'left' }}>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '10px' }}>Contact Privacy Officer</h3>
