@@ -71,7 +71,10 @@ class Settings(BaseSettings):
 
     # OAuth Client IDs for token verification
     GOOGLE_CLIENT_IDS: Union[List[str], str] = [
-        "375268962043-vb9adud6hglf3jd1vme6dku0dshdch38.apps.googleusercontent.com",
+        # nexaround-e9a5e / com.nexaround.app
+        "375268962043-vb9adud6hglf3jd1vme6dku0dshdch38.apps.googleusercontent.com",  # iOS
+        "375268962043-4j3q1v1qcl5feif820ebib08l48b0s6n.apps.googleusercontent.com",  # Android
+        "375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com",  # Web (serverClientId -> token aud)
         "375268962043",
         "501648798743-s475las96nn5m01l105dikmm74ghuhf9.apps.googleusercontent.com",
         "501648798743-fpj6ua4dqdgov8hffm7504aekvjne4kh.apps.googleusercontent.com",

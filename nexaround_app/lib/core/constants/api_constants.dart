@@ -6,9 +6,8 @@ class ApiConstants {
   static String serpApiKey = '';
   
   // Custom Google Sign-In credentials (from Google Cloud Project with Google Drive API enabled)
-  // Leave empty to use defaults from google-services.json / GoogleService-Info.plist
   static const String googleClientId = '';       // For iOS OAuth Client ID
-  static const String googleServerClientId = ''; // Defaults to google-services.json / GoogleService-Info.plist
+  static const String googleServerClientId = '375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com'; // Web Client ID from google-services.json
   
   // Secure proxy endpoints
   static const String geminiProxy = '$apiVersion/proxy/gemini/generate';

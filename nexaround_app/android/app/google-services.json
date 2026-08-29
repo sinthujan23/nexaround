@@ -12,7 +12,20 @@
           "package_name": "com.nexaround.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "375268962043-4j3q1v1qcl5feif820ebib08l48b0s6n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.nexaround.app",
+            "certificate_hash": "33dd5dcd23bb965dfc53f2de7dc9a19afe11dd1b"
+          }
+        },
+        {
+          "client_id": "375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyAvFJwrxZJh8T77k_65a6R5bndlSCgLIG4"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "375268962043-vb9adud6hglf3jd1vme6dku0dshdch38.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.nexaround.app"
+              }
+            }
+          ]
         }
       }
     }
