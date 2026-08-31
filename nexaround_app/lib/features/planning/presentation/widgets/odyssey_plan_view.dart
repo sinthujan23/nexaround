@@ -1361,10 +1361,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
   Widget _scenarioToggle() {
-    // The backend omits "minimum" from budgetScenarios when the entered
-    // budget is already at/near the realistic floor for this trip — a
-    // further-cut minimum would quote a total lower than the real flight/
-    // hotel line items ever could. Hide the tab rather than show that.
+    // The backend omits "minimum" from budgetScenarios when a synthetic
+    // minimum total couldn't even cover the real flight+hotel prices already
+    // found for this trip. Hide the tab rather than show a number that
+    // contradicts the Flights/Stays cards.
     final scenarios = widget.odyssey.budgetScenarios;
     final showMinimum = scenarios.isEmpty || scenarios.containsKey('minimum');
     final options = [
