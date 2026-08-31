@@ -3,20 +3,39 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/booking_url_helper.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
+import 'package:nexaround_app/core/utils/scenario_price_mapper.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 
 class HotelStrategiesSection extends StatelessWidget {
   final Odyssey odyssey;
 
+  /// Currently selected budget scenario ('minimum' | 'recommended' | 'comfortable').
+  /// When set, the matching hotel option is highlighted and shown first.
+  final String? highlightScenario;
+
   const HotelStrategiesSection({
     super.key,
     required this.odyssey,
+    this.highlightScenario,
   });
 
   @override
   Widget build(BuildContext context) {
     if (odyssey.hotelStrategies.isEmpty) {
       return const SizedBox.shrink();
+    }
+
+    final strategies = odyssey.hotelStrategies;
+    final tags = mapPricesToScenarios(
+      strategies.map((hs) => parseRepresentativePrice(hs.pricePerNight)).toList(),
+    );
+    final cards = List.generate(strategies.length, (i) => (strategies[i], tags[i]));
+    if (highlightScenario != null) {
+      cards.sort((a, b) {
+        final aMatch = a.$2 == highlightScenario ? 0 : 1;
+        final bMatch = b.$2 == highlightScenario ? 0 : 1;
+        return aMatch.compareTo(bMatch);
+      });
     }
 
     return Column(
@@ -66,7 +85,7 @@ class HotelStrategiesSection extends StatelessWidget {
         const SizedBox(height: 20),
 
         // List of Hotel Cards
-        ...odyssey.hotelStrategies.map((hs) => _buildHotelCard(context, hs)),
+        ...cards.map((c) => _buildHotelCard(context, c.$1, c.$2)),
 
         // General Tips / Best Areas Card
         if (odyssey.hotelGeneralTips.isNotEmpty || odyssey.hotelBestAreas.isNotEmpty)
@@ -75,7 +94,13 @@ class HotelStrategiesSection extends StatelessWidget {
     );
   }
 
-  Widget _buildHotelCard(BuildContext context, HotelStrategy hs) {
+  Widget _buildHotelCard(BuildContext context, HotelStrategy hs, String? scenarioTag) {
+    final isHighlighted = highlightScenario != null && scenarioTag == highlightScenario;
+    const scenarioLabels = {
+      'minimum': 'MINIMUM BUDGET PICK',
+      'recommended': 'RECOMMENDED PICK',
+      'comfortable': 'COMFORTABLE PICK',
+    };
     String provider = hs.providerName.trim();
     if (provider.isEmpty || provider.toLowerCase() == 'hotel provider') {
       final lowerUrl = hs.bookingUrl.toLowerCase();
@@ -103,7 +128,10 @@ class HotelStrategiesSection extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.black12),
+        border: Border.all(
+          color: isHighlighted ? AppColors.brandGreen : Colors.black12,
+          width: isHighlighted ? 2 : 1,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.02),
@@ -117,6 +145,25 @@ class HotelStrategiesSection extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (isHighlighted && scenarioTag != null) ...[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppColors.brandGreen.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  scenarioLabels[scenarioTag] ?? '',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.brandGreen,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             // Header Row: Hotel Icon + Name & Rating + Price
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,

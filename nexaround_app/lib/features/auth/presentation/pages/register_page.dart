@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -194,13 +196,15 @@ class _RegisterPageState extends State<RegisterPage> {
                             onTap: () => _handleSocialLogin('google'),
                             delay: 300,
                           ),
-                          const SizedBox(height: 10),
-                          _buildSocialButton(
-                            icon: Icons.apple_rounded,
-                            label: 'Continue with Apple',
-                            onTap: () => _handleSocialLogin('apple'),
-                            delay: 400,
-                          ),
+                          if (!kIsWeb && Platform.isIOS) ...[
+                            const SizedBox(height: 10),
+                            _buildSocialButton(
+                              icon: Icons.apple_rounded,
+                              label: 'Continue with Apple',
+                              onTap: () => _handleSocialLogin('apple'),
+                              delay: 400,
+                            ),
+                          ],
 
                           const SizedBox(height: 16),
 

@@ -766,11 +766,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.odyssey.budgetScenarios.isNotEmpty) ...[
+            _scenarioToggle(),
+            const SizedBox(height: 12),
+          ],
           _buildPriceDisclaimerBanner(
             'Flight prices shown are per traveler, not the total cost for your group.',
           ),
           const SizedBox(height: 12),
-          FlightStrategiesSection(odyssey: widget.odyssey),
+          FlightStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
         ],
       ),
     );
@@ -823,11 +827,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (widget.odyssey.budgetScenarios.isNotEmpty) ...[
+            _scenarioToggle(),
+            const SizedBox(height: 12),
+          ],
           _buildPriceDisclaimerBanner(
             'Hotel prices shown are per traveler, not the total cost for your group.',
           ),
           const SizedBox(height: 12),
-          HotelStrategiesSection(odyssey: widget.odyssey),
+          HotelStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
           if (partners.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text(

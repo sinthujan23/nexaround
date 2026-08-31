@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -173,13 +175,15 @@ class _LoginPageState extends State<LoginPage> {
                             onTap: () => _handleSocialLogin('google'),
                             delay: 300,
                           ),
-                          const SizedBox(height: 10),
-                          _buildSocialButton(
-                            icon: Icons.apple_rounded,
-                            label: 'Continue with Apple',
-                            onTap: () => _handleSocialLogin('apple'),
-                            delay: 400,
-                          ),
+                          if (!kIsWeb && Platform.isIOS) ...[
+                            const SizedBox(height: 10),
+                            _buildSocialButton(
+                              icon: Icons.apple_rounded,
+                              label: 'Continue with Apple',
+                              onTap: () => _handleSocialLogin('apple'),
+                              delay: 400,
+                            ),
+                          ],
 
                           const SizedBox(height: 16),
 
