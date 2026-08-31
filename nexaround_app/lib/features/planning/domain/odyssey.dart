@@ -437,15 +437,16 @@ class OdysseyVisaInfo {
     if (raw is String) {
       return OdysseyVisaInfo(status: 'unknown', note: raw);
     }
-    if (raw is Map<String, dynamic>) {
+    if (raw is Map) {
+      final map = raw.cast<String, dynamic>();
       return OdysseyVisaInfo(
-        status: (raw['status'] ?? 'unknown').toString(),
-        processingDaysMin: (raw['processing_days_min'] as num?)?.toInt() ?? 0,
-        processingDaysMax: (raw['processing_days_max'] as num?)?.toInt() ?? 0,
-        note: (raw['note'] ?? '').toString(),
-        confidence: (raw['confidence'] ?? 'Estimated').toString(),
-        recommendedApplyBy: raw['recommended_apply_by']?.toString(),
-        datesTooTight: raw['dates_too_tight'] == true,
+        status: (map['status'] ?? 'unknown').toString(),
+        processingDaysMin: (map['processing_days_min'] as num?)?.toInt() ?? 0,
+        processingDaysMax: (map['processing_days_max'] as num?)?.toInt() ?? 0,
+        note: (map['note'] ?? '').toString(),
+        confidence: (map['confidence'] ?? 'Estimated').toString(),
+        recommendedApplyBy: map['recommended_apply_by']?.toString(),
+        datesTooTight: map['dates_too_tight'] == true,
       );
     }
     return const OdysseyVisaInfo();

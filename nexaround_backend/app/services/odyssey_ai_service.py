@@ -1031,6 +1031,7 @@ async def generate_odyssey(
     departure_city: str = "",
     departure_country: str = "",
     nationality: str = "",
+    has_visa: bool = False,
     flight_start_date: str = "",
     flight_end_date: str = "",
     include_hotels: bool = False,
@@ -1096,7 +1097,13 @@ async def generate_odyssey(
         _get_cover(), _get_flights(), _get_hotels()
     )
 
-    # Extract primary recommended hotel entity from confirmed SerpAPI results
+    # Extract primary recommended hotel entity from confirmed SerpAPI results.
+    # Used only for the booking checklist (_assemble_booking_plan) below — a
+    # single suggested starting point to book is fine there. It must NOT be
+    # named inside the day-by-day itinerary (see hotel_price_range instead):
+    # doing so committed the user to one specific, arbitrarily-first-listed
+    # property in their schedule, even though the Stays tab shows several
+    # real alternatives that can be a completely different hotel.
     primary_hotel = None
     if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
         for s in hotel_strategies["strategies"]:
@@ -1104,11 +1111,29 @@ async def generate_odyssey(
                 primary_hotel = s
                 break
 
+    # Nightly rate range across every hotel option found, for the itinerary's
+    # generic accommodation activity — never one property's exact rate.
+    has_hotel_data = bool(
+        hotel_strategies
+        and isinstance(hotel_strategies.get("strategies"), list)
+        and hotel_strategies["strategies"]
+    )
+    hotel_price_range = ""
+    if has_hotel_data:
+        rates = [
+            _extract_lowest_price(s.get("price_per_night"))
+            for s in hotel_strategies["strategies"]
+            if isinstance(s, dict) and _extract_lowest_price(s.get("price_per_night")) > 0
+        ]
+        if rates:
+            lo, hi = min(rates), max(rates)
+            hotel_price_range = (
+                f"{currency} {lo:,.0f}" if lo == hi
+                else f"{currency} {lo:,.0f} - {hi:,.0f}"
+            )
+
     # Extract primary flight entity if available.
     # Flight strategies key their label as "title"; only hotels use "name".
-    # Testing for "name" here (copied from the hotel block above) meant
-    # primary_flight was always None, so the flight rules never reached the
-    # itinerary prompt and the flight never appeared in the booking checklist.
     primary_flight = None
     if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
         for s in flight_strategies["strategies"]:
@@ -1124,9 +1149,10 @@ async def generate_odyssey(
         days=days,
         currency=currency,
         travelers=travelers,
-        confirmed_hotel=primary_hotel,
+        hotel_price_range=hotel_price_range,
         confirmed_flight=primary_flight,
         nationality=nationality,
+        has_visa=has_visa,
     )
     text, grounding_chunks = await _call_gemini(
         prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
@@ -1218,7 +1244,10 @@ async def generate_odyssey(
 
     final_currency = str(plan.get("currency") or currency)
     visa_info = _parse_visa_info(
-        plan.get("visa"), nationality=nationality, final_start_date=final_start_date,
+        plan.get("visa"),
+        nationality=nationality,
+        final_start_date=final_start_date,
+        has_visa=has_visa,
     )
 
     # Verdict: "is the budget realistic" is answered deterministically by the
@@ -1387,32 +1416,33 @@ async def generate_odyssey(
                 "cost": str(a.get("cost") or ""),
             }
 
-            # 3. Strictly reconcile accommodation stops with confirmed primary hotel
-            if is_acc and primary_hotel:
+            # 3. Reconcile accommodation stops with a price range across the
+            # hotel options found — never a single named property, so the
+            # itinerary can't contradict (or pre-empt) the actual choices
+            # shown on the Stays tab.
+            if is_acc and has_hotel_data:
                 has_accommodation = True
-                hotel_name = primary_hotel.get("name", "Hotel")
-                hotel_url = primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link", "")
-                hotel_rating = primary_hotel.get("rating", "4.5 ★")
-                hotel_rate = primary_hotel.get("price_per_night", "")
-                hotel_total_cost = primary_hotel.get("total_estimated_cost", "")
+                display_cost = f"{hotel_price_range} / night" if hotel_price_range else "See Stays tab"
 
                 if is_first_day:
-                    act_dict["name"] = f"Check into {hotel_name}"
-                    act_dict["tip"] = f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels."
+                    act_dict["name"] = "Hotel Check-in"
+                    act_dict["tip"] = "Check in and settle into your accommodation."
                 elif is_last_day and ("check out" in name_lower or "check-out" in name_lower):
-                    act_dict["name"] = f"Hotel Check-out at {hotel_name}"
-                    act_dict["tip"] = f"Complete check-out and luggage drop at {hotel_name} before departure."
+                    act_dict["name"] = "Hotel Check-out"
+                    act_dict["tip"] = "Complete check-out and luggage drop before departure."
                 else:
                     if "hotel" in name_lower or "resort" in name_lower:
-                        act_dict["name"] = f"Rest & Freshen Up at {hotel_name}"
+                        act_dict["name"] = "Rest & Freshen Up at Your Hotel"
 
                 act_dict["type"] = "accommodation"
-                act_dict["cost"] = "Included in Stay"
+                act_dict["cost"] = display_cost
                 act_dict["price_source"] = "Google Hotels"
-                act_dict["price_basis"] = f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)"
-                act_dict["price_confidence"] = "Fixed"
-                if hotel_url:
-                    act_dict["booking_url"] = hotel_url
+                act_dict["price_basis"] = (
+                    f"Nightly rate range across hotel options found for this trip: {hotel_price_range}."
+                    if hotel_price_range else
+                    "See the Stays tab for hotel pricing options."
+                )
+                act_dict["price_confidence"] = "Estimated"
             else:
                 price_source = str(a.get("price_source") or "").strip()
                 price_basis = str(a.get("price_basis") or "").strip()
@@ -1449,22 +1479,20 @@ async def generate_odyssey(
             activities.append(act_dict)
 
         # Guarantee Day 1 Check-in activity if not present
-        if is_first_day and primary_hotel and not has_accommodation:
-            hotel_name = primary_hotel.get("name", "Hotel")
-            hotel_url = primary_hotel.get("booking_url") or primary_hotel.get("serpapi_link", "")
-            hotel_rating = primary_hotel.get("rating", "4.5 ★")
-            hotel_rate = primary_hotel.get("price_per_night", "")
-            hotel_total_cost = primary_hotel.get("total_estimated_cost", "")
+        if is_first_day and has_hotel_data and not has_accommodation:
             activities.insert(0, {
                 "time": "14:00",
-                "name": f"Check into {hotel_name}",
-                "tip": f"Check in and unpack at {hotel_name}. Rated {hotel_rating} on Google Hotels.",
-                "cost": "Included in Stay",
+                "name": "Hotel Check-in",
+                "tip": "Check in and settle into your accommodation.",
+                "cost": f"{hotel_price_range} / night" if hotel_price_range else "See Stays tab",
                 "price_source": "Google Hotels",
-                "price_basis": f"Confirmed stay rate: {hotel_rate} / night ({hotel_total_cost} total stay)",
-                "price_confidence": "Fixed",
+                "price_basis": (
+                    f"Nightly rate range across hotel options found for this trip: {hotel_price_range}."
+                    if hotel_price_range else
+                    "See the Stays tab for hotel pricing options."
+                ),
+                "price_confidence": "Estimated",
                 "type": "accommodation",
-                "booking_url": hotel_url,
             })
 
         day_items.append({
@@ -1587,33 +1615,26 @@ def _build_prompt(
     days: int,
     currency: str,
     travelers: int = 1,
-    confirmed_hotel: dict | None = None,
+    hotel_price_range: str = "",
     confirmed_flight: dict | None = None,
     nationality: str = "",
+    has_visa: bool = False,
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
 
     hotel_rules = ""
-    if confirmed_hotel and confirmed_hotel.get("name"):
-        h_name = confirmed_hotel.get("name")
-        h_rate = confirmed_hotel.get("price_per_night", "")
-        h_total = confirmed_hotel.get("total_estimated_cost", "")
-        h_rating = confirmed_hotel.get("rating", "4.5 ★")
-        h_url = confirmed_hotel.get("booking_url") or confirmed_hotel.get("serpapi_link", "")
+    if hotel_price_range:
         hotel_rules = f"""
-CRITICAL — CONFIRMED ACCOMMODATION (STRICTLY BIND THIS HOTEL, ZERO HALLUCINATIONS):
-- Primary Confirmed Hotel: "{h_name}"
-- Provider: Google Hotels
-- Star Rating: {h_rating}
-- Confirmed Nightly Rate: {h_rate}
-- Total Stay Cost: {h_total}
-- Direct Booking Link: {h_url}
+CRITICAL — ACCOMMODATION (DO NOT NAME OR INVENT A SPECIFIC HOTEL):
+- Live hotel search found options ranging {hotel_price_range} per night.
+- The actual hotel choices are shown separately to the user on their own
+  Stays screen — naming one specific property here would contradict it.
 
 Accommodation Scheduling Rules:
-1. Day 1 MUST include check-in: "name": "Check into {h_name}", "type": "accommodation", "cost": "Included in Stay", "price_source": "Google Hotels", "price_basis": "Confirmed live rate: {h_rate} / night ({h_total} total stay)", "price_confidence": "Fixed", "booking_url": "{h_url}", "tip": "Check in at {h_name}. Rated {h_rating} on Google Hotels."
-2. Day {days} (Final Day) MUST include check-out: "name": "Hotel Check-out at {h_name}", "type": "accommodation", "cost": "Included in Stay", "price_source": "Google Hotels", "booking_url": "{h_url}"
-3. STRICTLY use "{h_name}" for all hotel references in the plan.
+1. Day 1 MUST include check-in: "name": "Hotel Check-in", "type": "accommodation", "cost": "{hotel_price_range} / night", "price_source": "Google Hotels", "price_basis": "Nightly rate range across hotel options found for this trip: {hotel_price_range}.", "price_confidence": "Estimated", "tip": "Check in and settle into your accommodation."
+2. Day {days} (Final Day) MUST include check-out: "name": "Hotel Check-out", "type": "accommodation", "cost": "{hotel_price_range} / night", "price_source": "Google Hotels", "tip": "Complete check-out and luggage drop before departure."
+3. Do NOT name a specific hotel or invent a hotel name anywhere in the plan — use "your hotel" or "the accommodation" instead.
 """
 
     flight_rules = ""
@@ -1634,6 +1655,21 @@ CRITICAL — CONFIRMED FLIGHT ROUTE:
 - Provider: Google Flights
 """
 
+    if has_visa:
+        visa_rules = """CRITICAL — VISA GUIDANCE RULES:
+The traveler ALREADY holds a valid visa for this trip.
+Set "visa".status to "already_have", "visa".processing_days_min to 0, "visa".processing_days_max to 0, and "visa".note to "Visa already acquired — you are ready to travel!".
+Do NOT output any visa application procedures, application steps, or visa warnings."""
+    else:
+        visa_rules = f"""CRITICAL — VISA GUIDANCE RULES:
+1. The traveler needs visa guidance holding a "{nationality or 'not provided'}" passport for "{destination}".
+2. Use the google_search tool to check the actual, current visa requirements, application procedure (e.g. online eVisa portal, embassy application, visa on arrival), and estimated processing time in business days.
+3. If nationality is "not provided", set "visa".status to "unknown" and "visa".note to "Add your nationality in your profile to get visa guidance for this trip." — do not guess a nationality.
+4. "visa".status must be exactly one of: "needed" (an advance visa application is required — e-visas that still take real processing time count as "needed"), "available" (visa on arrival, or an e-visa/ETA that is normally issued within a day or two), "not_needed" (visa-free entry, or the trip is domestic).
+5. Only when status is "needed", set "visa".processing_days_min/processing_days_max to a realistic real-world range for that nationality/destination pair (e.g. 15-20 business days) — found via search, not invented. Leave both at 0 for "available"/"not_needed"/"unknown".
+6. In "visa".note, provide clear, step-by-step application guidance, required documents, and where to apply.
+7. "visa".confidence follows the same Fixed/Typical/Estimated scale used for prices below."""
+
     return f"""Design a {days}-day travel Odyssey for a group of {travelers} traveler(s).
 
 Trip brief:
@@ -1643,14 +1679,10 @@ Trip brief:
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
 - Traveler nationality (passport held): {nationality or "not provided"}
+- Traveler already has visa: {"Yes" if has_visa else "No"}
 {hotel_rules}
 {flight_rules}
-CRITICAL — VISA GUIDANCE RULES:
-1. Use the google_search tool to check the actual, current visa policy the destination applies to a traveler holding the "{nationality or "not provided"}" passport — do not recall this from memory/training data, visa policy changes.
-2. If nationality is "not provided", set "visa".status to "unknown" and "visa".note to "Add your nationality in your profile to get visa guidance for this trip." — do not guess a nationality.
-3. "visa".status must be exactly one of: "needed" (an advance visa application is required — e-visas that still take real processing time count as "needed"), "available" (visa on arrival, or an e-visa/ETA that is normally issued within a day or two), "not_needed" (visa-free entry, or the trip is domestic).
-4. Only when status is "needed", set "visa".processing_days_min/processing_days_max to a realistic real-world range for that nationality/destination pair (e.g. an Indian passport applying for a Schengen visa is commonly 30-40 days) — found via search, not invented. Leave both at 0 for "available"/"not_needed"/"unknown".
-5. "visa".confidence follows the same Fixed/Typical/Estimated scale used for prices below — "Fixed" only when search returned an authoritative government/embassy source.
+{visa_rules}
 
 CRITICAL — LIVE SEARCH GROUNDING RULES:
 1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
@@ -1921,24 +1953,22 @@ def _practical_info(raw) -> dict:
     return {k: str(d.get(k) or "").strip() for k in ("money", "connectivity", "safety", "customs")}
 
 
-_VISA_STATUSES = {"needed", "available", "not_needed", "unknown"}
+_VISA_STATUSES = {"needed", "available", "not_needed", "already_have", "unknown"}
 
 
-def _parse_visa_info(raw, *, nationality: str, final_start_date: str) -> dict:
-    """Structured visa guidance for the traveler's nationality vs. the destination.
+def _parse_visa_info(raw, *, nationality: str, final_start_date: str, has_visa: bool = False) -> dict:
+    """Structured visa guidance for the traveler's nationality vs. the destination."""
+    if has_visa:
+        return {
+            "status": "already_have",
+            "processing_days_min": 0,
+            "processing_days_max": 0,
+            "note": "Visa already acquired — you are ready to travel!",
+            "confidence": "Confirmed",
+            "recommended_apply_by": None,
+            "dates_too_tight": False,
+        }
 
-    `raw` is whatever Gemini put under the "visa" key. The prompt asks for an
-    object (status/processing_days_min/processing_days_max/note/confidence),
-    but a plain string is still handled — either because the model ignored
-    the schema, or because this is parsing a plan generated before this field
-    became structured (`odyssey.dart`'s Flutter side needs the same fallback
-    for the same reason: already-saved itineraries).
-
-    `recommended_apply_by` is computed here, not asked of the model — Gemini
-    is unreliable at exact date arithmetic, so only the day-count estimate is
-    trusted to it, the same split `generate_odyssey`'s `verdict` already uses
-    for budget feasibility.
-    """
     if isinstance(raw, dict):
         status = str(raw.get("status") or "unknown").strip().lower()
         processing_days_min = _as_int(raw.get("processing_days_min"), 0)
@@ -1954,7 +1984,7 @@ def _parse_visa_info(raw, *, nationality: str, final_start_date: str) -> dict:
 
     if status not in _VISA_STATUSES:
         status = "unknown"
-    if not nationality:
+    if not nationality and status != "already_have":
         status = "unknown"
 
     recommended_apply_by = None
