@@ -5490,12 +5490,12 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           // 2. 3D Pop-out Category Icon (rendered behind text, but on top of card background)
           Positioned(
-            top: -32,
-            right: -10,
+            top: -24,
+            right: -4,
             child: Image.asset(
               _getCategoryImagePath(categoryName),
-              width: 108,
-              height: 108,
+              width: 88,
+              height: 88,
               fit: BoxFit.contain,
             ),
           ),
@@ -6019,14 +6019,14 @@ class _LivingMapPageState extends State<LivingMapPage>
           clipBehavior: Clip.none,
           children: [
             Positioned(
-              top: -10,
-              right: -4,
+              top: -6,
+              right: 0,
               child: Opacity(
                 opacity: 0.85,
                 child: Image.asset(
                   _getCategoryImagePath(categoryName),
-                  width: 70,
-                  height: 70,
+                  width: 56,
+                  height: 56,
                   fit: BoxFit.contain,
                 ),
               ),

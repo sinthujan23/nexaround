@@ -74,6 +74,7 @@ class Settings(BaseSettings):
         # nexaround-e9a5e / com.nexaround.app
         "375268962043-vb9adud6hglf3jd1vme6dku0dshdch38.apps.googleusercontent.com",  # iOS
         "375268962043-4j3q1v1qcl5feif820ebib08l48b0s6n.apps.googleusercontent.com",  # Android (Play app signing key)
+        "375268962043-6h1ft1a5f2k4vvvie1u71ne2bchkib60.apps.googleusercontent.com",  # Android (local debug keystore)
         "375268962043-qhpf05at8rterq1764ivk65sm579uhot.apps.googleusercontent.com",  # Android (upload key / side-loaded)
         "375268962043-dsvvrgcdc9l38dnfkkveb2f51qcf6o43.apps.googleusercontent.com",  # Web (serverClientId -> token aud)
         "375268962043",

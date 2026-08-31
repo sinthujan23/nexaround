@@ -91,7 +91,12 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         emit(AuthError(failure.message));
       }
     } catch (e) {
-      emit(AuthError('Google Sign-In failed: ${e.toString()}'));
+      final errorMsg = e.toString();
+      if (errorMsg.contains('canceled') && !errorMsg.contains('[16]')) {
+        emit(const AuthUnauthenticated());
+        return;
+      }
+      emit(AuthError('Google Sign-In failed: $errorMsg'));
     }
   }
 

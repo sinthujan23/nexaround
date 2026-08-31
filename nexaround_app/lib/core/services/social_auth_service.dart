@@ -21,7 +21,9 @@ class SocialAuthService {
   Future<GoogleSignInAccount?> signInWithGoogle() async {
     try {
       await _ensureInitialized();
-      await _googleSignIn.signOut();
+      try {
+        await _googleSignIn.signOut();
+      } catch (_) {}
       return await _googleSignIn.authenticate();
     } catch (e) {
       rethrow;
