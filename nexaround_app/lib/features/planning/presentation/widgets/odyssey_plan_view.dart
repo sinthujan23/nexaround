@@ -1361,17 +1361,23 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
   Widget _scenarioToggle() {
-    // The backend omits "minimum" from budgetScenarios when a synthetic
-    // minimum total couldn't even cover the real flight+hotel prices already
-    // found for this trip. Hide the tab rather than show a number that
-    // contradicts the Flights/Stays cards.
     final scenarios = widget.odyssey.budgetScenarios;
-    final showMinimum = scenarios.isEmpty || scenarios.containsKey('minimum');
-    final options = [
-      if (showMinimum) ('minimum', 'Minimum'),
-      ('recommended', 'Recommended'),
-      ('comfortable', 'Comfortable'),
-    ];
+    final List<(String, String)> options = [];
+
+    if (scenarios.containsKey('minimum')) {
+      options.add(('minimum', 'Minimum'));
+    }
+    options.add(('recommended', 'Recommended'));
+    if (scenarios.containsKey('comfortable')) {
+      options.add(('comfortable', 'Comfortable'));
+    }
+
+    if (options.length <= 1) return const SizedBox.shrink();
+
+    final currentSelected = options.any((opt) => opt.$1 == _selectedScenario)
+        ? _selectedScenario
+        : 'recommended';
+
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
@@ -1380,7 +1386,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       ),
       child: Row(
         children: options.map((opt) {
-          final selected = _selectedScenario == opt.$1;
+          final selected = currentSelected == opt.$1;
           return Expanded(
             child: GestureDetector(
               onTap: () => setState(() => _selectedScenario = opt.$1),
@@ -1419,7 +1425,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   Widget _budgetBreakdownCard(BuildContext context) {
     final scenarios = widget.odyssey.budgetScenarios;
-    final bd = scenarios[_selectedScenario] ?? widget.odyssey.budgetBreakdown;
+    final activeKey = scenarios.containsKey(_selectedScenario) ? _selectedScenario : 'recommended';
+    final bd = scenarios[activeKey] ?? widget.odyssey.budgetBreakdown;
     final currency = widget.odyssey.currency;
     final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : widget.odyssey.budget;
 

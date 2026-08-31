@@ -1216,51 +1216,6 @@ async def generate_odyssey(
             "total": tot_,
         }
 
-    tot = float(budget) if budget > 0 else 1.0
-    # The headline breakdown is the Recommended scenario, so the Budget tab and
-    # the Recommended flight tier quote the same transit figure.
-    budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
-    stay_amt = budget_breakdown["stay"]
-    transit_amt = budget_breakdown["transit"]
-    food_amt = budget_breakdown["food"]
-    activities_amt = budget_breakdown["activities"]
-
-    # A synthetic "minimum" (0.7x budget) is only meaningful if it can still
-    # afford what the live flight+hotel search actually found for this trip.
-    # Gating on trip_cost_floor (a generic, deliberately-austere per-destination
-    # floor) misses real-world cases like a domestic trip where that floor is
-    # far below the entered budget — "Minimum" kept showing a total lower than
-    # the real flight/hotel line items shown elsewhere, which read as a bug.
-    # Comparing against the actual fetched prices instead can't disagree with
-    # what the Flights/Stays tabs show for the same trip.
-    minimum_scenario_total = tot * _SCENARIO_MULTIPLIERS["minimum"]
-    real_min_floor = cheapest_flight_cost + cheapest_hotel_cost
-    minimum_feasible = real_min_floor <= 0 or minimum_scenario_total > real_min_floor
-
-    budget_scenarios = {
-        "recommended": budget_breakdown,
-        "comfortable": _waterfall(
-            tot * _SCENARIO_MULTIPLIERS["comfortable"], _tier_flight_cost("comfortable")
-        ),
-    }
-    if minimum_feasible:
-        budget_scenarios["minimum"] = _waterfall(
-            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
-        )
-
-    stay_pct = round((stay_amt / tot) * 100)
-    transit_pct = round((transit_amt / tot) * 100)
-    food_pct = round((food_amt / tot) * 100)
-    activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
-    harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
-
-    verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
-    if verified_sources:
-        logger.info(
-            "Google Search grounding: %d verified sources attached to itinerary",
-            len(verified_sources),
-        )
-
     final_currency = str(plan.get("currency") or currency)
     visa_info = _parse_visa_info(
         plan.get("visa"), nationality=nationality, final_start_date=final_start_date,
@@ -1282,6 +1237,49 @@ async def generate_odyssey(
     budget_short = floor is not None and budget < floor["minimum"]
     feasible = floor is None or (not budget_short and not duration_short)
     minimum_required = floor["minimum"] if floor else None
+
+    tot = float(budget) if budget > 0 else 1.0
+    # The headline breakdown is the Recommended scenario, so the Budget tab and
+    # the Recommended flight tier quote the same transit figure.
+    budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
+    stay_amt = budget_breakdown["stay"]
+    transit_amt = budget_breakdown["transit"]
+    food_amt = budget_breakdown["food"]
+    activities_amt = budget_breakdown["activities"]
+
+    # If the user's budget is already at or near the realistic cost floor,
+    # we don't invent an impossible lower "minimum" scenario.
+    # The user's budget IS the minimum viable tier (Recommended).
+    is_near_minimum_floor = False
+    if floor is not None and floor.get("minimum"):
+        min_floor = float(floor["minimum"])
+        if tot <= min_floor * 1.25:
+            is_near_minimum_floor = True
+    if (cheapest_flight_cost + cheapest_hotel_cost) > (tot * 0.75):
+        is_near_minimum_floor = True
+
+    budget_scenarios = {}
+    if not is_near_minimum_floor:
+        budget_scenarios["minimum"] = _waterfall(
+            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
+        )
+    budget_scenarios["recommended"] = budget_breakdown
+    budget_scenarios["comfortable"] = _waterfall(
+        tot * _SCENARIO_MULTIPLIERS["comfortable"], _tier_flight_cost("comfortable")
+    )
+
+    stay_pct = round((stay_amt / tot) * 100)
+    transit_pct = round((transit_amt / tot) * 100)
+    food_pct = round((food_amt / tot) * 100)
+    activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
+    harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
+
+    verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
+    if verified_sources:
+        logger.info(
+            "Google Search grounding: %d verified sources attached to itinerary",
+            len(verified_sources),
+        )
 
     if floor is None:
         budget_tightness = "unknown"
