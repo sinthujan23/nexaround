@@ -83,7 +83,6 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "tourist_attraction", "museum", "art_gallery",
         "historical_landmark", "historical_place", "cultural_landmark",
         "monument", "castle", "sculpture",
-        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
         "cultural_center", "visitor_center", "observation_deck",
         "zoo", "aquarium", "amusement_park", "water_park", "planetarium",
         "performing_arts_theater", "amusement_center"
@@ -92,7 +91,6 @@ CATEGORY_TYPES_MAP: dict[str, list[str]] = {
         "tourist_attraction", "museum", "park", "zoo", "aquarium", "art_gallery",
         "amusement_park", "national_park", "hiking_area", "beach",
         "historical_landmark", "historical_place", "cultural_landmark",
-        "hindu_temple", "church", "mosque", "synagogue", "buddhist_temple",
         "cultural_center", "marina", "visitor_center", "observation_deck",
         "wildlife_refuge", "monument", "castle"
     ],

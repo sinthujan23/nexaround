@@ -81,9 +81,6 @@ CATEGORY_SUBGROUPS: dict[str, list[tuple[str, list[str]]]] = {
             "historical_place", "cultural_landmark", "monument", "castle",
             "sculpture", "cultural_center", "visitor_center",
         ]),
-        ("worship", [
-            "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
-        ]),
         ("leisure", [
             "zoo", "aquarium", "amusement_park", "water_park", "planetarium",
             "performing_arts_theater", "observation_deck", "amusement_center",
@@ -148,7 +145,6 @@ _NATURE_TYPES = {
 _HERITAGE_OVERRIDES = {
     "museum", "art_gallery", "historical_landmark", "historical_place",
     "cultural_landmark", "monument", "castle", "sculpture", "cultural_center",
-    "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
 }
 
 _HOSPITAL_TYPES = {"hospital"}
@@ -213,7 +209,7 @@ def _reads_as_clinic(lowered_name: str) -> bool:
 # untyped to the relevance gate below and get filtered out of their own section.
 _LEGACY_TAG_CATEGORIES: dict[str, set[str]] = {
     "Food & Drink": {"food", "meal_takeaway", "meal_delivery"},
-    "POI": {"place_of_worship", "point_of_interest_landmark", "premise"},
+    "POI": {"point_of_interest_landmark", "premise"},
     "Nature": {"natural_feature", "campground"},
     "Shopping": {"grocery_or_supermarket", "home_goods_store", "furniture_store",
                  "hardware_store", "liquor_store", "pet_store", "bicycle_store"},
@@ -252,6 +248,7 @@ _EXCLUDED_TAGS: dict[str, set[str]] = {
         "hospital", "doctor", "dentist", "pharmacy", "medical_clinic",
         "lodging", "hotel", "car_repair", "car_dealer", "gas_station",
         "cemetery", "funeral_home", "storage", "moving_company",
+        "place_of_worship", "hindu_temple", "buddhist_temple", "church", "mosque", "synagogue",
     },
     # Beach resorts and safari lodges carry `beach` and `wildlife_park` next to
     # `lodging`, and would otherwise fill the section with places to sleep.

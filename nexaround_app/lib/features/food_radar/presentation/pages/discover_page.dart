@@ -587,7 +587,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         if (_selectedPoiCategory == 'Landmarks') {
           return cat.contains('landmark') || cat.contains('monument') || cat.contains('historic') || name.contains('landmark') || name.contains('monument') || name.contains('statue') || name.contains('palace') || name.contains('fort');
         } else if (_selectedPoiCategory == 'Culture') {
-          return cat.contains('culture') || cat.contains('temple') || cat.contains('church') || cat.contains('place of worship') || cat.contains('historic') || name.contains('temple') || name.contains('cathedral') || name.contains('church') || name.contains('monument') || tags.contains('hindu_temple') || tags.contains('place_of_worship');
+          return cat.contains('culture') || cat.contains('historic') || cat.contains('heritage') || name.contains('cultural') || name.contains('heritage') || name.contains('monument') || tags.contains('cultural_center') || tags.contains('cultural_landmark') || tags.contains('historical_landmark');
         } else if (_selectedPoiCategory == 'Museums') {
           return cat.contains('museum') || cat.contains('gallery') || name.contains('museum') || name.contains('gallery') || tags.contains('museum') || tags.contains('art_gallery');
         } else if (_selectedPoiCategory == 'Leisure') {

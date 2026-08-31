@@ -35,12 +35,17 @@ class PlaceSections {
   static const _heritageTags = [
     'museum', 'art_gallery', 'historical_landmark', 'historical_place',
     'cultural_landmark', 'monument', 'castle', 'sculpture', 'cultural_center',
+  ];
+  static const _heritageWords = [
+    'museum', 'monument', 'fort',
+    'palace', 'gallery', 'memorial', 'statue',
+  ];
+  static const _worshipTags = [
     'hindu_temple', 'buddhist_temple', 'church', 'mosque', 'synagogue',
     'place_of_worship',
   ];
-  static const _heritageWords = [
-    'museum', 'temple', 'church', 'mosque', 'kovil', 'monument', 'fort',
-    'palace', 'gallery', 'memorial', 'statue',
+  static const _worshipWords = [
+    'temple', 'church', 'mosque', 'kovil', 'synagogue', 'cathedral', 'shrine',
   ];
   static const _poiTags = [
     'tourist_attraction', 'zoo', 'aquarium', 'amusement_park', 'water_park',
@@ -101,6 +106,18 @@ class PlaceSections {
   static bool _hasNoInformativeTags(AttractionEntity a) =>
       tagsOf(a).where((t) => !_genericTags.contains(t)).isEmpty;
 
+  static bool isWorship(AttractionEntity a) {
+    final name = a.name.toLowerCase();
+    final tags = tagsOf(a);
+    if (_worshipTags.any(tags.contains) || _worshipWords.any(name.contains)) {
+      return true;
+    }
+    final cat = (a.categoryName ?? '').toLowerCase();
+    return cat.contains('temple') || cat.contains('church') ||
+        cat.contains('mosque') || cat.contains('worship') ||
+        cat.contains('religious') || cat.contains('kovil') || cat.contains('synagogue');
+  }
+
   static bool _hasNatureSignal(AttractionEntity a) {
     final name = a.name.toLowerCase();
     final tags = tagsOf(a);
@@ -126,13 +143,13 @@ class PlaceSections {
     if (!_hasNoInformativeTags(a)) return false;
     final cat = (a.categoryName ?? '').toLowerCase();
     return cat.contains('museum') || cat.contains('landmark') ||
-        cat.contains('culture') || cat.contains('temple') ||
-        cat.contains('art') || cat.contains('historic');
+        cat.contains('culture') || cat.contains('art') || cat.contains('historic');
   }
 
   /// Somewhere outdoors, and not a place to sleep. Beach resorts and safari
   /// lodges carry `beach` and `wildlife_park` next to `lodging`.
   static bool isNature(AttractionEntity a) {
+    if (isWorship(a)) return false;
     if (_stayWords.any(a.name.toLowerCase().contains)) return false;
     if (_hasHeritageSignal(a)) return false;
     if (!_hasNatureSignal(a)) return false;
@@ -146,6 +163,7 @@ class PlaceSections {
   /// Something built and worth going to see. Nature wins any place that reads as
   /// outdoors without also carrying real heritage.
   static bool isPoi(AttractionEntity a) {
+    if (isWorship(a)) return false;
     if (_stayWords.any(a.name.toLowerCase().contains)) return false;
     if (isNature(a)) return false;
     final tags = tagsOf(a);
