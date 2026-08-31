@@ -13,7 +13,8 @@ The platform is structured into three primary subprojects:
 
 *   **🔮 Neva — Your AI Companion**: A witty, warm, and stylish travel partner. Neva answers context-aware queries about history, local delicacies, budgets, and itineraries, complete with beautiful formatting, bullet highlights, and emojis.
 *   **🕶 AR Mode & Live Identification**: Uses the device camera and ML Kit Object Detection/Google GenAI to dynamically scan, identify, and label landmarks in real-time AR.
-*   **🗺 Living Maps & Travel Planning**: Fully-featured Google Maps & Mapbox navigation pages with custom markers, routing, travel itineraries, and location-based filters.
+*   **🗺 Living Maps & Around You**: Fully-featured navigation pages with custom 3D category pop-outs, routing, travel itineraries, and location-based discovery.
+*   **🧭 Nexus Odyssey Planner**: Multi-step AI travel engine that crafts complete multi-day itineraries with personalized budgets, flights, stays, and day-by-day guides.
 *   **⚡ Quick Action Integrations**: Directly navigate via internal Google Maps, book stays on Booking.com, or order rides via Uber deep links directly from discovery cards.
 *   **🚀 Geospatial Caching Engine**: Custom Postgres + GeoAlchemy2 + Redis caching system that saves API calls and serves location-based results instantly.
 
