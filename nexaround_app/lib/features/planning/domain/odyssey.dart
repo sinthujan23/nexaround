@@ -509,6 +509,22 @@ class FlightStrategy {
   final String tip;
   final String bookingUrl;
 
+  /// Structured pricing from the backend. All null on Odysseys generated
+  /// before tiered flights existed — the widgets fall back to [priceRange]
+  /// and to client-side price ranking in that case.
+  ///
+  /// The contract, set in serpapi_service.extract_flight_strategies_from_serpapi:
+  /// [pricePerTraveler] is one traveller's fare for the whole journey
+  /// (return, when [tripType] is `round_trip`), taxes included, in [currency].
+  /// [priceTotal] is always derived as fare x travellers.
+  final String? tier; // 'minimum' | 'recommended' | 'comfortable'
+  final double? pricePerTraveler;
+  final double? priceTotal;
+  final String? currency;
+  final String? tripType; // 'round_trip' | 'one_way'
+  final int? durationMinutes;
+  final bool isLivePrice;
+
   const FlightStrategy({
     required this.rank,
     required this.strategy,
@@ -524,12 +540,37 @@ class FlightStrategy {
     required this.providerName,
     required this.tip,
     required this.bookingUrl,
+    this.tier,
+    this.pricePerTraveler,
+    this.priceTotal,
+    this.currency,
+    this.tripType,
+    this.durationMinutes,
+    this.isLivePrice = false,
   });
+
+  /// True when the backend priced this strategy, so the UI can render exact
+  /// figures instead of parsing a free-text range.
+  bool get hasStructuredPrice =>
+      pricePerTraveler != null && pricePerTraveler! > 0;
+
+  bool get isRoundTrip => tripType == 'round_trip';
 
   static int _parseInt(dynamic val, [int fallback = 0]) {
     if (val is num) return val.toInt();
     if (val is String) return int.tryParse(val) ?? double.tryParse(val)?.toInt() ?? fallback;
     return fallback;
+  }
+
+  static double? _parseDouble(dynamic val) {
+    if (val is num) return val.toDouble();
+    if (val is String) return double.tryParse(val.replaceAll(',', ''));
+    return null;
+  }
+
+  static String? _parseString(dynamic val) {
+    final s = val?.toString().trim() ?? '';
+    return s.isEmpty ? null : s;
   }
 
   factory FlightStrategy.fromJson(Map<String, dynamic> json) => FlightStrategy(
@@ -551,6 +592,15 @@ class FlightStrategy {
         providerName: (json['provider_name'] ?? json['provider'] ?? '').toString(),
         tip: (json['tip'] ?? '').toString(),
         bookingUrl: (json['booking_url'] ?? '').toString(),
+        tier: _parseString(json['tier']),
+        pricePerTraveler: _parseDouble(json['price_per_traveler']),
+        priceTotal: _parseDouble(json['price_total']),
+        currency: _parseString(json['currency']),
+        tripType: _parseString(json['trip_type']),
+        durationMinutes: json['total_duration_minutes'] == null
+            ? null
+            : _parseInt(json['total_duration_minutes'], 0),
+        isLivePrice: json['is_live_price'] == true,
       );
 
   Map<String, dynamic> toJson() => {
@@ -568,6 +618,13 @@ class FlightStrategy {
         'provider_name': providerName,
         'tip': tip,
         'booking_url': bookingUrl,
+        if (tier != null) 'tier': tier,
+        if (pricePerTraveler != null) 'price_per_traveler': pricePerTraveler,
+        if (priceTotal != null) 'price_total': priceTotal,
+        if (currency != null) 'currency': currency,
+        if (tripType != null) 'trip_type': tripType,
+        if (durationMinutes != null) 'total_duration_minutes': durationMinutes,
+        'is_live_price': isLivePrice,
       };
 }
 

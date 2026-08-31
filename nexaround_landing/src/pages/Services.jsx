@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { 
   Camera, Compass, MessageSquare, MapPin, Landmark, 
   Ticket, Globe, ShieldCheck, Zap, Layers, Sparkles, 
@@ -7,7 +8,27 @@ import {
 import { NavLink } from 'react-router-dom';
 import StoreButtons from '../components/StoreButtons';
 
+const heroBackgrounds = [
+  '/bg_eiffel_tower.png',
+  '/bg_colosseum_rome.png',
+  '/bg_sigiriya.png',
+  '/bg_pyramids_giza.png',
+  '/bg_taj_mahal.png',
+  '/bg_machu_picchu.png',
+  '/bg_great_wall.png',
+  '/bg_sydney_opera.png',
+  '/bg_statue_liberty.png',
+];
+
 export default function Services() {
+  const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentBgIndex((prev) => (prev + 1) % heroBackgrounds.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, []);
   const platformServices = [
     {
       num: '01',
@@ -115,21 +136,28 @@ export default function Services() {
         overflow: 'hidden'
       }}>
         
-        {/* Background Visual with Directional Soft Left & Bottom Vignette */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: 'url(/bg_eiffel_tower.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 40%',
-          opacity: 0.55,
-          filter: 'brightness(1.1) contrast(1.05)',
-          zIndex: 1,
-          pointerEvents: 'none'
-        }} />
+        {/* Smooth Auto-Rotating Background Images with Cross-Fade */}
+        {heroBackgrounds.map((bg, idx) => (
+          <div
+            key={bg}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: `url(${bg})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 40%',
+              opacity: idx === currentBgIndex ? 0.55 : 0,
+              filter: 'brightness(1.1) contrast(1.05)',
+              transform: idx === currentBgIndex ? 'scale(1.03)' : 'scale(1)',
+              transition: 'opacity 1.4s ease-in-out, transform 5s ease-out',
+              zIndex: 1,
+              pointerEvents: 'none'
+            }}
+          />
+        ))}
 
         <div style={{
           position: 'absolute',

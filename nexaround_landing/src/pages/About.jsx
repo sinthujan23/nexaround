@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { 
   Target, Cpu, GitCommit, CheckCircle2, ShieldCheck, 
   ArrowRight, Sparkles, Code2, Users, Layers, Lock, Award,
@@ -5,7 +6,27 @@ import {
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
+const heroBackgrounds = [
+  '/bg_colosseum_rome.png',
+  '/bg_eiffel_tower.png',
+  '/bg_sigiriya.png',
+  '/bg_pyramids_giza.png',
+  '/bg_taj_mahal.png',
+  '/bg_machu_picchu.png',
+  '/bg_great_wall.png',
+  '/bg_sydney_opera.png',
+  '/bg_statue_liberty.png',
+];
+
 export default function About() {
+  const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentBgIndex((prev) => (prev + 1) % heroBackgrounds.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, []);
   const values = [
     { title: 'Innovation with Purpose', desc: 'Blending spatial AR computing and artificial intelligence to enrich human cultural discovery.' },
     { title: 'Privacy & Security First', desc: 'Zero data brokering, enterprise-grade encryption, and strict GDPR/CCPA compliance.' },
@@ -34,21 +55,28 @@ export default function About() {
         overflow: 'hidden'
       }}>
         
-        {/* Background Visual with Directional Soft Left & Bottom Vignette */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: 'url(/bg_colosseum_rome.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 35%',
-          opacity: 0.55,
-          filter: 'brightness(1.1) contrast(1.05)',
-          zIndex: 1,
-          pointerEvents: 'none'
-        }} />
+        {/* Smooth Auto-Rotating Background Images with Cross-Fade */}
+        {heroBackgrounds.map((bg, idx) => (
+          <div
+            key={bg}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: `url(${bg})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 35%',
+              opacity: idx === currentBgIndex ? 0.55 : 0,
+              filter: 'brightness(1.1) contrast(1.05)',
+              transform: idx === currentBgIndex ? 'scale(1.03)' : 'scale(1)',
+              transition: 'opacity 1.4s ease-in-out, transform 5s ease-out',
+              zIndex: 1,
+              pointerEvents: 'none'
+            }}
+          />
+        ))}
 
         <div style={{
           position: 'absolute',
@@ -182,10 +210,15 @@ export default function About() {
               <div style={{
                 borderRadius: 'var(--radius-xl)',
                 overflow: 'hidden',
-                boxShadow: '0 20px 50px rgba(0, 122, 124, 0.15)',
-                border: '1px solid rgba(0, 122, 124, 0.2)'
+                boxShadow: '0 25px 60px rgba(0, 122, 124, 0.2)',
+                border: '1px solid rgba(0, 122, 124, 0.25)'
               }}>
-                <img src="/about_office.png" alt="NexAround Innovation Lab" style={{ width: '100%', height: 'auto', display: 'block' }} onError={(e) => { e.currentTarget.src = '/bg_sigiriya.png'; }} />
+                <img 
+                  src="/nexaround_app_card_v2.png" 
+                  alt="NexAround Mobile App in Action" 
+                  style={{ width: '100%', height: 'auto', display: 'block', objectFit: 'cover' }} 
+                  onError={(e) => { e.currentTarget.src = '/app_download_showcase.png'; }} 
+                />
               </div>
             </div>
 

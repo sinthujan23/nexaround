@@ -1,16 +1,37 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { 
   Sparkles, Camera, MapPin, Compass, BookOpen, 
   MessageSquare, Layers, Download, CheckCircle2, 
-  ArrowRight, Smartphone, ShieldCheck, Zap, Globe,
+  ArrowRight, ArrowUpRight, Smartphone, ShieldCheck, Zap, Globe,
   Landmark, Cpu, Award, Volume2, Clock, Eye, Play, Star,
   ChevronDown, ChevronUp
 } from 'lucide-react';
 import StoreButtons from '../components/StoreButtons';
 
+const heroBackgrounds = [
+  { name: 'Colosseum, Rome', src: '/bg_colosseum_rome.png' },
+  { name: 'Eiffel Tower, Paris', src: '/bg_eiffel_tower.png' },
+  { name: 'Sigiriya Citadel, Sri Lanka', src: '/bg_sigiriya.png' },
+  { name: 'Pyramids of Giza, Egypt', src: '/bg_pyramids_giza.png' },
+  { name: 'Taj Mahal, India', src: '/bg_taj_mahal.png' },
+  { name: 'Machu Picchu, Peru', src: '/bg_machu_picchu.png' },
+  { name: 'Great Wall of China', src: '/bg_great_wall.png' },
+  { name: 'Sydney Opera House, Australia', src: '/bg_sydney_opera.png' },
+  { name: 'Statue of Liberty, New York', src: '/bg_statue_liberty.png' },
+];
+
 export default function NexARoundApp() {
   const [expandedStory, setExpandedStory] = useState(false);
+  const [currentBgIndex, setCurrentBgIndex] = useState(0);
+
+  // Auto-rotate hero background images with smooth crossfade
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentBgIndex((prev) => (prev + 1) % heroBackgrounds.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, []);
 
   const appFeatures = [
     {
@@ -181,21 +202,28 @@ export default function NexARoundApp() {
         overflow: 'hidden'
       }}>
         
-        {/* Background Visual with Directional Soft Left & Bottom Vignette */}
-        <div style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundImage: 'url(/bg_colosseum_rome.png)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center 35%',
-          opacity: 0.55,
-          filter: 'brightness(1.1) contrast(1.05)',
-          zIndex: 1,
-          pointerEvents: 'none'
-        }} />
+        {/* Smooth Auto-Rotating Background Images with Cross-Fade */}
+        {heroBackgrounds.map((bg, idx) => (
+          <div
+            key={bg.src}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: `url(${bg.src})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 35%',
+              opacity: idx === currentBgIndex ? 0.6 : 0,
+              filter: 'brightness(1.1) contrast(1.05)',
+              transform: idx === currentBgIndex ? 'scale(1.03)' : 'scale(1)',
+              transition: 'opacity 1.4s ease-in-out, transform 5s ease-out',
+              zIndex: 1,
+              pointerEvents: 'none'
+            }}
+          />
+        ))}
 
         <div style={{
           position: 'absolute',
@@ -219,96 +247,97 @@ export default function NexARoundApp() {
           pointerEvents: 'none'
         }} />
 
-        {/* Hero Content (Left-Aligned, Clean Typography Matching Home) */}
+        {/* Hero Content (Exact Matching Reference Screenshot) */}
         <div className="container" style={{ position: 'relative', zIndex: 3 }}>
           <div style={{ maxWidth: '820px', textAlign: 'left' }}>
             
-            {/* Main Headline */}
-            <h1 style={{ 
-              fontSize: 'clamp(2.8rem, 6vw, 4.6rem)', 
-              fontWeight: 300, 
-              color: '#ffffff', 
-              lineHeight: 1.15, 
-              letterSpacing: '-0.03em', 
-              margin: '0 0 20px',
-              textShadow: '0 2px 14px rgba(0,0,0,0.5)'
-            }}>
-              Discover What's <span style={{ fontWeight: 500, color: '#00d2d3' }}>Next Around You</span>.
-            </h1>
+            {/* Breadcrumb */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px', fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+              <NavLink to="/" style={{ color: 'rgba(255, 255, 255, 0.8)', textDecoration: 'none' }}>Home</NavLink>
+              <span style={{ opacity: 0.6 }}>›</span>
+              <span style={{ color: 'rgba(255, 255, 255, 0.95)', fontWeight: 500 }}>nexARound App</span>
+            </div>
 
-            {/* Sub-Headline */}
+            {/* App Icon + Title */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '20px', marginBottom: '16px', flexWrap: 'wrap' }}>
+              <div style={{
+                width: '74px',
+                height: '74px',
+                borderRadius: '18px',
+                background: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '6px',
+                boxShadow: '0 8px 30px rgba(0, 0, 0, 0.45)',
+                border: '1px solid rgba(255, 255, 255, 0.2)'
+              }}>
+                <img 
+                  src="/logo_2.png" 
+                  alt="nexARound Icon" 
+                  style={{ width: '56px', height: '56px', objectFit: 'contain' }} 
+                  onError={(e) => { e.currentTarget.src = '/logo_2_icon_clean.png'; }}
+                />
+              </div>
+
+              <h1 style={{ 
+                fontSize: 'clamp(3rem, 6vw, 4.8rem)', 
+                fontWeight: 700, 
+                color: '#ffffff', 
+                letterSpacing: '-0.03em', 
+                lineHeight: 1, 
+                margin: 0,
+                textShadow: '0 2px 14px rgba(0,0,0,0.5)'
+              }}>
+                nex<span style={{ fontWeight: 800 }}>ARound</span>
+              </h1>
+            </div>
+
+            {/* Sub-Headline / Quote */}
+            <h2 style={{ 
+              fontSize: 'clamp(1.3rem, 2.4vw, 1.95rem)', 
+              fontWeight: 500, 
+              color: '#ffffff', 
+              lineHeight: 1.3, 
+              margin: '0 0 18px',
+              letterSpacing: '-0.015em',
+              textShadow: '0 2px 10px rgba(0,0,0,0.5)'
+            }}>
+              "Discover What's Next Around You!"
+            </h2>
+
+            {/* Subtitle / Paragraph */}
             <p style={{ 
-              fontSize: 'clamp(1.05rem, 1.8vw, 1.22rem)', 
+              fontSize: 'clamp(1rem, 1.6vw, 1.18rem)', 
               color: 'rgba(255, 255, 255, 0.88)', 
               lineHeight: 1.65, 
-              margin: '0 0 38px', 
-              maxWidth: '660px',
+              margin: '0 0 34px', 
+              maxWidth: '680px',
               fontWeight: 300,
               textShadow: '0 2px 10px rgba(0,0,0,0.5)'
             }}>
-              An AI-powered smart tourism companion combining real-time AR camera landmark vision, Odyssey itinerary planning, and Neva 24/7 AI travel concierge.
+              Every place has a story and every street hides a surprise. nexARound is your AI-powered smart tourism companion that helps you discover authentic local experiences, right here, right now.
             </p>
 
-            {/* Action Buttons (Matching Home Style) */}
+            {/* Action Buttons */}
             <div className="hero-btn-group" style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
               <NavLink 
                 to="/get-app" 
-                style={{ 
-                  background: '#ffffff', 
-                  color: '#000000', 
-                  padding: '14px 28px', 
-                  borderRadius: '9999px', 
-                  fontSize: '15px', 
-                  fontWeight: 600, 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  textDecoration: 'none',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
-                  transition: 'all 0.25s ease'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                className="btn-white-pill"
+                style={{ padding: '12px 26px', fontSize: '0.95rem' }}
               >
-                <span>Get the App</span>
-                <ArrowRight style={{ width: '15px', height: '15px' }} />
+                <span>Get the app</span>
+                <ArrowUpRight style={{ width: '17px', height: '17px' }} />
               </NavLink>
 
-              <a 
-                href="#modules" 
-                onClick={(e) => { 
-                  e.preventDefault(); 
-                  document.getElementById('modules')?.scrollIntoView({ behavior: 'smooth' }); 
-                }} 
-                style={{ 
-                  background: 'rgba(255, 255, 255, 0.08)', 
-                  color: '#ffffff', 
-                  border: '1.5px solid rgba(255, 255, 255, 0.45)', 
-                  padding: '14px 28px', 
-                  borderRadius: '9999px', 
-                  fontSize: '15px', 
-                  fontWeight: 500, 
-                  display: 'inline-flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  textDecoration: 'none',
-                  backdropFilter: 'blur(8px)',
-                  WebkitBackdropFilter: 'blur(8px)',
-                  transition: 'all 0.25s ease'
-                }}
-                onMouseEnter={(e) => { 
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.18)'; 
-                  e.currentTarget.style.transform = 'translateY(-2px)'; 
-                }}
-                onMouseLeave={(e) => { 
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; 
-                  e.currentTarget.style.transform = 'translateY(0)'; 
-                }}
+              <NavLink 
+                to="/about"
+                className="btn-glass"
+                style={{ padding: '12px 26px', fontSize: '0.95rem' }}
               >
-                <span>Explore 10 Modules</span>
-              </a>
+                <span>Read our story</span>
+              </NavLink>
             </div>
-
           </div>
         </div>
       </section>
@@ -346,7 +375,7 @@ export default function NexARoundApp() {
               </span>
               <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>ARound</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Everything happening around you — from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
+                Everything happening around you- from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
               </p>
             </div>
 
@@ -374,7 +403,7 @@ export default function NexARoundApp() {
               "What can I discover next around me, right here, right now?"
             </p>
             <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 700, margin: '0 0 16px' }}>
-              Because travel isn't just about reaching a destination — it's about moments that become lifelong memories.
+              Because travel isn't just about reaching a destination- it's about moments that become lifelong memories.
             </p>
             <button 
               onClick={() => setExpandedStory(!expandedStory)}

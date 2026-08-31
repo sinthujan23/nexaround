@@ -18,6 +18,7 @@ from app.services.serpapi_service import (
     format_flight_results_for_gemini,
     format_hotel_results_for_gemini,
     extract_hotel_strategies_from_serpapi,
+    extract_flight_strategies_from_serpapi,
 )
 
 logger = logging.getLogger(__name__)
@@ -250,6 +251,350 @@ async def fetch_unsplash_cover_photo(destination: str, api_key: str) -> str:
     return ""
 
 
+# SerpApi's google_flights engine rejects free-text places outright —
+# `departure_id` must be an uppercase 3-letter code (or a Google /m/ id).
+# Passing city names, as this service did, meant every live flight search
+# 400'd and silently fell through to Gemini estimation, so the "real data"
+# path almost never ran. Codes are resolved before the search now.
+#
+# Multi-airport cities are listed as comma-separated codes, which the engine
+# accepts and searches together. IATA *metro* codes (LON, NYC, PAR) are NOT
+# accepted — "LON" returns zero results where "LHR,LGW,STN,LTN" returns
+# twenty-plus across all three airports. That comparison is what surfaces
+# "Gatwick is cheaper than Heathrow" with a real price attached.
+_AIRPORT_CODES = {
+    # Multi-airport cities — every airport serving the city, searched together
+    "london": "LHR,LGW,STN,LTN", "new york": "JFK,EWR,LGA",
+    "new york city": "JFK,EWR,LGA", "paris": "CDG,ORY,BVA",
+    "tokyo": "HND,NRT", "milan": "MXP,LIN,BGY", "rome": "FCO,CIA",
+    "moscow": "SVO,DME,VKO", "buenos aires": "EZE,AEP",
+    "rio de janeiro": "GIG,SDU", "sao paulo": "GRU,CGH",
+    "são paulo": "GRU,CGH", "washington": "IAD,DCA,BWI",
+    "washington dc": "IAD,DCA,BWI", "chicago": "ORD,MDW",
+    "toronto": "YYZ,YTZ", "beijing": "PEK,PKX", "shanghai": "PVG,SHA",
+    "seoul": "ICN,GMP", "osaka": "KIX,ITM", "stockholm": "ARN,BMA,NYO",
+    "berlin": "BER", "belfast": "BFS,BHD", "jakarta": "CGK,HLP",
+    "tehran": "IKA,THR",
+    # South Asia
+    "colombo": "CMB", "kandy": "CMB", "galle": "CMB", "jaffna": "CMB",
+    "kinniya": "CMB", "trincomalee": "CMB", "negombo": "CMB",
+    "sri lanka": "CMB", "male": "MLE", "maldives": "MLE",
+    "delhi": "DEL", "new delhi": "DEL", "mumbai": "BOM", "bombay": "BOM",
+    "bangalore": "BLR", "bengaluru": "BLR", "chennai": "MAA", "madras": "MAA",
+    "kolkata": "CCU", "calcutta": "CCU", "hyderabad": "HYD", "kochi": "COK",
+    "cochin": "COK", "goa": "GOI", "ahmedabad": "AMD", "trivandrum": "TRV",
+    "thiruvananthapuram": "TRV", "kathmandu": "KTM", "dhaka": "DAC",
+    "karachi": "KHI", "lahore": "LHE", "islamabad": "ISB",
+    # South-East & East Asia
+    "singapore": "SIN", "kuala lumpur": "KUL", "bangkok": "BKK",
+    "phuket": "HKT", "chiang mai": "CNX", "hanoi": "HAN",
+    "ho chi minh city": "SGN", "saigon": "SGN", "bali": "DPS",
+    "denpasar": "DPS", "manila": "MNL", "hong kong": "HKG", "taipei": "TPE",
+    "guangzhou": "CAN", "shenzhen": "SZX", "phnom penh": "PNH",
+    "siem reap": "SAI", "yangon": "RGN",
+    # Kyoto has no airport of its own — Kansai and Itami both serve it.
+    "kyoto": "KIX,ITM",
+    # Middle East
+    "dubai": "DXB", "abu dhabi": "AUH", "doha": "DOH", "sharjah": "SHJ",
+    "muscat": "MCT", "riyadh": "RUH", "jeddah": "JED", "kuwait": "KWI",
+    "bahrain": "BAH", "manama": "BAH", "amman": "AMM", "beirut": "BEY",
+    "tel aviv": "TLV", "istanbul": "IST", "baku": "GYD",
+    # Europe
+    "amsterdam": "AMS", "frankfurt": "FRA", "munich": "MUC", "madrid": "MAD",
+    "barcelona": "BCN", "lisbon": "LIS", "porto": "OPO", "dublin": "DUB",
+    "edinburgh": "EDI", "manchester": "MAN", "birmingham": "BHX",
+    "glasgow": "GLA", "brussels": "BRU", "zurich": "ZRH", "geneva": "GVA",
+    "vienna": "VIE", "prague": "PRG", "budapest": "BUD", "warsaw": "WAW",
+    "copenhagen": "CPH", "oslo": "OSL", "helsinki": "HEL", "athens": "ATH",
+    "venice": "VCE", "florence": "FLR", "naples": "NAP", "nice": "NCE",
+    "hamburg": "HAM", "dusseldorf": "DUS", "cologne": "CGN",
+    "reykjavik": "KEF", "bucharest": "OTP", "sofia": "SOF", "zagreb": "ZAG",
+    # Americas
+    "los angeles": "LAX", "san francisco": "SFO", "miami": "MIA",
+    "boston": "BOS", "seattle": "SEA", "atlanta": "ATL", "dallas": "DFW",
+    "houston": "IAH", "denver": "DEN", "las vegas": "LAS", "orlando": "MCO",
+    "vancouver": "YVR", "montreal": "YUL", "calgary": "YYC",
+    "mexico city": "MEX", "cancun": "CUN", "bogota": "BOG", "lima": "LIM",
+    "santiago": "SCL",
+    # Africa & Oceania
+    "cairo": "CAI", "nairobi": "NBO", "johannesburg": "JNB",
+    "cape town": "CPT", "casablanca": "CMN", "addis ababa": "ADD",
+    "lagos": "LOS", "accra": "ACC", "dar es salaam": "DAR",
+    "zanzibar": "ZNZ", "mauritius": "MRU", "seychelles": "SEZ",
+    "sydney": "SYD", "melbourne": "MEL", "brisbane": "BNE", "perth": "PER",
+    "auckland": "AKL", "wellington": "WLG", "christchurch": "CHC",
+}
+
+_AIRPORT_CODE_RE = re.compile(r"^[A-Z]{3}(,[A-Z]{3})*$")
+
+# IATA metropolitan codes. Google Flights returns nothing for these, so they
+# must never reach a search — they are expanded via _AIRPORT_CODES instead.
+# (BER and SHA are deliberately absent — both are real operating airports.)
+_METRO_CODES = {
+    "LON", "NYC", "PAR", "TYO", "MIL", "ROM", "MOW", "BUE", "RIO", "SAO",
+    "WAS", "CHI", "YTO", "BJS", "SEL", "OSA", "STO", "JKT", "TCI",
+    "BHZ", "QDU", "REK", "DTT",
+}
+
+# Gemini-resolved codes, kept for the life of the process. Airport codes do
+# not change, and the same routes recur constantly.
+_airport_code_cache: dict[str, str] = {}
+
+
+async def _resolve_airport_code(place: str, country: str, api_key: str) -> str:
+    """Resolve a place name to an IATA code SerpApi will accept.
+
+    Static table first (free and instant, covers the common routes), then one
+    small Gemini lookup for anything unknown, cached per process. Returns ""
+    when nothing usable comes back, which tells the caller to skip the live
+    search rather than burn a SerpApi credit on a request that will 400.
+    """
+    raw = (place or "").strip()
+    if not raw:
+        return ""
+
+    # A city we know wins over anything else — "London" must expand to its
+    # four airports rather than being taken at face value.
+    key = raw.lower().split(",")[0].strip()
+    if key in _AIRPORT_CODES:
+        return _AIRPORT_CODES[key]
+
+    # Already a code (or comma-separated codes), or a "City (CMB)" string.
+    upper = raw.upper().replace(" ", "")
+    if _AIRPORT_CODE_RE.match(upper) and not any(
+        c in _METRO_CODES for c in upper.split(",")
+    ):
+        return upper
+    bracketed = re.search(r"\(([A-Z]{3})\)", raw)
+    if bracketed and bracketed.group(1) not in _METRO_CODES:
+        return bracketed.group(1)
+
+    cache_key = f"{key}|{(country or '').lower().strip()}"
+    if cache_key in _airport_code_cache:
+        return _airport_code_cache[cache_key]
+
+    if not api_key:
+        return ""
+
+    location = f"{raw}, {country}" if country else raw
+    prompt = (
+        f'Which airports serve "{location}"? Answer with IATA airport codes ONLY, '
+        f"comma-separated, most important first, maximum 3. If the city has several airports "
+        f"list them all (e.g. London -> LHR,LGW,STN). If the place has no airport of its own, "
+        f"give the nearest major international airport. Never answer with a metropolitan area "
+        f"code such as LON or NYC. No other text."
+    )
+    try:
+        text, _ = await _call_gemini(prompt, api_key, max_tokens=32, thinking_budget=0)
+        codes = re.findall(r"\b([A-Z]{3})\b", (text or "").upper())
+        # Metro codes are silently rejected by Google Flights — drop any that
+        # slipped through rather than shipping a search that returns nothing.
+        codes = [c for c in dict.fromkeys(codes) if c not in _METRO_CODES][:3]
+        if codes:
+            code = ",".join(codes)
+            _airport_code_cache[cache_key] = code
+            logger.info("Resolved airport code for '%s' -> %s", location, code)
+            return code
+    except Exception as e:
+        logger.warning(f"Airport code lookup failed for '{location}': {e}")
+
+    return ""
+
+
+def _derive_return_date(start_date: str, days: int) -> str:
+    """Best-effort return date so a round trip is priced as a round trip.
+
+    Without a return date SerpApi drops to type=2 and Google quotes a one-way
+    fare, which then reaches the traveller with nothing marking it as one-way.
+    """
+    if not start_date or not days or days <= 0:
+        return ""
+    try:
+        from datetime import date as _date, timedelta as _timedelta
+        start = _date.fromisoformat(start_date[:10])
+        return (start + _timedelta(days=max(days - 1, 1))).isoformat()
+    except Exception:
+        return ""
+
+
+def _apply_flight_booking_urls(
+    data: dict,
+    *,
+    departure_city: str,
+    destination: str,
+    flight_start_date: str,
+    flight_end_date: str,
+    travelers: int,
+) -> dict:
+    """Force Google Flights as provider and build a deep search URL per strategy."""
+    strategies = data.get("strategies")
+    if not isinstance(strategies, list):
+        return data
+
+    for strat in strategies:
+        if not isinstance(strat, dict):
+            continue
+
+        airlines = strat.get("airlines")
+        if isinstance(airlines, str):
+            strat["airlines"] = [a.strip() for a in airlines.split(",") if a.strip()]
+        elif not isinstance(airlines, list):
+            strat["airlines"] = []
+        else:
+            strat["airlines"] = [str(a) for a in airlines]
+
+        # Extract origin & destination airport/city from route (e.g. "CMB → LHR")
+        route_str = str(strat.get("route") or "")
+        route_origin = departure_city
+        route_dest = destination
+        if route_str:
+            r_parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
+            if r_parts:
+                route_origin = r_parts[0]
+            if len(r_parts) > 1:
+                route_dest = r_parts[-1]
+
+        strat["provider_name"] = "Google Flights"
+        strat["booking_url"] = _build_deep_booking_url(
+            provider="Google Flights",
+            item_name=strat.get("title") or destination,
+            destination=route_dest,
+            start_date=flight_start_date,
+            end_date=flight_end_date,
+            travelers=travelers,
+            is_flight=True,
+            origin_city=route_origin,
+        )
+    return data
+
+
+async def _add_flight_prose(
+    data: dict,
+    *,
+    departure_city: str,
+    destination: str,
+    api_key: str,
+) -> dict:
+    """Ask Gemini for copy only — never for numbers.
+
+    The itineraries are already priced from live data by the time this runs.
+    Gemini rewrites title/description/tip so the cards read naturally; every
+    numeric field is left exactly as SerpApi reported it. Any failure here is
+    swallowed and the templated copy stands — prose must never block prices.
+    """
+    strategies = data.get("strategies") or []
+    if not strategies or not api_key:
+        return data
+
+    facts = []
+    for s in strategies:
+        facts.append(
+            f'- tier "{s.get("tier")}": {s.get("route")}, {", ".join(s.get("airlines") or []) or "multiple carriers"}, '
+            f'{s.get("stops")} stop(s), {s.get("total_duration") or "duration n/a"} outbound'
+        )
+
+    prompt = f"""Write short marketing copy for {len(strategies)} flight options from "{departure_city}" to "{destination}".
+
+The options (already priced and verified from live Google Flights data):
+{chr(10).join(facts)}
+
+STRICT RULES:
+- Do NOT output any price, currency amount, percentage, duration, or airline name that is not listed above.
+- Do NOT invent or restate prices. The app renders prices itself.
+- "title": 3-6 words naming the option's character (e.g. "Cheapest Fare", "Fastest Non-Stop").
+- "description": one sentence, max 25 words, describing the routing experience.
+- "tip": one short practical booking tip, max 18 words.
+
+Return ONLY JSON:
+{{"copy": [{{"tier": "minimum", "title": "...", "description": "...", "tip": "..."}}]}}"""
+
+    try:
+        text, _ = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
+        parsed = _parse_json(text)
+        by_tier = {
+            str(c.get("tier")): c
+            for c in (parsed.get("copy") or [])
+            if isinstance(c, dict) and c.get("tier")
+        }
+        for s in strategies:
+            c = by_tier.get(str(s.get("tier")))
+            if not c:
+                continue
+            for field in ("title", "description", "tip"):
+                value = str(c.get(field) or "").strip()
+                if value:
+                    s[field] = value
+    except Exception as e:
+        logger.warning(f"Flight prose pass failed, keeping templated copy: {e}")
+
+    return data
+
+
+def _structure_ai_flight_strategies(
+    data: dict,
+    *,
+    currency: str,
+    travelers: int,
+    outbound_date: str,
+    return_date: str,
+) -> dict:
+    """Attach the structured price contract to Gemini-estimated strategies.
+
+    Used only on the fallback path (no SerpApi). The numbers are model
+    estimates, so they are tagged is_live_price=False and the app marks them
+    as estimated rather than presenting them as quoted fares.
+    """
+    strategies = data.get("strategies")
+    if not isinstance(strategies, list) or not strategies:
+        return data
+
+    party = max(int(travelers or 1), 1)
+    trip_type = "round_trip" if return_date else "one_way"
+
+    priced = []
+    for s in strategies:
+        if not isinstance(s, dict):
+            continue
+        bounds = _extract_price_bounds(s.get("estimated_price_range"))
+        if not bounds:
+            continue
+        low, high = bounds
+        per_traveler = round((low + high) / 2, 2)
+        s["price_per_traveler"] = per_traveler
+        s["price_total"] = round(per_traveler * party, 2)
+        s["currency"] = currency.upper()
+        s["price_basis"] = "per_traveler"
+        s["trip_type"] = trip_type
+        s["outbound_date"] = outbound_date
+        s["return_date"] = return_date
+        s["is_live_price"] = False
+        s["price_source"] = "ai_estimate"
+        s["travelers"] = party
+        priced.append(s)
+
+    # Tier by price rank — distinct strategies, cheapest to dearest.
+    priced.sort(key=lambda s: s["price_per_traveler"])
+    if len(priced) == 1:
+        priced[0]["tier"] = "recommended"
+    elif len(priced) == 2:
+        priced[0]["tier"] = "minimum"
+        priced[1]["tier"] = "comfortable"
+    elif priced:
+        priced[0]["tier"] = "minimum"
+        priced[-1]["tier"] = "comfortable"
+        priced[len(priced) // 2]["tier"] = "recommended"
+
+    cheapest = priced[0]["price_per_traveler"] if priced else 0
+    dearest = priced[-1]["price_per_traveler"] if priced else 0
+    if cheapest > 0 and (dearest - cheapest) / cheapest < 0.15:
+        logger.warning(
+            "AI flight tiers are within 15%% of each other (%s-%s %s) — tiers will "
+            "look near-identical to the traveller.", cheapest, dearest, currency,
+        )
+
+    return data
+
+
 async def generate_flight_strategies(
     *,
     departure_city: str,
@@ -264,20 +609,90 @@ async def generate_flight_strategies(
     api_key: str,
     serpapi_key: str = "",
 ) -> dict:
-    """Generates flight routing strategies using live SerpApi Google Flights data + Gemini."""
+    """Generates tiered flight strategies from live SerpApi Google Flights data.
+
+    Primary path mirrors generate_hotel_strategies' "Option A": SerpApi results
+    are turned straight into Minimum / Recommended / Comfortable itineraries by
+    extract_flight_strategies_from_serpapi, with no LLM in the pricing path.
+    Gemini is then handed the already-priced itineraries and asked for prose
+    only.
+
+    Every price returned by either path is **per traveller, round trip when a
+    return date is known, in `currency`** — the convention documented in
+    trip_cost_floor.py. `price_total` is always derived from it.
+
+    Falls back to Gemini-estimated pricing only when SerpApi is unavailable or
+    returns nothing usable.
+    """
     real_data_context = ""
 
+    outbound_date = flight_start_date
+    return_date = flight_end_date or _derive_return_date(flight_start_date, days)
+
+    # ── Primary path: SerpApi direct extraction ──────────────────────────────
     if serpapi_key:
         try:
-            logger.info("Fetching live flight data via SerpApi (Google Flights)...")
+            # SerpApi needs airport codes, not place names — resolve first so
+            # the search doesn't 400 and drop us into estimation.
+            origin_code, dest_code = await asyncio.gather(
+                _resolve_airport_code(departure_city, departure_country, api_key),
+                _resolve_airport_code(destination, "", api_key),
+            )
+            if not origin_code or not dest_code:
+                raise ValueError(
+                    f"could not resolve airport codes ({departure_city!r} -> {origin_code!r}, "
+                    f"{destination!r} -> {dest_code!r})"
+                )
+
+            logger.info(
+                "Fetching live flight data via SerpApi (Google Flights) %s → %s...",
+                origin_code, dest_code,
+            )
             serp = SerpApiService(serpapi_key)
             serp_result = await serp.search_flights(
+                departure_city=origin_code,
+                destination=dest_code,
+                outbound_date=outbound_date,
+                return_date=return_date,
+                # One adult: keeps the returned fare unambiguously per-traveller.
+                # The group total is derived, never read back from Google.
+                adults=1,
+                currency=currency,
+            )
+
+            direct = extract_flight_strategies_from_serpapi(
+                serp_result,
                 departure_city=departure_city,
                 destination=destination,
-                outbound_date=flight_start_date,
-                return_date=flight_end_date,
-                adults=travelers,
                 currency=currency,
+                outbound_date=outbound_date,
+                return_date=return_date,
+                travelers=travelers,
+            )
+
+            if direct.get("strategies"):
+                logger.info(
+                    "SerpAPI produced %d live flight tiers for %s → %s",
+                    len(direct["strategies"]), departure_city, destination,
+                )
+                direct = await _add_flight_prose(
+                    direct,
+                    departure_city=departure_city,
+                    destination=destination,
+                    api_key=api_key,
+                )
+                return _apply_flight_booking_urls(
+                    direct,
+                    departure_city=departure_city,
+                    destination=destination,
+                    flight_start_date=outbound_date,
+                    flight_end_date=return_date,
+                    travelers=travelers,
+                )
+
+            logger.warning(
+                "SerpAPI returned no usable flight options for %s → %s; "
+                "falling back to Gemini estimation.", departure_city, destination,
             )
             real_data_context = format_flight_results_for_gemini(
                 serp_result, departure_city, destination, currency
@@ -285,9 +700,10 @@ async def generate_flight_strategies(
         except Exception as e:
             logger.warning(f"SerpApi flight search failed, falling back to Gemini knowledge: {e}")
 
+    # ── Fallback path: Gemini estimation ─────────────────────────────────────
     date_str = ""
-    if flight_start_date and flight_end_date:
-        date_str = f"- Departure Date: {flight_start_date}\n- Return Date: {flight_end_date}"
+    if outbound_date and return_date:
+        date_str = f"- Departure Date: {outbound_date}\n- Return Date: {return_date}"
 
     real_data_prompt_section = ""
     if real_data_context:
@@ -297,6 +713,8 @@ LIVE GOOGLE FLIGHTS SEARCH RESULTS:
 
 INSTRUCTION: Base your strategies on the real Google Flights data above. Extract the exact departure/arrival airport codes, actual airlines, actual durations, and real price ranges.
 """
+
+    trip_basis = "round trip (outbound AND return)" if return_date else "one way"
 
     prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
 The travelers want to find the cheapest flight options.
@@ -309,7 +727,9 @@ Trip Details:
 - Group Size: {travelers} traveler(s)
 - Total Trip Budget: {int(budget)} {currency} (flights should fit or be optimized against this)
 {real_data_prompt_section}
-Your task is to act as an agentic flight finder. Propose 2-4 distinct, realistic flight strategies.
+Your task is to act as an agentic flight finder. Propose exactly 3 distinct, realistic flight strategies spanning clearly different price
+points: a cheapest option, a mid-priced best-value option, and a premium fastest/fewest-stops
+option. The cheapest and the premium option MUST differ by at least 15% in price.
 These can be:
 - "direct": Direct flight option (if available) or standard single-carrier route.
 - "budget_carrier": Utilizing low-cost carriers (e.g. AirAsia, Scoot, Ryanair, IndiGo, FitsAir, Southwest, etc. depending on region).
@@ -319,7 +739,9 @@ These can be:
 IMPORTANT RULES:
 - In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, KUL, NRT, LHR). If the departure city (e.g., Kinniya) does not have an airport, use the nearest major airport (e.g., CMB for Colombo).
 - provider_name MUST be "Google Flights" for all strategies.
-- Estimate realistic price ranges in {currency}.
+- PRICE BASIS (critical): every "estimated_price_range" is the fare for ONE traveller for the
+  ENTIRE {trip_basis} journey, in {currency}, taxes and fees included. Never quote a group
+  total. Never quote a single leg of a return trip.
 - EVERY strategy in the array MUST have its own non-empty "estimated_price_range". Do not leave price fields blank on any strategy other than the first — all 2-4 strategies are shown to the user and all must display a price.
 
 Field Rules:
@@ -395,41 +817,21 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
     try:
         text, _ = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
         data = _parse_json(text)
-        strategies = data.get("strategies")
-        if isinstance(strategies, list):
-            for strat in strategies:
-                if isinstance(strat, dict):
-                    airlines = strat.get("airlines")
-                    if isinstance(airlines, str):
-                        strat["airlines"] = [a.strip() for a in airlines.split(",") if a.strip()]
-                    elif not isinstance(airlines, list):
-                        strat["airlines"] = []
-                    else:
-                        strat["airlines"] = [str(a) for a in airlines]
-                    # Extract origin & destination airport/city from route (e.g. "CMB → LHR")
-                    route_str = str(strat.get("route") or "")
-                    route_origin = departure_city
-                    route_dest = destination
-                    if route_str:
-                        r_parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
-                        if r_parts:
-                            route_origin = r_parts[0]
-                        if len(r_parts) > 1:
-                            route_dest = r_parts[-1]
-
-                    # Force Google Flights as provider and build deep search URL
-                    strat["provider_name"] = "Google Flights"
-                    strat["booking_url"] = _build_deep_booking_url(
-                        provider="Google Flights",
-                        item_name=strat.get("title") or destination,
-                        destination=route_dest,
-                        start_date=flight_start_date,
-                        end_date=flight_end_date,
-                        travelers=travelers,
-                        is_flight=True,
-                        origin_city=route_origin,
-                    )
-        return data
+        data = _structure_ai_flight_strategies(
+            data,
+            currency=currency,
+            travelers=travelers,
+            outbound_date=outbound_date,
+            return_date=return_date,
+        )
+        return _apply_flight_booking_urls(
+            data,
+            departure_city=departure_city,
+            destination=destination,
+            flight_start_date=outbound_date,
+            flight_end_date=return_date,
+            travelers=travelers,
+        )
     except Exception as e:
         logger.error(f"Failed to generate flight strategies: {e}")
         return {}
@@ -702,11 +1104,15 @@ async def generate_odyssey(
                 primary_hotel = s
                 break
 
-    # Extract primary flight entity if available
+    # Extract primary flight entity if available.
+    # Flight strategies key their label as "title"; only hotels use "name".
+    # Testing for "name" here (copied from the hotel block above) meant
+    # primary_flight was always None, so the flight rules never reached the
+    # itinerary prompt and the flight never appeared in the booking checklist.
     primary_flight = None
     if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
         for s in flight_strategies["strategies"]:
-            if isinstance(s, dict) and s.get("name"):
+            if isinstance(s, dict) and (s.get("title") or s.get("name")):
                 primary_flight = s
                 break
 
@@ -734,16 +1140,37 @@ async def generate_odyssey(
     final_start_date = start_date or flight_start_date or hotel_check_in_date or ""
     final_end_date = end_date or flight_end_date or hotel_check_out_date or ""
 
-    # Extract cheapest flight & stay costs if available to synchronize budget breakdown
-    cheapest_flight_cost = 0.0
-    if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
-        f_costs = [
-            _extract_lowest_price(s.get("estimated_price_range"))
-            for s in flight_strategies["strategies"]
-            if isinstance(s, dict) and _extract_lowest_price(s.get("estimated_price_range")) > 0
-        ]
-        if f_costs:
-            cheapest_flight_cost = min(f_costs) * max(travelers, 1)
+    # Extract cheapest flight & stay costs if available to synchronize budget breakdown.
+    #
+    # `price_per_traveler` is unambiguously one traveller's fare (SerpApi is
+    # queried with adults=1 for exactly this reason), so multiplying by the
+    # party size here is correct. The old path string-parsed
+    # `estimated_price_range` — a figure of undefined basis — and multiplied
+    # that, which double-counted the party whenever Google had already priced
+    # the whole group.
+    def _tier_flight_cost(tier: str) -> float:
+        """Party-total flight cost for one tier, falling back to the cheapest."""
+        if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
+            return 0.0
+        party = max(travelers, 1)
+        per_traveler = []
+        tier_price = 0.0
+        for s in flight_strategies["strategies"]:
+            if not isinstance(s, dict):
+                continue
+            price = s.get("price_per_traveler")
+            if not isinstance(price, (int, float)) or price <= 0:
+                # Legacy odysseys / AI fallback without structured pricing.
+                price = _extract_lowest_price(s.get("estimated_price_range"))
+            if price and price > 0:
+                per_traveler.append(float(price))
+                if s.get("tier") == tier:
+                    tier_price = float(price)
+        if tier_price > 0:
+            return tier_price * party
+        return min(per_traveler) * party if per_traveler else 0.0
+
+    cheapest_flight_cost = _tier_flight_cost("minimum")
 
     cheapest_hotel_cost = 0.0
     if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
@@ -757,14 +1184,16 @@ async def generate_odyssey(
 
     # Base budget allocation. Parameterized on `total` so the same waterfall
     # can price out Minimum/Comfortable scenarios below without a second
-    # Gemini call — `cheapest_flight_cost`/`cheapest_hotel_cost` stay fixed
-    # (a confirmed live quote doesn't change with the scenario) while `total`
-    # scales.
-    def _waterfall(total: float) -> dict:
+    # Gemini call. `flight_cost` now varies per scenario: each budget scenario
+    # is priced against *its own* flight tier, so the Budget tab and the
+    # Flights tab quote the same transit figure. `cheapest_hotel_cost` stays
+    # fixed (hotels are not tiered the same way) while `total` scales.
+    def _waterfall(total: float, flight_cost: float = 0.0) -> dict:
         tot_ = total if total > 0 else 1.0
+        flight_cost_ = flight_cost if flight_cost > 0 else cheapest_flight_cost
 
-        if cheapest_flight_cost > 0:
-            transit_amt_ = min(cheapest_flight_cost, round(tot_ * 0.85, 2))
+        if flight_cost_ > 0:
+            transit_amt_ = min(flight_cost_, round(tot_ * 0.85, 2))
         else:
             transit_amt_ = round(tot_ * 0.30, 2)
 
@@ -788,16 +1217,22 @@ async def generate_odyssey(
         }
 
     tot = float(budget) if budget > 0 else 1.0
-    budget_breakdown = _waterfall(tot)
+    # The headline breakdown is the Recommended scenario, so the Budget tab and
+    # the Recommended flight tier quote the same transit figure.
+    budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
     stay_amt = budget_breakdown["stay"]
     transit_amt = budget_breakdown["transit"]
     food_amt = budget_breakdown["food"]
     activities_amt = budget_breakdown["activities"]
 
     budget_scenarios = {
-        "minimum": _waterfall(tot * _SCENARIO_MULTIPLIERS["minimum"]),
+        "minimum": _waterfall(
+            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
+        ),
         "recommended": budget_breakdown,
-        "comfortable": _waterfall(tot * _SCENARIO_MULTIPLIERS["comfortable"]),
+        "comfortable": _waterfall(
+            tot * _SCENARIO_MULTIPLIERS["comfortable"], _tier_flight_cost("comfortable")
+        ),
     }
 
     stay_pct = round((stay_amt / tot) * 100)
@@ -1171,12 +1606,19 @@ Accommodation Scheduling Rules:
 """
 
     flight_rules = ""
-    if confirmed_flight and confirmed_flight.get("name"):
-        f_name = confirmed_flight.get("name")
-        f_price = confirmed_flight.get("estimated_price_range", "")
+    if confirmed_flight and (confirmed_flight.get("title") or confirmed_flight.get("name")):
+        f_name = confirmed_flight.get("title") or confirmed_flight.get("name")
+        f_route = confirmed_flight.get("route", "")
+        f_currency = confirmed_flight.get("currency") or ""
+        f_per_traveler = confirmed_flight.get("price_per_traveler")
+        if f_per_traveler:
+            trip_word = "return" if confirmed_flight.get("trip_type") == "round_trip" else "one-way"
+            f_price = f"{f_currency} {f_per_traveler:,.0f} per traveller ({trip_word})"
+        else:
+            f_price = confirmed_flight.get("estimated_price_range", "")
         flight_rules = f"""
 CRITICAL — CONFIRMED FLIGHT ROUTE:
-- Flight: "{f_name}"
+- Flight: "{f_name}"{f' ({f_route})' if f_route else ''}
 - Fare: {f_price}
 - Provider: Google Flights
 """
@@ -1548,10 +1990,10 @@ def _assemble_booking_plan(
             "reason": visa_reason,
             "url": "",
         })
-    if primary_flight and primary_flight.get("name"):
+    if primary_flight and (primary_flight.get("title") or primary_flight.get("name")):
         plan.append({
             "label": booking_label,
-            "item": str(primary_flight.get("name") or "Flight"),
+            "item": str(primary_flight.get("title") or primary_flight.get("name") or "Flight"),
             "reason": visa_reason if visa_required else "Confirmed live fare — prices move, lock it in early.",
             "url": str(primary_flight.get("booking_url") or ""),
         })
@@ -1586,6 +2028,22 @@ def _as_int(value, default: int) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _extract_price_bounds(price_str) -> tuple[float, float] | None:
+    """Parses "USD 200 - 400" into (200.0, 400.0), or "USD 300" into (300.0, 300.0).
+
+    Legacy path only: strategies carrying structured `price_per_traveler` never
+    go through string parsing. Kept because two parsers used to disagree on the
+    same string — this one is the single definition of what a range means.
+    """
+    if not price_str:
+        return None
+    cleaned = re.sub(r"[^\d.\-\s]", " ", str(price_str))
+    numbers = [float(n) for n in re.findall(r"\d+(?:\.\d+)?", cleaned)]
+    if not numbers:
+        return None
+    return (min(numbers), max(numbers))
 
 
 def _extract_lowest_price(price_str: str) -> float:

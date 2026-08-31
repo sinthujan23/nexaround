@@ -760,20 +760,29 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  /// True when the backend priced each flight tier separately, so switching
+  /// tiers actually swaps the itinerary and its fare.
+  bool get _hasTieredFlights =>
+      widget.odyssey.flightStrategies
+          .where((fs) => fs.tier != null && fs.tier!.isNotEmpty)
+          .length >=
+      2;
+
   Widget _buildFlightsTab(BuildContext context) {
     return SingleChildScrollView(
       padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (widget.odyssey.budgetScenarios.isNotEmpty) ...[
+          // The toggle earns its place here whenever the flights themselves
+          // are tiered — budgetScenarios gates the Budget tab, not this one.
+          if (widget.odyssey.budgetScenarios.isNotEmpty || _hasTieredFlights) ...[
             _scenarioToggle(),
             const SizedBox(height: 12),
           ],
-          _buildPriceDisclaimerBanner(
-            'Flight prices shown are per traveler, not the total cost for your group.',
-          ),
-          const SizedBox(height: 12),
+          // No per-traveler banner: each card now states its own basis
+          // ("per traveler", plus the group total), so a blanket claim above
+          // the list can only contradict it.
           FlightStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
         ],
       ),

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -9,6 +9,7 @@ import Services from './pages/Services';
 import Solutions from './pages/Solutions';
 import NexARoundApp from './pages/NexARoundApp';
 import About from './pages/About';
+import Contact from './pages/Contact';
 import GetApp from './pages/GetApp';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
@@ -36,7 +37,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTopOnNavigate />
-      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-white)', position: 'relative' }}>
+      <div className="page-viewport-frame">
         <Navbar />
         <main style={{ flex: 1, paddingTop: '0px' }}>
           <Routes>
@@ -45,7 +46,7 @@ export default function App() {
             <Route path="/solutions" element={<Solutions />} />
             <Route path="/app" element={<NexARoundApp />} />
             <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Navigate to="/" replace />} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="/get-app" element={<GetApp />} />
             <Route path="/download" element={<GetApp />} />
             <Route path="/privacy" element={<Privacy />} />
@@ -58,3 +59,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+

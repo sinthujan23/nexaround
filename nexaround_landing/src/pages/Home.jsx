@@ -341,7 +341,7 @@ export default function Home() {
               fontWeight: 300,
               textShadow: '0 2px 10px rgba(0,0,0,0.5)'
             }}>
-              Point your camera to recognize ancient ruins & landmarks in real-time, generate personalized Odyssey itineraries, and chat with Neva — your 24/7 AI travel concierge.
+              Point your camera to recognize ancient ruins & landmarks in real-time, generate personalized Odyssey itineraries, and chat with Neva- your 24/7 AI travel concierge.
             </p>
 
             {/* Action Buttons */}
@@ -441,7 +441,7 @@ export default function Home() {
                 ARound
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-                Everything happening around you — from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
+                Everything happening around you- from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
               </p>
             </div>
 
@@ -474,7 +474,7 @@ export default function Home() {
               "What can I discover next around me, right here, right now?"
             </p>
             <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 700, margin: 0 }}>
-              Because travel isn't just about reaching a destination — it's about moments that become lifelong memories.
+              Because travel isn't just about reaching a destination- it's about moments that become lifelong memories.
             </p>
           </div>
 
@@ -482,7 +482,7 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════
-          3. "HOW THE APP WORKS" — STEP-BY-STEP INTERACTIVE WORKFLOW
+          3. "HOW THE APP WORKS"- STEP-BY-STEP INTERACTIVE WORKFLOW
           ══════════════════════════════════════════════════════════ */}
       <section id="how-it-works" className="section-padding" style={{ background: '#ffffff', position: 'relative' }}>
         <div className="container">
@@ -856,7 +856,7 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════
-          7. MEET NEVA — 24/7 AI TRAVEL CONCIERGE SPOTLIGHT
+          7. MEET NEVA- 24/7 AI TRAVEL CONCIERGE SPOTLIGHT
           ══════════════════════════════════════════════════════════ */}
       <section className="section-padding" style={{ background: '#ffffff', position: 'relative' }}>
         <div className="container">

@@ -105,9 +105,9 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Company & Platforms */}
+          {/* Quick Links */}
           <div style={{ textAlign: 'left' }}>
-            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>Platform & Company</h4>
+            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>Quick Links</h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <li>
                 <a href="/" onClick={handleNavClick('/', null)} className="footer-link">
@@ -116,22 +116,22 @@ export default function Footer() {
               </li>
               <li>
                 <a href="/app" onClick={handleNavClick('/app', null)} className="footer-link">
-                  Flagship Mobile App
+                  App Features
                 </a>
               </li>
               <li>
                 <a href="/services" onClick={handleNavClick('/services', null)} className="footer-link">
-                  Enterprise Services
+                  Services
                 </a>
               </li>
               <li>
                 <a href="/solutions" onClick={handleNavClick('/solutions', null)} className="footer-link">
-                  Enterprise Solutions
+                  Solutions
                 </a>
               </li>
               <li>
                 <a href="/about" onClick={handleNavClick('/about', null)} className="footer-link">
-                  About NexAround
+                  About
                 </a>
               </li>
             </ul>
@@ -142,18 +142,18 @@ export default function Footer() {
             <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3' }}>Connect</h4>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <a href="mailto:support@nexaround.com" className="footer-connect-link">
+              <a href="mailto:support@nexaround.com" className="footer-connect-link" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
                 <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
                   <Mail style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                <span>support@nexaround.com</span>
+                <span style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.88)' }}>support@nexaround.com</span>
               </a>
 
-              <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link">
+              <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
                 <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
                   <Globe style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                <span>nexaround.com</span>
+                <span style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.88)' }}>nexaround.com</span>
               </a>
             </div>
           </div>

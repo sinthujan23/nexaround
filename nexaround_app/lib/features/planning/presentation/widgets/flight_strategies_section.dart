@@ -27,16 +27,51 @@ class FlightStrategiesSection extends StatelessWidget {
     }
 
     final strategies = odyssey.flightStrategies;
-    final tags = mapPricesToScenarios(
-      strategies.map((fs) => parseRepresentativePrice(fs.priceRange)).toList(),
-    );
-    final cards = List.generate(strategies.length, (i) => (strategies[i], tags[i]));
-    if (highlightScenario != null) {
-      cards.sort((a, b) {
-        final aMatch = a.$2 == highlightScenario ? 0 : 1;
-        final bMatch = b.$2 == highlightScenario ? 0 : 1;
-        return aMatch.compareTo(bMatch);
-      });
+
+    // Odysseys generated since tiered flights landed carry a backend `tier` on
+    // each strategy, and each tier is a genuinely different itinerary at a
+    // different price. There the toggle *selects* an itinerary. Older
+    // Odysseys have no tiers, so fall back to ranking their prices
+    // client-side and highlighting the match, which is all the toggle ever
+    // did before.
+    final tiered = strategies
+        .where((fs) => fs.tier != null && fs.tier!.isNotEmpty)
+        .toList();
+    final bool hasBackendTiers = tiered.length >= 2;
+
+    late final List<(FlightStrategy, String?)> cards;
+    late final List<(FlightStrategy, String?)> otherCards;
+    var tierUnavailable = false;
+
+    if (hasBackendTiers) {
+      final selected = [
+        for (final fs in tiered)
+          if (fs.tier == highlightScenario) (fs, fs.tier),
+      ];
+      // A route can genuinely have fewer than three distinct offers — the
+      // backend omits a tier rather than repeating one. Show the nearest tier
+      // it does have instead of an empty tab.
+      tierUnavailable = selected.isEmpty;
+      cards = selected.isNotEmpty ? selected : [_nearestTier(tiered)];
+      final shown = cards.map((c) => c.$1).toSet();
+      otherCards = [
+        for (final fs in strategies)
+          if (!shown.contains(fs)) (fs, fs.tier),
+      ];
+    } else {
+      final tags = mapPricesToScenarios(
+        strategies.map((fs) => parseRepresentativePrice(fs.priceRange)).toList(),
+      );
+      final legacy = List.generate(strategies.length, (i) => (strategies[i], tags[i]));
+      if (highlightScenario != null) {
+        legacy.sort((a, b) {
+          final aMatch = a.$2 == highlightScenario ? 0 : 1;
+          final bMatch = b.$2 == highlightScenario ? 0 : 1;
+          return aMatch.compareTo(bMatch);
+        });
+      }
+      cards = legacy;
+      otherCards = const [];
     }
 
     return Column(
@@ -57,22 +92,189 @@ class FlightStrategiesSection extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            const Text(
-              'CHEAPEST FLIGHT OPTIONS',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 2,
+            Expanded(
+              child: Text(
+                hasBackendTiers ? _headerForTier(cards.first.$2) : 'CHEAPEST FLIGHT OPTIONS',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 2,
+                ),
               ),
             ),
           ],
         ),
+        if (tierUnavailable)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              'This route has no separate '
+              '${(highlightScenario ?? '').toLowerCase()} option — showing the closest match.',
+              style: const TextStyle(
+                fontSize: 12,
+                height: 1.4,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
         const SizedBox(height: 12),
         ...cards.map((c) => _buildStrategyCard(context, c.$1, c.$2)),
+        if (otherCards.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.only(bottom: 12),
+            child: Text(
+              'OTHER OPTIONS',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          ...otherCards.map((c) => _buildStrategyCard(context, c.$1, c.$2)),
+        ],
         if (odyssey.flightGeneralTips.isNotEmpty || odyssey.flightBestMonths.isNotEmpty)
           _buildTipsCard(context),
       ],
     ).animate().fade().slideY(begin: 0.05, end: 0);
+  }
+
+  static const _tierOrder = ['minimum', 'recommended', 'comfortable'];
+
+  /// The closest tier to the one selected, for routes where the backend found
+  /// fewer than three genuinely different offers. Ties go to the cheaper side.
+  (FlightStrategy, String?) _nearestTier(List<FlightStrategy> tiered) {
+    final wantedIndex = _tierOrder.indexOf(highlightScenario ?? 'recommended');
+    if (wantedIndex == -1) return (tiered.first, tiered.first.tier);
+
+    var best = tiered.first;
+    var bestDistance = 99;
+    for (final fs in tiered) {
+      final index = _tierOrder.indexOf(fs.tier ?? '');
+      if (index == -1) continue;
+      final distance = (index - wantedIndex).abs();
+      // Strictly-less keeps the earlier (cheaper) tier on a tie, since
+      // _tierOrder runs cheapest to dearest.
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = fs;
+      }
+    }
+    return (best, best.tier);
+  }
+
+  /// Names the tier on show, so the heading can't promise "cheapest" while the
+  /// Comfortable tab is open.
+  String _headerForTier(String? tier) {
+    switch (tier) {
+      case 'minimum':
+        return 'CHEAPEST FLIGHT OPTION';
+      case 'comfortable':
+        return 'FASTEST & FEWEST STOPS';
+      case 'recommended':
+        return 'BEST VALUE FLIGHT';
+      default:
+        return 'FLIGHT OPTIONS';
+    }
+  }
+
+  /// The fare, stated on the basis the backend actually priced it on.
+  ///
+  /// Structured prices are rendered from their own numbers and currency —
+  /// never through formatPriceString, which relabels a currency symbol
+  /// without converting the amount.
+  Widget _buildPriceBlock(FlightStrategy fs) {
+    if (!fs.hasStructuredPrice) {
+      if (fs.priceRange.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 6),
+        child: Text(
+          formatPriceString(fs.priceRange, targetCurrency: odyssey.currency),
+          style: const TextStyle(
+            fontSize: 13.5,
+            fontWeight: FontWeight.w800,
+            color: AppColors.brandGreen,
+          ),
+        ),
+      );
+    }
+
+    final currency = fs.currency ?? odyssey.currency;
+    final travelers = odyssey.travelers < 1 ? 1 : odyssey.travelers;
+    final perTraveler = fs.pricePerTraveler!;
+    final total = fs.priceTotal ?? perTraveler * travelers;
+
+    // Google prices the return leg only once an outbound is picked, so the
+    // duration we hold is the outbound itinerary's — say so rather than let it
+    // read as the whole round trip.
+    final facts = <String>[
+      fs.isRoundTrip ? 'Round trip' : 'One way',
+      if (fs.stops == 0) 'Non-stop' else if (fs.stops == 1) '1 stop' else '${fs.stops} stops',
+      if (fs.duration.isNotEmpty)
+        fs.isRoundTrip ? '${fs.duration} outbound' : fs.duration,
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text(
+              '$currency ${formatAmount(perTraveler)}',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: AppColors.brandGreen,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Text(
+              'per traveler',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+        ),
+        if (travelers > 1) ...[
+          const SizedBox(height: 2),
+          Text(
+            '$currency ${formatAmount(total)} total for $travelers travelers',
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+        const SizedBox(height: 4),
+        Text(
+          facts.join(' · '),
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        if (!fs.isLivePrice) ...[
+          const SizedBox(height: 2),
+          const Text(
+            'Estimated fare — confirm before booking',
+            style: TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: AppColors.textSecondary,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   Widget _buildStrategyCard(BuildContext context, FlightStrategy fs, String? scenarioTag) {
@@ -228,17 +430,7 @@ class FlightStrategiesSection extends StatelessWidget {
                       ),
                     ],
                   ),
-                  if (fs.priceRange.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      formatPriceString(fs.priceRange, targetCurrency: odyssey.currency),
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.brandGreen,
-                      ),
-                    ),
-                  ],
+                  _buildPriceBlock(fs),
                 ],
               ),
             ),
