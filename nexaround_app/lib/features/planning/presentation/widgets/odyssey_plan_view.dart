@@ -1361,8 +1361,14 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
   Widget _scenarioToggle() {
-    const options = [
-      ('minimum', 'Minimum'),
+    // The backend omits "minimum" from budgetScenarios when the entered
+    // budget is already at/near the realistic floor for this trip — a
+    // further-cut minimum would quote a total lower than the real flight/
+    // hotel line items ever could. Hide the tab rather than show that.
+    final scenarios = widget.odyssey.budgetScenarios;
+    final showMinimum = scenarios.isEmpty || scenarios.containsKey('minimum');
+    final options = [
+      if (showMinimum) ('minimum', 'Minimum'),
       ('recommended', 'Recommended'),
       ('comfortable', 'Comfortable'),
     ];

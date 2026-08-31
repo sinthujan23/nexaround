@@ -1225,15 +1225,40 @@ async def generate_odyssey(
     food_amt = budget_breakdown["food"]
     activities_amt = budget_breakdown["activities"]
 
+    final_currency = str(plan.get("currency") or currency)
+
+    # Verdict: "is the budget realistic" is answered deterministically by the
+    # same cost floor that already gates generation in itineraries.py — no
+    # need to ask Gemini to judge it. Computed here (not only below) because
+    # budget_scenarios needs it too: a synthetic "minimum" 30% below an
+    # already-tight budget prices out lower than the real flight/hotel line
+    # items ever could, which reads as a bug rather than a real cheaper option.
+    floor = trip_cost_floor.minimum_budget(
+        destination=final_destination,
+        days=g_days,
+        travelers=travelers,
+        currency=final_currency,
+        departure_country=departure_country,
+        include_flights=include_flights,
+    )
+    budget_short = floor is not None and budget < floor["minimum"]
+    if floor is None:
+        budget_tightness = "unknown"
+    elif budget_short or (budget - floor["minimum"]) / floor["minimum"] < 0.2:
+        budget_tightness = "tight"
+    else:
+        budget_tightness = "comfortable"
+
     budget_scenarios = {
-        "minimum": _waterfall(
-            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
-        ),
         "recommended": budget_breakdown,
         "comfortable": _waterfall(
             tot * _SCENARIO_MULTIPLIERS["comfortable"], _tier_flight_cost("comfortable")
         ),
     }
+    if budget_tightness != "tight":
+        budget_scenarios["minimum"] = _waterfall(
+            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
+        )
 
     stay_pct = round((stay_amt / tot) * 100)
     transit_pct = round((transit_amt / tot) * 100)
@@ -1248,34 +1273,14 @@ async def generate_odyssey(
             len(verified_sources),
         )
 
-    final_currency = str(plan.get("currency") or currency)
     visa_info = _parse_visa_info(
         plan.get("visa"), nationality=nationality, final_start_date=final_start_date,
     )
 
-    # Verdict: "is the budget realistic" is answered deterministically by the
-    # same cost floor that already gates generation in itineraries.py — no
-    # need to ask Gemini to judge it. Only "biggest_risk" comes from the model.
-    floor = trip_cost_floor.minimum_budget(
-        destination=final_destination,
-        days=g_days,
-        travelers=travelers,
-        currency=final_currency,
-        departure_country=departure_country,
-        include_flights=include_flights,
-    )
     min_days = floor.get("min_days", 2) if floor else 2
     duration_short = floor is not None and g_days < min_days
-    budget_short = floor is not None and budget < floor["minimum"]
     feasible = floor is None or (not budget_short and not duration_short)
     minimum_required = floor["minimum"] if floor else None
-
-    if floor is None:
-        budget_tightness = "unknown"
-    elif budget_short or (budget - floor["minimum"]) / floor["minimum"] < 0.2:
-        budget_tightness = "tight"
-    else:
-        budget_tightness = "comfortable"
 
     if budget_short and duration_short:
         recommendation = (
