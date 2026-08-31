@@ -1052,14 +1052,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               final parsed = double.tryParse(cleanVal);
               if (parsed != null && parsed > 0) {
                 setState(() => _budget = parsed);
-                final formatted = formatAmount(parsed.toInt());
-                if (formatted != val) {
-                  _budgetController.value = TextEditingValue(
-                    text: formatted,
-                    selection: TextSelection.collapsed(offset: formatted.length),
-                  );
-                }
               }
+            },
+            onEditingComplete: () {
+              _budgetController.text = formatAmount(_budget.round());
+              FocusScope.of(context).unfocus();
             },
             decoration: InputDecoration(
               labelText: 'Or enter custom budget per person',
@@ -1094,9 +1091,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               max: 500000,
               divisions: 499,
               onChanged: (val) {
+                final rounded = (val / 1000).round() * 1000.0;
                 setState(() {
-                  _budget = val;
-                  _budgetController.text = formatAmount(val.toInt());
+                  _budget = rounded;
+                  _budgetController.text = formatAmount(rounded.round());
                 });
               },
             ),
