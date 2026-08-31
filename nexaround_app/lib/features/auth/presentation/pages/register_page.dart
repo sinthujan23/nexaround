@@ -49,12 +49,6 @@ class _RegisterPageState extends State<RegisterPage> {
       );
       return;
     }
-    if (_nationality == null || _nationality!.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select your nationality')),
-      );
-      return;
-    }
 
     context.read<AuthBloc>().add(AuthRegisterRequested(
           email: email,
@@ -404,7 +398,7 @@ class _RegisterPageState extends State<RegisterPage> {
       borderRadius: BorderRadius.circular(16),
       child: InputDecorator(
         decoration: InputDecoration(
-          hintText: 'Nationality',
+          hintText: 'Nationality (Optional)',
           hintStyle: TextStyle(color: AppColors.textTertiary, fontSize: 15),
           prefixIcon: Icon(Icons.flag_outlined, color: AppColors.textTertiary, size: 20),
           suffixIcon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textTertiary),
@@ -420,7 +414,7 @@ class _RegisterPageState extends State<RegisterPage> {
           ),
         ),
         child: Text(
-          _nationality ?? 'Nationality',
+          _nationality ?? 'Nationality (Optional)',
           style: TextStyle(
             color: _nationality == null ? AppColors.textTertiary : AppColors.textPrimary,
             fontSize: 15,

@@ -320,18 +320,19 @@ IMPORTANT RULES:
 - In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, KUL, NRT, LHR). If the departure city (e.g., Kinniya) does not have an airport, use the nearest major airport (e.g., CMB for Colombo).
 - provider_name MUST be "Google Flights" for all strategies.
 - Estimate realistic price ranges in {currency}.
+- EVERY strategy in the array MUST have its own non-empty "estimated_price_range". Do not leave price fields blank on any strategy other than the first — all 2-4 strategies are shown to the user and all must display a price.
 
 Field Rules:
 - "title": Concise 3-6 word strategy name.
 - "provider_name": MUST be "Google Flights".
 - "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
-- "estimated_price_range": Short price string only (e.g., "USD 180 - 300").
+- "estimated_price_range": Short price string only (e.g., "USD 180 - 300"). REQUIRED on every strategy.
 - "route": Short IATA airport code route (e.g., "CMB → KUL").
 - "convenience": Star rating string ONLY (e.g., "★★★☆☆").
 - "tip": Short booking tip.
 - "booking_url": Leave empty, will be generated server-side.
 
-Return ONLY a JSON object with this exact shape:
+Return ONLY a JSON object with this exact shape (note every strategy has a price filled in):
 {{
   "departure_city": "{departure_city}",
   "destination_city": "{destination}",
@@ -349,6 +350,38 @@ Return ONLY a JSON object with this exact shape:
       "stops": 0,
       "total_duration": "4h 30m",
       "convenience": "★★★★★",
+      "tip": "Short booking tip.",
+      "booking_url": ""
+    }},
+    {{
+      "rank": 2,
+      "strategy": "budget_carrier",
+      "title": "Budget Carrier Route",
+      "provider_name": "Google Flights",
+      "description": "Description of route and strategy.",
+      "estimated_savings": "Save ~25%",
+      "estimated_price_range": "{currency} 150 - 280",
+      "airlines": ["Airline C"],
+      "route": "CMB → KUL",
+      "stops": 1,
+      "total_duration": "6h 15m",
+      "convenience": "★★★☆☆",
+      "tip": "Short booking tip.",
+      "booking_url": ""
+    }},
+    {{
+      "rank": 3,
+      "strategy": "nearby_airport",
+      "title": "Nearby Airport Option",
+      "provider_name": "Google Flights",
+      "description": "Description of route and strategy.",
+      "estimated_savings": "Save ~10%",
+      "estimated_price_range": "{currency} 220 - 350",
+      "airlines": ["Airline A"],
+      "route": "CMB → KUL",
+      "stops": 0,
+      "total_duration": "4h 45m",
+      "convenience": "★★★★☆",
       "tip": "Short booking tip.",
       "booking_url": ""
     }}
@@ -505,8 +538,9 @@ IMPORTANT RULES:
 - Use REAL hotel names that actually exist in {destination}.
 - Estimate REALISTIC per-night rates in {currency}.
 - booking_url: Leave empty, will be generated server-side.
+- EVERY strategy in the array MUST have its own non-empty "price_per_night" and "total_estimated_cost". Do not leave price fields blank on any strategy other than the first — all 2-4 strategies are shown to the user and all must display a price.
 
-Return ONLY a JSON object with this exact shape:
+Return ONLY a JSON object with this exact shape (note every strategy has a price filled in):
 {{
   "destination_city": "{destination}",
   "strategies": [
@@ -520,6 +554,32 @@ Return ONLY a JSON object with this exact shape:
       "total_estimated_cost": "{currency} 600",
       "location": "City Center",
       "amenities": ["Free WiFi", "Breakfast Included", "Pool"],
+      "description": "Short explanation of why this stay fits the trip.",
+      "booking_url": ""
+    }},
+    {{
+      "rank": 2,
+      "name": "Real Hotel Name",
+      "provider_name": "Google Hotels",
+      "category": "Budget",
+      "rating": "4.2 ★",
+      "price_per_night": "{currency} 80",
+      "total_estimated_cost": "{currency} 400",
+      "location": "Near Downtown",
+      "amenities": ["Free WiFi", "Breakfast Included"],
+      "description": "Short explanation of why this stay fits the trip.",
+      "booking_url": ""
+    }},
+    {{
+      "rank": 3,
+      "name": "Real Hotel Name",
+      "provider_name": "Google Hotels",
+      "category": "Resort",
+      "rating": "4.5 ★",
+      "price_per_night": "{currency} 150",
+      "total_estimated_cost": "{currency} 750",
+      "location": "Beachfront",
+      "amenities": ["Free WiFi", "Pool", "Spa"],
       "description": "Short explanation of why this stay fits the trip.",
       "booking_url": ""
     }}

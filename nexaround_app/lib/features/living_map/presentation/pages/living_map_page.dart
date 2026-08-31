@@ -5354,19 +5354,27 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   String _getCategoryImagePath(String category) {
     final cat = category.toLowerCase();
+    if (cat.contains('nature') || cat.contains('beach') || cat.contains('park')) {
+      return 'assets/images/cat_nature.png';
+    }
     if (cat.contains('poi') ||
         cat.contains('historic') ||
         cat.contains('history') ||
         cat.contains('museum') ||
-        cat.contains('attraction') ||
-        cat.contains('nature')) {
+        cat.contains('attraction')) {
       return 'assets/images/cat_historical.png';
     }
     if (cat.contains('hotel') || cat.contains('stay'))
       return 'assets/images/cat_hotels.png';
-    if (cat.contains('shop')) return 'assets/images/cat_shopping.png';
-    if (cat.contains('food')) return 'assets/images/cat_food.png';
-    if (cat.contains('medical') || cat.contains('hospital'))
+    if (cat.contains('shop') || cat.contains('market') || cat.contains('mall') || cat.contains('store')) {
+      return 'assets/images/cat_shopping.png';
+    }
+    if (cat.contains('food') || cat.contains('drink') || cat.contains('restaurant') || cat.contains('cafe') || cat.contains('dining')) {
+      return 'assets/images/cat_food.png';
+    }
+    if (cat.contains('hospital'))
+      return 'assets/images/cat_hospital.png';
+    if (cat.contains('medical') || cat.contains('pharmacy') || cat.contains('clinic'))
       return 'assets/images/cat_medical.png';
     return 'assets/images/cat_nature.png'; // default
   }
@@ -5482,12 +5490,12 @@ class _LivingMapPageState extends State<LivingMapPage>
           ),
           // 2. 3D Pop-out Category Icon (rendered behind text, but on top of card background)
           Positioned(
-            top: -42,
-            right: -16,
+            top: -32,
+            right: -10,
             child: Image.asset(
               _getCategoryImagePath(categoryName),
-              width: 125,
-              height: 125,
+              width: 108,
+              height: 108,
               fit: BoxFit.contain,
             ),
           ),
@@ -6011,14 +6019,14 @@ class _LivingMapPageState extends State<LivingMapPage>
           clipBehavior: Clip.none,
           children: [
             Positioned(
-              top: -14,
-              right: -6,
+              top: -10,
+              right: -4,
               child: Opacity(
                 opacity: 0.85,
                 child: Image.asset(
                   _getCategoryImagePath(categoryName),
-                  width: 80,
-                  height: 80,
+                  width: 70,
+                  height: 70,
                   fit: BoxFit.contain,
                 ),
               ),

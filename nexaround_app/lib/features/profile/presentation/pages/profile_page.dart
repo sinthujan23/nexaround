@@ -9,7 +9,6 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_event.dart';
 import 'dart:convert';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
-import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
@@ -97,7 +96,7 @@ class _ProfilePageState extends State<ProfilePage> {
             backgroundColor: AppColors.background,
             body: SafeArea(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 120),
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 60),
                 child: Column(
                   children: [
                     // Header
@@ -480,49 +479,6 @@ class _ProfilePageState extends State<ProfilePage> {
           },
         ),
         _buildMenuItem(
-          Icons.bug_report_rounded, 
-          'FCM Debug Status', 
-          NotificationService.instance.debugStatus,
-          onTap: () {
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                backgroundColor: AppColors.surface,
-                title: const Text('FCM Diagnostics', style: TextStyle(color: AppColors.textPrimary)),
-                content: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Status:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                      Text(NotificationService.instance.debugStatus, style: const TextStyle(color: AppColors.textSecondary)),
-                      const SizedBox(height: 12),
-                      const SizedBox(height: 12),
-                      const Text('FCM Token:', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                      SelectableText(
-                        NotificationService.instance.token ?? 'None',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 12),
-                      const Text('APNs Token (iOS Only):', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-                      SelectableText(
-                        NotificationService.instance.apnsToken ?? 'None / Not iOS',
-                        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        _buildMenuItem(
           Icons.help_outline_rounded, 
           'Help & Support', 
           '',
@@ -540,44 +496,27 @@ class _ProfilePageState extends State<ProfilePage> {
             context.push('/journal');
           },
         ),
-        const SizedBox(height: 20),
-        // Logout
-        SizedBox(
-          width: double.infinity,
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
-            ),
-            child: TextButton.icon(
-              onPressed: () {
-                context.read<AuthBloc>().add(const AuthLogoutRequested());
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const LoginPage()),
-                  (route) => false,
-                );
-              },
-              icon: const Icon(Icons.logout_rounded, color: AppColors.error, size: 18),
-              label: const Text('Sign Out', style: TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
-            ),
-          ),
+        const SizedBox(height: 14),
+        // Account Actions
+        _buildMenuItem(
+          Icons.logout_rounded,
+          'Sign Out',
+          '',
+          isDestructive: true,
+          onTap: () {
+            context.read<AuthBloc>().add(const AuthLogoutRequested());
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+              (route) => false,
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        // Delete Account (Industry standard data & account purge)
-        SizedBox(
-          width: double.infinity,
-          child: TextButton.icon(
-            onPressed: () => _showDeleteAccountModal(context),
-            icon: const Icon(Icons.delete_forever_rounded, color: AppColors.error, size: 18),
-            label: const Text(
-              'Delete Account',
-              style: TextStyle(
-                color: AppColors.error,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
-            ),
-          ),
+        _buildMenuItem(
+          Icons.delete_outline_rounded,
+          'Delete Account',
+          '',
+          isDestructive: true,
+          onTap: () => _showDeleteAccountModal(context),
         ),
       ],
     );
@@ -598,13 +537,13 @@ class _ProfilePageState extends State<ProfilePage> {
           return Container(
             padding: EdgeInsets.fromLTRB(
               24,
-              20,
+              16,
               24,
               MediaQuery.of(sheetContext).viewInsets.bottom + 24,
             ),
             decoration: const BoxDecoration(
               color: AppColors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -616,12 +555,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       width: 40,
                       height: 4,
                       decoration: BoxDecoration(
-                        color: AppColors.border,
-                        borderRadius: BorderRadius.circular(2),
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
 
                   // Header with warning icon
                   Row(
@@ -629,13 +568,13 @@ class _ProfilePageState extends State<ProfilePage> {
                       Container(
                         padding: const EdgeInsets.all(10),
                         decoration: BoxDecoration(
-                          color: AppColors.error.withValues(alpha: 0.12),
+                          color: AppColors.error.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
-                          Icons.delete_forever_rounded,
+                          Icons.delete_outline_rounded,
                           color: AppColors.error,
-                          size: 24,
+                          size: 22,
                         ),
                       ),
                       const SizedBox(width: 14),
@@ -653,7 +592,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                             SizedBox(height: 2),
                             Text(
-                              'Permanent and irreversible',
+                              'Permanent and irreversible action',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: AppColors.error,
@@ -665,20 +604,20 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
 
                   // Explanatory warning
                   const Text(
-                    'In compliance with privacy regulations, deleting your account will immediately and permanently purge all associated personal data from our servers:',
+                    'Deleting your account will permanently purge all associated personal data from our servers:',
                     style: TextStyle(
                       fontSize: 13,
-                      height: 1.45,
+                      height: 1.4,
                       color: AppColors.textSecondary,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-                  // What will be deleted list
+                  // What will be deleted list (using clean app icons)
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -689,32 +628,32 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: Column(
                       children: [
                         _buildDataLossItem(
-                          '🗺️',
+                          Icons.explore_outlined,
                           'Odyssey Plans & Itineraries',
                           'All saved travel blueprints, custom plans & bookings',
                         ),
-                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        const Divider(height: 16, thickness: 0.5, color: AppColors.border),
                         _buildDataLossItem(
-                          '📖',
+                          Icons.auto_stories_outlined,
                           'Travel Journal & Stories',
                           'All published stories, uploaded photos & journal entries',
                         ),
-                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        const Divider(height: 16, thickness: 0.5, color: AppColors.border),
                         _buildDataLossItem(
-                          '⭐',
+                          Icons.bookmark_border_rounded,
                           'Favourites & Reviews',
                           'All bookmarked places, ratings & notifications',
                         ),
-                        const Divider(height: 18, thickness: 0.5, color: AppColors.border),
+                        const Divider(height: 16, thickness: 0.5, color: AppColors.border),
                         _buildDataLossItem(
-                          '👤',
-                          'Profile & Credentials',
+                          Icons.person_outline_rounded,
+                          'Profile & Preferences',
                           'Your account identity, login credentials & preferences',
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 18),
 
                   // Safety input verification
                   const Text(
@@ -757,7 +696,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 20),
 
                   // Action buttons
                   Row(
@@ -829,12 +768,19 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildDataLossItem(String emoji, String title, String subtitle) {
+  Widget _buildDataLossItem(IconData icon, String title, String subtitle) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 16)),
-        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.all(7),
+          decoration: BoxDecoration(
+            color: AppColors.error.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, size: 16, color: AppColors.error),
+        ),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -847,13 +793,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   color: AppColors.textPrimary,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 1),
               Text(
                 subtitle,
                 style: const TextStyle(
                   fontSize: 11.5,
                   color: AppColors.textTertiary,
-                  height: 1.3,
+                  height: 1.25,
                 ),
               ),
             ],
@@ -1020,7 +966,15 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildMenuItem(IconData icon, String label, String value, {VoidCallback? onTap}) {
+  Widget _buildMenuItem(
+    IconData icon,
+    String label,
+    String value, {
+    VoidCallback? onTap,
+    bool isDestructive = false,
+  }) {
+    final textColor = isDestructive ? AppColors.error : AppColors.textPrimary;
+    final iconColor = isDestructive ? AppColors.error : AppColors.textSecondary;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -1028,20 +982,55 @@ class _ProfilePageState extends State<ProfilePage> {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(14),
-          color: AppColors.surfaceVariant,
-          border: Border.all(color: AppColors.border),
+          color: isDestructive
+              ? AppColors.error.withValues(alpha: 0.04)
+              : AppColors.surfaceVariant,
+          border: Border.all(
+            color: isDestructive
+                ? AppColors.error.withValues(alpha: 0.15)
+                : AppColors.border,
+          ),
         ),
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: AppColors.textSecondary),
-            const SizedBox(width: 14),
-            Expanded(child: Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
-            if (value.isNotEmpty)
-              Text(value, style: const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: AppColors.textMuted),
-          ],
-        ),
+        child: isDestructive
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18, color: iconColor),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  Icon(icon, size: 18, color: iconColor),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+                  if (value.isNotEmpty)
+                    Text(value, style: const TextStyle(fontSize: 13, color: AppColors.textTertiary)),
+                  const SizedBox(width: 8),
+                  const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ],
+              ),
       ),
     );
   }

@@ -728,12 +728,48 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     } catch (_) {}
   }
 
+  Widget _buildPriceDisclaimerBanner(String text) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: Color(0xFFD97706),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 11.5,
+                height: 1.35,
+                color: Color(0xFF92400E),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildFlightsTab(BuildContext context) {
     return SingleChildScrollView(
       padding: widget.padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildPriceDisclaimerBanner(
+            'Flight prices shown are per traveler, not the total cost for your group.',
+          ),
+          const SizedBox(height: 12),
           FlightStrategiesSection(odyssey: widget.odyssey),
         ],
       ),
@@ -787,6 +823,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildPriceDisclaimerBanner(
+            'Hotel prices shown are per traveler, not the total cost for your group.',
+          ),
+          const SizedBox(height: 12),
           HotelStrategiesSection(odyssey: widget.odyssey),
           if (partners.isNotEmpty) ...[
             const SizedBox(height: 16),

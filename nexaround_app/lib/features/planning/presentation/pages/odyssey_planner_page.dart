@@ -42,6 +42,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   bool _includeHotels = true;
   DateTime? _hotelCheckInDate;
   DateTime? _hotelCheckOutDate;
+  bool _includeVisa = false;
   String _departureCity = '';
   String _departureCountry = '';
   String? _nationality;
@@ -70,7 +71,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   }
 
   /// Defaults from the signed-in user's profile, same as currency — still
-  /// changeable per trip via the picker under the flight options card.
+  /// changeable per trip via the visa guidance card.
   void _loadUserNationality() {
     final authState = context.read<AuthBloc>().state;
     if (authState is AuthAuthenticated) {
@@ -78,6 +79,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       if (userNationality != null && userNationality.isNotEmpty) {
         setState(() {
           _nationality = userNationality;
+          _includeVisa = true;
         });
       }
     }
@@ -194,6 +196,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         );
         return;
       }
+      if (_includeVisa && (_nationality == null || _nationality!.isEmpty)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select your nationality for visa guidance or turn off visa guidance.')),
+        );
+        return;
+      }
     }
     if (_currentStep < 2) {
       setState(() => _currentStep++);
@@ -218,6 +226,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       );
       return;
     }
+    if (_includeVisa && (_nationality == null || _nationality!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select your nationality for visa guidance or turn off visa guidance.')),
+      );
+      return;
+    }
 
     setState(() => _isSubmitting = true);
     try {
@@ -231,7 +245,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeFlights: _includeFlights,
         departureCity: _departureCity,
         departureCountry: _departureCountry,
-        nationality: _nationality ?? '',
+        nationality: _includeVisa ? (_nationality ?? '') : '',
         flightStartDate: _formatDate(_flightStartDate),
         flightEndDate: _formatDate(_flightEndDate),
         includeHotels: _includeHotels,
@@ -359,7 +373,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
 
   Widget _buildProgressIndicator() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
       child: Row(
         children: List.generate(3, (index) {
           final isActive = index <= _currentStep;
@@ -555,45 +569,48 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   Widget _buildFlightsAndHotelsStep() {
     return SingleChildScrollView(
       key: const ValueKey('flights_and_hotels'),
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Flight & Hotel\nRecommendations',
-            style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, height: 1.1),
+            'Flights, Hotels & Visa\nGuidance',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, height: 1.15),
           ).animate().fade().slideY(begin: 0.1, end: 0),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           const Text(
-            'Optional: Enable flight or hotel options to get pre-filled deals with direct booking links.',
-            style: TextStyle(color: Colors.black54, fontSize: 13, height: 1.35),
+            'Optional: Enable booking options or visa guidance for this trip.',
+            style: TextStyle(color: Colors.black54, fontSize: 12, height: 1.25),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 14),
           const Text(
             'FLIGHT RECOMMENDATIONS',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.black12),
             ),
             child: Column(
               children: [
                 SwitchListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                   activeThumbColor: Colors.white,
                   activeTrackColor: AppColors.brandGreen,
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
                   title: const Row(
                     children: [
-                      Icon(Icons.flight_takeoff_rounded, color: Colors.black87),
-                      SizedBox(width: 12),
+                      Icon(Icons.flight_takeoff_rounded, color: Colors.black87, size: 20),
+                      SizedBox(width: 10),
                       Text(
                         'Include Flight Options',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -608,65 +625,62 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   },
                 ),
                 if (_includeFlights) ...[
-                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  const Divider(height: 1, indent: 14, endIndent: 14),
                   Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildDatePickerTile(
-                                label: 'Start Date',
-                                selectedDate: _flightStartDate,
-                                onTap: _pickFlightDateRange,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: _buildDatePickerTile(
-                                label: 'End Date',
-                                selectedDate: _flightEndDate,
-                                onTap: _pickFlightDateRange,
-                              ),
-                            ),
-                          ],
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'Start Date',
+                            selectedDate: _flightStartDate,
+                            onTap: _pickFlightDateRange,
+                          ),
                         ),
-                        const SizedBox(height: 12),
-                        _buildNationalityTile(),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildDatePickerTile(
+                            label: 'End Date',
+                            selectedDate: _flightEndDate,
+                            onTap: _pickFlightDateRange,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ],
             ),
-          ).animate().fade(delay: 200.ms),
-          const SizedBox(height: 24),
+          ).animate().fade(delay: 150.ms),
+          const SizedBox(height: 12),
           const Text(
             'HOTEL RECOMMENDATIONS',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 6),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.black12),
             ),
             child: Column(
               children: [
                 SwitchListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                   activeThumbColor: Colors.white,
                   activeTrackColor: AppColors.brandGreen,
                   inactiveThumbColor: Colors.grey.shade400,
                   inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
                   title: const Row(
                     children: [
-                      Icon(Icons.hotel_rounded, color: Colors.black87),
-                      SizedBox(width: 12),
+                      Icon(Icons.hotel_rounded, color: Colors.black87, size: 20),
+                      SizedBox(width: 10),
                       Text(
                         'Include Hotel Options',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
@@ -684,9 +698,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   },
                 ),
                 if (_includeHotels) ...[
-                  const Divider(height: 1, indent: 16, endIndent: 16),
+                  const Divider(height: 1, indent: 14, endIndent: 14),
                   Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
                     child: Row(
                       children: [
                         Expanded(
@@ -696,7 +710,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                             onTap: _pickHotelDateRange,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
                         Expanded(
                           child: _buildDatePickerTile(
                             label: 'Check-out Date',
@@ -710,7 +724,59 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ],
             ),
-          ).animate().fade(delay: 300.ms),
+          ).animate().fade(delay: 200.ms),
+          const SizedBox(height: 12),
+          const Text(
+            'VISA GUIDANCE',
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.black12),
+            ),
+            child: Column(
+              children: [
+                SwitchListTile(
+                  dense: true,
+                  visualDensity: VisualDensity.compact,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                  activeThumbColor: Colors.white,
+                  activeTrackColor: AppColors.brandGreen,
+                  inactiveThumbColor: Colors.grey.shade400,
+                  inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
+                  title: const Row(
+                    children: [
+                      Icon(Icons.badge_outlined, color: Colors.black87, size: 20),
+                      SizedBox(width: 10),
+                      Text(
+                        'Include Visa Information',
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  value: _includeVisa,
+                  onChanged: (bool val) {
+                    setState(() {
+                      _includeVisa = val;
+                      if (val && _nationality == null) {
+                        _pickNationality();
+                      }
+                    });
+                  },
+                ),
+                if (_includeVisa) ...[
+                  const Divider(height: 1, indent: 14, endIndent: 14),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+                    child: _buildNationalityTile(),
+                  ),
+                ],
+              ],
+            ),
+          ).animate().fade(delay: 250.ms),
         ],
       ),
     );
@@ -848,31 +914,32 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         : 'Select Date';
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.grey.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: selectedDate != null ? Colors.black : Colors.black12),
         ),
         child: Row(
           children: [
-            Icon(Icons.calendar_month_rounded, size: 18, color: selectedDate != null ? Colors.black : Colors.black45),
-            const SizedBox(width: 8),
+            Icon(Icons.calendar_month_rounded, size: 16, color: selectedDate != null ? Colors.black : Colors.black45),
+            const SizedBox(width: 6),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     label,
-                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
+                    style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.black54),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     dateStr,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: selectedDate != null ? FontWeight.bold : FontWeight.normal,
                       color: selectedDate != null ? Colors.black : Colors.black45,
                     ),
@@ -893,32 +960,33 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   Widget _buildNationalityTile() {
     return InkWell(
       onTap: _pickNationality,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: Colors.grey.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: _nationality != null ? Colors.black : Colors.black12),
         ),
         child: Row(
           children: [
-            Icon(Icons.flag_rounded, size: 18, color: _nationality != null ? Colors.black : Colors.black45),
-            const SizedBox(width: 8),
+            Icon(Icons.flag_rounded, size: 16, color: _nationality != null ? Colors.black : Colors.black45),
+            const SizedBox(width: 6),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
                     'NATIONALITY (FOR VISA GUIDANCE)',
-                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.black54),
+                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.black54),
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 1),
                   Text(
                     _nationality ?? 'Select nationality',
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: _nationality != null ? FontWeight.bold : FontWeight.normal,
                       color: _nationality != null ? Colors.black : Colors.black45,
                     ),
@@ -926,7 +994,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ),
             ),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.black45),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.black45),
           ],
         ),
       ),
@@ -1144,6 +1212,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       if (_includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
         return false;
       }
+      if (_includeVisa && (_nationality == null || _nationality!.isEmpty)) {
+        return false;
+      }
       return true;
     }
     if (_currentStep == 2) {
@@ -1156,28 +1227,28 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
     final blocked = !_isCurrentStepValid;
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: Colors.black.withValues(alpha: 0.05))),
       ),
       child: SizedBox(
         width: double.infinity,
-        height: 60,
+        height: 52,
         child: Container(
           decoration: BoxDecoration(
             color: blocked ? Colors.black26 : Colors.black,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(16),
             boxShadow: blocked
                 ? null
-                : [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 8))],
+                : [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 6))],
           ),
           child: ElevatedButton(
             onPressed: (_isSubmitting || blocked) ? null : _onPrimaryAction,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             ),
             child: _isSubmitting
                 ? const SizedBox(
