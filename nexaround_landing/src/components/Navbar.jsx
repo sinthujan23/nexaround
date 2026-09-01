@@ -49,7 +49,7 @@ export default function Navbar() {
 
           <div className="nav-brand-text-col">
             <div className="nav-brand-title">
-              <span className="brand-bold">NexAround</span>
+              <span className="brand-bold">nexARound</span>
             </div>
             <span className="nav-brand-subtitle" style={{ color: '#00d2d3', letterSpacing: '1.2px' }}>
               SMART TOURISM AI & AR

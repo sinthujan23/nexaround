@@ -58,7 +58,7 @@ export default function Terms() {
             <div className="badge badge-teal-glow" style={{ marginBottom: '20px' }}>
               <Scale style={{ width: '14px', height: '14px' }} /> Legal Agreements & EULA
             </div>
-            <h1 style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
+            <h1 style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 500, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
               Terms of <span className="text-gradient-teal">Service & EULA</span>
             </h1>
             <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '1.1rem', lineHeight: 1.7, margin: '0 auto 20px', maxWidth: '700px' }}>
@@ -79,7 +79,7 @@ export default function Terms() {
 
           {/* Section 1: Agreement to Terms */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <FileText style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               1. Agreement to Terms
             </h2>
@@ -90,7 +90,7 @@ export default function Terms() {
 
           {/* Section 2: License Grant */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <CheckCircle2 style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               2. End-User License Grant
             </h2>
@@ -101,7 +101,7 @@ export default function Terms() {
 
           {/* Section 3: Safety & AR Camera Guidance */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <AlertTriangle style={{ width: '22px', height: '22px', color: '#ffb800' }} />
               3. Spatial AR & Physical Safety Advisory
             </h2>
@@ -112,11 +112,11 @@ export default function Terms() {
 
           {/* Contact Section */}
           <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '32px', textAlign: 'left' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '10px' }}>Legal Support Contact</h3>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '10px' }}>Legal Support Contact</h3>
             <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
               For formal legal inquiries, EULA questions, or enterprise terms:
             </p>
-            <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
               <Mail style={{ width: '16px', height: '16px' }} /> support@nexaround.com
             </a>
           </div>

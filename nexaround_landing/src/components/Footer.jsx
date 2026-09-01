@@ -33,15 +33,15 @@ export default function Footer() {
   };
 
   return (
-    <footer style={{ background: 'var(--dark-charcoal)', borderTop: '1px solid rgba(0, 122, 124, 0.25)', color: '#ffffff', paddingTop: '80px', paddingBottom: '40px', position: 'relative' }}>
+    <footer className="site-footer">
       <div className="container">
         
-        {/* Main Footer Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr 1fr 1.2fr', gap: '48px', marginBottom: '64px' }} className="footer-grid">
+        {/* Main Footer Grid (4-Col Desktop, 2-Col Mobile) */}
+        <div className="footer-grid">
           
           {/* Brand Info Column */}
-          <div style={{ textAlign: 'left' }}>
-            <NavLink to="/" onClick={handleNavClick('/', null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', textDecoration: 'none', marginBottom: '20px' }}>
+          <div className="footer-brand-col">
+            <NavLink to="/" onClick={handleNavClick('/', null)} style={{ display: 'inline-flex', alignItems: 'center', gap: '12px', textDecoration: 'none', marginBottom: '18px' }}>
               <div style={{ 
                 width: '40px', 
                 height: '40px', 
@@ -53,25 +53,25 @@ export default function Footer() {
                 boxShadow: '0 4px 16px rgba(0, 0, 0, 0.25)',
                 padding: '4px'
               }}>
-                <img src="/logo_2.png" alt="NexAround Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.src = '/app_icon.png'; }} />
+                <img src="/logo_2.png" alt="nexARound Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} onError={(e) => { e.currentTarget.src = '/app_icon.png'; }} />
               </div>
-              <span style={{ fontSize: '1.35rem', fontWeight: 900, color: '#ffffff', letterSpacing: '-0.03em' }}>NexAround</span>
+              <span style={{ fontSize: '1.35rem', fontWeight: 500, color: '#ffffff', letterSpacing: '-0.03em' }}>nexARound</span>
             </NavLink>
 
-            <p style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: 1.7, margin: '0 0 24px', maxWidth: '340px' }}>
+            <p style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: 1.7, margin: '0 0 22px', maxWidth: '340px' }}>
               The next-generation AI & Augmented Reality smart tourism companion. Discover landmarks, generate custom Odyssey itineraries, and explore with your 24/7 AI travel concierge.
             </p>
 
             {/* Store Download Badges */}
-            <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: '8px' }}>
               <StoreButtons theme="onDark" direction="row" align="flex-start" showRating={false} />
             </div>
           </div>
 
-          {/* App Feature Modules */}
-          <div style={{ textAlign: 'left' }}>
-            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>App Modules</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* App Feature Modules Column */}
+          <div className="footer-col">
+            <h4>App Modules</h4>
+            <ul className="footer-links-list">
               <li>
                 <a href="/app#odyssey" onClick={handleNavClick('/app', '#odyssey')} className="footer-link">
                   Odyssey Trip Planner
@@ -105,10 +105,10 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Quick Links */}
-          <div style={{ textAlign: 'left' }}>
-            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3', marginBottom: '20px' }}>Quick Links</h4>
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Quick Links Column */}
+          <div className="footer-col">
+            <h4>Quick Links</h4>
+            <ul className="footer-links-list">
               <li>
                 <a href="/" onClick={handleNavClick('/', null)} className="footer-link">
                   Home
@@ -131,40 +131,46 @@ export default function Footer() {
               </li>
               <li>
                 <a href="/about" onClick={handleNavClick('/about', null)} className="footer-link">
-                  About
+                  About Us
                 </a>
               </li>
             </ul>
           </div>
 
-          {/* Contact Details */}
-          <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h4 style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1.2px', color: '#00d2d3' }}>Connect</h4>
+          {/* Connect Details Column */}
+          <div className="footer-col footer-connect-col">
+            <h4>Connect</h4>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              <a href="mailto:support@nexaround.com" className="footer-connect-link" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
-                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
+              <a href="mailto:support@nexaround.com" className="footer-connect-link">
+                <div className="footer-icon-box">
                   <Mail style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                <span style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.88)' }}>support@nexaround.com</span>
+                <span>support@nexaround.com</span>
               </a>
 
-              <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px', textDecoration: 'none' }}>
-                <div className="footer-icon-box" style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'rgba(0, 122, 124, 0.2)', border: '1px solid rgba(0, 122, 124, 0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.25s ease' }}>
+              <a href="https://nexaround.com" target="_blank" rel="noreferrer" className="footer-connect-link">
+                <div className="footer-icon-box">
                   <Globe style={{ width: '16px', height: '16px', color: '#00d2d3' }} />
                 </div>
-                <span style={{ fontSize: '0.92rem', color: 'rgba(255, 255, 255, 0.88)' }}>nexaround.com</span>
+                <span>nexaround.com</span>
               </a>
             </div>
           </div>
 
         </div>
 
-        {/* Bottom Row */}
-        <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.1)', paddingTop: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.65)', flexWrap: 'wrap', gap: '16px' }}>
-          <p style={{ margin: 0 }}>© {new Date().getFullYear()} NexAround Technologies. All rights reserved.</p>
+        {/* Divider */}
+        <div className="site-footer-divider" />
 
-          <div style={{ display: 'flex', gap: '24px' }}>
+        {/* Brand Copyright Line */}
+        <p className="site-footer-copy">
+          © {new Date().getFullYear()} NexAround Technologies. All rights reserved.
+        </p>
+
+        {/* Bottom Legal Links */}
+        <div className="site-footer-bottom">
+          <div className="site-footer-legal">
             <NavLink to="/privacy" className="footer-link" style={{ fontSize: '0.85rem' }}>Privacy Policy</NavLink>
             <NavLink to="/terms" className="footer-link" style={{ fontSize: '0.85rem' }}>Terms of Service</NavLink>
           </div>

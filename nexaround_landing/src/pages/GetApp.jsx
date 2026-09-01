@@ -86,7 +86,7 @@ export default function GetApp() {
             marginBottom: '24px' 
           }}>
             <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--brand-teal)' }} />
-            <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--brand-teal)', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 500, color: 'var(--brand-teal)', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
               GET THE APP
             </span>
           </div>
@@ -94,7 +94,7 @@ export default function GetApp() {
           {/* Headline */}
           <h1 style={{ 
             fontSize: 'clamp(2.5rem, 5vw, 4.2rem)', 
-            fontWeight: 900, 
+            fontWeight: 500, 
             color: 'var(--dark-charcoal)', 
             margin: '0 0 18px', 
             lineHeight: 1.12, 
@@ -129,15 +129,15 @@ export default function GetApp() {
             paddingTop: '32px',
             borderTop: '1px solid rgba(0, 122, 124, 0.15)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
               <ShieldCheck style={{ width: '18px', height: '18px', color: 'var(--brand-teal)' }} />
               <span>100% Free to Download</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
               <Zap style={{ width: '18px', height: '18px', color: 'var(--brand-teal)' }} />
               <span>Instant Setup • No Credit Card</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
               <CheckCircle2 style={{ width: '18px', height: '18px', color: 'var(--brand-teal)' }} />
               <span>Live Spatial AR Camera</span>
             </div>

@@ -225,7 +225,7 @@ export default function Services() {
                   padding: '14px 28px', 
                   borderRadius: '9999px', 
                   fontSize: '15px', 
-                  fontWeight: 600, 
+                  fontWeight: 500, 
                   display: 'inline-flex', 
                   alignItems: 'center', 
                   gap: '8px', 
@@ -279,7 +279,7 @@ export default function Services() {
           
           <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 60px' }}>
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>App Capabilities</div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               Intelligent Services for <span className="text-gradient-teal">Effortless Travel</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
@@ -291,13 +291,13 @@ export default function Services() {
             {platformServices.map((s, i) => (
               <div key={i} className="feature-card" style={{ textAlign: 'left', padding: '36px 30px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
-                  <span style={{ fontSize: '1.8rem', fontWeight: 900, color: 'rgba(0, 122, 124, 0.2)', fontFamily: 'var(--font-mono)' }}>{s.num}</span>
+                  <span style={{ fontSize: '1.8rem', fontWeight: 500, color: 'rgba(0, 122, 124, 0.2)', fontFamily: 'var(--font-mono)' }}>{s.num}</span>
                   <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.2)' }}>
                     {s.icon}
                   </div>
                 </div>
 
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 12px', lineHeight: 1.25 }}>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px', lineHeight: 1.25 }}>
                   {s.title}
                 </h3>
                 <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: '0 0 20px' }}>
@@ -306,7 +306,7 @@ export default function Services() {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                   {s.highlights.map((h, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.86rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
                       <CheckCircle2 style={{ width: '14px', height: '14px', color: 'var(--brand-teal)', flexShrink: 0 }} />
                       <span>{h}</span>
                     </div>
@@ -325,7 +325,7 @@ export default function Services() {
           
           <div style={{ textAlign: 'center', maxWidth: '720px', margin: '0 auto 60px' }}>
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>B2B & Partner Solutions</div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               Services for <span className="text-gradient-teal">Destinations & Tourism Partners</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
@@ -339,8 +339,8 @@ export default function Services() {
                 <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                   {m.icon}
                 </div>
-                <span style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{m.tag}</span>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '4px 0 12px' }}>{m.title}</h3>
+                <span style={{ fontSize: '0.74rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{m.tag}</span>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '4px 0 12px' }}>{m.title}</h3>
                 <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{m.desc}</p>
               </div>
             ))}
@@ -365,7 +365,7 @@ export default function Services() {
             <Zap style={{ width: '14px', height: '14px' }} /> Discover What's Next Around You
           </div>
 
-          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
             Elevate Your Travel with Spatial AI
           </h2>
 

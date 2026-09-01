@@ -354,7 +354,7 @@ export default function Home() {
                   padding: '14px 28px', 
                   borderRadius: '9999px', 
                   fontSize: '15px', 
-                  fontWeight: 600, 
+                  fontWeight: 500, 
                   display: 'inline-flex', 
                   alignItems: 'center', 
                   gap: '8px', 
@@ -409,7 +409,7 @@ export default function Home() {
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
               <Sparkles style={{ width: '14px', height: '14px' }} /> The Brand Story
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               The Story Behind <span className="text-gradient-teal">nexARound</span>
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -421,10 +421,10 @@ export default function Home() {
             
             {/* Pillar 1 */}
             <div className="feature-card" style={{ textAlign: 'left', padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 01 • Discovery
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
                 nex(t)
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
@@ -434,10 +434,10 @@ export default function Home() {
 
             {/* Pillar 2 */}
             <div className="feature-card" style={{ textAlign: 'left', padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 02 • Surroundings
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
                 ARound
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
@@ -447,10 +447,10 @@ export default function Home() {
 
             {/* Pillar 3 */}
             <div className="feature-card" style={{ textAlign: 'left', padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 03 • Technology
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>
                 Augmented Reality (AR)
               </h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
@@ -470,10 +470,10 @@ export default function Home() {
             maxWidth: '960px',
             margin: '0 auto'
           }}>
-            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 8px', fontStyle: 'italic' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px', fontStyle: 'italic' }}>
               "What can I discover next around me, right here, right now?"
             </p>
-            <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 700, margin: 0 }}>
+            <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 500, margin: 0 }}>
               Because travel isn't just about reaching a destination- it's about moments that become lifelong memories.
             </p>
           </div>
@@ -491,7 +491,7 @@ export default function Home() {
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
               <Zap style={{ width: '14px', height: '14px' }} /> Intuitive Travel Workflow
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               How <span className="text-gradient-teal">NexAround</span> Works
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -523,7 +523,7 @@ export default function Home() {
                   background: activeStep === idx ? 'var(--brand-teal-soft)' : '#ffffff',
                   color: activeStep === idx ? 'var(--brand-teal)' : 'var(--text-secondary)',
                   cursor: 'pointer',
-                  fontWeight: 700,
+                  fontWeight: 500,
                   fontSize: '0.9rem',
                   transition: 'all 0.25s ease',
                   boxShadow: activeStep === idx ? '0 4px 16px rgba(0, 122, 124, 0.15)' : 'none'
@@ -534,12 +534,12 @@ export default function Home() {
                   height: '24px', 
                   borderRadius: '50%', 
                   background: activeStep === idx ? 'var(--brand-teal)' : 'var(--bg-surface)', 
-                  color: activeStep === idx ? '#ffffff' : 'var(--text-muted)',
+                  color: activeStep === idx ? '#ffffff' : 'var(--text-muted)', 
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '0.75rem',
-                  fontWeight: 800
+                  fontWeight: 500
                 }}>
                   {item.step}
                 </span>
@@ -561,16 +561,16 @@ export default function Home() {
               {/* Left Details */}
               <div style={{ textAlign: 'left' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '18px' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 800, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.1)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 500, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.1)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                     Step {appWorkflow[activeStep].step} • {appWorkflow[activeStep].badge}
                   </span>
                 </div>
 
-                <h3 style={{ fontSize: 'clamp(1.8rem, 3.2vw, 2.5rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px', lineHeight: 1.2 }}>
+                <h3 style={{ fontSize: 'clamp(1.8rem, 3.2vw, 2.5rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px', lineHeight: 1.2 }}>
                   {appWorkflow[activeStep].title}
                 </h3>
                 
-                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--brand-teal)', marginBottom: '18px' }}>
+                <div style={{ fontSize: '1.05rem', fontWeight: 500, color: 'var(--brand-teal)', marginBottom: '18px' }}>
                   {appWorkflow[activeStep].subtitle}
                 </div>
 
@@ -585,7 +585,7 @@ export default function Home() {
                       <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: 'rgba(0, 122, 124, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
                         <CheckCircle2 style={{ width: '15px', height: '15px', color: 'var(--brand-teal)' }} />
                       </div>
-                      <span style={{ fontSize: '0.96rem', fontWeight: 600, color: 'var(--dark-charcoal)' }}>{feat}</span>
+                      <span style={{ fontSize: '0.96rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>{feat}</span>
                     </div>
                   ))}
                 </div>
@@ -639,7 +639,7 @@ export default function Home() {
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
               <Layers style={{ width: '14px', height: '14px' }} /> Inside the App
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               10 Screens, <span className="text-gradient-teal">One Unified Experience</span>
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -672,7 +672,7 @@ export default function Home() {
                 >
                   <span style={{
                     fontSize: '0.85rem',
-                    fontWeight: 900,
+                    fontWeight: 500,
                     color: activeScreenIndex === idx ? '#00d2d3' : 'var(--brand-teal)',
                     fontFamily: 'var(--font-mono)',
                     width: '28px'
@@ -681,7 +681,7 @@ export default function Home() {
                   </span>
                   
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 800 }}>{screen.title}</div>
+                    <div style={{ fontSize: '1rem', fontWeight: 500 }}>{screen.title}</div>
                   </div>
 
                   <ChevronRight style={{ width: '18px', height: '18px', color: activeScreenIndex === idx ? '#ffffff' : 'var(--text-muted)' }} />
@@ -737,7 +737,7 @@ export default function Home() {
               <div className="badge badge-teal-glow" style={{ marginBottom: '16px' }}>
                 <Globe style={{ width: '14px', height: '14px' }} /> Global Sightseeing Library
               </div>
-              <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3.2rem)', fontWeight: 900, color: '#ffffff', margin: 0, letterSpacing: '-0.025em' }}>
+              <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3.2rem)', fontWeight: 500, color: '#ffffff', margin: 0, letterSpacing: '-0.025em' }}>
                 World Landmarks Ready for <span className="text-gradient-teal">AR Discovery</span>
               </h2>
             </div>
@@ -787,7 +787,7 @@ export default function Home() {
                     borderRadius: '9999px',
                     padding: '4px 12px',
                     fontSize: '0.72rem',
-                    fontWeight: 700,
+                    fontWeight: 500,
                     color: '#00d2d3'
                   }}>
                     {dest.badge}
@@ -803,7 +803,7 @@ export default function Home() {
                       borderRadius: '9999px',
                       padding: '4px 12px',
                       fontSize: '0.72rem',
-                      fontWeight: 800,
+                      fontWeight: 500,
                       color: '#ffffff',
                       display: 'flex',
                       alignItems: 'center',
@@ -816,10 +816,10 @@ export default function Home() {
 
                 {/* Content */}
                 <div style={{ padding: '24px', textAlign: 'left' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255, 255, 255, 0.6)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'rgba(255, 255, 255, 0.6)', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '6px' }}>
                     {dest.country} • {dest.tag}
                   </div>
-                  <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#ffffff', margin: '0 0 10px' }}>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: '#ffffff', margin: '0 0 10px' }}>
                     {dest.name}
                   </h3>
                   <p style={{ fontSize: '0.88rem', color: 'rgba(255, 255, 255, 0.75)', lineHeight: 1.65, margin: 0 }}>
@@ -839,7 +839,7 @@ export default function Home() {
       <section style={{ padding: '50px 0', background: '#ffffff', borderBottom: '1px solid var(--border-color)' }}>
         <div className="container">
           <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-            <span style={{ fontSize: '0.76rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
+            <span style={{ fontSize: '0.76rem', fontWeight: 500, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1.2px' }}>
               Integrated with Top Global Booking & Transit Networks
             </span>
           </div>
@@ -877,12 +877,12 @@ export default function Home() {
                     <img src="/neva_avatar.png" alt="Neva Avatar" style={{ width: '32px', height: '32px', borderRadius: '50%' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px' }}>Meet Neva</div>
-                    <div style={{ fontSize: '1.2rem', fontWeight: 900, color: 'var(--dark-charcoal)' }}>Your AI Travel Concierge</div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px' }}>Meet Neva</div>
+                    <div style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>Your AI Travel Concierge</div>
                   </div>
                 </div>
 
-                <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+                <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
                   Always by Your Side, Wherever You Explore.
                 </h2>
 
@@ -903,7 +903,7 @@ export default function Home() {
                       borderRadius: '12px', 
                       padding: '12px 18px', 
                       fontSize: '0.92rem', 
-                      fontWeight: 600, 
+                      fontWeight: 500, 
                       color: 'var(--dark-charcoal)',
                       display: 'flex',
                       alignItems: 'center',
@@ -975,7 +975,7 @@ export default function Home() {
                   <Sparkles style={{ width: '14px', height: '14px' }} /> Free to Start • No Itinerary Required
                 </div>
 
-                <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15 }}>
+                <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15 }}>
                   Your Intelligent Journey <br />
                   <span className="text-gradient-teal">Starts Right Here.</span>
                 </h2>
@@ -991,16 +991,15 @@ export default function Home() {
 
                 {/* Trust Badges */}
                 <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', paddingTop: '20px', borderTop: '1px solid rgba(255, 255, 255, 0.12)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', fontSize: '0.86rem', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', fontSize: '0.86rem', fontWeight: 500 }}>
                     <ShieldCheck style={{ width: '18px', height: '18px', color: '#00d2d3' }} />
                     <span>100% Free to Download</span>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', fontSize: '0.86rem', fontWeight: 600 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#ffffff', fontSize: '0.86rem', fontWeight: 500 }}>
                     <Zap style={{ width: '18px', height: '18px', color: '#00d2d3' }} />
                     <span>Instant Setup • No Credit Card</span>
                   </div>
                 </div>
-
               </div>
 
               {/* Right Showcase 3D Mockup */}

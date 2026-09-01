@@ -282,14 +282,14 @@ export default function NexARoundApp() {
 
               <h1 style={{ 
                 fontSize: 'clamp(3rem, 6vw, 4.8rem)', 
-                fontWeight: 700, 
+                fontWeight: 500, 
                 color: '#ffffff', 
                 letterSpacing: '-0.03em', 
                 lineHeight: 1, 
                 margin: 0,
                 textShadow: '0 2px 14px rgba(0,0,0,0.5)'
               }}>
-                nex<span style={{ fontWeight: 800 }}>ARound</span>
+                nex<span>ARound</span>
               </h1>
             </div>
 
@@ -350,7 +350,7 @@ export default function NexARoundApp() {
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
               <Sparkles style={{ width: '14px', height: '14px' }} /> The Brand Story
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               The Story Behind <span className="text-gradient-teal">nexARound</span>
             </h2>
             <p style={{ fontSize: '1.08rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -360,30 +360,30 @@ export default function NexARoundApp() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '28px', marginBottom: '40px' }} className="grid-3">
             <div className="feature-card" style={{ padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 01 • Discovery
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>nex(t)</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>nex(t)</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
                 Your next adventure, your next discovery, your next unforgettable moment waiting around the corner.
               </p>
             </div>
 
             <div className="feature-card" style={{ padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 02 • Surroundings
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>ARound</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>ARound</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
                 Everything happening around you- from hidden cafés and scenic viewpoints to local festivals, authentic food, and culture.
               </p>
             </div>
 
             <div className="feature-card" style={{ padding: '36px 30px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '10px' }}>
                 03 • Technology
               </span>
-              <h3 style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>Augmented Reality (AR)</h3>
+              <h3 style={{ fontSize: '1.5rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 12px' }}>Augmented Reality (AR)</h3>
               <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
                 Simply raise your phone to overlay nearby attractions, dining, shopping, and transport in real time with instant familiarity.
               </p>
@@ -399,10 +399,10 @@ export default function NexARoundApp() {
             maxWidth: '960px',
             margin: '0 auto'
           }}>
-            <p style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 8px', fontStyle: 'italic' }}>
+            <p style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px', fontStyle: 'italic' }}>
               "What can I discover next around me, right here, right now?"
             </p>
-            <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 700, margin: '0 0 16px' }}>
+            <p style={{ fontSize: '0.96rem', color: 'var(--brand-teal)', fontWeight: 500, margin: '0 0 16px' }}>
               Because travel isn't just about reaching a destination- it's about moments that become lifelong memories.
             </p>
             <button 
@@ -411,7 +411,7 @@ export default function NexARoundApp() {
                 background: 'none',
                 border: 'none',
                 color: 'var(--brand-teal)',
-                fontWeight: 700,
+                fontWeight: 500,
                 fontSize: '0.92rem',
                 cursor: 'pointer',
                 display: 'inline-flex',
@@ -441,7 +441,7 @@ export default function NexARoundApp() {
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>
               <Layers style={{ width: '14px', height: '14px' }} /> Complete App Capabilities
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               10 Integrated <span className="text-gradient-teal">Feature Modules</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.08rem', margin: 0, lineHeight: 1.7 }}>
@@ -475,16 +475,16 @@ export default function NexARoundApp() {
                       <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                         {mod.icon}
                       </div>
-                      <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                      <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                         Module {mod.num} • {mod.badge}
                       </span>
                     </div>
 
-                    <h3 style={{ fontSize: 'clamp(1.8rem, 3vw, 2.3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 8px', lineHeight: 1.2 }}>
+                    <h3 style={{ fontSize: 'clamp(1.8rem, 3vw, 2.3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px', lineHeight: 1.2 }}>
                       {mod.title}
                     </h3>
 
-                    <div style={{ fontSize: '1.02rem', fontWeight: 700, color: 'var(--brand-teal)', marginBottom: '16px' }}>
+                    <div style={{ fontSize: '1.02rem', fontWeight: 500, color: 'var(--brand-teal)', marginBottom: '16px' }}>
                       {mod.subtitle}
                     </div>
 
@@ -494,7 +494,7 @@ export default function NexARoundApp() {
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                       {mod.highlights.map((h, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
                           <CheckCircle2 style={{ width: '16px', height: '16px', color: 'var(--brand-teal)', flexShrink: 0 }} />
                           {h}
                         </div>
@@ -547,7 +547,7 @@ export default function NexARoundApp() {
             <Sparkles style={{ width: '14px', height: '14px' }} /> Ready to Explore?
           </div>
 
-          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
             Start Your Journey with NexAround
           </h2>
 

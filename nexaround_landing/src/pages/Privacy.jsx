@@ -58,7 +58,7 @@ export default function Privacy() {
             <div className="badge badge-teal-glow" style={{ marginBottom: '20px' }}>
               <ShieldCheck style={{ width: '14px', height: '14px' }} /> Legal & Data Protection
             </div>
-            <h1 style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 900, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
+            <h1 style={{ fontSize: 'clamp(2.4rem, 5vw, 3.4rem)', fontWeight: 500, color: '#ffffff', margin: '0 0 16px', lineHeight: 1.15, letterSpacing: '-0.025em' }}>
               Privacy <span className="text-gradient-teal">Policy</span>
             </h1>
             <p style={{ color: 'rgba(255, 255, 255, 0.85)', fontSize: '1.1rem', lineHeight: 1.7, margin: '0 auto 20px', maxWidth: '700px' }}>
@@ -88,7 +88,7 @@ export default function Privacy() {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
               <Lock style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
-              <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: 0 }}>Privacy Summary & Commitment</h3>
+              <h3 style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: 0 }}>Privacy Summary & Commitment</h3>
             </div>
             <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
               NexAround is engineered with a strict <strong>Privacy-by-Design</strong> architecture. We do not sell or broker your personal location data. Camera vision landmark scans are processed on-device or ephemerally in volatile memory without retaining private imagery.
@@ -97,7 +97,7 @@ export default function Privacy() {
 
           {/* Section 1: Information We Collect */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Database style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               1. Information We Collect
             </h2>
@@ -114,7 +114,7 @@ export default function Privacy() {
 
           {/* Section 2: How We Use Your Data */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Eye style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               2. How We Use Your Information
             </h2>
@@ -128,7 +128,7 @@ export default function Privacy() {
 
           {/* Section 3: Data Security */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <Lock style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               3. Data Security & Storage
             </h2>
@@ -139,22 +139,22 @@ export default function Privacy() {
 
           {/* Section 4: Data Retention & Account Deletion */}
           <div style={{ marginBottom: '40px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h2 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
               <RefreshCw style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
               4. Data Retention & Account Deletion
             </h2>
             <p style={{ fontSize: '0.96rem', color: 'var(--text-secondary)', lineHeight: 1.7, margin: 0 }}>
-              You may request deletion of your account and associated data directly in the app under <strong>Profile › Delete Account</strong> or by emailing <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 600, textDecoration: 'underline' }}>support@nexaround.com</a>. Deletion requests are permanently processed within 30 days.
+              You may request deletion of your account and associated data directly in the app under <strong>Profile › Delete Account</strong> or by emailing <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500, textDecoration: 'underline' }}>support@nexaround.com</a>. Deletion requests are permanently processed within 30 days.
             </p>
           </div>
 
           {/* Contact Section */}
           <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '32px', textAlign: 'left' }}>
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', marginBottom: '10px' }}>Contact Privacy Officer</h3>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '10px' }}>Contact Privacy Officer</h3>
             <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
               If you have any questions or data deletion requests, please contact our Data Protection team:
             </p>
-            <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+            <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
               <Mail style={{ width: '16px', height: '16px' }} /> support@nexaround.com
             </a>
           </div>

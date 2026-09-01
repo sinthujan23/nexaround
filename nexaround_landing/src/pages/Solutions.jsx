@@ -220,7 +220,7 @@ export default function Solutions() {
                   padding: '14px 28px', 
                   borderRadius: '9999px', 
                   fontSize: '15px', 
-                  fontWeight: 600, 
+                  fontWeight: 500, 
                   display: 'inline-flex', 
                   alignItems: 'center', 
                   gap: '8px', 
@@ -276,7 +276,7 @@ export default function Solutions() {
             <div className="badge badge-teal" style={{ marginBottom: '14px' }}>
               <Users style={{ width: '14px', height: '14px' }} /> Tailored Solutions
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 14px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3.2rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 14px', letterSpacing: '-0.025em' }}>
               Solutions Built for the <span className="text-gradient-teal">Entire Tourism Ecosystem</span>
             </h2>
             <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -311,7 +311,7 @@ export default function Solutions() {
                   color: activeAudience === tab.id ? '#ffffff' : 'var(--dark-charcoal)',
                   border: activeAudience === tab.id ? '1px solid var(--brand-teal)' : '1px solid var(--border-color)',
                   cursor: 'pointer',
-                  fontWeight: 700,
+                  fontWeight: 500,
                   fontSize: '0.92rem',
                   transition: 'all 0.25s ease',
                   boxShadow: activeAudience === tab.id ? 'var(--shadow-teal)' : 'var(--shadow-sm)'
@@ -327,7 +327,7 @@ export default function Solutions() {
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: '0.75rem',
-                  fontWeight: 900
+                  fontWeight: 500
                 }}>
                   {tab.num}
                 </span>
@@ -354,16 +354,16 @@ export default function Solutions() {
                     <div style={{ width: '52px', height: '52px', borderRadius: '16px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                       {sol.icon}
                     </div>
-                    <span style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '6px 14px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
                       {sol.badge} • {sol.tag}
                     </span>
                   </div>
 
-                  <h3 style={{ fontSize: 'clamp(1.9rem, 3.2vw, 2.5rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 10px', lineHeight: 1.2 }}>
+                  <h3 style={{ fontSize: 'clamp(1.9rem, 3.2vw, 2.5rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 10px', lineHeight: 1.2 }}>
                     {sol.title}
                   </h3>
 
-                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--brand-teal)', marginBottom: '18px' }}>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 500, color: 'var(--brand-teal)', marginBottom: '18px' }}>
                     {sol.subtitle}
                   </div>
 
@@ -373,7 +373,7 @@ export default function Solutions() {
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '32px', paddingTop: '16px', borderTop: '1px solid var(--border-color)' }}>
                     {sol.features.map((feat, idx) => (
-                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 600 }}>
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.92rem', color: 'var(--dark-charcoal)', fontWeight: 500 }}>
                         <CheckCircle2 style={{ width: '16px', height: '16px', color: 'var(--brand-teal)', flexShrink: 0 }} />
                         <span>{feat}</span>
                       </div>
@@ -420,7 +420,7 @@ export default function Solutions() {
             <div className="badge badge-teal" style={{ marginBottom: '14px' }}>
               <Zap style={{ width: '14px', height: '14px' }} /> Core Value
             </div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               Why Choose the <span className="text-gradient-teal">NexAround Ecosystem</span>
             </h2>
             <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.7 }}>
@@ -434,7 +434,7 @@ export default function Solutions() {
                 <div style={{ width: '52px', height: '52px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                   {b.icon}
                 </div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>
+                <h3 style={{ fontSize: '1.2rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>
                   {b.title}
                 </h3>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
@@ -463,7 +463,7 @@ export default function Solutions() {
             <Zap style={{ width: '14px', height: '14px' }} /> Transform Your Destination
           </div>
 
-          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+          <h2 style={{ fontSize: 'clamp(2.2rem, 4vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
             Ready to Experience the NexAround Platform?
           </h2>
 

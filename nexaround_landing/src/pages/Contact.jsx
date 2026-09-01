@@ -134,10 +134,10 @@ export default function Contact() {
           <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '24px' }}>
             
             <div className="feature-card" style={{ padding: '36px 32px' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '8px' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--brand-teal)', textTransform: 'uppercase', letterSpacing: '1px', display: 'block', marginBottom: '8px' }}>
                 Support & Inquiries
               </span>
-              <h3 style={{ fontSize: '1.35rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 20px' }}>
+              <h3 style={{ fontSize: '1.35rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 20px' }}>
                 NexAround Headquarters
               </h3>
 
@@ -147,8 +147,8 @@ export default function Contact() {
                     <Mail style={{ width: '20px', height: '20px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dark-charcoal)' }}>Email Support</div>
-                    <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 600 }}>support@nexaround.com</a>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>Email Support</div>
+                    <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500 }}>support@nexaround.com</a>
                   </div>
                 </div>
 
@@ -157,8 +157,8 @@ export default function Contact() {
                     <Phone style={{ width: '20px', height: '20px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dark-charcoal)' }}>Phone / WhatsApp</div>
-                    <a href="tel:+97455816148" style={{ color: 'var(--brand-teal)', fontWeight: 600 }}>+974 5581 6148</a>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>Phone / WhatsApp</div>
+                    <a href="tel:+97455816148" style={{ color: 'var(--brand-teal)', fontWeight: 500 }}>+974 5581 6148</a>
                   </div>
                 </div>
 
@@ -167,8 +167,8 @@ export default function Contact() {
                     <Globe style={{ width: '20px', height: '20px' }} />
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dark-charcoal)' }}>Official Domain</div>
-                    <a href="https://nexaround.com" target="_blank" rel="noreferrer" style={{ color: 'var(--brand-teal)', fontWeight: 600 }}>nexaround.com</a>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>Official Domain</div>
+                    <a href="https://nexaround.com" target="_blank" rel="noreferrer" style={{ color: 'var(--brand-teal)', fontWeight: 500 }}>nexaround.com</a>
                   </div>
                 </div>
               </div>
@@ -177,7 +177,7 @@ export default function Contact() {
             <div className="feature-card" style={{ padding: '32px', background: 'var(--bg-light)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
                 <ShieldCheck style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
-                <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: 0 }}>Fast Response Time</h4>
+                <h4 style={{ fontSize: '1.05rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: 0 }}>Fast Response Time</h4>
               </div>
               <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.6 }}>
                 Our engineering and product support team typically replies within 1 business day.
@@ -188,7 +188,7 @@ export default function Contact() {
 
           {/* Right: Contact Form */}
           <div className="feature-card" style={{ padding: '44px 38px', textAlign: 'left' }}>
-            <h3 style={{ fontSize: '1.4rem', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>
+            <h3 style={{ fontSize: '1.4rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>
               Send Us a Message
             </h3>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.94rem', margin: '0 0 28px' }}>
@@ -198,7 +198,7 @@ export default function Contact() {
             {submitted ? (
               <div style={{ background: 'var(--brand-teal-soft)', border: '1px solid rgba(0, 122, 124, 0.3)', borderRadius: '16px', padding: '36px', textAlign: 'center' }}>
                 <CheckCircle2 style={{ width: '48px', height: '48px', color: 'var(--brand-teal)', margin: '0 auto 16px' }} />
-                <h4 style={{ fontSize: '1.3rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>Message Received!</h4>
+                <h4 style={{ fontSize: '1.3rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 8px' }}>Message Received!</h4>
                 <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', margin: '0 0 20px' }}>
                   Thank you for reaching out. A NexAround team member will contact you shortly.
                 </p>
@@ -209,7 +209,7 @@ export default function Contact() {
             ) : (
               <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Your Name *</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Your Name *</label>
                   <input
                     type="text"
                     required
@@ -221,7 +221,7 @@ export default function Contact() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Email Address *</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Email Address *</label>
                   <input
                     type="email"
                     required
@@ -233,7 +233,7 @@ export default function Contact() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Inquiry Topic</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Inquiry Topic</label>
                   <select
                     className="form-select"
                     value={formData.topic}
@@ -248,7 +248,7 @@ export default function Contact() {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Message *</label>
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--dark-charcoal)', marginBottom: '6px' }}>Message *</label>
                   <textarea
                     required
                     rows="5"

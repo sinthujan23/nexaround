@@ -140,7 +140,7 @@ export default function About() {
                   padding: '14px 28px', 
                   borderRadius: '9999px', 
                   fontSize: '15px', 
-                  fontWeight: 600, 
+                  fontWeight: 500, 
                   display: 'inline-flex', 
                   alignItems: 'center', 
                   gap: '8px', 
@@ -195,7 +195,7 @@ export default function About() {
             
             <div style={{ textAlign: 'left' }}>
               <div className="badge badge-teal" style={{ marginBottom: '16px' }}>Our Mission</div>
-              <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 18px', lineHeight: 1.2 }}>
+              <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 18px', lineHeight: 1.2 }}>
                 Making Every Journey <span className="text-gradient-teal">Unforgettable & Effortless</span>
               </h2>
               <p style={{ fontSize: '1.05rem', color: 'var(--text-secondary)', lineHeight: 1.75, margin: '0 0 20px' }}>
@@ -232,7 +232,7 @@ export default function About() {
           
           <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 60px' }}>
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>Our Values</div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               The Principles Behind <span className="text-gradient-teal">NexAround</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
@@ -246,7 +246,7 @@ export default function About() {
                 <div style={{ width: '48px', height: '48px', borderRadius: '14px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                   <Award style={{ width: '22px', height: '22px', color: 'var(--brand-teal)' }} />
                 </div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>{v.title}</h3>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>{v.title}</h3>
                 <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{v.desc}</p>
               </div>
             ))}
@@ -261,7 +261,7 @@ export default function About() {
           
           <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 60px' }}>
             <div className="badge badge-teal" style={{ marginBottom: '16px' }}>Core Competencies</div>
-            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
               Engineering & <span className="text-gradient-teal">Technology Stack</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
@@ -275,7 +275,7 @@ export default function About() {
                 <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '18px', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
                   <Cpu style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
                 </div>
-                <h3 style={{ fontSize: '1.18rem', fontWeight: 800, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>{exp.name}</h3>
+                <h3 style={{ fontSize: '1.18rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 10px' }}>{exp.name}</h3>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{exp.desc}</p>
               </div>
             ))}
@@ -295,7 +295,7 @@ export default function About() {
           maxWidth: '900px',
           margin: '0 auto'
         }}>
-          <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 900, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
+          <h2 style={{ fontSize: 'clamp(2rem, 3.5vw, 2.8rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', lineHeight: 1.2 }}>
             Join Us in Reimagining Travel
           </h2>
           <p style={{ color: 'var(--text-secondary)', margin: '0 auto 32px', fontSize: '1.05rem', maxWidth: '560px', lineHeight: 1.7 }}>
