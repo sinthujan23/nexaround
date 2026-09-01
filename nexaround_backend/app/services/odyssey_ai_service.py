@@ -1320,14 +1320,11 @@ async def generate_odyssey(
 
     if not feasible:
         recommendation = (
-            f"Your budget of {final_currency} {user_budget:,.0f} is below the realistic cost. "
-            f"Based on current flight and hotel prices, a minimum of "
-            f"{final_currency} {minimum_required:,.0f} is needed for this trip."
+            "Your selected budget may not be sufficient for this itinerary and travel dates. "
+            "Please increase your budget to the recommended amount or adjust your trip duration."
         )
-    elif budget_tightness == "tight":
-        recommendation = "Proceed, but budget is tight — there's little buffer for extras."
     else:
-        recommendation = "Proceed — budget and timing look workable."
+        recommendation = ""
 
     verdict = {
         "feasible": feasible,

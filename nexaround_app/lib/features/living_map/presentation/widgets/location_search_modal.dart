@@ -140,10 +140,10 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       await prefs.setString(_recentSearchesKey, jsonEncode(_recentSearches));
 
       // Asynchronously sync to backend account for cross-device persistence
-      ApiClient.instance.post(
+      unawaited(ApiClient.instance.post(
         '${ApiConstants.apiVersion}/auth/me/recent-locations',
         data: normalizedItem,
-      ).catchError((_) {});
+      ).then<void>((_) => null, onError: (_) => null));
     } catch (e) {
       debugPrint('Error saving recent search: $e');
     }
@@ -164,13 +164,13 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       await prefs.setString(_recentSearchesKey, jsonEncode(_recentSearches));
 
       // Asynchronously sync removal to backend
-      ApiClient.instance.delete(
+      unawaited(ApiClient.instance.delete(
         '${ApiConstants.apiVersion}/auth/me/recent-locations',
         queryParameters: {
           if (name.isNotEmpty) 'name': name,
           if (placeId.isNotEmpty) 'place_id': placeId,
         },
-      ).catchError((_) {});
+      ).then<void>((_) => null, onError: (_) => null));
     } catch (e) {
       debugPrint('Error removing recent search: $e');
     }
@@ -185,9 +185,9 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       await prefs.remove(_recentSearchesKey);
 
       // Asynchronously sync clear all to backend
-      ApiClient.instance.delete(
+      unawaited(ApiClient.instance.delete(
         '${ApiConstants.apiVersion}/auth/me/recent-locations',
-      ).catchError((_) {});
+      ).then<void>((_) => null, onError: (_) => null));
     } catch (e) {
       debugPrint('Error clearing recent searches: $e');
     }
@@ -325,6 +325,10 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       );
 
       if (mounted) {
+        // Only update suggestions if this query is still what the user is searching for
+        if (_searchController.text.trim() != trimmed) {
+          return;
+        }
         setState(() {
           final Set<String> seenKeys = {};
           final List<Map<String, dynamic>> mapped = [];
@@ -349,7 +353,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       }
     } catch (e) {
       debugPrint('Location search error: $e');
-      if (mounted) {
+      if (mounted && _searchController.text.trim() == trimmed) {
         setState(() {
           _suggestions = [];
           _isLoading = false;

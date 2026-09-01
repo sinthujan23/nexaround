@@ -1077,6 +1077,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           TextField(
             controller: _budgetController,
             keyboardType: TextInputType.number,
+            inputFormatters: const [ThousandsSeparatorInputFormatter()],
             onChanged: (val) {
               final cleanVal = val.replaceAll(',', '').trim();
               final parsed = double.tryParse(cleanVal);

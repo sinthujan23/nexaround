@@ -1010,32 +1010,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// in this file, so a traveller sees one consistent "pay attention" visual
   /// language rather than three different ones.
   /// Feasibility banner at the top of the Overview tab.
-  /// Gives clear feedback if budget is insufficient, tight, or comfortable.
+  /// Only displayed if the user's budget is insufficient. If workable, no message is shown.
   Widget _verdictBanner(OdysseyVerdict verdict) {
     final bool isInsufficient = !verdict.feasible || verdict.budgetTightness == 'insufficient';
-    final bool isTight = verdict.budgetTightness == 'tight';
+    if (!isInsufficient) {
+      return const SizedBox.shrink();
+    }
 
-    final Color bg = isInsufficient
-        ? const Color(0xFFFFF3E0)
-        : (isTight ? const Color(0xFFFFF8E1) : AppColors.brandGreenLight);
-    final Color border = isInsufficient
-        ? const Color(0xFFFFB74D)
-        : (isTight ? const Color(0xFFFFD54F) : AppColors.brandGreen.withValues(alpha: 0.35));
-    final Color iconColor = isInsufficient
-        ? const Color(0xFFE65100)
-        : (isTight ? const Color(0xFFF57F17) : AppColors.brandGreen);
-    final Color textColor = isInsufficient
-        ? const Color(0xFFBF360C)
-        : (isTight ? const Color(0xFF795548) : AppColors.brandGreenDark);
-    final IconData icon = isInsufficient
-        ? Icons.warning_amber_rounded
-        : (isTight ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+    const Color bg = Color(0xFFFFF3E0);
+    const Color border = Color(0xFFFFB74D);
+    const Color iconColor = Color(0xFFE65100);
+    const Color textColor = Color(0xFFBF360C);
+    const IconData icon = Icons.warning_amber_rounded;
+
+    final String message = verdict.recommendation.isNotEmpty
+        ? verdict.recommendation
+        : 'Your selected budget may not be sufficient for this itinerary and travel dates. Please increase your budget to the recommended amount or adjust your trip duration.';
 
     final lines = <String>[
-      if (verdict.recommendation.isNotEmpty) verdict.recommendation,
+      message,
       if (verdict.biggestRisk.isNotEmpty) 'Watch out: ${verdict.biggestRisk}',
     ];
-    if (lines.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -1540,7 +1535,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
     return Column(
       children: [
-        if (transit > (total * 0.65) || (transit + stay) > (total * 0.85))
+        if (widget.odyssey.verdict != null && (!widget.odyssey.verdict!.feasible || widget.odyssey.verdict!.budgetTightness == 'insufficient'))
           Container(
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(14),
@@ -1549,15 +1544,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFFFB74D)),
             ),
-            child: Row(
+            child: const Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100), size: 20),
-                const SizedBox(width: 10),
+                Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100), size: 20),
+                SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Budget Notice: Flight and transit expenses for this destination consume a large portion of your allocated budget. A higher budget per person is recommended for a more comfortable stay.',
-                    style: const TextStyle(
+                    'Your selected budget may not be sufficient for this itinerary and travel dates. Please increase your budget to the recommended amount or adjust your trip duration.',
+                    style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFFBF360C),
