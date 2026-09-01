@@ -1009,16 +1009,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// notice (`odyssey_planner_page.dart`) and the transit-heavy notice below
   /// in this file, so a traveller sees one consistent "pay attention" visual
   /// language rather than three different ones.
+  /// Feasibility banner at the top of the Overview tab.
+  /// Gives clear feedback if budget is insufficient, tight, or comfortable.
   Widget _verdictBanner(OdysseyVerdict verdict) {
-    final bool warn = !verdict.feasible || verdict.budgetTightness == 'tight';
-    final Color bg = warn ? const Color(0xFFFFF4E5) : AppColors.brandGreenLight;
-    final Color border =
-        warn ? const Color(0xFFFFB74D) : AppColors.brandGreen.withValues(alpha: 0.35);
-    final Color iconColor = warn ? const Color(0xFFE65100) : AppColors.brandGreen;
-    final Color textColor = warn ? const Color(0xFF8D4E00) : AppColors.brandGreenDark;
-    final IconData icon = !verdict.feasible
-        ? Icons.error_outline_rounded
-        : (warn ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
+    final bool isInsufficient = !verdict.feasible || verdict.budgetTightness == 'insufficient';
+    final bool isTight = verdict.budgetTightness == 'tight';
+
+    final Color bg = isInsufficient
+        ? const Color(0xFFFFF3E0)
+        : (isTight ? const Color(0xFFFFF8E1) : AppColors.brandGreenLight);
+    final Color border = isInsufficient
+        ? const Color(0xFFFFB74D)
+        : (isTight ? const Color(0xFFFFD54F) : AppColors.brandGreen.withValues(alpha: 0.35));
+    final Color iconColor = isInsufficient
+        ? const Color(0xFFE65100)
+        : (isTight ? const Color(0xFFF57F17) : AppColors.brandGreen);
+    final Color textColor = isInsufficient
+        ? const Color(0xFFBF360C)
+        : (isTight ? const Color(0xFF795548) : AppColors.brandGreenDark);
+    final IconData icon = isInsufficient
+        ? Icons.warning_amber_rounded
+        : (isTight ? Icons.info_outline_rounded : Icons.check_circle_outline_rounded);
 
     final lines = <String>[
       if (verdict.recommendation.isNotEmpty) verdict.recommendation,
@@ -1037,7 +1048,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: iconColor, size: 20),
+          Icon(icon, color: iconColor, size: 22),
           const SizedBox(width: 12),
           Expanded(
             child: Column(

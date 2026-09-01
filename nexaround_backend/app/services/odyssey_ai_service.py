@@ -12,7 +12,7 @@ import logging
 import re
 import urllib.parse
 import httpx
-from app.services import telemetry, trip_cost_floor
+from app.services import telemetry
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -1250,52 +1250,60 @@ async def generate_odyssey(
         has_visa=has_visa,
     )
 
-    # Verdict: "is the budget realistic" is answered deterministically by the
-    # same cost floor that already gates generation in itineraries.py — no
-    # need to ask Gemini to judge it. Only "biggest_risk" comes from the model.
-    floor = trip_cost_floor.minimum_budget(
-        destination=final_destination,
-        days=g_days,
-        travelers=travelers,
-        currency=final_currency,
-        departure_country=departure_country,
-        include_flights=include_flights,
-    )
-    min_days = floor.get("min_days", 2) if floor else 2
-    duration_short = floor is not None and g_days < min_days
-    budget_short = floor is not None and budget < floor["minimum"]
-    feasible = floor is None or (not budget_short and not duration_short)
-    minimum_required = floor["minimum"] if floor else None
+    # ── Budget feasibility from REAL SerpApi prices ─────────────────────
+    # Instead of a static dictionary floor, compare the user's budget
+    # against actual flight + hotel costs returned by SerpApi. This catches
+    # every destination (including ones the dictionary didn't know, like
+    # "Petra") and produces honest numbers the traveller can act on.
+    user_budget = float(budget) if budget > 0 else 1.0
+    real_minimum_cost = cheapest_flight_cost + cheapest_hotel_cost
+    budget_is_sufficient = (user_budget >= real_minimum_cost) or real_minimum_cost <= 0
 
-    tot = float(budget) if budget > 0 else 1.0
-    # The headline breakdown is the Recommended scenario, so the Budget tab and
-    # the Recommended flight tier quote the same transit figure.
-    budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
+    if budget_is_sufficient:
+        # User's budget IS the Recommended tier — normal flow.
+        tot = user_budget
+        budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
+
+        budget_scenarios = {}
+        # Only show a Minimum tier if there's meaningful headroom below.
+        if real_minimum_cost > 0 and tot > real_minimum_cost * 1.25:
+            budget_scenarios["minimum"] = _waterfall(
+                tot * _SCENARIO_MULTIPLIERS["minimum"],
+                _tier_flight_cost("minimum"),
+            )
+        budget_scenarios["recommended"] = budget_breakdown
+        budget_scenarios["comfortable"] = _waterfall(
+            tot * _SCENARIO_MULTIPLIERS["comfortable"],
+            _tier_flight_cost("comfortable"),
+        )
+        feasible = True
+        if real_minimum_cost > 0 and (tot - real_minimum_cost) / real_minimum_cost < 0.2:
+            budget_tightness = "tight"
+        else:
+            budget_tightness = "comfortable"
+        minimum_required = real_minimum_cost if real_minimum_cost > 0 else None
+    else:
+        # Budget is INSUFFICIENT — override with realistic tiers built
+        # from actual SerpApi flight + hotel prices.
+        min_total = real_minimum_cost * 1.15   # +15% buffer for food/activities
+        rec_total = real_minimum_cost * 1.35   # ~35% above minimum
+        comf_total = real_minimum_cost * 1.80  # ~80% above minimum
+
+        budget_breakdown = _waterfall(rec_total, _tier_flight_cost("recommended"))
+        budget_scenarios = {
+            "minimum": _waterfall(min_total, _tier_flight_cost("minimum")),
+            "recommended": budget_breakdown,
+            "comfortable": _waterfall(comf_total, _tier_flight_cost("comfortable")),
+        }
+        tot = rec_total  # Display total = recommended realistic cost
+        feasible = False
+        budget_tightness = "insufficient"
+        minimum_required = round(min_total, 2)
+
     stay_amt = budget_breakdown["stay"]
     transit_amt = budget_breakdown["transit"]
     food_amt = budget_breakdown["food"]
     activities_amt = budget_breakdown["activities"]
-
-    # If the user's budget is already at or near the realistic cost floor,
-    # we don't invent an impossible lower "minimum" scenario.
-    # The user's budget IS the minimum viable tier (Recommended).
-    is_near_minimum_floor = False
-    if floor is not None and floor.get("minimum"):
-        min_floor = float(floor["minimum"])
-        if tot <= min_floor * 1.25:
-            is_near_minimum_floor = True
-    if (cheapest_flight_cost + cheapest_hotel_cost) > (tot * 0.75):
-        is_near_minimum_floor = True
-
-    budget_scenarios = {}
-    if not is_near_minimum_floor:
-        budget_scenarios["minimum"] = _waterfall(
-            tot * _SCENARIO_MULTIPLIERS["minimum"], _tier_flight_cost("minimum")
-        )
-    budget_scenarios["recommended"] = budget_breakdown
-    budget_scenarios["comfortable"] = _waterfall(
-        tot * _SCENARIO_MULTIPLIERS["comfortable"], _tier_flight_cost("comfortable")
-    )
 
     stay_pct = round((stay_amt / tot) * 100)
     transit_pct = round((transit_amt / tot) * 100)
@@ -1310,27 +1318,11 @@ async def generate_odyssey(
             len(verified_sources),
         )
 
-    if floor is None:
-        budget_tightness = "unknown"
-    elif budget_short or (budget - floor["minimum"]) / floor["minimum"] < 0.2:
-        budget_tightness = "tight"
-    else:
-        budget_tightness = "comfortable"
-
-    if budget_short and duration_short:
+    if not feasible:
         recommendation = (
-            f"Reconsider — a trip to {final_destination} realistically requires at least {min_days} days "
-            f"and about {final_currency} {minimum_required:,.0f} to cover return flights and standard stay."
-        )
-    elif duration_short:
-        recommendation = (
-            f"Caution on timing — {g_days} days is short for {final_destination}; "
-            f"at least {min_days} days is recommended to account for travel time and sightseeing."
-        )
-    elif budget_short:
-        recommendation = (
-            f"Reconsider — raise the budget to at least {final_currency} "
-            f"{minimum_required:,.0f} to realistically cover this trip."
+            f"Your budget of {final_currency} {user_budget:,.0f} is below the realistic cost. "
+            f"Based on current flight and hotel prices, a minimum of "
+            f"{final_currency} {minimum_required:,.0f} is needed for this trip."
         )
     elif budget_tightness == "tight":
         recommendation = "Proceed, but budget is tight — there's little buffer for extras."
@@ -1356,7 +1348,7 @@ async def generate_odyssey(
     meta = build_meta_item(
         destination=final_destination,
         mood=mood,
-        budget=budget,
+        budget=tot,
         currency=final_currency,
         days=g_days,
         nights=nights,

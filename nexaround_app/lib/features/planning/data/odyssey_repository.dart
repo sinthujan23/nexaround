@@ -5,25 +5,6 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 
-/// Thrown when the backend refuses a trip whose budget cannot buy it.
-///
-/// Carries the server's own sentence and the minimum it expects, so the UI can
-/// say what to type rather than only that something was wrong.
-class BudgetTooLowException implements Exception {
-  final String message;
-  final double minimum;
-  final String currency;
-
-  const BudgetTooLowException({
-    required this.message,
-    required this.minimum,
-    required this.currency,
-  });
-
-  @override
-  String toString() => message;
-}
-
 /// Persists Odysseys on the backend by reusing the `/itineraries` endpoints.
 /// An Odyssey is just an Itinerary whose JSON `items` start with an
 /// `odyssey_meta` block (see [Odyssey.toItineraryItems]).
@@ -62,47 +43,29 @@ class OdysseyRepository {
     String? startDate,
     String? endDate,
   }) async {
-    late final Response<dynamic> response;
-    try {
-      response = await _dio.post(
-        '${ApiConstants.itineraries}/odyssey/generate',
-        data: {
-          'destination': destination,
-          'mood': mood,
-          'budget': budget,
-          'days': days,
-          'currency': currency,
-          'travelers': travelers,
-          'include_flights': includeFlights,
-          'departure_city': departureCity,
-          'departure_country': departureCountry,
-          'nationality': nationality,
-          'has_visa': hasVisa,
-          'flight_start_date': flightStartDate,
-          'flight_end_date': flightEndDate,
-          'include_hotels': includeHotels,
-          'hotel_check_in_date': hotelCheckInDate,
-          'hotel_check_out_date': hotelCheckOutDate,
-          'start_date': startDate,
-          'end_date': endDate,
-        },
-      );
-    } on DioException catch (e) {
-      // The server enforces the budget floor too, and says so in a structured
-      // 422. Surfacing its sentence keeps the wording identical to the inline
-      // warning; without this the traveller would see a raw Dio error instead.
-      final detail = e.response?.statusCode == 422
-          ? (e.response?.data is Map ? (e.response!.data as Map)['detail'] : null)
-          : null;
-      if (detail is Map && detail['code'] == 'budget_too_low') {
-        throw BudgetTooLowException(
-          message: (detail['message'] ?? '').toString(),
-          minimum: (detail['minimum'] as num?)?.toDouble() ?? 0,
-          currency: (detail['currency'] ?? '').toString(),
-        );
-      }
-      rethrow;
-    }
+    final response = await _dio.post(
+      '${ApiConstants.itineraries}/odyssey/generate',
+      data: {
+        'destination': destination,
+        'mood': mood,
+        'budget': budget,
+        'days': days,
+        'currency': currency,
+        'travelers': travelers,
+        'include_flights': includeFlights,
+        'departure_city': departureCity,
+        'departure_country': departureCountry,
+        'nationality': nationality,
+        'has_visa': hasVisa,
+        'flight_start_date': flightStartDate,
+        'flight_end_date': flightEndDate,
+        'include_hotels': includeHotels,
+        'hotel_check_in_date': hotelCheckInDate,
+        'hotel_check_out_date': hotelCheckOutDate,
+        'start_date': startDate,
+        'end_date': endDate,
+      },
+    );
     revision.value++;
     final json = (response.data as Map).cast<String, dynamic>();
     return Odyssey.fromItinerary(json);

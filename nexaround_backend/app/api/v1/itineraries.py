@@ -11,7 +11,7 @@ from app.models.itinerary import Itinerary
 from app.repositories.itinerary_repository import ItineraryRepository
 from app.repositories.attraction_repository import AttractionRepository
 from app.services.ai_service import ai_service
-from app.services import odyssey_ai_service, trip_cost_floor
+from app.services import odyssey_ai_service
 from app.services.settings_service import SettingsService
 from app.schemas.itinerary import (
     ItineraryCreate,
@@ -39,38 +39,10 @@ async def generate_odyssey(
 
     The mobile app polls GET /itineraries to see the status flip to 'active'.
     """
-    # Refuse budgets that cannot buy the trip, before anything is spent.
-    #
-    # Generating costs a Gemini call plus a SerpAPI flight and hotel lookup, and
-    # a budget of 200 LKR — about seventy US cents — buys none of it. The model
-    # used to answer with an "ultra-saver" plan and a disclaimer, which cost the
-    # same as a real plan and left the traveller with nothing to act on.
-    #
-    # The floor stays quiet unless it is confident: an unrecognised destination
-    # or currency returns None and the request proceeds. Blocking a real trip is
-    # a worse failure than letting an absurd one through.
-    floor = trip_cost_floor.minimum_budget(
-        destination=data.destination,
-        days=data.days,
-        travelers=data.travelers,
-        currency=data.currency,
-        departure_country=data.departure_country or "",
-        include_flights=data.include_flights,
-    )
-    if floor is not None and data.budget < floor["minimum"]:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "code": "budget_too_low",
-                "message": trip_cost_floor.shortfall_message(floor, data.destination),
-                "minimum": floor["minimum"],
-                "currency": floor["currency"],
-                "destination": data.destination,
-                "days": floor["days"],
-                "travelers": floor["travelers"],
-                "includes_flight": floor["includes_flight"],
-            },
-        )
+    # Budget feasibility is now checked post-generation using real SerpApi
+    # flight/hotel prices rather than a static dictionary. This avoids false
+    # blocks for destinations not in the dictionary (e.g. "Petra") and ensures
+    # every generated plan shows honest, real pricing.
 
     repo = ItineraryRepository(db)
     start_dt_str = data.start_date or data.flight_start_date or data.hotel_check_in_date or ""

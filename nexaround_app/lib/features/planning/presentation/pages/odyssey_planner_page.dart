@@ -1,4 +1,4 @@
-import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -262,19 +262,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         ),
       );
       Navigator.pop(context, true);
-    } on BudgetTooLowException catch (e) {
-      // The client mirrors the server's floor, so reaching here means the two
-      // disagreed — a stale build, or a destination only the server resolves.
-      // Show the server's own sentence rather than a generic failure.
-      if (!mounted) return;
-      setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.message),
-          backgroundColor: const Color(0xFFE65100),
-          duration: const Duration(seconds: 6),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
@@ -501,34 +488,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 250.ms),
-          if (_durationShortfallMessage != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFF4E5),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFFFB74D).withValues(alpha: 0.6)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline_rounded, size: 18, color: Color(0xFFE65100)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      _durationShortfallMessage!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF8D4E00),
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
           const SizedBox(height: 32),
           const Text(
             'NUMBER OF TRAVELERS',
@@ -1170,10 +1129,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               },
             ),
           ),
-          if (_budgetShortfallMessage != null) ...[
-            const SizedBox(height: 20),
-            _budgetShortfallCard(_budgetShortfallMessage!),
-          ],
+
           const SizedBox(height: 40),
                   ],
                 ),
@@ -1185,88 +1141,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     );
   }
 
-  /// Shown under the budget field when the trip cannot be bought at this price.
-  ///
-  /// Deliberately states the number to type rather than only that the budget is
-  /// wrong: "too low" leaves the traveller guessing, and guessing again costs
-  /// another round trip.
-  Widget _budgetShortfallCard(String message) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFF4E5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFFB74D)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.account_balance_wallet_outlined,
-              color: Color(0xFFE65100), size: 22),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              message,
-              style: const TextStyle(
-                fontSize: 13.5,
-                height: 1.45,
-                color: Color(0xFF8D4E00),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  /// The floor this trip cannot go below, or null when it is fine or unknown.
-  ///
-  /// Mirrors the server's check so the traveller learns before pressing
-  /// Generate rather than after a round trip. The server still enforces it —
-  /// this copy is for speed, not for authority.
-  double? get _budgetShortfall {
-    final destination = _destinationController.text.trim();
-    if (destination.isEmpty) return null;
-    final minimum = TripCostFloor.minimumBudget(
-      destination: destination,
-      days: _days,
-      travelers: _travelers,
-      currency: _currency,
-      departureCountry: _departureCountry,
-      includeFlights: _includeFlights,
-    );
-    if (minimum == null) return null;
-    return (_budget * _travelers) < minimum ? minimum : null;
-  }
-
-  String? get _durationShortfallMessage {
-    final dest = _destinationController.text.trim();
-    if (dest.isEmpty || _startDate == null || _endDate == null) return null;
-    final minDays = TripCostFloor.minimumDaysFor(dest, _departureCountry);
-    if (_days < minDays) {
-      return 'For $dest, a minimum of $minDays days is recommended to account for travel time and sightseeing.';
-    }
-    return null;
-  }
-
-  String? get _budgetShortfallMessage {
-    final minimum = _budgetShortfall;
-    if (minimum == null) return null;
-    final destination = _destinationController.text.trim();
-    final crossesBorder = _departureCountry.trim().isNotEmpty &&
-        TripCostFloor.countryFor(_departureCountry) !=
-            TripCostFloor.countryFor(destination);
-    return TripCostFloor.shortfallMessage(
-      destination: destination,
-      minimum: minimum,
-      currency: _currency,
-      days: _days,
-      travelers: _travelers,
-      departureCountry: _departureCountry,
-      includesFlight: _includeFlights || crossesBorder,
-    );
-  }
 
   bool get _isCurrentStepValid {
     if (_currentStep == 0) {
@@ -1287,7 +1162,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       return true;
     }
     if (_currentStep == 2) {
-      return _budgetShortfall == null;
+      return true;
     }
     return true;
   }
