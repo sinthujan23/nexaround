@@ -225,7 +225,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       );
       return;
     }
-    if (!_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
+    if (_includeFlights && !_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please select your nationality for visa guidance.')),
       );
@@ -244,8 +244,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         includeFlights: _includeFlights,
         departureCity: _departureCity,
         departureCountry: _departureCountry,
-        nationality: !_hasVisa ? (_nationality ?? '') : '',
-        hasVisa: _hasVisa,
+        nationality: (_includeFlights && !_hasVisa) ? (_nationality ?? '') : '',
+        hasVisa: !_includeFlights || _hasVisa,
         flightStartDate: _formatDate(_flightStartDate),
         flightEndDate: _formatDate(_flightEndDate),
         includeHotels: _includeHotels,
@@ -684,129 +684,131 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ],
             ),
           ).animate().fade(delay: 200.ms),
-          const SizedBox(height: 12),
-          const Text(
-            'VISA STATUS & GUIDANCE',
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
-          ),
-          const SizedBox(height: 6),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.black12),
+          if (_includeFlights) ...[
+            const SizedBox(height: 12),
+            const Text(
+              'VISA STATUS & GUIDANCE',
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: Colors.black54),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Icon(Icons.badge_outlined, color: Colors.black87, size: 18),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Do you already have a visa for this trip?',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.badge_outlined, color: Colors.black87, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Do you already have a visa for this trip?',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _hasVisa = true),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _hasVisa ? Colors.black : Colors.black.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: _hasVisa ? Colors.black : Colors.transparent,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'Yes, I have a visa',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: _hasVisa ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() => _hasVisa = false);
+                            if (_nationality == null) {
+                              _pickNationality();
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            decoration: BoxDecoration(
+                              color: !_hasVisa ? Colors.black : Colors.black.withValues(alpha: 0.04),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: !_hasVisa ? Colors.black : Colors.transparent,
+                              ),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              'No, I need guidance',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: !_hasVisa ? Colors.white : Colors.black87,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_hasVisa) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF43A047).withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF43A047).withValues(alpha: 0.2)),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 16),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'You\'re all set! No visa application procedures will be included in your plan.',
+                              style: TextStyle(fontSize: 11.5, color: Color(0xFF1B5E20), fontWeight: FontWeight.w600),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ] else ...[
+                    const SizedBox(height: 12),
+                    _buildNationalityTile(),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Neva AI will analyze entry requirements, application procedures, processing days, and deadlines for your passport.',
+                      style: TextStyle(fontSize: 10.5, color: Colors.black54),
                     ),
                   ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _hasVisa = true),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _hasVisa ? Colors.black : Colors.black.withValues(alpha: 0.04),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _hasVisa ? Colors.black : Colors.transparent,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Yes, I have a visa',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: _hasVisa ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() => _hasVisa = false);
-                          if (_nationality == null) {
-                            _pickNationality();
-                          }
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          decoration: BoxDecoration(
-                            color: !_hasVisa ? Colors.black : Colors.black.withValues(alpha: 0.04),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: !_hasVisa ? Colors.black : Colors.transparent,
-                            ),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'No, I need guidance',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: !_hasVisa ? Colors.white : Colors.black87,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_hasVisa) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF43A047).withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFF43A047).withValues(alpha: 0.2)),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 16),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'You\'re all set! No visa application procedures will be included in your plan.',
-                            style: TextStyle(fontSize: 11.5, color: Color(0xFF1B5E20), fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else ...[
-                  const SizedBox(height: 12),
-                  _buildNationalityTile(),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Neva AI will analyze entry requirements, application procedures, processing days, and deadlines for your passport.',
-                    style: TextStyle(fontSize: 10.5, color: Colors.black54),
-                  ),
                 ],
-              ],
-            ),
-          ).animate().fade(delay: 250.ms),
+              ),
+            ).animate().fade(delay: 250.ms),
+          ],
         ],
       ),
     );
@@ -1157,7 +1159,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       if (_includeHotels && (_hotelCheckInDate == null || _hotelCheckOutDate == null)) {
         return false;
       }
-      if (!_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
+      if (_includeFlights && !_hasVisa && (_nationality == null || _nationality!.isEmpty)) {
         return false;
       }
       return true;

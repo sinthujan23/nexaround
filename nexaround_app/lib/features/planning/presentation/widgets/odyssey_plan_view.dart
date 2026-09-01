@@ -457,9 +457,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               '${widget.odyssey.travelers} ${widget.odyssey.travelers == 1 ? 'Traveler (1 Pax)' : 'Travelers (${widget.odyssey.travelers} Pax)'}',
               Icons.people_rounded,
             ),
-          if (widget.odyssey.destination.isNotEmpty)
-            _infoCard('Destination', widget.odyssey.destination, Icons.place_rounded),
-          if (widget.odyssey.visa.isNotEmpty || widget.odyssey.visaInfo.status != 'unknown')
+          if (widget.odyssey.flightStrategies.isNotEmpty &&
+              widget.odyssey.visaInfo.status != 'already_have' &&
+              (widget.odyssey.visa.isNotEmpty || widget.odyssey.visaInfo.status != 'unknown'))
             _buildVisaCard(context),
           if (widget.odyssey.budgetSplit.isNotEmpty)
             _infoCard('Budget Summary', widget.odyssey.budgetSplit, Icons.pie_chart_rounded),

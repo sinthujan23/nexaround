@@ -315,7 +315,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               automaticallyImplyLeading: false,
               actions: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 8, right: 20),
+                  padding: const EdgeInsets.only(top: 8, right: 14),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -327,7 +327,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 7),
+                                horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
                               color: Colors.white.withValues(alpha: 0.22),
                               borderRadius: BorderRadius.circular(20),
@@ -337,14 +337,14 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                             child: const Row(
                               children: [
                                 Icon(Icons.history_rounded,
-                                    color: Colors.white, size: 15),
-                                SizedBox(width: 5),
+                                    color: Colors.white, size: 14),
+                                SizedBox(width: 4),
                                 Text(
                                   'History',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w700,
-                                    fontSize: 12,
+                                    fontSize: 11,
                                   ),
                                 ),
                               ],
@@ -352,7 +352,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           ),
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       // Create Plan Button
                       Material(
                         color: Colors.transparent,
@@ -361,7 +361,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 7),
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               gradient: const LinearGradient(
                                 colors: [Color(0xFF007A7C), Color(0xFF00B4D8)],
@@ -379,15 +379,15 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                             child: const Row(
                               children: [
                                 Icon(Icons.auto_awesome_rounded,
-                                    color: Colors.white, size: 14),
-                                SizedBox(width: 6),
+                                    color: Colors.white, size: 13),
+                                SizedBox(width: 5),
                                 Text(
                                   '+ Create Plan',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 12,
-                                    letterSpacing: 0.3,
+                                    fontSize: 11.5,
+                                    letterSpacing: 0.2,
                                   ),
                                 ),
                               ],
@@ -401,7 +401,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               ],
               flexibleSpace: FlexibleSpaceBar(
                 centerTitle: false,
-                titlePadding: const EdgeInsets.only(left: 24, bottom: 16),
+                titlePadding: const EdgeInsets.only(left: 20, right: 180, bottom: 16),
                 title: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -422,8 +422,10 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                     SizedBox(height: 2),
                     Text(
                       'Trip Blueprints',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 22,
+                        fontSize: 19,
                         fontWeight: FontWeight.w800,
                         letterSpacing: -0.5,
                         color: Colors.white,
