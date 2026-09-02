@@ -251,36 +251,44 @@ class _LivingMapPageState extends State<LivingMapPage>
 
           _lastFetchedLatitude = position.latitude;
           _lastFetchedLongitude = position.longitude;
-          
-          final details = await GooglePlacesService.reverseGeocodeDetailed(
+
+          if (!mounted) return;
+
+          // Fetch new places for the new neighborhood immediately (Redis >
+          // DB > Google) — don't wait on reverse-geocoding, which only
+          // produces a display label and isn't needed by these fetches.
+          setState(() {
+            _userLatitude = position.latitude;
+            _userLongitude = position.longitude;
+          });
+
+          context.read<MapBloc>().add(
+            FetchNearbyAttractions(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              categoryName: _selectedCategory == 'All' ? null : _selectedCategory,
+            ),
+          );
+
+          _fetchMiniTourPlaces(position.latitude, position.longitude);
+          _preFetchArPlaces(position.latitude, position.longitude);
+          _fetchBandedSections(position.latitude, position.longitude);
+
+          GooglePlacesService.reverseGeocodeDetailed(
             position.latitude,
             position.longitude,
-          );
-          final locationName = details['location_name'] ?? 'Nearby';
-          final district = details['district'] ?? 'Nearby';
-
-          if (mounted) {
+          ).then((details) {
+            if (!mounted) return;
+            final locationName = details['location_name'] ?? 'Nearby';
+            final district = details['district'] ?? 'Nearby';
             setState(() {
-              _userLatitude = position.latitude;
-              _userLongitude = position.longitude;
               _currentLocationName = locationName;
               _currentDistrict = district;
             });
             CacheService.setLastFetchLocationName(locationName);
-
-            // Fetch new places for the new neighborhood (Redis > DB > Google)
-            context.read<MapBloc>().add(
-              FetchNearbyAttractions(
-                latitude: position.latitude,
-                longitude: position.longitude,
-                categoryName: _selectedCategory == 'All' ? null : _selectedCategory,
-              ),
-            );
-
-            _fetchMiniTourPlaces(position.latitude, position.longitude);
-            _preFetchArPlaces(position.latitude, position.longitude);
-            _fetchBandedSections(position.latitude, position.longitude);
-          }
+          }).catchError((e) {
+            debugPrint('Reverse geocode failed: $e');
+          });
         });
   }
 
@@ -566,36 +574,47 @@ class _LivingMapPageState extends State<LivingMapPage>
       _lastFetchedLatitude = position.latitude;
       _lastFetchedLongitude = position.longitude;
 
-      // Reverse geocode to get human readable address and district
-      final details = await GooglePlacesService.reverseGeocodeDetailed(
+      if (!mounted) return;
+
+      // Dispatch place fetches immediately on the raw GPS fix — do not wait
+      // on reverse-geocoding first. The address label it produces is
+      // display-only and isn't needed by any of these fetches, so blocking
+      // them behind it was a pure, avoidable network hop on every load.
+      setState(() {
+        _userLatitude = position.latitude;
+        _userLongitude = position.longitude;
+      });
+
+      // Load places cleanly from Database & Cache (0 Gemini cost)
+      context.read<MapBloc>().add(
+        FetchNearbyAttractions(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          useLegacy: false,
+        ),
+      );
+      context.read<MapBloc>().add(const FetchCategories());
+      _fetchMiniTourPlaces(position.latitude, position.longitude);
+      _preFetchArPlaces(position.latitude, position.longitude);
+      _fetchBandedSections(position.latitude, position.longitude);
+
+      // Reverse geocode in parallel, purely for the human-readable address
+      // label — updates the UI whenever it resolves, without gating places.
+      GooglePlacesService.reverseGeocodeDetailed(
         position.latitude,
         position.longitude,
-      );
-      final locationName = details['location_name'] ?? 'Nearby';
-      final district = details['district'] ?? 'Nearby';
-
-      if (mounted) {
+      ).then((details) {
+        if (!mounted) return;
+        final locationName = details['location_name'] ?? 'Nearby';
+        final district = details['district'] ?? 'Nearby';
         setState(() {
-          _userLatitude = position.latitude;
-          _userLongitude = position.longitude;
           _currentLocationName = locationName;
           _currentDistrict = district;
         });
         CacheService.setLastFetchLocationName(locationName);
-
-        // Load places cleanly from Database & Cache (0 Gemini cost)
-        context.read<MapBloc>().add(
-          FetchNearbyAttractions(
-            latitude: position.latitude,
-            longitude: position.longitude,
-            useLegacy: false,
-          ),
-        );
-        context.read<MapBloc>().add(const FetchCategories());
-        _fetchMiniTourPlaces(position.latitude, position.longitude);
-        _preFetchArPlaces(position.latitude, position.longitude);
-        _fetchBandedSections(position.latitude, position.longitude);
-      }
+      }).catchError((e) {
+        debugPrint('Reverse geocode failed: $e');
+      });
     } catch (e) {
       debugPrint('Error fetching location: $e');
       _useFallbackLocation();
@@ -1500,35 +1519,27 @@ class _LivingMapPageState extends State<LivingMapPage>
           final position = await geo.Geolocator.getCurrentPosition(
             desiredAccuracy: geo.LocationAccuracy.high,
           );
-          
-          final details = await GooglePlacesService.reverseGeocodeDetailed(
-            position.latitude,
-            position.longitude,
-          );
-          final locationName = details['location_name'] ?? 'Nearby';
-          final district = details['district'] ?? 'Nearby';
 
           if (mounted) {
             _lastFetchedLatitude = position.latitude;
             _lastFetchedLongitude = position.longitude;
 
+            // Dispatch place fetches on the raw position immediately — don't
+            // wait on reverse-geocoding, which only produces a display label.
             setState(() {
               _userLatitude = position.latitude;
               _userLongitude = position.longitude;
-              _currentLocationName = locationName;
-              _currentDistrict = district;
-              CacheService.setLastFetchLocationName(locationName);
-              
+
               // Clear previous data so UI shows loading state
               _geminiTrendingPlaces = [];
               _aiExperiences = [];
               _miniTourPlaces = null;
             });
-            
+
             // Clear cache so it forces a fresh fetch
             await CacheService.clearHybridPlacesCache();
             GooglePlacesService.clearErrors();
-            
+
             _fetchMiniTourPlaces(position.latitude, position.longitude);
             _fetchBandedSections(
               position.latitude, position.longitude, forceRefresh: true,
@@ -1540,6 +1551,22 @@ class _LivingMapPageState extends State<LivingMapPage>
                 radius: 5000,
               ),
             );
+
+            GooglePlacesService.reverseGeocodeDetailed(
+              position.latitude,
+              position.longitude,
+            ).then((details) {
+              if (!mounted) return;
+              final locationName = details['location_name'] ?? 'Nearby';
+              final district = details['district'] ?? 'Nearby';
+              setState(() {
+                _currentLocationName = locationName;
+                _currentDistrict = district;
+              });
+              CacheService.setLastFetchLocationName(locationName);
+            }).catchError((e) {
+              debugPrint('Reverse geocode failed: $e');
+            });
           }
         } catch (e) {
           debugPrint('Error getting current location on override clear: $e');

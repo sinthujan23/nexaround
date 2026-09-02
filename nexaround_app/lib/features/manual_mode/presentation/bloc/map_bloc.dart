@@ -212,7 +212,13 @@ class MapBloc extends Bloc<MapEvent, MapState> {
           latitude: event.latitude,
           longitude: event.longitude,
           categoryName: cat,
-          forceRefresh: event.forceRefresh,
+          // event.forceRefresh already did its job above by clearing
+          // bandedPlaces for the new location — it must NOT also skip the
+          // backend's Redis cache here. Redis is keyed by coordinates, so a
+          // genuinely different location can never return another
+          // location's cached data; forwarding forceRefresh only forced
+          // every relocation (including repeat visits to an already-warm
+          // location) through the slow DB+Google path for no benefit.
           // Fetch Discovery-depth once; Around You slices its quota off the top.
           perBand: PlaceBands.fetchPerBand,
         );

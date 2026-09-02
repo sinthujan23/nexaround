@@ -104,6 +104,14 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
   final ScrollController _contentScrollController = ScrollController();
   Position? _currentPosition;
 
+  // Coordinates the banded fetch was last dispatched for. FetchBandedPlaces
+  // has no category filter — it always re-fetches all 6 categories — so
+  // without this, swiping through tabs while a cold-tile load is still in
+  // flight re-triggers that full fetch on every swipe instead of just
+  // waiting for the one already running.
+  double? _lastBandedFetchLat;
+  double? _lastBandedFetchLng;
+
   List<AttractionEntity> _poiList = [];
   List<AttractionEntity> _natureList = [];
   List<AttractionEntity> _foodList = [];
@@ -262,10 +270,16 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       ));
       // Around You is the quick-access surface for these same tabs, so both
       // read the same band-aware result rather than each deriving its own.
-      context.read<MapBloc>().add(FetchBandedPlaces(
-        latitude: lat,
-        longitude: lng,
-      ));
+      // Only re-dispatch when the coordinates actually changed — see
+      // _lastBandedFetchLat/_lastBandedFetchLng.
+      if (_lastBandedFetchLat != lat || _lastBandedFetchLng != lng) {
+        _lastBandedFetchLat = lat;
+        _lastBandedFetchLng = lng;
+        context.read<MapBloc>().add(FetchBandedPlaces(
+          latitude: lat,
+          longitude: lng,
+        ));
+      }
     }
   }
 
