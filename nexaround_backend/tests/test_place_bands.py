@@ -210,6 +210,19 @@ def _fake(name, dist_m, rating=4.0, reviews=0, place_id=None):
     }
 
 
+def _flat(result):
+    """Every band's places in display order — nearest first.
+
+    `BandedPlacesResponse.places` used to carry this, but serialising each place
+    twice doubled the response on mobile and no client ever read it, so it is
+    now always empty (see the field's own docstring). These tests were asserting
+    against that list, which made two of them fail and one pass vacuously on
+    zero rows.
+    """
+    places = [p for band in result.bands for p in band.places]
+    return sorted(places, key=lambda p: p.distance_m or 0.0)
+
+
 def _assemble(pool, per_band=None):
     from app.services import banded_places_service as svc
     return svc._assemble(
@@ -239,7 +252,7 @@ def test_flat_list_is_ordered_nearest_first_for_display():
         _fake("Far but great", 9000, 4.8, 5000),
         _fake("Near and plain", 500, 4.0, 3),
     ]
-    places = _assemble(pool, per_band=15).places
+    places = _flat(_assemble(pool, per_band=15))
     distances = [p.distance_m for p in places]
     assert distances == sorted(distances)
 
@@ -248,7 +261,7 @@ def test_repeated_names_are_collapsed_to_one():
     """Google labels many unnamed tanks with only the district name."""
     pool = [_fake("Trincomalee", 600 + i * 100, place_id=f"t{i}") for i in range(5)]
     pool.append(_fake("Kinniya Beach", 2040, 4.3, 158))
-    names = [p.name for p in _assemble(pool).places]
+    names = [p.name for p in _flat(_assemble(pool))]
     assert names.count("Trincomalee") == 1
     assert "Kinniya Beach" in names
 
@@ -260,5 +273,5 @@ def test_case_differences_still_count_as_the_same_name():
         _fake("Wawe", 35660, place_id="w2"),
         _fake("Beybiya Wewa", 36950, place_id="w3"),
     ]
-    names = [p.name.lower() for p in _assemble(pool).places]
+    names = [p.name.lower() for p in _flat(_assemble(pool))]
     assert names.count("wawe") == 1

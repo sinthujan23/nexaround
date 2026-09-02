@@ -9,10 +9,11 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 import asyncio
 import json
 import logging
+import math
 import re
 import urllib.parse
 import httpx
-from app.services import telemetry
+from app.services import telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -125,6 +126,15 @@ _MODEL = _MODELS[0]  # kept for any external reference / logging
 # scenarios without an extra Gemini call.
 _SCENARIO_MULTIPLIERS = {"minimum": 0.7, "comfortable": 1.4}
 
+# Hotels are always searched for one standard room, never for the whole party.
+#
+# Google Hotels prices a *room*, so asking for `adults=6` returns whatever it
+# thinks fits six — a family suite, or a filtered set of larger properties —
+# and the rate stops meaning anything a caller can multiply. The group cost is
+# then derived as rooms x rate (`_rooms_for`), the same reasoning the flight
+# search documents for querying one seat at a time.
+_STANDARD_ROOM_ADULTS = 2
+
 
 def _model_url(model: str) -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
@@ -186,6 +196,7 @@ def build_meta_item(
     budget_scenarios: dict = None,
     practical_info: dict = None,
     booking_plan: list[dict] = None,
+    legs: list[dict] = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -216,6 +227,11 @@ def build_meta_item(
         "budget_scenarios": budget_scenarios or {},
         "practical_info": practical_info or {},
         "booking_plan": booking_plan or [],
+        # The cities the trip sleeps in, with each leg's nights and dates.
+        # Absent on every Odyssey generated before city legs existed, so every
+        # reader must treat an empty list as "one leg covering the whole trip"
+        # rather than as "no accommodation".
+        "legs": legs or [],
     }
 
 
@@ -867,7 +883,7 @@ async def generate_hotel_strategies(
                 destination=destination,
                 check_in_date=hotel_check_in_date,
                 check_out_date=hotel_check_out_date,
-                adults=travelers,
+                adults=_STANDARD_ROOM_ADULTS,
                 currency=currency,
                 min_rating=4.0,  # Only 4★+ hotels
             )
@@ -893,7 +909,7 @@ async def generate_hotel_strategies(
                     destination=destination,
                     check_in_date=hotel_check_in_date,
                     check_out_date=hotel_check_out_date,
-                    adults=travelers,
+                    adults=_STANDARD_ROOM_ADULTS,
                     currency=currency,
                     min_rating=3.5,
                 )
@@ -1016,6 +1032,252 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
         return {}
 
 
+def _rooms_for(travelers: int) -> int:
+    """Rooms a party needs, at two to a room.
+
+    Accommodation used to ignore party size entirely — it reached SerpApi as
+    `adults=` and never became rooms — so three travellers were budgeted one
+    room's worth of nights.
+    """
+    return max(1, math.ceil(max(int(travelers or 1), 1) / 2))
+
+
+async def generate_hotel_strategies_for_legs(
+    *,
+    legs: list[dict],
+    days: int,
+    budget: float,
+    currency: str,
+    travelers: int,
+    hotel_check_in_date: str,
+    hotel_check_out_date: str,
+    api_key: str,
+    serpapi_key: str,
+) -> dict:
+    """Hotels for every city the trip sleeps in, each priced for its own nights.
+
+    Wraps the single-city `generate_hotel_strategies` once per leg rather than
+    replacing it — the extraction, the star-rating retry and the Gemini fallback
+    all still apply per city.
+
+    The old single search asked Google for `hotels in <destination>`, which for
+    a country returned a country-wide mix: a tester's Cambodia trip listed a
+    Siem Reap hotel beside a Sihanoukville one, each quoted for all nine nights,
+    and every day of every city linked to that one list.
+
+    Returns the same {strategies, general_tips, best_areas} shape, with each
+    strategy tagged `leg_index`/`city` so the client can group them. Tagging
+    rather than nesting keeps already-saved Odysseys parseable.
+    """
+    if not legs:
+        return {}
+
+    searches = [
+        generate_hotel_strategies(
+            destination=leg["city"],
+            days=max(int(leg.get("nights") or 1), 1) + 1,
+            budget=budget,
+            currency=currency,
+            travelers=travelers,
+            # Each leg's own window. This is what makes a two-night stay quote
+            # two nights instead of the whole trip.
+            hotel_check_in_date=leg.get("check_in_date") or hotel_check_in_date or "",
+            hotel_check_out_date=leg.get("check_out_date") or hotel_check_out_date or "",
+            api_key=api_key,
+            serpapi_key=serpapi_key,
+        )
+        for leg in legs
+    ]
+    results = await asyncio.gather(*searches, return_exceptions=True)
+
+    merged: list[dict] = []
+    tips: list[str] = []
+    areas: list[str] = []
+    for index, (leg, result) in enumerate(zip(legs, results)):
+        if isinstance(result, Exception) or not isinstance(result, dict):
+            logger.warning("Hotel search failed for leg %s (%s): %s", index, leg.get("city"), result)
+            continue
+        for strategy in result.get("strategies") or []:
+            if not isinstance(strategy, dict):
+                continue
+            strategy["leg_index"] = index
+            strategy["city"] = leg.get("city") or ""
+            strategy["nights"] = int(leg.get("nights") or 0)
+            strategy["rooms"] = _rooms_for(travelers)
+            merged.append(strategy)
+        if result.get("best_areas"):
+            areas.append(str(result["best_areas"]))
+        for tip in result.get("general_tips") or []:
+            if tip not in tips:
+                tips.append(str(tip))
+
+    if not merged:
+        return {}
+
+    logger.info(
+        "Hotels found for %d/%d leg(s): %s",
+        len({s["leg_index"] for s in merged}), len(legs),
+        ", ".join(f"{l['city']}({l.get('nights')}n)" for l in legs),
+    )
+    return {"strategies": merged, "general_tips": tips, "best_areas": ", ".join(areas[:3])}
+
+
+def _single_leg(destination: str, days: int, start_date: str = "") -> list[dict]:
+    """The whole trip as one leg in one city — the shape before city legs existed.
+
+    Every failure path in leg planning lands here, so a bad or unparseable model
+    response degrades the Odyssey to exactly the behaviour it had before rather
+    than breaking it or, worse, searching hotels in a city nobody is visiting.
+    """
+    days = max(int(days or 1), 1)
+    leg = {
+        "city": destination,
+        "country": "",
+        "start_day": 1,
+        "end_day": days,
+        "nights": max(days - 1, 0),
+    }
+    _date_leg(leg, start_date)
+    return [leg]
+
+
+def _date_leg(leg: dict, start_date: str) -> None:
+    """Stamp a leg with its own check-in/check-out dates, derived from day numbers.
+
+    These are what the per-leg hotel search sends to Google, and they are the
+    reason a two-night stay is finally quoted for two nights: the single
+    trip-wide window is what made every hotel's "Est. Total" the whole trip.
+    """
+    leg["check_in_date"] = ""
+    leg["check_out_date"] = ""
+    if not start_date:
+        return
+    try:
+        from datetime import date as _date, timedelta as _timedelta
+        trip_start = _date.fromisoformat(str(start_date)[:10])
+        check_in = trip_start + _timedelta(days=int(leg["start_day"]) - 1)
+        check_out = check_in + _timedelta(days=max(int(leg["nights"]), 1))
+    except Exception:
+        return
+    leg["check_in_date"] = check_in.isoformat()
+    leg["check_out_date"] = check_out.isoformat()
+
+
+def _validate_legs(raw, destination: str, days: int, start_date: str = "") -> list[dict]:
+    """Coerce a model's leg list into one that actually covers the trip.
+
+    Rejects rather than repairs anything structural: legs must be contiguous,
+    start at day 1, end at day `days`, and name a city. A plausible-looking but
+    wrong set of legs is the dangerous failure here — it would send the hotel
+    search to a city the traveller never visits and look deliberate while doing
+    it — so anything that does not line up falls back to a single leg.
+    """
+    if not isinstance(raw, list) or not raw:
+        return _single_leg(destination, days, start_date)
+
+    legs: list[dict] = []
+    expected_start = 1
+    for entry in raw:
+        if not isinstance(entry, dict):
+            return _single_leg(destination, days, start_date)
+        city = str(entry.get("city") or "").strip()
+        if not city:
+            return _single_leg(destination, days, start_date)
+        try:
+            start_day = int(entry.get("start_day"))
+            end_day = int(entry.get("end_day"))
+        except (TypeError, ValueError):
+            return _single_leg(destination, days, start_date)
+        if start_day != expected_start or end_day < start_day or end_day > days:
+            return _single_leg(destination, days, start_date)
+
+        leg = {
+            "city": city,
+            "country": str(entry.get("country") or "").strip(),
+            "start_day": start_day,
+            "end_day": end_day,
+            # Derived, never trusted from the model: the nights a leg is worth
+            # are what its hotel is priced on, so an invented number here would
+            # silently mis-state the accommodation budget.
+            "nights": end_day - start_day + 1,
+        }
+        _date_leg(leg, start_date)
+        legs.append(leg)
+        expected_start = end_day + 1
+
+    if expected_start != days + 1:
+        return _single_leg(destination, days, start_date)
+
+    # The last leg's final day is a departure day, not a night slept.
+    legs[-1]["nights"] = max(legs[-1]["nights"] - 1, 0)
+    _date_leg(legs[-1], start_date)
+    if sum(int(l["nights"]) for l in legs) != max(days - 1, 0):
+        return _single_leg(destination, days, start_date)
+
+    return legs
+
+
+async def plan_city_legs(
+    *,
+    destination: str,
+    days: int,
+    mood: str,
+    travelers: int,
+    api_key: str,
+    start_date: str = "",
+) -> list[dict]:
+    """Decide which cities the trip stays in, and for how long.
+
+    Runs before flights and hotels are bought, because the per-leg hotel search
+    needs the cities and the itinerary that would otherwise name them is not
+    written until later.
+
+    Deliberately ungrounded: `_call_gemini` can only ask for JSON mode when no
+    search tool is attached (see the responseMimeType guard there), and a
+    reliable machine-readable answer matters more here than live facts — the
+    grounded itinerary pass still checks the places themselves.
+    """
+    days = max(int(days or 1), 1)
+    if not api_key or days < 2:
+        return _single_leg(destination, days, start_date)
+
+    prompt = f"""Plan the city-by-city route for a {days}-day trip to {destination}.
+
+Group: {travelers} traveller(s). Travel style: {mood or "balanced"}.
+
+Return ONLY this JSON:
+{{"legs": [{{"city": "...", "country": "<ISO 2-letter>", "start_day": 1, "end_day": 3}}]}}
+
+Rules:
+- Cover every day from 1 to {days} with no gaps and no overlaps: each leg's
+  start_day must be the previous leg's end_day + 1, the first starts at 1 and
+  the last ends at {days}.
+- "city" must be a real, searchable city or town where the traveller SLEEPS
+  that night — this is what the hotel search is given. If a day trips out to a
+  smaller town and returns, keep the sleeping city. If the traveller ends the
+  day in the smaller town, name the smaller town.
+- Prefer fewer, longer legs. Do not move city more often than every 2 days
+  unless {destination} is small enough that it makes sense.
+- If {destination} is a single city, return exactly one leg for it.
+- No commentary, no markdown."""
+
+    try:
+        raw, _ = await _call_gemini(prompt, api_key, max_tokens=1024, use_grounding=False)
+        parsed = json.loads(raw)
+        legs = _validate_legs(
+            (parsed or {}).get("legs"), destination, days, start_date,
+        )
+    except Exception as e:
+        logger.warning(f"City-leg planning failed, using a single leg: {e}")
+        return _single_leg(destination, days, start_date)
+
+    logger.info(
+        "Planned %d city leg(s) for %s: %s",
+        len(legs), destination, ", ".join(f"{l['city']} d{l['start_day']}-{l['end_day']}" for l in legs),
+    )
+    return legs
+
+
 async def generate_odyssey(
     *,
     destination: str,
@@ -1074,11 +1336,23 @@ async def generate_odyssey(
                 return {}
         return {}
 
+    # Which cities the trip sleeps in, decided before anything is bought: the
+    # per-leg hotel search needs them, and the itinerary that would otherwise
+    # name them is not written until further down.
+    city_legs = await plan_city_legs(
+        destination=final_destination,
+        days=days,
+        mood=mood,
+        travelers=travelers,
+        api_key=api_key,
+        start_date=hotel_check_in_date or start_date or "",
+    )
+
     async def _get_hotels():
         if include_hotels:
             try:
-                return await generate_hotel_strategies(
-                    destination=final_destination,
+                return await generate_hotel_strategies_for_legs(
+                    legs=city_legs,
                     days=days,
                     budget=budget,
                     currency=currency,
@@ -1153,6 +1427,7 @@ async def generate_odyssey(
         confirmed_flight=primary_flight,
         nationality=nationality,
         has_visa=has_visa,
+        legs=city_legs,
     )
     text, grounding_chunks = await _call_gemini(
         prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
@@ -1198,15 +1473,42 @@ async def generate_odyssey(
 
     cheapest_flight_cost = _tier_flight_cost("minimum")
 
-    cheapest_hotel_cost = 0.0
-    if hotel_strategies and isinstance(hotel_strategies.get("strategies"), list):
-        h_costs = [
-            _extract_lowest_price(s.get("total_estimated_cost") or s.get("price_per_night"))
-            for s in hotel_strategies["strategies"]
-            if isinstance(s, dict) and _extract_lowest_price(s.get("total_estimated_cost") or s.get("price_per_night")) > 0
-        ]
-        if h_costs:
-            cheapest_hotel_cost = min(h_costs)
+    # What the accommodation actually costs: for every city the trip sleeps in,
+    # its own cheapest nightly rate x that leg's nights x the rooms the party
+    # needs.
+    #
+    # The old figure was a single `min()` over one trip-wide hotel search, so a
+    # four-city trip was budgeted one city's stay, party size never became
+    # rooms, and — when no dates reached SerpApi — `total_estimated_cost` fell
+    # back to a *single night* standing in for the whole trip.
+    def _required_stay_cost() -> float:
+        strategies_ = (hotel_strategies or {}).get("strategies")
+        if not isinstance(strategies_, list) or not city_legs:
+            return 0.0
+        rooms_ = _rooms_for(travelers)
+        nightly_by_leg: dict[int, list[float]] = {}
+        for s in strategies_:
+            if not isinstance(s, dict):
+                continue
+            rate = _extract_lowest_price(s.get("price_per_night"))
+            if rate > 0:
+                nightly_by_leg.setdefault(int(s.get("leg_index") or 0), []).append(rate)
+
+        total_ = 0.0
+        for leg_i, leg_ in enumerate(city_legs):
+            nights_ = int(leg_.get("nights") or 0)
+            rates_ = nightly_by_leg.get(leg_i)
+            if not rates_ or nights_ <= 0:
+                # A leg whose search came back empty still has to be slept in.
+                # Carry the trip's cheapest known rate rather than pricing those
+                # nights at zero, which is what made a budget look sufficient.
+                rates_ = [min(r for rr in nightly_by_leg.values() for r in rr)] if nightly_by_leg else None
+                if not rates_ or nights_ <= 0:
+                    continue
+            total_ += min(rates_) * nights_ * rooms_
+        return round(total_, 2)
+
+    cheapest_hotel_cost = _required_stay_cost()
 
     # Base budget allocation. Parameterized on `total` so the same waterfall
     # can price out Minimum/Comfortable scenarios below without a second
@@ -1226,7 +1528,12 @@ async def generate_odyssey(
         rem_after_transit_ = max(tot_ - transit_amt_, round(tot_ * 0.15, 2))
 
         if cheapest_hotel_cost > 0:
-            stay_amt_ = min(cheapest_hotel_cost, round(rem_after_transit_ * 0.60, 2))
+            # The stay costs what it costs. Capping it at a share of what the
+            # flights left over is what showed 13,500 against a real 17,900 and
+            # called the plan affordable — the traveller cannot book 60% of a
+            # room. When this overruns the budget, the feasibility check below
+            # is what must say so.
+            stay_amt_ = round(cheapest_hotel_cost, 2)
         else:
             stay_amt_ = round(rem_after_transit_ * 0.45, 2)
 
@@ -1256,7 +1563,20 @@ async def generate_odyssey(
     # every destination (including ones the dictionary didn't know, like
     # "Petra") and produces honest numbers the traveller can act on.
     user_budget = float(budget) if budget > 0 else 1.0
-    real_minimum_cost = cheapest_flight_cost + cheapest_hotel_cost
+
+    # Flights and beds are measured; eating for the duration is not, and leaving
+    # it out is what let a 150,000 budget pass as sufficient against 127,500 of
+    # flights and 17,900 of hotel — technically covered, with 4,600 left to feed
+    # three people for nine days. `on_ground_floor` excludes lodging on purpose,
+    # since `cheapest_hotel_cost` above already prices the rooms.
+    on_ground = trip_cost_floor.on_ground_floor(
+        destination=final_destination,
+        days=days,
+        travelers=travelers,
+        currency=currency,
+    ) or 0.0
+
+    real_minimum_cost = cheapest_flight_cost + cheapest_hotel_cost + on_ground
     budget_is_sufficient = (user_budget >= real_minimum_cost) or real_minimum_cost <= 0
 
     if budget_is_sufficient:
@@ -1368,6 +1688,7 @@ async def generate_odyssey(
         budget_scenarios=budget_scenarios,
         practical_info=practical_info,
         booking_plan=booking_plan,
+        legs=city_legs,
     )
 
     day_items: list[dict] = []
@@ -1608,9 +1929,35 @@ def _build_prompt(
     confirmed_flight: dict | None = None,
     nationality: str = "",
     has_visa: bool = False,
+    legs: list[dict] | None = None,
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
+
+    # The route is decided before this call (see `plan_city_legs`) because the
+    # per-leg hotel search needs the cities. Handing it back to the model as a
+    # fixed table is what stops the itinerary wandering across cities the trip
+    # has no accommodation in — a tester's plan moved through four Cambodian
+    # cities while every day linked to one city's hotels.
+    route_rules = ""
+    if legs and len(legs) > 1:
+        table = "\n".join(
+            f"  Day {l['start_day']}-{l['end_day']}: {l['city']} (sleep in {l['city']})"
+            if l["start_day"] != l["end_day"]
+            else f"  Day {l['start_day']}: {l['city']} (sleep in {l['city']})"
+            for l in legs
+        )
+        route_rules = f"""
+CRITICAL - FIXED ROUTE (do not change it, do not add or drop a city):
+{table}
+
+- Every activity on a day must be in, or a day trip from, that day's city above.
+- The first day of each leg after the first MUST open with a "transport"
+  activity covering the journey from the previous city, priced for {travelers}.
+- The last day of each leg must END in that leg's city, because that is where
+  the traveller sleeps and where their hotel was booked.
+- Do not schedule an overnight anywhere not listed above.
+"""
 
     hotel_rules = ""
     if hotel_price_range:
@@ -1669,6 +2016,7 @@ Trip brief:
 - Currency to use in all costs: {currency}
 - Traveler nationality (passport held): {nationality or "not provided"}
 - Traveler already has visa: {"Yes" if has_visa else "No"}
+{route_rules}
 {hotel_rules}
 {flight_rules}
 {visa_rules}

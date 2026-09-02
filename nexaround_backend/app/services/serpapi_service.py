@@ -6,6 +6,7 @@ prices, real airlines, real hotel names, and automatic airport resolution.
 
 Sign up at https://serpapi.com for a free API key (250 searches/month).
 """
+import json
 import logging
 import urllib.parse
 import httpx
@@ -15,6 +16,101 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 SERPAPI_BASE = "https://serpapi.com/search.json"
+
+# Currencies SerpApi's Google engines accept. Anything else is rejected outright
+# with HTTP 400 "Unsupported `XXX` for currency", which is not a soft failure:
+# the whole search returns nothing and the caller silently falls back to an AI
+# price estimate. That is how a Colombo->Amsterdam trip came to advertise
+# LKR 135,000 against a real fare of LKR 287,006 — every SerpApi call for an
+# LKR trip had been failing, so no live price was ever fetched.
+#
+# Deliberately a small, conservative list: an unsupported currency costs a
+# wasted round trip and a wrong price, while quoting in USD and converting is
+# always safe.
+_SERPAPI_CURRENCIES = {
+    "USD", "EUR", "GBP", "AUD", "CAD", "JPY", "CNY", "SGD", "CHF", "NZD",
+    "INR", "AED", "SAR", "HKD", "KRW", "THB", "MYR", "PHP", "IDR", "TWD",
+    "BRL", "MXN", "ZAR", "TRY", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF",
+}
+
+
+def resolve_search_currency(currency: str) -> str:
+    """The currency to ask SerpApi for, which may not be the one to display in."""
+    code = (currency or "USD").strip().upper()
+    return code if code in _SERPAPI_CURRENCIES else "USD"
+
+
+# Live USD rates, refreshed at most every few hours.
+#
+# The static table in trip_cost_floor is mirrored to the Flutter client and
+# tested to stay byte-identical, so it cannot track the market — and it had
+# drifted badly: 300 LKR/USD against a real 328, and 83 INR/USD against 95.
+# Every converted fare was ~9% low for Sri Lanka and ~14% low for India, which
+# reads as exactly the kind of "prices don't match" the testers reported.
+_FX_URL = "https://open.er-api.com/v6/latest/USD"
+_FX_TTL_S = 6 * 3600
+_fx_cache: dict = {"rates": {}, "at": 0.0}
+
+
+def _live_fx_rates() -> dict:
+    """USD rates, live where possible and the static table where not.
+
+    Never raises and never blocks a generation: on any failure the caller falls
+    back to the mirrored constants, which are stale but present.
+    """
+    import time
+    now = time.time()
+    if _fx_cache["rates"] and (now - _fx_cache["at"]) < _FX_TTL_S:
+        return _fx_cache["rates"]
+    try:
+        # urllib, not httpx: this is called from inside async request handling,
+        # and httpx's *sync* client cannot run there — it raises "asyncio.run()
+        # cannot be called from a running event loop" and took the whole hotel
+        # search down with it. urllib blocks the loop briefly instead, which is
+        # acceptable for a once-per-six-hours refresh on a background job.
+        import urllib.request
+        with urllib.request.urlopen(_FX_URL, timeout=6.0) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        rates = data.get("rates") or {}
+        if rates.get("USD"):
+            _fx_cache["rates"] = rates
+            _fx_cache["at"] = now
+            return rates
+    except Exception as e:
+        logger.warning(f"[FX] Live rate fetch failed, using static table: {e}")
+    return _fx_cache["rates"] or {}
+
+
+def convert_from_search_currency(amount: float, display_currency: str) -> float:
+    """Restate a SerpApi figure in the traveller's own currency.
+
+    A no-op whenever SerpApi could be asked for that currency directly. When it
+    could not — LKR being the case that started this — the search was made in
+    USD and the number coming back means nothing to the traveller until it is
+    converted.
+
+    Uses the same static table the trip-cost floor works from, so a rate is
+    approximate but never absent. An approximate live fare is worth far more
+    than the AI guess that an unconverted (or failed) search falls back to.
+    """
+    code = (display_currency or "USD").strip().upper()
+    if code in _SERPAPI_CURRENCIES or not amount:
+        return amount
+    try:
+        from app.services.trip_cost_floor import FX_PER_USD
+    except Exception:
+        return amount
+    rate = _live_fx_rates().get(code) or FX_PER_USD.get(code)
+    return round(float(amount) * rate, 2) if rate else amount
+
+
+# Booking aggregators whose bare front page is a dead end. A domain not on this
+# list is taken to be the property's own site.
+_OTA_HOSTS = {
+    "agoda.com", "booking.com", "expedia.com", "hotels.com", "trip.com",
+    "priceline.com", "kayak.com", "orbitz.com", "travelocity.com", "hostelworld.com",
+    "airbnb.com", "vrbo.com", "tripadvisor.com", "ebookers.com", "lastminute.com",
+}
 
 
 def _looks_like_homepage_url(url: str) -> bool:
@@ -31,6 +127,16 @@ def _looks_like_homepage_url(url: str) -> bool:
         parsed = urllib.parse.urlparse(url)
     except Exception:
         return False
+
+    # A hotel's *own* site is a fine place to send someone even at its root —
+    # "amrathaparthotelschiphol.nl/" is that property and nothing else. Only a
+    # booking aggregator's front page is the dead end this guards against, and
+    # rejecting the hotel's own domain sent travellers to a Google Hotels search
+    # that returned "No results" for the very property they were looking at.
+    host = (parsed.netloc or "").lower().removeprefix("www.")
+    if host and not any(host == o or host.endswith("." + o) for o in _OTA_HOSTS):
+        return False
+
     if parsed.query:
         return False
     segments = [s for s in parsed.path.split("/") if s]
@@ -86,7 +192,7 @@ class SerpApiService:
             "arrival_id": destination,
             "type": "1",  # 1=round trip, 2=one way
             "adults": str(adults),
-            "currency": currency.upper(),
+            "currency": resolve_search_currency(currency),
             "hl": "en",
         }
 
@@ -149,7 +255,7 @@ class SerpApiService:
             "api_key": self.api_key,
             "q": q,
             "adults": str(adults),
-            "currency": currency.upper(),
+            "currency": resolve_search_currency(currency),
             "hl": "en",
             "gl": "us",
         }
@@ -267,6 +373,7 @@ def extract_hotel_strategies_from_serpapi(
 
         total_info = p.get("total_rate") or {}
         total_display = total_info.get("lowest", "")
+        total_extracted = total_info.get("extracted_lowest", 0)
 
         # Amenities
         amenities = p.get("amenities") or []
@@ -314,13 +421,38 @@ def extract_hotel_strategies_from_serpapi(
         if serpapi_link:
             booking_url = serpapi_link
         else:
-            google_q = urllib.parse.quote_plus(f"{clean_name} {destination}")
-            booking_url = f"https://www.google.com/travel/hotels?q={google_q}"
-            if check_in_date and check_out_date:
-                booking_url += f"&dates={check_in_date},{check_out_date}"
+            # Plain Google search, not the Hotels vertical. `travel/hotels?q=`
+            # has to resolve the string to a property in Google's own index and
+            # answers "No results" when it cannot — which is what a tester saw
+            # for a hotel that was right there in the list. A web search always
+            # lands somewhere useful, and the `dates` parameter this used to
+            # append was never honoured by that page anyway.
+            google_q = urllib.parse.quote_plus(f"{clean_name} {destination} hotel booking")
+            booking_url = f"https://www.google.com/search?q={google_q}"
 
-        # Format price with currency symbol/code if not already formatted
-        price_str = price_display if price_display else f"{currency} {extracted_rate}" if extracted_rate else ""
+        # Format price with currency symbol/code if not already formatted.
+        #
+        # Google's own display strings ("$120") are in whatever currency the
+        # search was made in, which is not the traveller's when SerpApi does not
+        # support theirs. Passing those through unconverted is worse than
+        # useless: the client relabels the symbol without touching the number,
+        # so "$120" renders as "LKR 120". Rebuild from the converted figure
+        # instead whenever a conversion actually happened.
+        display_code = (currency or "USD").strip().upper()
+        converted_nightly = convert_from_search_currency(
+            float(extracted_rate) if extracted_rate else 0.0, display_code,
+        )
+        was_converted = (
+            bool(extracted_rate) and converted_nightly != float(extracted_rate or 0)
+        )
+        if was_converted:
+            price_str = f"{display_code} {converted_nightly:,.0f}"
+        elif price_display:
+            price_str = price_display
+        elif extracted_rate:
+            price_str = f"{currency} {extracted_rate}"
+        else:
+            price_str = ""
 
         strategies.append({
             "rank": rank,
@@ -330,7 +462,13 @@ def extract_hotel_strategies_from_serpapi(
             "rating": rating_str,
             "reviews": reviews if isinstance(reviews, int) else 0,
             "price_per_night": price_str,
-            "total_estimated_cost": total_display if total_display else "",
+            # Same conversion as the nightly rate: a whole-stay total in the
+            # search currency would be relabelled, not converted, downstream.
+            "total_estimated_cost": (
+                f"{display_code} {convert_from_search_currency(float(total_extracted), display_code):,.0f}"
+                if total_extracted and convert_from_search_currency(float(total_extracted), display_code) != float(total_extracted)
+                else (total_display or "")
+            ),
             "location": location,
             "amenities": amenities,
             "description": description or f"Well-rated hotel in {destination} with excellent guest reviews.",
@@ -656,7 +794,10 @@ def extract_flight_strategies_from_serpapi(
     strategies: List[Dict[str, Any]] = []
     for rank, tier in enumerate([t for t in FLIGHT_TIERS if t in selected], start=1):
         m = selected[tier]
-        per_traveler = round(m["price"], 2)
+        # SerpApi was asked for a currency it supports, which is not always the
+        # traveller's. Convert before anything downstream treats these as the
+        # trip's own numbers.
+        per_traveler = round(convert_from_search_currency(m["price"], currency), 2)
         total = round(per_traveler * party, 2)
         route = f"{m['origin_id']} → {m['dest_id']}" if m["origin_id"] and m["dest_id"] else ""
         airlines = m["airlines"]
@@ -744,15 +885,56 @@ def extract_flight_strategies_from_serpapi(
     price_insights = serpapi_data.get("price_insights") or {}
     typical = price_insights.get("typical_price_range") or []
     if isinstance(typical, list) and len(typical) == 2 and typical[0] and typical[1]:
+        # Google reports these in the currency the search was made in, which is
+        # not the traveller's when SerpApi does not support theirs. Labelling an
+        # unconverted figure with their currency code is how a Colombo-Amsterdam
+        # fare came to read "LKR 700 - 940" beside a real LKR 262,500 fare.
+        typical_lo = convert_from_search_currency(float(typical[0]), currency)
+        typical_hi = convert_from_search_currency(float(typical[1]), currency)
         general_tips.append(
-            f"Google's typical range for this route is {currency.upper()} {typical[0]:,.0f} - {typical[1]:,.0f} per traveller."
+            f"Google's typical range for this route is {currency.upper()} "
+            f"{typical_lo:,.0f} - {typical_hi:,.0f} per traveller."
         )
     general_tips.append("Fares change constantly — tap through to confirm the current price before booking.")
+
+    # Every real itinerary the tiers did not take, stated plainly.
+    #
+    # The tiers deliberately refuse to show a flight that is worse than an
+    # already-listed one on every axis, so on a route where one fare is both
+    # cheapest and fastest only two tiers can honestly be filled — and the tab
+    # then looked empty beside Google's list of a dozen. These carry no tier
+    # label and make no recommendation: they are the rest of the market, for a
+    # traveller whose reasons (airline, departure time, stopover city) are not
+    # ones we can rank.
+    taken_ids = {m["identity"] for m in selected.values()}
+    more_options = [
+        {
+            "price_per_traveler": round(convert_from_search_currency(m["price"], currency), 2),
+            "price_total": round(convert_from_search_currency(m["price"], currency) * party, 2),
+            "currency": currency.upper(),
+            "airlines": m.get("airlines") or [],
+            "route": " → ".join(x for x in (m.get("origin_id"), m.get("dest_id")) if x),
+            # Departure and arrival times are the whole reason someone picks one
+            # of these over a tier: the ranking cannot know they need to land
+            # before a meeting or avoid a 02:00 departure.
+            "departure_time": m.get("departure_time") or "",
+            "arrival_time": m.get("arrival_time") or "",
+            "flight_numbers": m.get("flight_numbers") or [],
+            "stops": m["stops"],
+            "total_duration": _format_duration(m["duration"]),
+            "convenience": _convenience_stars(m["stops"], m["duration"]),
+            "is_live_price": True,
+            "price_source": "google_flights_serpapi",
+        }
+        for m in sorted(candidates, key=lambda c: c["price"])
+        if m["identity"] not in taken_ids
+    ]
 
     return {
         "strategies": strategies,
         "general_tips": general_tips,
         "best_months": "",
+        "more_options": more_options,
     }
 
 
@@ -789,9 +971,16 @@ def format_flight_results_for_gemini(
         lowest = price_insights.get("lowest_price")
         typical_low = price_insights.get("typical_price_range", [None, None])
         if lowest:
-            lines.append(f"Lowest price found: {currency} {lowest}")
+            lines.append(
+                f"Lowest price found: {currency} "
+                f"{convert_from_search_currency(float(lowest), currency):,.0f}"
+            )
         if typical_low and typical_low[0]:
-            lines.append(f"Typical price range: {currency} {typical_low[0]} - {currency} {typical_low[1]}")
+            lines.append(
+                f"Typical price range: {currency} "
+                f"{convert_from_search_currency(float(typical_low[0]), currency):,.0f} - {currency} "
+                f"{convert_from_search_currency(float(typical_low[1]), currency):,.0f}"
+            )
         lines.append("")
 
     # Best flights
@@ -812,7 +1001,11 @@ def format_flight_results_for_gemini(
         duration_str = f"{hours}h {mins}m" if total_duration else "N/A"
 
         tag = "⭐ BEST" if is_best else "OTHER"
-        lines.append(f"Flight {i} [{tag}] — {currency} {price} ({flight_type})")
+        # Converted before Gemini sees it: this block is the model's only view of
+        # the fares, and an unconverted number labelled with the trip's currency
+        # would have it reason (and write prose) about the wrong magnitude.
+        shown = convert_from_search_currency(float(price or 0), currency)
+        lines.append(f"Flight {i} [{tag}] — {currency} {shown:,.0f} ({flight_type})")
         lines.append(f"  Duration: {duration_str} | Stops: {stops}")
 
         route_parts = []

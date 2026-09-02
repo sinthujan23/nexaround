@@ -482,6 +482,45 @@ def minimum_budget(
     }
 
 
+# Share of DAILY_FLOOR_USD that is *not* the bed: food, local transport, entry
+# fees. Used when lodging is already priced from real hotel rates, where adding
+# the whole daily floor would charge the traveller for a room twice.
+ON_GROUND_SHARE = 0.55
+
+
+def on_ground_floor(
+    *,
+    destination: str,
+    days: int,
+    travelers: int = 1,
+    currency: str = "USD",
+) -> Optional[float]:
+    """Cheapest plausible food + local transport + activities, excluding lodging.
+
+    The companion to `minimum_budget` for callers that already know what the
+    beds cost. `minimum_budget`'s daily figure bakes in a dorm bed, so adding it
+    to a measured hotel total double-counts the stay — the kind of quiet mixing
+    that produced a budget passing as sufficient with almost nothing left to eat.
+
+    Returns None for an unknown destination or unsupported currency, which the
+    caller must treat as "allow" rather than "zero".
+    """
+    country = country_for(destination)
+    if country is None:
+        return None
+    if not FX_PER_USD.get((currency or "").strip().upper()):
+        return None
+
+    days = max(int(days or 1), 1)
+    travelers = max(int(travelers or 1), 1)
+    tier = COUNTRY_TIER.get(country, DEFAULT_TIER)
+    daily = DAILY_FLOOR_USD.get(tier, DAILY_FLOOR_USD[DEFAULT_TIER])
+
+    usd = daily * ON_GROUND_SHARE * days * travelers
+    local = from_usd(usd, currency)
+    return None if local is None else _round_up(local)
+
+
 def shortfall_message(floor: dict, destination: str) -> str:
     """One sentence a traveller can act on."""
     days = floor["days"]
