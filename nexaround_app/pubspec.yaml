@@ -103,24 +103,23 @@ flutter:
     - assets/images/neva_avatar.png
     - assets/images/hero_luxury.png
     - assets/images/lotus_temple.png
-    - assets/images/sigiriya.png
-    - assets/images/food_corner.png
-    - assets/images/craft_market.png
     - assets/images/cat_hospital.png
     - assets/images/cat_nature.png
     - assets/images/cat_food.png
     - assets/images/cat_historical.png
     - assets/images/cat_shopping.png
     - assets/images/cat_medical.png
-    - assets/markers/
     - assets/animations/
 
 flutter_launcher_icons:
   android: "launcher_icon"
   ios: true
-  image_path: "assets/images/app_icon.png"
-  image_path_ios: "assets/images/app_icon_ios.png"
-  adaptive_icon_background: "assets/images/app_icon_background.png"
-  adaptive_icon_foreground: "assets/images/app_icon_foreground.png"
+  # Build-time sources only — deliberately outside assets/ so they are not
+  # bundled into the app. The generated launcher assets are committed under
+  # android/app/src/main/res/ and ios/Runner/Assets.xcassets/.
+  image_path: "tool/icons/app_icon.png"
+  image_path_ios: "tool/icons/app_icon_ios.png"
+  adaptive_icon_background: "#02555D"
+  adaptive_icon_foreground: "tool/icons/app_icon_foreground.png"
   remove_alpha_ios: true
 
