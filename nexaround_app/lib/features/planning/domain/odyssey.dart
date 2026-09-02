@@ -714,6 +714,14 @@ class Odyssey {
   final List<OdysseyBookingPartner> bookingPartners;
   final List<FlightStrategy> flightStrategies; // NEW
   final List<String> flightGeneralTips; // NEW
+
+  /// Real flights the three tiers did not take.
+  ///
+  /// A tier is only filled when its option is genuinely better than the others
+  /// on some axis, so a route whose cheapest fare is also its fastest can only
+  /// fill two — and the tab then looked bare beside the dozen Google lists.
+  /// These carry no tier label and imply no recommendation.
+  final List<Map<String, dynamic>> flightMoreOptions;
   final String flightBestMonths; // NEW
   final List<HotelStrategy> hotelStrategies;
   final List<String> hotelGeneralTips;
@@ -750,6 +758,7 @@ class Odyssey {
     this.bookingPartners = const [],
     this.flightStrategies = const [], // NEW
     this.flightGeneralTips = const [], // NEW
+    this.flightMoreOptions = const [],
     this.flightBestMonths = '', // NEW
     this.hotelStrategies = const [],
     this.hotelGeneralTips = const [],
@@ -777,6 +786,7 @@ class Odyssey {
     List<OdysseyBookingPartner>? bookingPartners,
     List<FlightStrategy>? flightStrategies, // NEW
     List<String>? flightGeneralTips, // NEW
+    List<Map<String, dynamic>>? flightMoreOptions,
     String? flightBestMonths, // NEW
     List<HotelStrategy>? hotelStrategies,
     List<String>? hotelGeneralTips,
@@ -810,6 +820,7 @@ class Odyssey {
         bookingPartners: bookingPartners ?? this.bookingPartners,
         flightStrategies: flightStrategies ?? this.flightStrategies, // NEW
         flightGeneralTips: flightGeneralTips ?? this.flightGeneralTips, // NEW
+        flightMoreOptions: flightMoreOptions ?? this.flightMoreOptions,
         flightBestMonths: flightBestMonths ?? this.flightBestMonths, // NEW
         hotelStrategies: hotelStrategies ?? this.hotelStrategies,
         hotelGeneralTips: hotelGeneralTips ?? this.hotelGeneralTips,
@@ -976,6 +987,7 @@ class Odyssey {
           'flight_strategies': {
             'strategies': flightStrategies.map((fs) => fs.toJson()).toList(),
             'general_tips': flightGeneralTips,
+            'more_options': flightMoreOptions,
             'best_months': flightBestMonths,
           },
           'hotel_strategies': {
@@ -1027,6 +1039,12 @@ class Odyssey {
         ? ((flightStrategiesRaw['strategies'] as List?) ?? const [])
             .whereType<Map>()
             .map((fs) => FlightStrategy.fromJson(fs.cast<String, dynamic>()))
+            .toList()
+        : const [];
+    final List<Map<String, dynamic>> flightMoreOptions = flightStrategiesRaw is Map
+        ? ((flightStrategiesRaw['more_options'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
             .toList()
         : const [];
     final List<String> flightGeneralTips = flightStrategiesRaw is Map
@@ -1104,6 +1122,7 @@ class Odyssey {
           .toList(),
       flightStrategies: flightStrategies,
       flightGeneralTips: flightGeneralTips,
+      flightMoreOptions: flightMoreOptions,
       flightBestMonths: flightBestMonths,
       hotelStrategies: hotelStrategies,
       hotelGeneralTips: hotelGeneralTips,

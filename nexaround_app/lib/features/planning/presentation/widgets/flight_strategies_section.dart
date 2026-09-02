@@ -134,10 +134,107 @@ class FlightStrategiesSection extends StatelessWidget {
           ),
           ...otherCards.map((c) => _buildStrategyCard(context, c.$1, c.$2)),
         ],
+        if (odyssey.flightMoreOptions.isNotEmpty) _buildMoreOptions(context),
         if (odyssey.flightGeneralTips.isNotEmpty || odyssey.flightBestMonths.isNotEmpty)
           _buildTipsCard(context),
       ],
     ).animate().fade().slideY(begin: 0.05, end: 0);
+  }
+
+  /// Every other real fare on the route, plainly listed.
+  ///
+  /// Not cards and not tiers: these are deliberately unranked. The tiers above
+  /// only fill when an option beats the others on price, speed or stops, so a
+  /// route whose cheapest flight is also its fastest fills two and no more —
+  /// and travellers comparing against Google's full list read that as missing
+  /// data. Departure and arrival times are shown because they are usually the
+  /// reason someone picks one of these over the recommendation.
+  Widget _buildMoreOptions(BuildContext context) {
+    String hhmm(dynamic raw) {
+      final t = (raw ?? '').toString();
+      if (t.isEmpty) return '';
+      final parts = t.split(' ');
+      return parts.length > 1 ? parts.last : t;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8, bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            child: Text(
+              'ALL ${odyssey.flightMoreOptions.length + 1 + 1} FARES ON THIS ROUTE',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: Text(
+              'Live fares we did not rank — pick on airline or timing.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            ),
+          ),
+          ...odyssey.flightMoreOptions.map((o) {
+            final airlines = ((o['airlines'] as List?) ?? const [])
+                .map((e) => e.toString())
+                .join(', ');
+            final dep = hhmm(o['departure_time']);
+            final arr = hhmm(o['arrival_time']);
+            final stops = (o['stops'] as num?)?.toInt() ?? 0;
+            final price = (o['price_per_traveler'] as num?)?.toDouble() ?? 0;
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          airlines.isEmpty ? 'Airline unavailable' : airlines,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            if (dep.isNotEmpty && arr.isNotEmpty) '$dep → $arr',
+                            (o['total_duration'] ?? '').toString(),
+                            stops == 0 ? 'Non-stop' : '$stops stop${stops > 1 ? 's' : ''}',
+                          ].where((e) => e.isNotEmpty).join(' · '),
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${(o['currency'] ?? '').toString()} ${formatAmount(price.round())}',
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
   }
 
   static const _tierOrder = ['minimum', 'recommended', 'comfortable'];

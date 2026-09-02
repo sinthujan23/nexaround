@@ -166,17 +166,26 @@ class BookingUrlHelper {
 
     // For Google Travel / Google Hotels
     if (provider.contains('google')) {
+      // The backend already chose the best destination for this property —
+      // the hotel's own site where Google gave one, and a web search where it
+      // did not. Rebuilding the URL here threw that away and sent the traveller
+      // to `travel/hotels?q=<name>`, which has to resolve the name inside
+      // Google's own index and answers "No results" when it cannot. That is
+      // why one hotel in a list of four dead-ended while the rest worked.
+      if (sanitizedRawUrl.isNotEmpty &&
+          !sanitizedRawUrl.contains('google.com/travel/hotels')) {
+        return sanitizedRawUrl;
+      }
       // Google Hotels aggregates rates from many OTAs, so serpApiLink's
       // domain here can be anything (agoda.com, hotels.com, ...) — the
       // provider label is just cosmetic. Still worth the homepage check.
       if (serpApiLink.isNotEmpty && !_looksLikeHomepage(serpApiLink)) {
         return _sanitizeUrl(serpApiLink);
       }
-      var googleUrl = 'https://www.google.com/travel/hotels?q=$encodedQuery';
-      if (checkInDate.isNotEmpty && checkOutDate.isNotEmpty) {
-        googleUrl += '&dates=$checkInDate,$checkOutDate';
-      }
-      return googleUrl;
+      // A web search rather than the Hotels vertical: it cannot come back
+      // empty, and the `dates` parameter the vertical took was never honoured.
+      return 'https://www.google.com/search?q='
+          '${Uri.encodeComponent('$query hotel booking')}';
     }
 
     // For Agoda: only use serpApiLink if it actually points to agoda.com
