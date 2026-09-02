@@ -337,7 +337,8 @@ async def seed_places_from_google_bg(
         # 3. Open a new session to write/commit the fetched places
         async with async_session() as session:
             repo = AttractionRepository(session)
-            
+            seed_index = await _seed_index(repo, place_dicts)
+
             for p in place_dicts:
                 p_name = p.get("name")
                 plat = p.get("latitude")
@@ -386,6 +387,7 @@ async def seed_places_from_google_bg(
                         session, repo, p,
                         name=p_name, latitude=plat, longitude=plng,
                         category_id=cat_id,
+                        existing_index=seed_index,
                     )
 
             await session.commit()
@@ -414,6 +416,35 @@ async def seed_places_from_google_bg(
 
 
 
+def _seed_bounds(place_dicts: list[dict], pad: float = 0.000001):
+    """Bounding box covering a seed batch, or None when it has no coordinates."""
+    lats = [q["latitude"] for q in place_dicts if q.get("latitude") is not None]
+    lngs = [q["longitude"] for q in place_dicts if q.get("longitude") is not None]
+    if not lats or not lngs:
+        return None
+    return (min(lats) - pad, min(lngs) - pad, max(lats) + pad, max(lngs) + pad)
+
+
+async def _seed_index(repo, place_dicts: list[dict]):
+    """Prefetch the rows a seed batch might already hold, in two queries.
+
+    Handed to `upsert_seeded_place` so folding a batch in costs no per-place
+    round trips. Must be built inside the same session that will do the
+    updating: rows loaded by an earlier, closed session are detached, and
+    mutating those would silently not persist.
+    """
+    bounds = _seed_bounds(place_dicts)
+    if bounds is None:
+        return None
+    min_lat, min_lng, max_lat, max_lng = bounds
+    return await repo.find_existing_for_seed(
+        min_lat=min_lat, min_lng=min_lng, max_lat=max_lat, max_lng=max_lng,
+        google_place_ids=[
+            g for g in (_google_id_of(q) for q in place_dicts) if g
+        ],
+    )
+
+
 async def upsert_seeded_place(
     session,
     repo,
@@ -423,6 +454,7 @@ async def upsert_seeded_place(
     latitude: float,
     longitude: float,
     category_id,
+    existing_index: Optional[tuple] = None,
 ) -> None:
     """Fold a freshly-fetched place into `attractions`, updating what is already
     there rather than shadowing it.
@@ -446,11 +478,24 @@ async def upsert_seeded_place(
     """
     gid = _google_id_of(place)
 
+    # `existing_index` is the batch's rows, fetched once by the caller
+    # (`repo.find_existing_for_seed`). Without it this asks the database twice
+    # per place, and a sixty-place fill became ~120 sequential round trips that
+    # held a pooled connection throughout — enough that the *next* request spent
+    # ~1.6s just acquiring a connection of its own. The per-place path stays for
+    # callers that only have one place to fold in.
     existing = None
-    if gid:
-        existing = await repo.find_by_google_place_id(gid)
-    if existing is None:
-        existing = await repo.find_duplicate_by_coordinates(latitude, longitude)
+    if existing_index is not None:
+        by_gid, by_coord = existing_index
+        if gid:
+            existing = by_gid.get(gid)
+        if existing is None:
+            existing = by_coord.get((round(latitude, 6), round(longitude, 6)))
+    else:
+        if gid:
+            existing = await repo.find_by_google_place_id(gid)
+        if existing is None:
+            existing = await repo.find_duplicate_by_coordinates(latitude, longitude)
 
     if existing is not None:
         # Freshness — this is the half the old path silently discarded.
@@ -792,6 +837,7 @@ async def get_nearby(
     # Save newly fetched places to PostgreSQL database (in a new session!)
     async with async_session() as session:
         repo = AttractionRepository(session)
+        seed_index = await _seed_index(repo, place_dicts)
         for p in place_dicts:
             p_name = p.get("name")
             plat = p.get("latitude")
@@ -828,6 +874,7 @@ async def get_nearby(
                     session, repo, p,
                     name=p_name, latitude=plat, longitude=plng,
                     category_id=cat_id,
+                    existing_index=seed_index,
                 )
 
         await session.commit()
@@ -1025,6 +1072,7 @@ async def _save_search_results_bg(place_dicts: list[dict], latitude: float, long
     try:
         async with async_session() as session:
             repo = AttractionRepository(session)
+            seed_index = await _seed_index(repo, place_dicts)
             nearby_db_attractions = await repo.get_nearby(
                 latitude=latitude,
                 longitude=longitude,
@@ -1068,6 +1116,7 @@ async def _save_search_results_bg(place_dicts: list[dict], latitude: float, long
                         session, repo, p,
                         name=p_name, latitude=plat, longitude=plng,
                         category_id=cat_id,
+                        existing_index=seed_index,
                     )
 
             await session.commit()

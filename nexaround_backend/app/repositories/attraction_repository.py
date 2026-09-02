@@ -4,6 +4,7 @@ from sqlalchemy import select, func, desc, or_, cast, String
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload, aliased
+from app.utils.geo_utils import get_lat_lng
 from geoalchemy2 import Geometry, Geography
 from geoalchemy2.functions import ST_Distance, ST_DWithin
 from app.models.attraction import Attraction
@@ -44,6 +45,51 @@ class AttractionRepository:
         )
         result = await self.db.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def find_existing_for_seed(
+        self,
+        *,
+        min_lat: float,
+        min_lng: float,
+        max_lat: float,
+        max_lng: float,
+        google_place_ids: List[str],
+    ) -> Tuple[dict, dict]:
+        """Every row a seed batch might already hold, in two queries.
+
+        Returns `(by_google_place_id, by_rounded_coordinate)` so the caller can
+        match each incoming place in memory instead of asking the database twice
+        per place. Sixty places used to mean ~120 sequential round trips holding
+        a pooled connection for the duration — see `get_coordinates_in_bounds`,
+        which makes the same argument for the coordinate check alone.
+
+        Coordinates are rounded to six decimals to agree with the < 1e-6
+        tolerance `find_duplicate_by_coordinates` applies.
+        """
+        by_gid: dict = {}
+        if google_place_ids:
+            res = await self.db.execute(
+                select(Attraction).where(
+                    Attraction.google_place_id.in_(google_place_ids)
+                ).order_by(Attraction.is_active.desc())
+            )
+            for row in res.scalars().all():
+                # First wins, and actives are ordered first — same preference
+                # find_by_google_place_id applies.
+                by_gid.setdefault(row.google_place_id, row)
+
+        res = await self.db.execute(
+            select(Attraction).where(
+                func.ST_Y(Attraction.location).between(min_lat, max_lat),
+                func.ST_X(Attraction.location).between(min_lng, max_lng),
+            )
+        )
+        by_coord: dict = {}
+        for row in res.scalars().all():
+            lat, lng = get_lat_lng(row.location)
+            by_coord.setdefault((round(lat, 6), round(lng, 6)), row)
+
+        return by_gid, by_coord
 
     async def find_duplicate_by_coordinates(
         self, 
@@ -137,6 +183,7 @@ class AttractionRepository:
         radius_m: float,
         category_id: Optional[uuid.UUID] = None,
         limit: int = 50,
+        order_by_prominence: bool = False,
         sort_by_away: bool = False,
         is_active: Optional[bool] = None,
         min_radius_m: Optional[float] = None,
@@ -201,14 +248,28 @@ class AttractionRepository:
             query = query.where(or_(*clauses))
 
 
-        if min_radius_m is not None:
+        if order_by_prominence:
+            # Most-visited first, then best-rated, then nearest.
+            #
+            # `limit` is applied after this, so the ordering decides which rows
+            # survive at all — ordering by distance meant a band took its
+            # nearest N and a well-known place just outside that cut never
+            # reached the ranking downstream. Review count leads because it is
+            # evidence of what people actually go to, where rating alone is
+            # thin: five reviews at 5.0 outrank a landmark at 4.6.
+            query = query.order_by(
+                desc(Attraction.review_count),
+                desc(Attraction.rating),
+                desc("distance") if sort_by_away else "distance",
+            )
+        elif min_radius_m is not None:
             query = query.order_by(desc(Attraction.rating), desc("distance") if sort_by_away else "distance")
         else:
             if sort_by_away:
                 query = query.order_by(desc("distance"))
             else:
                 query = query.order_by("distance")
-            
+
         query = query.limit(limit)
         
         results = await self.db.execute(query)

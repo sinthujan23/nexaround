@@ -66,10 +66,12 @@ class BandedPlacesResponse(BaseModel):
     category: str
     bands: list[PlaceBand]
     places: list[PlaceResponse] = Field(
-        ...,
-        description="All bands flattened in display order, nearest first — for "
-                    "clients that render one list and don't care about band "
-                    "boundaries. Individual bands are in selection order.",
+        default_factory=list,
+        description="Always empty. Once held every band's places flattened for "
+                    "clients that wanted one list, which meant serialising each "
+                    "place twice and doubling the response on mobile. No client "
+                    "ever read it. Kept so existing consumers still parse; read "
+                    "`bands` and flatten client-side if you need one list.",
     )
     cached: bool = False
     source: str = Field("database", description="cache | database | google")

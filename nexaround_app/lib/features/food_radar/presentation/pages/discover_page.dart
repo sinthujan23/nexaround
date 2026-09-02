@@ -270,14 +270,21 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       ));
       // Around You is the quick-access surface for these same tabs, so both
       // read the same band-aware result rather than each deriving its own.
-      // Only re-dispatch when the coordinates actually changed — see
-      // _lastBandedFetchLat/_lastBandedFetchLng.
-      if (_lastBandedFetchLat != lat || _lastBandedFetchLng != lng) {
+      //
+      // Only this tab's section is asked for. Requesting all six here would
+      // undo the lazy loading the map does — five of them would be fetched for
+      // tabs the user has not opened, at up to three Google calls each on a
+      // cold tile. The bloc ignores a section already fetched at this location,
+      // so switching tabs and back costs nothing.
+      final movedTile =
+          _lastBandedFetchLat != lat || _lastBandedFetchLng != lng;
+      if (movedTile || context.read<MapBloc>().needsBandFetch(category)) {
         _lastBandedFetchLat = lat;
         _lastBandedFetchLng = lng;
         context.read<MapBloc>().add(FetchBandedPlaces(
           latitude: lat,
           longitude: lng,
+          categories: [category],
         ));
       }
     }

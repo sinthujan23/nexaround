@@ -43,14 +43,23 @@ class FetchBandedPlaces extends MapEvent {
   final double longitude;
   final bool forceRefresh;
 
+  /// Which sections to fetch, or null for all six.
+  ///
+  /// Opening the screen used to fetch all six at once, and each one costs up to
+  /// three Google calls on a cold tile — most of them for cards the user has
+  /// not scrolled to yet. The map now asks for the two above the fold and
+  /// requests the rest as they come into view.
+  final List<String>? categories;
+
   const FetchBandedPlaces({
     required this.latitude,
     required this.longitude,
     this.forceRefresh = false,
+    this.categories,
   });
 
   @override
-  List<Object?> get props => [latitude, longitude, forceRefresh];
+  List<Object?> get props => [latitude, longitude, forceRefresh, categories];
 }
 
 class FetchCategories extends MapEvent {

@@ -48,8 +48,19 @@ class Attraction(Base):
 
     # Relationships
     category = relationship("Category", back_populates="attractions", lazy="selectin")
-    reviews = relationship("Review", back_populates="attraction", lazy="selectin")
-    media = relationship("Media", back_populates="attraction", lazy="selectin")
+    # `lazy="selectin"` on these two meant every attraction query — including
+    # the three ring queries behind every Around You section — also fetched
+    # every review and every media row for all ~300 places it returned, then
+    # threw them away: nothing reads `.reviews` or `.media` off an Attraction
+    # anywhere in the codebase. That eager load was 3.5s of a 4s cold response,
+    # and its `SELECT reviews...` is what sat holding pooled connections.
+    #
+    # Deferred instead of removed so the relationships stay available. Under
+    # async they now raise MissingGreenlet if something touches them outside a
+    # session, which is the right failure: loud, at the call site, rather than a
+    # silent per-row query on a hot path.
+    reviews = relationship("Review", back_populates="attraction", lazy="select")
+    media = relationship("Media", back_populates="attraction", lazy="select")
 
     def __repr__(self) -> str:
         return f"<Attraction {self.name}>"

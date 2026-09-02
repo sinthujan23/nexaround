@@ -704,7 +704,20 @@ class _LivingMapPageState extends State<LivingMapPage>
   double? _lastBandedLat;
   double? _lastBandedLng;
 
-  void _fetchBandedSections(double lat, double lng, {bool forceRefresh = false}) {
+  /// Sections rendered above the fold, fetched the moment the screen opens.
+  ///
+  /// The other four are requested as their cards scroll into view. Opening the
+  /// screen used to ask for all six, and on a cold tile each costs up to three
+  /// Google calls — eighteen before the user had scrolled anywhere. These two
+  /// are what the first screenful actually shows.
+  static const List<String> _aboveTheFoldSections = ['Food & Drink', 'POI'];
+
+  void _fetchBandedSections(
+    double lat,
+    double lng, {
+    bool forceRefresh = false,
+    List<String>? categories,
+  }) {
     if (!mounted) return;
 
     // Relocation is detected here rather than trusted from the caller. Only the
@@ -726,8 +739,33 @@ class _LivingMapPageState extends State<LivingMapPage>
         latitude: lat,
         longitude: lng,
         forceRefresh: forceRefresh,
+        categories: categories ?? _aboveTheFoldSections,
       ),
     );
+  }
+
+  /// Ask for one section, the first time its card is built.
+  ///
+  /// `ListView.builder` only builds what is near the viewport, so this fires as
+  /// a card scrolls into reach and not before. The bloc keeps its own record of
+  /// what has been asked for at this location and ignores repeats, so a card
+  /// rebuilding — or scrolling past twice — costs nothing.
+  void _ensureSectionRequested(String category) {
+    if (!mounted) return;
+    final bloc = context.read<MapBloc>();
+    if (!bloc.needsBandFetch(category)) return;
+    final lat = _lastBandedLat;
+    final lng = _lastBandedLng;
+    if (lat == null || lng == null) return;
+    // Dispatched after the frame: this runs from inside build().
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      bloc.add(FetchBandedPlaces(
+        latitude: lat,
+        longitude: lng,
+        categories: [category],
+      ));
+    });
   }
 
   Future<void> _fetchMiniTourPlaces(double lat, double lng) async {
@@ -5912,6 +5950,7 @@ class _LivingMapPageState extends State<LivingMapPage>
         separatorBuilder: (_, __) => const SizedBox(width: 16),
         itemBuilder: (_, i) {
           final category = PlaceBands.sections[i];
+          _ensureSectionRequested(category);
           return _buildCategoryPanel(category, grouped[category]!, status);
         },
       ),
@@ -5962,9 +6001,19 @@ class _LivingMapPageState extends State<LivingMapPage>
     final int targetDiscoverTab = DiscoverPage.tabIndexFor(categoryName);
 
     final mapState = context.read<MapBloc>().state;
+    final mapBloc = context.read<MapBloc>();
     final bool isCategoryLoading = mapState.loadingBandCategories.contains(categoryName) ||
         mapState.enrichingCategories.contains(categoryName);
-    final bool isLoadingState = (status == MapStatus.loading || status == MapStatus.initial || isCategoryLoading);
+    // A section nobody has asked for yet reads as loading, not as empty. Only
+    // the first two are fetched on open; the rest are requested as their card
+    // scrolls into view, and until that lands "no places" here means "not
+    // fetched", which should shimmer rather than say there is nothing nearby.
+    final bool isAwaitingLazyFetch =
+        places.isEmpty && mapBloc.needsBandFetch(categoryName);
+    final bool isLoadingState = (status == MapStatus.loading ||
+        status == MapStatus.initial ||
+        isCategoryLoading ||
+        isAwaitingLazyFetch);
 
     if (places.isEmpty && !isLoadingState) {
       return Align(

@@ -178,6 +178,14 @@ class MapBloc extends Bloc<MapEvent, MapState> {
   double? _latestBandedLat;
   double? _latestBandedLng;
 
+  /// Sections already asked for at the current location, so a scroll that
+  /// crosses a section twice does not fetch it twice. Cleared on relocation.
+  final Set<String> _requestedBandCategories = {};
+
+  /// Whether this section still needs fetching at the current location.
+  bool needsBandFetch(String category) =>
+      !_requestedBandCategories.contains(category);
+
   bool _isStaleBandedResult(FetchBandedPlaces event) =>
       event.latitude != _latestBandedLat || event.longitude != _latestBandedLng;
 
@@ -188,8 +196,23 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     _latestBandedLat = event.latitude;
     _latestBandedLng = event.longitude;
 
+    // Which sections this event is responsible for. Null means all six, which
+    // is what a relocation asks for; the map asks for two on open and one at a
+    // time as the user scrolls.
+    final targets = event.categories ?? bandedCategories;
+
+    // A relocation invalidates what has already been asked for; a lazy
+    // follow-up must not, or scrolling to Nature would re-fetch Food & Drink.
+    if (event.forceRefresh) {
+      _requestedBandCategories.clear();
+    }
+    _requestedBandCategories.addAll(targets);
+
     emit(state.copyWith(
-      loadingBandCategories: bandedCategories.toSet(),
+      loadingBandCategories: {
+        ...state.loadingBandCategories,
+        ...targets,
+      },
       // forceRefresh on this event only ever means "the user picked a
       // genuinely different location" (see living_map_page.dart's
       // _fetchBandedSections call sites — a plain pull-to-refresh never sets
@@ -207,7 +230,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     // Future.wait to resolve every one of them — so five fast categories show
     // up immediately instead of sitting behind the slowest straggler.
     await Future.wait(
-      bandedCategories.map((cat) async {
+      targets.map((cat) async {
         final result = await GooglePlacesService.fetchBandedPlaces(
           latitude: event.latitude,
           longitude: event.longitude,
@@ -321,6 +344,11 @@ class MapBloc extends Bloc<MapEvent, MapState> {
     if (needsFetch || event.forceRefresh) {
       if (movedToNewArea) {
         await CacheService.cacheAttractions(const []);
+        // The lazy sections belong to the place we have left. Forgetting them
+        // is what lets the new location request its own as they scroll into
+        // view; without this a section fetched at the old spot would count as
+        // already done and never reload.
+        _requestedBandCategories.clear();
       }
 
       if (lastLat != null && lastLng != null && !event.forceRefresh) {

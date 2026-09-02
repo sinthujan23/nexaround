@@ -167,7 +167,24 @@ async def get_place_photo(
             t.hit("disk" if cached else "negative")
         if not cached:
             # Not cached and no credentials to justify buying it.
-            raise HTTPException(status_code=404, detail="Photo not cached")
+            #
+            # Cacheable on purpose. Without a Cache-Control the device has no
+            # way to learn this answer, so it re-asks on every rebuild: one
+            # reference was fetched 319 times in a day, and 7,234 of 7,557
+            # photo requests were this same 404. Those failures saturate the
+            # phone's connection pool and the real data requests queue behind
+            # them, which is why a screen felt slow even when the API answered
+            # in about two seconds.
+            #
+            # An hour, not a day: a miss is temporary. `_warm_hero_photo` or a
+            # signed-in view can fill this photo moments later, and the client
+            # should start seeing it again quickly rather than being told for a
+            # day that it does not exist.
+            raise HTTPException(
+                status_code=404,
+                detail="Photo not cached",
+                headers={"Cache-Control": "public, max-age=3600"},
+            )
     else:
         path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth, index=i)
         if path is None:
@@ -214,11 +231,15 @@ async def get_place_details_endpoint(
 ):
     """Fetch rich details (reviews, opening hours, photos, price) for a place.
 
-    Google Places API (Legacy) throughout — Find Place to map an identifier we
-    cannot send upstream onto a real Place ID, then Place Details — behind a
-    14-day Redis cache. Resolution lives here rather than in the client so the
-    detail page does not have to make a `/places/search` round trip first, which
-    was reaching Places API (New) Text Search on a database miss.
+    Places API (New) throughout — Text Search to map an identifier we cannot
+    send upstream onto a real Place ID, then Place Details — behind a 14-day
+    Redis cache. Resolution lives here rather than in the client so the detail
+    page does not have to make a `/places/search` round trip first.
+
+    Was Legacy until that API's quota was capped on this project and every call
+    started returning OVER_QUERY_LIMIT, which is what emptied this page of its
+    photo, hours and reviews while the name and rating, served from our own
+    table, kept rendering.
     """
     details = await places_service.get_place_details(
         place_id, name=name, latitude=lat, longitude=lng,

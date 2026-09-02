@@ -68,14 +68,24 @@ async def get_cached(key: str) -> Optional[list[dict]]:
     return None
 
 
-async def set_cached(key: str, places: list[dict]) -> None:
+async def set_cached(
+    key: str, places: list[dict], ttl: Optional[int] = None
+) -> None:
+    """Cache a place list. `ttl` overrides the default for a partial answer.
+
+    A caller that returned early — before a Google fill it started had
+    finished — must pass a short ttl. Writing an incomplete list under the
+    14-day default would serve that thin result for a fortnight, which is
+    worse than the slow response it was avoiding.
+    """
     serialized = json.dumps(places)
+    expiry = ttl if ttl is not None else _TTL_SECONDS
     # 1. Write to memory cache
-    _mem_cache[key] = (time.time() + _TTL_SECONDS, serialized)
-    
+    _mem_cache[key] = (time.time() + expiry, serialized)
+
     # 2. Write to Redis
     try:
-        await _get_client().set(key, serialized, ex=_TTL_SECONDS)
+        await _get_client().set(key, serialized, ex=expiry)
     except Exception as e:
         print(f"⚠️ Redis SET error: {e}")
         pass
