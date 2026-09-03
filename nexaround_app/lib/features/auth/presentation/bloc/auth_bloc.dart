@@ -12,6 +12,7 @@ import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 import 'package:nexaround_app/core/error/failures.dart';
 
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -66,15 +67,17 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     try {
       final googleUser = await _socialAuthService.signInWithGoogle();
       if (googleUser == null) {
-        emit(const AuthUnauthenticated());
+        debugPrint('[AuthBloc] Google Sign-In returned null account');
+        emit(const AuthError('Google Sign-In could not be completed. Please try again.'));
         return;
       }
 
       final authentication = googleUser.authentication;
       final idToken = authentication.idToken;
+      debugPrint('[AuthBloc] googleUser: ${googleUser.email}, idToken: ${idToken != null ? "found (${idToken.length} chars)" : "NULL"}');
 
-      if (idToken == null) {
-        emit(const AuthError('Could not retrieve Google ID Token'));
+      if (idToken == null || idToken.isEmpty) {
+        emit(const AuthError('Could not retrieve Google ID Token. Please try again.'));
         return;
       }
 
@@ -88,21 +91,41 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ));
       } else {
         final failure = result.fold((l) => l, (r) => throw Exception());
+        debugPrint('[AuthBloc] Backend googleLogin failed: ${failure.message}');
         emit(AuthError(failure.message));
       }
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('[AuthBloc] Google Sign-In exception: $e\n$stack');
       final errorMsg = e.toString().toLowerCase();
-      // Handle user cancellation gracefully (code: canceled, 16, or user abort)
-      if (errorMsg.contains('cancel') ||
-          errorMsg.contains('canceled') ||
-          errorMsg.contains('cancelled') ||
-          errorMsg.contains('user_cancel') ||
-          errorMsg.contains('sign_in_canceled') ||
-          errorMsg.contains('account reauth failed')) {
+
+      // Check for technical error codes that must NOT be swallowed as user cancellations
+      final isTechnicalFailure = errorMsg.contains('developer_error') ||
+          errorMsg.contains('apiexception') ||
+          errorMsg.contains('platformexception') ||
+          errorMsg.contains('configuration') ||
+          errorMsg.contains('code: 10') ||
+          errorMsg.contains('code: 12500') ||
+          errorMsg.contains('status code: 10');
+
+      // Intentional user abort (e.g. user tapped outside or pressed back button)
+      final isUserCancel = !isTechnicalFailure &&
+          (errorMsg.contains('user_cancel') ||
+              errorMsg.contains('sign_in_canceled') ||
+              (errorMsg.contains('canceled') && !errorMsg.contains('exception')) ||
+              (e is GoogleSignInException && e.code == GoogleSignInExceptionCode.canceled && (e.description == null || e.description!.isEmpty || e.description!.toLowerCase().contains('user'))));
+
+      if (isUserCancel) {
         emit(const AuthUnauthenticated());
         return;
       }
-      emit(AuthError('Google Sign-In failed: $e'));
+
+      String displayError = 'Google Sign-In failed: $e';
+      if (e is GoogleSignInException) {
+        displayError = e.description != null && e.description!.isNotEmpty
+            ? 'Google Sign-In: ${e.description}'
+            : 'Google Sign-In error (${e.code.name})';
+      }
+      emit(AuthError(displayError));
     }
   }
 

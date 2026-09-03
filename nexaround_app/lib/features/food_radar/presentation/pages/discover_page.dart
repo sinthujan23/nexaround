@@ -695,7 +695,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
         if (_selectedMedicalCategory == 'Clinics') {
           return cat.contains('clinic') || name.contains('clinic') || tags.contains('doctor') || tags.contains('medical_clinic');
         } else if (_selectedMedicalCategory == 'Pharmacies') {
-          return cat.contains('pharmacy') || name.contains('pharmacy') || tags.contains('pharmacy') || tags.contains('drugstore');
+          return cat.contains('pharmacy') || cat.contains('drug') || name.contains('pharmacy') || name.contains('chemist') || name.contains('drug') || tags.contains('pharmacy') || tags.contains('drugstore');
         } else if (_selectedMedicalCategory == 'Dental') {
           return name.contains('dental') || name.contains('dentist') || tags.contains('dentist') || tags.contains('dental_clinic');
         } else if (_selectedMedicalCategory == 'Labs') {

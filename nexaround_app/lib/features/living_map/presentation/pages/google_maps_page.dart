@@ -10,17 +10,20 @@ import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 
 class GoogleMapsPage extends StatefulWidget {
   final double initialLat;
   final double initialLng;
   final String? destinationName;
+  final bool fromSmartMap;
 
   const GoogleMapsPage({
     super.key,
     required this.initialLat,
     required this.initialLng,
     this.destinationName,
+    this.fromSmartMap = false,
   });
 
   @override
@@ -1016,6 +1019,25 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     }
   }
 
+  void _switchToSmartMap() {
+    if (widget.fromSmartMap && Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    final double targetLat = (_destLat != 0.0) ? _destLat : (_userLat ?? widget.initialLat);
+    final double targetLng = (_destLng != 0.0) ? _destLng : (_userLng ?? widget.initialLng);
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SmartTourismMapPage(
+          initialLat: targetLat,
+          initialLng: targetLng,
+          destinationName: _destName,
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopBar() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1170,28 +1192,45 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
           ),
         ),
         const SizedBox(width: 10),
-        // Google Maps badge
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: const LinearGradient(
-              colors: [Color(0xFF4285F4), Color(0xFF34A853)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border.all(
-                color: Colors.white.withValues(alpha: 0.15), width: 1.5),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF4285F4).withValues(alpha: 0.4),
-                blurRadius: 10,
-                offset: const Offset(0, 3),
+        // ── Clearly-labelled "Smart Map" switch ──
+        GestureDetector(
+          onTap: _switchToSmartMap,
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(100),
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00E5FF), Color(0xFF7C4DFF)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.2), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7C4DFF).withValues(alpha: 0.4),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.explore_rounded, color: Colors.white, size: 18),
+                SizedBox(width: 6),
+                Text(
+                  'Smart',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
-          child: const Icon(Icons.map_rounded, color: Colors.white, size: 20),
         ),
       ],
     );

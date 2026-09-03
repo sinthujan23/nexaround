@@ -1665,6 +1665,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
           initialLat: targetLat,
           initialLng: targetLng,
           destinationName: _destinationName,
+          fromSmartMap: true,
         ),
       ),
     );

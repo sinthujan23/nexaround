@@ -57,9 +57,10 @@ class PlaceSections {
     'school', 'university', 'secondary_school', 'primary_school',
     'bank', 'finance', 'accounting', 'atm',
     'food', 'restaurant', 'bakery', 'cafe', 'bar',
-    'store', 'shopping_mall', 'grocery_or_supermarket',
+    'clothing_store', 'electronics_store', 'supermarket', 'shopping_mall',
     'lodging', 'real_estate_agency',
     'transit_station', 'bus_station', 'train_station',
+    'gym', 'fitness_center', 'spa', 'massage',
   ];
   static const _shoppingTags = [
     'shopping_mall', 'department_store', 'supermarket', 'grocery_store',
@@ -179,9 +180,11 @@ class PlaceSections {
     final tags = tagsOf(a);
     bool signal = name.contains('medical') || name.contains('hospital') ||
         name.contains('clinic') || name.contains('pharmacy') ||
+        name.contains('chemist') || name.contains('drugstore') ||
+        name.contains('drug store') ||
         name.contains('dispensary') || name.contains('health centre') ||
         name.contains('health center') || tags.contains('hospital') ||
-        tags.contains('pharmacy') || tags.contains('doctor') ||
+        tags.contains('pharmacy') || tags.contains('drugstore') || tags.contains('doctor') ||
         tags.contains('dentist') || tags.contains('physiotherapist') ||
         tags.contains('veterinary_care') || tags.contains('health') ||
         tags.contains('medical_center') || tags.contains('medical_clinic');
@@ -189,7 +192,8 @@ class PlaceSections {
       final cat = (a.categoryName ?? '').toLowerCase();
       signal = cat == 'medical' || cat == 'hospital' ||
           cat.contains('medical') || cat.contains('hospital') ||
-          cat.contains('clinic') || cat.contains('pharmacy') || cat.contains('doctor');
+          cat.contains('clinic') || cat.contains('pharmacy') ||
+          cat.contains('chemist') || cat.contains('drug') || cat.contains('doctor');
     }
     if (!signal) return false;
     return !_nonMedicalTags.any(tags.contains);
