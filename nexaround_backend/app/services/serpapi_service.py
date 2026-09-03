@@ -237,12 +237,19 @@ class SerpApiService:
         adults: int = 1,
         currency: str = "USD",
         min_rating: float = 0.0,
+        sort_by: int | None = None,
     ) -> Dict[str, Any]:
         """Search Google Hotels via SerpApi.
 
         Returns a dict with:
           - properties: list of hotel results with prices, ratings, amenities
         If min_rating > 0, properties below that rating are filtered out.
+        `sort_by` is SerpApi's Google Hotels sort code: 3 = lowest price,
+        8 = highest rating, 13 = most reviewed. Without it, Google's default
+        "relevance" order applies, which skews toward prominent (often
+        pricier) chains — the reason a min_rating floor alone still surfaced
+        the same well-known hotels first even once budget travelers were
+        allowed into the results.
         """
         if not self.api_key:
             return {}
@@ -264,6 +271,8 @@ class SerpApiService:
             params["check_in_date"] = check_in_date
         if check_out_date:
             params["check_out_date"] = check_out_date
+        if sort_by:
+            params["sort_by"] = str(sort_by)
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:

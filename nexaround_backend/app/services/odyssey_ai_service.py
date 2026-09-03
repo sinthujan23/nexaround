@@ -927,6 +927,13 @@ async def generate_hotel_strategies(
                 adults=_STANDARD_ROOM_ADULTS,
                 currency=currency,
                 min_rating=min_rating,
+                # Lowest-price-first, not Google's relevance default. A rating
+                # floor alone still surfaced whichever prominent (often
+                # pricier) chains Google ranks first among the eligible pool —
+                # this is what actually lets the cheapest eligible options
+                # through, so the Minimum/Recommended/Comfortable tiers span a
+                # real price range instead of four similarly-priced hotels.
+                sort_by=3,
             )
 
             properties = serp_result.get("properties") or []
@@ -954,6 +961,7 @@ async def generate_hotel_strategies(
                     adults=_STANDARD_ROOM_ADULTS,
                     currency=currency,
                     min_rating=retry_rating,
+                    sort_by=3,
                 )
                 properties = serp_result.get("properties") or []
                 if properties:
