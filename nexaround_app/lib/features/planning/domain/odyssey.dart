@@ -629,6 +629,53 @@ class FlightStrategy {
       };
 }
 
+/// One city the trip sleeps in, with the nights spent there.
+///
+/// The backend plans these before searching anything, so hotels can be looked
+/// up per city instead of once for the whole country. A trip crossing four
+/// Cambodian cities used to search "hotels in Cambodia" once and show that same
+/// list against every day.
+///
+/// Absent on every Odyssey generated before legs existed. An empty list means
+/// one leg covering the whole trip — the same contract the backend states.
+class OdysseyLeg {
+  final int index;
+  final String city;
+  final String country;
+  final int startDay;
+  final int endDay;
+  final int nights;
+
+  const OdysseyLeg({
+    required this.index,
+    required this.city,
+    this.country = '',
+    this.startDay = 0,
+    this.endDay = 0,
+    this.nights = 0,
+  });
+
+  /// True when `day` (1-based) falls inside this leg.
+  bool coversDay(int day) => day >= startDay && day <= endDay;
+
+  factory OdysseyLeg.fromJson(Map<String, dynamic> json, int index) => OdysseyLeg(
+        index: index,
+        city: (json['city'] ?? '').toString(),
+        country: (json['country'] ?? '').toString(),
+        startDay: FlightStrategy._parseInt(json['start_day'], 0),
+        endDay: FlightStrategy._parseInt(json['end_day'], 0),
+        nights: FlightStrategy._parseInt(json['nights'], 0),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'city': city,
+        'country': country,
+        'start_day': startDay,
+        'end_day': endDay,
+        'nights': nights,
+      };
+}
+
 class HotelStrategy {
   final int rank;
   final String name;
@@ -644,6 +691,26 @@ class HotelStrategy {
   final String bookingUrl;
   final String serpApiLink;
 
+  /// Which city leg of the trip this hotel is for.
+  ///
+  /// The backend searches hotels once per leg and tags each result with the
+  /// leg, its city, and the nights actually spent there. None of that was read
+  /// here, so a Cambodia trip showed one flat list mixing Siem Reap and
+  /// Sihanoukville hotels against every day, and quoted each of them for all
+  /// nine nights.
+  ///
+  /// Null on every Odyssey generated before legs existed — treat that as one
+  /// leg covering the whole trip, which is what the backend's own `legs: []`
+  /// means.
+  final int? legIndex;
+  final String city;
+
+  /// Nights spent on this leg, and rooms the party needs. `totalEstimatedCost`
+  /// is `nights x rooms x nightly` — showing these makes it legible as a leg
+  /// total rather than a whole-trip one.
+  final int nights;
+  final int rooms;
+
   const HotelStrategy({
     required this.rank,
     required this.name,
@@ -658,6 +725,10 @@ class HotelStrategy {
     required this.description,
     required this.bookingUrl,
     this.serpApiLink = '',
+    this.legIndex,
+    this.city = '',
+    this.nights = 0,
+    this.rooms = 0,
   });
 
   factory HotelStrategy.fromJson(Map<String, dynamic> json) => HotelStrategy(
@@ -676,6 +747,12 @@ class HotelStrategy {
         description: (json['description'] ?? '').toString(),
         bookingUrl: (json['booking_url'] ?? '').toString(),
         serpApiLink: (json['serpapi_link'] ?? '').toString(),
+        legIndex: json['leg_index'] == null
+            ? null
+            : FlightStrategy._parseInt(json['leg_index'], 0),
+        city: (json['city'] ?? '').toString(),
+        nights: FlightStrategy._parseInt(json['nights'], 0),
+        rooms: FlightStrategy._parseInt(json['rooms'], 0),
       );
 
   Map<String, dynamic> toJson() => {
@@ -692,6 +769,10 @@ class HotelStrategy {
         'description': description,
         'booking_url': bookingUrl,
         'serpapi_link': serpApiLink,
+        'leg_index': legIndex,
+        'city': city,
+        'nights': nights,
+        'rooms': rooms,
       };
 }
 
@@ -723,6 +804,9 @@ class Odyssey {
   /// These carry no tier label and imply no recommendation.
   final List<Map<String, dynamic>> flightMoreOptions;
   final String flightBestMonths; // NEW
+  /// Cities the trip sleeps in. Empty on Odysseys generated before legs
+  /// existed — readers must treat that as one leg covering the whole trip.
+  final List<OdysseyLeg> legs;
   final List<HotelStrategy> hotelStrategies;
   final List<String> hotelGeneralTips;
   final String hotelBestAreas;
@@ -760,6 +844,7 @@ class Odyssey {
     this.flightGeneralTips = const [], // NEW
     this.flightMoreOptions = const [],
     this.flightBestMonths = '', // NEW
+    this.legs = const [],
     this.hotelStrategies = const [],
     this.hotelGeneralTips = const [],
     this.hotelBestAreas = '',
@@ -788,6 +873,7 @@ class Odyssey {
     List<String>? flightGeneralTips, // NEW
     List<Map<String, dynamic>>? flightMoreOptions,
     String? flightBestMonths, // NEW
+    List<OdysseyLeg>? legs,
     List<HotelStrategy>? hotelStrategies,
     List<String>? hotelGeneralTips,
     String? hotelBestAreas,
@@ -822,6 +908,7 @@ class Odyssey {
         flightGeneralTips: flightGeneralTips ?? this.flightGeneralTips, // NEW
         flightMoreOptions: flightMoreOptions ?? this.flightMoreOptions,
         flightBestMonths: flightBestMonths ?? this.flightBestMonths, // NEW
+        legs: legs ?? this.legs,
         hotelStrategies: hotelStrategies ?? this.hotelStrategies,
         hotelGeneralTips: hotelGeneralTips ?? this.hotelGeneralTips,
         hotelBestAreas: hotelBestAreas ?? this.hotelBestAreas,
@@ -990,6 +1077,7 @@ class Odyssey {
             'more_options': flightMoreOptions,
             'best_months': flightBestMonths,
           },
+          'legs': legs.map((l) => l.toJson()).toList(),
           'hotel_strategies': {
             'strategies': hotelStrategies.map((hs) => hs.toJson()).toList(),
             'general_tips': hotelGeneralTips,
@@ -1055,6 +1143,16 @@ class Odyssey {
     final String flightBestMonths = flightStrategiesRaw is Map
         ? (flightStrategiesRaw['best_months'] ?? '').toString()
         : '';
+
+    // Empty for every Odyssey generated before legs existed; the grouping in
+    // hotel_strategies_section falls back to one ungrouped list in that case.
+    final List<OdysseyLeg> legs = ((meta['legs'] as List?) ?? const [])
+        .whereType<Map>()
+        .toList()
+        .asMap()
+        .entries
+        .map((e) => OdysseyLeg.fromJson(e.value.cast<String, dynamic>(), e.key))
+        .toList();
 
     final hotelStrategiesRaw = meta['hotel_strategies'];
     final List<HotelStrategy> hotelStrategies = hotelStrategiesRaw is Map
@@ -1124,6 +1222,7 @@ class Odyssey {
       flightGeneralTips: flightGeneralTips,
       flightMoreOptions: flightMoreOptions,
       flightBestMonths: flightBestMonths,
+      legs: legs,
       hotelStrategies: hotelStrategies,
       hotelGeneralTips: hotelGeneralTips,
       hotelBestAreas: hotelBestAreas,

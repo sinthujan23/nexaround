@@ -25,17 +25,40 @@ class HotelStrategiesSection extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final strategies = odyssey.hotelStrategies;
-    final tags = mapPricesToScenarios(
-      strategies.map((hs) => parseRepresentativePrice(hs.pricePerNight)).toList(),
-    );
-    final cards = List.generate(strategies.length, (i) => (strategies[i], tags[i]));
-    if (highlightScenario != null) {
-      cards.sort((a, b) {
-        final aMatch = a.$2 == highlightScenario ? 0 : 1;
-        final bMatch = b.$2 == highlightScenario ? 0 : 1;
-        return aMatch.compareTo(bMatch);
-      });
+    // Grouped by the city leg the hotel was searched for.
+    //
+    // The backend searches hotels once per leg and tags each result with its
+    // leg. Rendering them as one flat list is what showed a Siem Reap hotel and
+    // a Sihanoukville hotel side by side against every day of a Cambodia trip,
+    // with no indication that they are for different cities.
+    //
+    // Odysseys generated before legs existed have no `legIndex`, and fall into
+    // a single group keyed -1 — which renders exactly as this list used to.
+    final grouped = <int, List<HotelStrategy>>{};
+    for (final hs in odyssey.hotelStrategies) {
+      grouped.putIfAbsent(hs.legIndex ?? -1, () => []).add(hs);
+    }
+    final legKeys = grouped.keys.toList()..sort();
+
+    /// Price tiers are scoped to the leg, not to the trip.
+    ///
+    /// Ranking every city's hotels together makes the cheapest city's rooms
+    /// look like the "minimum" tier everywhere and the dearest city's the
+    /// "comfortable" one, when what the traveller is choosing between is the
+    /// options *in the city they are in that night*.
+    List<(HotelStrategy, String?)> cardsFor(List<HotelStrategy> group) {
+      final tags = mapPricesToScenarios(
+        group.map((hs) => parseRepresentativePrice(hs.pricePerNight)).toList(),
+      );
+      final cards = List.generate(group.length, (i) => (group[i], tags[i]));
+      if (highlightScenario != null) {
+        cards.sort((a, b) {
+          final aMatch = a.$2 == highlightScenario ? 0 : 1;
+          final bMatch = b.$2 == highlightScenario ? 0 : 1;
+          return aMatch.compareTo(bMatch);
+        });
+      }
+      return cards;
     }
 
     return Column(
@@ -85,12 +108,59 @@ class HotelStrategiesSection extends StatelessWidget {
         const SizedBox(height: 20),
 
         // List of Hotel Cards
-        ...cards.map((c) => _buildHotelCard(context, c.$1, c.$2)),
+        ...legKeys.expand((key) {
+          final group = grouped[key]!;
+          final first = group.first;
+          return [
+            // Only labelled when there is something to distinguish. A
+            // single-leg trip — or a pre-legs Odyssey — reads as before.
+            if (legKeys.length > 1 && first.city.isNotEmpty)
+              _buildLegHeader(first.city, first.nights, first.rooms),
+            ...cardsFor(group).map((c) => _buildHotelCard(context, c.$1, c.$2)),
+          ];
+        }),
 
         // General Tips / Best Areas Card
         if (odyssey.hotelGeneralTips.isNotEmpty || odyssey.hotelBestAreas.isNotEmpty)
           _buildTipsCard(context),
       ],
+    );
+  }
+
+  /// City heading above each leg's hotels.
+  ///
+  /// Carries the nights and rooms because "Est. Total" is
+  /// `nights x rooms x nightly` for *this leg* — without them the figure reads
+  /// as a whole-trip price, which is how a 2-night stay came across as nine
+  /// nights' worth.
+  Widget _buildLegHeader(String city, int nights, int rooms) {
+    final parts = <String>[
+      if (nights > 0) '$nights ${nights == 1 ? 'night' : 'nights'}',
+      if (rooms > 0) '$rooms ${rooms == 1 ? 'room' : 'rooms'}',
+    ];
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      child: Row(
+        children: [
+          const Icon(Icons.place_rounded, size: 16, color: Colors.black54),
+          const SizedBox(width: 6),
+          Text(
+            city,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
+              color: Colors.black87,
+            ),
+          ),
+          if (parts.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            Text(
+              parts.join(' · '),
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
