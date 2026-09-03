@@ -227,7 +227,7 @@ class _HistoryPageState extends State<HistoryPage> {
       onTap: () => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OdysseyDetailPage(odyssey: o),
+          builder: (_) => OdysseyDetailPage(odyssey: o, isReadOnly: true),
         ),
       ),
       child: Container(

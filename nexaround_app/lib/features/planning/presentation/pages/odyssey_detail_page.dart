@@ -11,7 +11,12 @@ import 'package:nexaround_app/features/planning/presentation/pages/history_page.
 /// Read-only view of a saved Odyssey, with the option to delete it.
 class OdysseyDetailPage extends StatefulWidget {
   final Odyssey odyssey;
-  const OdysseyDetailPage({super.key, required this.odyssey});
+  final bool isReadOnly;
+  const OdysseyDetailPage({
+    super.key,
+    required this.odyssey,
+    this.isReadOnly = false,
+  });
 
   @override
   State<OdysseyDetailPage> createState() => _OdysseyDetailPageState();
@@ -25,6 +30,9 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
 
   /// Local working copy so AI swaps update the view in place.
   late Odyssey _odyssey = widget.odyssey;
+
+  bool get _isEffectivelyReadOnly =>
+      widget.isReadOnly || _odyssey.status == 'completed';
 
   /// "dayIndex:activityIndex" of the activity being swapped, or null.
 
@@ -297,12 +305,16 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   /// Toggle a single place visited/not and persist. When every place is
   /// ticked the trip auto-completes (status → 'completed') and moves to
   /// History; un-ticking re-opens it.
-  Future<void> _toggleVisited(int dayIndex, int activityIndex) async {
+  Future<void> _toggleVisited(int dayIndex, int activityIndex, {String? actualCost}) async {
     final before = _odyssey;
     final day = before.dayPlans[dayIndex];
     final acts = List<OdysseyActivity>.from(day.activities);
-    acts[activityIndex] =
-        acts[activityIndex].copyWith(visited: !acts[activityIndex].visited);
+    final target = acts[activityIndex];
+    final newVisited = !target.visited;
+    acts[activityIndex] = target.copyWith(
+      visited: newVisited,
+      actualCost: actualCost ?? (newVisited ? target.actualCost : ''),
+    );
     final newDays = List<OdysseyDay>.from(before.dayPlans);
     newDays[dayIndex] = day.copyWith(activities: acts);
 
@@ -647,7 +659,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
               ),
             )
-          else
+          else if (!_isEffectivelyReadOnly)
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.black54, size: 20),
               onPressed: _delete,
@@ -691,11 +703,11 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
             )
           : OdysseyPlanView(
               odyssey: _odyssey,
-              onReorderActivity: _reorderActivity,
-              onToggleVisited: _toggleVisited,
-              onSwapPartner: _swapPartner,
+              onReorderActivity: _isEffectivelyReadOnly ? null : _reorderActivity,
+              onToggleVisited: _isEffectivelyReadOnly ? null : _toggleVisited,
+              onSwapPartner: _isEffectivelyReadOnly ? null : _swapPartner,
               swappingPartnerName: _swappingPartnerName,
-              onActualCostChanged: _updateActualCost,
+              onActualCostChanged: _isEffectivelyReadOnly ? null : _updateActualCost,
             ),
     );
   }

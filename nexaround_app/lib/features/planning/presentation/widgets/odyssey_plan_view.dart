@@ -43,7 +43,7 @@ class OdysseyPlanView extends StatefulWidget {
   /// day. Indices are the source and destination positions within their days.
   final void Function(int fromDay, int fromIndex, int toDay, int toIndex)?
       onReorderActivity;
-  final void Function(int dayIndex, int activityIndex)? onToggleVisited;
+  final void Function(int dayIndex, int activityIndex, {String? actualCost})? onToggleVisited;
 
   /// When provided, each dynamic booking partner shows an edit/swap button
   /// to ask the AI for a replacement.
@@ -74,6 +74,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   // 'minimum' | 'recommended' | 'comfortable' — only meaningful when
   // odyssey.budgetScenarios is non-empty (legacy Odysseys have none).
   String _selectedScenario = 'recommended';
+
+  /// Prevents pushing multiple map pages if the user taps the direction button repeatedly.
+  bool _isNavigatingToMap = false;
 
   @override
   Widget build(BuildContext context) {
@@ -1862,7 +1865,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     GestureDetector(
                       onTap: isCompleted
                           ? null
-                          : () => widget.onToggleVisited!(dayIndex, activityIndex),
+                          : () {
+                              if (act.visited) {
+                                _showVisitedActionSheet(context, dayIndex, activityIndex, act);
+                              } else {
+                                _showCostCheckDialog(context, dayIndex, activityIndex, act);
+                              }
+                            },
                       behavior: HitTestBehavior.opaque,
                       child: Padding(
                         padding: const EdgeInsets.only(right: 10),
@@ -1944,6 +1953,23 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             if (hasCost) _buildPriceWithSource(context, act),
+                            if (act.visited && act.actualCost.isNotEmpty && act.actualCost != act.cost)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                                ),
+                                child: Text(
+                                  'Actual: ${act.actualCost}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF065F46),
+                                  ),
+                                ),
+                              ),
                             if (hasActionBtn) actionBtn,
                           ],
                         ),
@@ -2889,6 +2915,311 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }
 
 
+  /// Displays a confirmation sheet when marking an activity visited,
+  /// allowing the user to confirm the estimated cost or type a different actual cost.
+  void _showCostCheckDialog(
+    BuildContext context,
+    int dayIndex,
+    int activityIndex,
+    OdysseyActivity act,
+  ) {
+    final estimatedCost = act.cost.trim();
+    final hasEstimatedCost = estimatedCost.isNotEmpty &&
+        estimatedCost.toLowerCase() != 'free' &&
+        estimatedCost != '0' &&
+        !estimatedCost.toLowerCase().contains('free');
+
+    final textController = TextEditingController();
+    final currency = widget.odyssey.currency.trim();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: AppColors.brandGreen.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.check_circle_outline_rounded,
+                          color: AppColors.brandGreen, size: 24),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Mark as Visited',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.black,
+                            ),
+                          ),
+                          Text(
+                            act.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12.5,
+                              color: Colors.black54,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Estimated Cost',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                      Text(
+                        act.cost.isNotEmpty ? act.cost : 'Free',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Actual Cost Spent (Optional)',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: textController,
+                  autofocus: false,
+                  decoration: InputDecoration(
+                    hintText: hasEstimatedCost ? 'Type actual cost if different' : 'Enter amount if any',
+                    prefixText: currency.isNotEmpty ? '$currency ' : null,
+                    filled: true,
+                    fillColor: const Color(0xFFF1F5F9),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          widget.onToggleVisited?.call(
+                            dayIndex,
+                            activityIndex,
+                            actualCost: act.cost.isNotEmpty ? act.cost : '',
+                          );
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Colors.black26),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                        ),
+                        child: Text(
+                          hasEstimatedCost ? 'Same Cost' : 'Ignore / Free',
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final input = textController.text.trim();
+                          Navigator.pop(ctx);
+                          String costToSave = act.cost.isNotEmpty ? act.cost : '';
+                          if (input.isNotEmpty) {
+                            costToSave = currency.isNotEmpty && !input.contains(currency)
+                                ? '$currency $input'
+                                : input;
+                          }
+                          widget.onToggleVisited?.call(
+                            dayIndex,
+                            activityIndex,
+                            actualCost: costToSave,
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          'Save & Done',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Displays actions when tapping an already visited activity (edit cost or unmark).
+  void _showVisitedActionSheet(
+    BuildContext context,
+    int dayIndex,
+    int activityIndex,
+    OdysseyActivity act,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                act.name,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+              if (act.actualCost.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    'Recorded Cost: ${act.actualCost}',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF059669), fontWeight: FontWeight.w600),
+                  ),
+                ),
+              const SizedBox(height: 20),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.edit_outlined, color: Color(0xFF2563EB), size: 20),
+                ),
+                title: const Text('Edit Actual Cost', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                subtitle: const Text('Update how much you spent on this stop', style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showCostCheckDialog(context, dayIndex, activityIndex, act);
+                },
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFEF2F2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.undo_rounded, color: Color(0xFFDC2626), size: 20),
+                ),
+                title: const Text('Mark as Not Visited', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFFDC2626))),
+                subtitle: const Text('Remove from completed stops', style: TextStyle(fontSize: 12)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  widget.onToggleVisited?.call(dayIndex, activityIndex);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// Bottom sheet showing restaurant options for a dining activity.
   void _showRestaurantSheet(BuildContext context, OdysseyActivity act) {
     showModalBottomSheet(
@@ -2906,9 +3237,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// Geocodes a place name and navigates to the Smart Tourism Map.
   void _navigateToSmartMap(BuildContext context, String placeName) async {
+    if (_isNavigatingToMap) return;
+    _isNavigatingToMap = true;
+
     final dest = widget.odyssey.destination;
     final searchQuery = dest.isNotEmpty ? '$placeName, $dest' : placeName;
 
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Locating $placeName on Smart Map...'),
@@ -2927,7 +3262,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
       if (results.isNotEmpty) {
         final place = results.first;
-        Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => SmartTourismMapPage(
@@ -2939,7 +3274,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         );
       } else {
         // Fallback: stay in-app on Smart Tourism Map
-        Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (_) => SmartTourismMapPage(
@@ -2953,7 +3288,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     } catch (e) {
       if (!context.mounted) return;
       // Fallback: stay in-app on Smart Tourism Map
-      Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => SmartTourismMapPage(
@@ -2963,6 +3298,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ),
         ),
       );
+    } finally {
+      if (mounted) {
+        _isNavigatingToMap = false;
+      }
     }
   }
 
@@ -3111,8 +3450,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             icon: icon,
             color: color,
             url: resolvedUrl,
-            isAiGenerated: true,
             logoPath: logoPath,
+            isAiGenerated: true,
           ),
         );
       }).toList(),
@@ -3126,13 +3465,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     required IconData icon,
     required Color color,
     required String url,
-    bool isAiGenerated = false,
     String? logoPath,
+    bool isAiGenerated = false,
   }) {
-    final isSwapping = isAiGenerated && widget.swappingPartnerName == title;
     final bool isBookingLogo = logoPath != null && logoPath.contains('booking_logo');
     final bool isHeadoutLogo = logoPath != null && logoPath.contains('headout');
     final bool isGYGLogo = logoPath != null && logoPath.contains('getyourguide');
+    final bool isSwapping = isAiGenerated && widget.swappingPartnerName == title;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -3234,20 +3573,24 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                 ),
                 if (isSwapping)
                   const SizedBox(
-                    width: 14,
-                    height: 14,
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       color: AppColors.brandGreen,
                     ),
                   )
                 else if (isAiGenerated && widget.onSwapPartner != null)
-                  IconButton(
-                    icon: const Icon(Icons.swap_horiz_rounded, size: 20, color: AppColors.actionTeal),
-                    onPressed: () => widget.onSwapPartner!(title),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    visualDensity: VisualDensity.compact,
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: IconButton(
+                      icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
+                      onPressed: () => widget.onSwapPartner!(title),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      visualDensity: VisualDensity.compact,
+                    ),
                   )
                 else
                   const Icon(

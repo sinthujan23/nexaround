@@ -324,6 +324,18 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
   }
 
   void _loadCache() {
+    if (widget.museum.masterpieceCount == 0) {
+      _itinerary = MuseumItinerary(
+        museumName: widget.museum.name,
+        museumSlug: widget.museum.slug,
+        duration: '3h',
+        totalItems: 0,
+        buildings: const [],
+      );
+      _loading = false;
+      return;
+    }
+
     // Try to load cached museum detail for durations check
     final detail = _repo.getCachedMuseumDetail(widget.museum.slug);
     if (detail != null) {
@@ -342,6 +354,21 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
   }
 
   Future<void> _fetch() async {
+    if (widget.museum.masterpieceCount == 0) {
+      if (!mounted) return;
+      setState(() {
+        _itinerary = MuseumItinerary(
+          museumName: widget.museum.name,
+          museumSlug: widget.museum.slug,
+          duration: '3h',
+          totalItems: 0,
+          buildings: const [],
+        );
+        _loading = false;
+      });
+      return;
+    }
+
     if (!mounted) return;
     setState(() {
       _loading = _itinerary == null;
@@ -535,18 +562,19 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
           ),
 
           // ── Sticky Duration Selector ─────────────────────────────────────
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _DurationHeaderDelegate(
-              selected: _selected,
-              onChanged: (d) {
-                setState(() => _selected = d);
-                _fetch();
-              },
-              labels: _durationLabels,
-              durations: _durations,
+          if (widget.museum.masterpieceCount > 0)
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _DurationHeaderDelegate(
+                selected: _selected,
+                onChanged: (d) {
+                  setState(() => _selected = d);
+                  _fetch();
+                },
+                labels: _durationLabels,
+                durations: _durations,
+              ),
             ),
-          ),
 
           // ── Ticket Banner ────────────────────────────────────────────────
           SliverToBoxAdapter(
@@ -705,9 +733,10 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
               ),
             )
           else if (_itinerary != null) ...[
-            SliverToBoxAdapter(
-              child: _buildDisclaimerCard(),
-            ),
+            if (widget.museum.masterpieceCount > 0)
+              SliverToBoxAdapter(
+                child: _buildDisclaimerCard(),
+              ),
             if (_itinerary!.buildings.isEmpty || _itinerary!.totalItems == 0)
               SliverFillRemaining(
                 hasScrollBody: false,
@@ -717,22 +746,32 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.museum_outlined,
-                            size: 48, color: AppColors.textMuted),
-                        const SizedBox(height: 12),
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFFEF3C7),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.schedule_rounded,
+                              size: 28, color: Color(0xFFD97706)),
+                        ),
+                        const SizedBox(height: 16),
                         const Text(
-                          'No stops found for this duration',
+                          'Itinerary Coming Soon',
                           style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary),
                         ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Try selecting a different time option above (e.g. 5 Hours or 1 Day).',
+                        const SizedBox(height: 8),
+                        Text(
+                          'A curated masterpiece itinerary for ${widget.museum.name} is currently being crafted and will be available in a future update.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 13, color: AppColors.textSecondary),
+                          style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                              height: 1.45),
                         ),
                       ],
                     ),

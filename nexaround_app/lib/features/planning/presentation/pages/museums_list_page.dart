@@ -457,27 +457,40 @@ class _MuseumCard extends StatelessWidget {
                               ),
                             ),
                     ),
-                    // Masterpiece count badge (top-right)
-                    if (museum.masterpieceCount > 0)
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: AppColors.brandGreen,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '${museum.masterpieceCount} items',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.white,
+                    // Masterpiece count badge or Coming Soon badge (top-right)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: museum.masterpieceCount > 0
+                              ? AppColors.brandGreen
+                              : const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.25),
+                              blurRadius: 4,
+                              offset: const Offset(0, 1),
                             ),
+                          ],
+                        ),
+                        child: Text(
+                          museum.masterpieceCount > 0
+                              ? '${museum.masterpieceCount} items'
+                              : 'Coming Soon',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: museum.masterpieceCount > 0
+                                ? Colors.white
+                                : const Color(0xFFFBBF24),
+                            letterSpacing: 0.2,
                           ),
                         ),
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -517,6 +530,24 @@ class _MuseumCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (museum.masterpieceCount == 0) ...[
+                      const SizedBox(height: 4),
+                      const Row(
+                        children: [
+                          Icon(Icons.schedule_rounded,
+                              size: 10, color: Color(0xFFD97706)),
+                          SizedBox(width: 3),
+                          Text(
+                            'Itinerary coming soon',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     if (museum.annualVisitors != null) ...[
                       const SizedBox(height: 3),
                       Row(
