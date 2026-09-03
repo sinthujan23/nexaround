@@ -13,6 +13,7 @@ import 'package:nexaround_app/core/error/failures.dart';
 
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/services.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -125,6 +126,15 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             ? 'Google Sign-In: ${e.description}'
             : 'Google Sign-In error (${e.code.name})';
       }
+
+      try {
+        const channel = MethodChannel('com.nexaround.app/signature');
+        final sha1 = await channel.invokeMethod<String>('getSignatureSha1');
+        if (sha1 != null && sha1.isNotEmpty && sha1 != 'UNKNOWN') {
+          displayError += '\nApp Signature SHA-1:\n$sha1';
+        }
+      } catch (_) {}
+
       emit(AuthError(displayError));
     }
   }
