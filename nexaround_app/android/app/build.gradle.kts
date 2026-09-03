@@ -61,7 +61,7 @@ android {
     defaultConfig {
         applicationId = "com.nexaround.app"
         minSdk = 24 // Floor required by Mapbox/Firebase/ML Kit plugins
-        targetSdk = 35
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // Inject the admin-managed Google Maps key (env / gradle.properties / backend)
