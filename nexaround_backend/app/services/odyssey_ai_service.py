@@ -645,21 +645,33 @@ async def generate_flight_strategies(
     outbound_date = flight_start_date
     return_date = flight_end_date or _derive_return_date(flight_start_date, days)
 
-    # ── Primary path: SerpApi direct extraction ──────────────────────────────
-    if serpapi_key:
-        try:
-            # SerpApi needs airport codes, not place names — resolve first so
-            # the search doesn't 400 and drop us into estimation.
-            origin_code, dest_code = await asyncio.gather(
-                _resolve_airport_code(departure_city, departure_country, api_key),
-                _resolve_airport_code(destination, "", api_key),
-            )
-            if not origin_code or not dest_code:
-                raise ValueError(
-                    f"could not resolve airport codes ({departure_city!r} -> {origin_code!r}, "
-                    f"{destination!r} -> {dest_code!r})"
-                )
+    # Resolve airport codes up front, independent of whether SerpApi is even
+    # configured — Sri Lanka (and other small countries with essentially one
+    # commercial gateway) map every city to the same code in _AIRPORT_CODES
+    # (e.g. "kinniya" and "colombo" both -> "CMB"). That's deliberate: there is
+    # no real domestic flight route between them. Searching CMB->CMB reliably
+    # returns nothing and used to fall through to the Gemini-only estimation
+    # prompt below, which — having no idea the two cities share an airport —
+    # would invent a plausible-sounding "flight" on a real-but-impractical
+    # small airfield (e.g. a military/charter strip with no scheduled
+    # passenger service), complete with a fabricated price and a booking link
+    # that leads nowhere. Bailing out here with no strategies at all (hiding
+    # the Flights tab) is the honest answer for a pair with no real route.
+    origin_code, dest_code = await asyncio.gather(
+        _resolve_airport_code(departure_city, departure_country, api_key),
+        _resolve_airport_code(destination, "", api_key),
+    )
+    if origin_code and dest_code and set(origin_code.split(",")) & set(dest_code.split(",")):
+        logger.info(
+            "No distinct flight route: '%s' and '%s' both resolve to %s — "
+            "skipping flight generation.",
+            departure_city, destination, origin_code,
+        )
+        return {}
 
+    # ── Primary path: SerpApi direct extraction ──────────────────────────────
+    if serpapi_key and origin_code and dest_code:
+        try:
             logger.info(
                 "Fetching live flight data via SerpApi (Google Flights) %s → %s...",
                 origin_code, dest_code,
@@ -866,18 +878,47 @@ async def generate_hotel_strategies(
     serpapi_key: str = "",
 ) -> dict:
     """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
-    
-    Option A: Uses SerpAPI results directly with 4.0★ minimum rating filter.
-    Gemini is NOT used for hotel selection — prices, ratings, and hotel names
-    come straight from Google Hotels via SerpAPI for 100% accuracy.
-    
+
+    Option A: Uses SerpAPI results directly with a budget-aware minimum rating
+    filter (see min_rating below). Gemini is NOT used for hotel selection —
+    prices, ratings, and hotel names come straight from Google Hotels via
+    SerpAPI for 100% accuracy.
+
     Falls back to Gemini-based generation only if SerpAPI returns no results.
     """
+
+    # A flat 4.0★ floor priced budget travellers out of their own destination:
+    # filtering to 4★+ properties — and, among those, keeping whichever four
+    # Google returns first rather than the cheapest — is why a 50,000 LKR /
+    # 5-day Colombo trip surfaced hotels the traveller could never afford,
+    # dragging the whole plan's cost with it: the itinerary prompt takes this
+    # exact price range as a mandatory, non-negotiable check-in/out cost (see
+    # hotel_price_range in _build_prompt). Size the floor to what the trip can
+    # actually spend on a room, using the same real-cost-floor machinery
+    # `generate_odyssey` already uses to judge whether a budget is realistic
+    # at all, rather than a fixed constant applied to every trip regardless
+    # of budget.
+    min_rating = 4.0
+    ground_floor = trip_cost_floor.on_ground_floor(
+        destination=destination, days=days, travelers=travelers, currency=currency,
+    )
+    if ground_floor is not None:
+        nights = max(days - 1, 1)
+        rooms = _rooms_for(travelers)
+        affordable_per_night = max(budget - ground_floor, 0) / nights / rooms
+        affordable_usd = trip_cost_floor.to_usd(affordable_per_night, currency)
+        if affordable_usd is not None:
+            if affordable_usd < 20:
+                min_rating = 0.0
+            elif affordable_usd < 40:
+                min_rating = 3.0
+            elif affordable_usd < 70:
+                min_rating = 3.5
 
     # ── Primary path: SerpAPI direct extraction ──────────────────────────────
     if serpapi_key:
         try:
-            logger.info("Fetching live hotel data via SerpApi (Google Hotels) with 4.0★ min rating...")
+            logger.info(f"Fetching live hotel data via SerpApi (Google Hotels) with {min_rating}★ min rating...")
             serp = SerpApiService(serpapi_key)
             serp_result = await serp.search_hotels(
                 destination=destination,
@@ -885,12 +926,12 @@ async def generate_hotel_strategies(
                 check_out_date=hotel_check_out_date,
                 adults=_STANDARD_ROOM_ADULTS,
                 currency=currency,
-                min_rating=4.0,  # Only 4★+ hotels
+                min_rating=min_rating,
             )
 
             properties = serp_result.get("properties") or []
             if properties:
-                logger.info(f"SerpAPI returned {len(properties)} hotels rated 4.0★+ for {destination}")
+                logger.info(f"SerpAPI returned {len(properties)} hotels rated {min_rating}★+ for {destination}")
                 result = extract_hotel_strategies_from_serpapi(
                     serp_result,
                     destination=destination,
@@ -901,21 +942,22 @@ async def generate_hotel_strategies(
                     max_hotels=4,
                 )
                 return result
-            else:
-                logger.warning(f"SerpAPI returned 0 hotels after 4.0★ filter for {destination}. "
-                              "Trying with 3.5★ minimum...")
-                # Retry with slightly lower threshold
+            elif min_rating > 0:
+                logger.warning(f"SerpAPI returned 0 hotels after {min_rating}★ filter for {destination}. "
+                              "Trying with a lower minimum...")
+                # Retry with a lower threshold
+                retry_rating = max(min_rating - 1.0, 0.0)
                 serp_result = await serp.search_hotels(
                     destination=destination,
                     check_in_date=hotel_check_in_date,
                     check_out_date=hotel_check_out_date,
                     adults=_STANDARD_ROOM_ADULTS,
                     currency=currency,
-                    min_rating=3.5,
+                    min_rating=retry_rating,
                 )
                 properties = serp_result.get("properties") or []
                 if properties:
-                    logger.info(f"SerpAPI returned {len(properties)} hotels rated 3.5★+ for {destination}")
+                    logger.info(f"SerpAPI returned {len(properties)} hotels rated {retry_rating}★+ for {destination}")
                     result = extract_hotel_strategies_from_serpapi(
                         serp_result,
                         destination=destination,
@@ -1425,6 +1467,8 @@ async def generate_odyssey(
         travelers=travelers,
         hotel_price_range=hotel_price_range,
         confirmed_flight=primary_flight,
+        departure_city=departure_city,
+        departure_country=departure_country,
         nationality=nationality,
         has_visa=has_visa,
         legs=city_legs,
@@ -1927,6 +1971,8 @@ def _build_prompt(
     travelers: int = 1,
     hotel_price_range: str = "",
     confirmed_flight: dict | None = None,
+    departure_city: str = "",
+    departure_country: str = "",
     nationality: str = "",
     has_visa: bool = False,
     legs: list[dict] | None = None,
@@ -1991,6 +2037,28 @@ CRITICAL — CONFIRMED FLIGHT ROUTE:
 - Provider: Google Flights
 """
 
+    # No confirmed flight means either the traveler turned flights off, or (a
+    # domestic pair like Kinniya->Colombo that shares one airport) there was
+    # never a real flight route to confirm. Either way, the model was
+    # previously never told who's traveling or from where, and would invent
+    # an arrival cost with zero grounding — which is how a Kinniya->Colombo
+    # bus/train trip ended up priced like it needed a private charter. This
+    # only covers the trip's actual start (Day 1); transport between later
+    # legs is already covered by route_rules above.
+    ground_transport_rules = ""
+    if (
+        not confirmed_flight
+        and departure_city
+        and departure_city.strip().lower() != destination.strip().lower()
+    ):
+        ground_transport_rules = f"""
+CRITICAL — GETTING TO {destination.upper()} (NO FLIGHT BOOKED FOR THIS TRIP):
+- The traveler starts from "{departure_city}"{f', {departure_country}' if departure_country else ''} and has NOT booked a flight — assume they travel by bus, train, shared taxi, or car.
+- Day 1 MUST open with a "transport" activity covering this journey, named something like "Travel from {departure_city} to {destination}".
+- Estimate its cost from REAL, typical bus/train/shared-taxi fares for this specific route and distance — do not invent a large or round number. A domestic ground journey of a few hundred kilometers or less is normally a small fraction of the total trip budget, not a major line item.
+- If the distance is short (under ~2 hours), keep the cost minimal and say so in the tip.
+"""
+
     if has_visa:
         visa_rules = """CRITICAL — VISA GUIDANCE RULES:
 The traveler ALREADY holds a valid visa for this trip.
@@ -2019,6 +2087,7 @@ Trip brief:
 {route_rules}
 {hotel_rules}
 {flight_rules}
+{ground_transport_rules}
 {visa_rules}
 
 CRITICAL — LIVE SEARCH GROUNDING RULES:
