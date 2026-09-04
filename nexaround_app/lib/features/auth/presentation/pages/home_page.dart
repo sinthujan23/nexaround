@@ -26,7 +26,6 @@ import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detai
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
-import 'package:nexaround_app/core/widgets/network_aware_widget.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -370,31 +369,20 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         backgroundColor: AppColors.background,
         extendBody: true,
         resizeToAvoidBottomInset: false,
-        body: Stack(
-          children: [
-            BlocListener<AuthBloc, AuthState>(
-              listener: (context, state) {
-                if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
-                    (route) => false,
-                  );
-                  return;
-                }
-              },
-              child: IndexedStack(
-                index: _selectedIndex,
-                children: pages,
-              ),
-            ),
-            // Global offline banner — sits above all tabs
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: OfflineBanner(),
-            ),
-          ],
+        body: BlocListener<AuthBloc, AuthState>(
+          listener: (context, state) {
+            if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+                (route) => false,
+              );
+              return;
+            }
+          },
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: pages,
+          ),
         ),
         bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),
       ),

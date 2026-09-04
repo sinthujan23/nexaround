@@ -252,10 +252,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
 
 
   // ─── Fetch driving route from Mapbox Directions API via backend proxy ───
-  Future<void> _fetchRoute() async {
+  Future<bool> _fetchRoute({bool isFallback = false}) async {
     if (_destLat == 0.0 || _destLng == 0.0) {
       if (mounted) setState(() => _isLoading = false);
-      return;
+      return false;
     }
     if (_userLat == null || _userLng == null) {
       try {
@@ -269,9 +269,10 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     }
     if (_userLat == null || _userLng == null) {
       if (mounted) setState(() => _isLoading = false);
-      return;
+      return false;
     }
 
+    var found = false;
     try {
       // Google Directions (via the secure proxy) so the distance/route matches
       // Google Maps instead of Mapbox's longer, less-accurate local routing.
@@ -330,9 +331,35 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
             });
             _drawRoute();
             _addMarkers();
-            return;
           }
+          found = true;
         }
+      }
+
+      // Google answered but has no route for this mode — genuinely common
+      // for a small shop/hotel down a pedestrian-only alley when the
+      // profile is "driving". Without this, the destination showed just the
+      // two pins: no distance, no route line, no mode toggle, no Start
+      // Navigation button, and no explanation why — an unexplained dead end.
+      // Walking almost always has *a* path if the coordinates are valid at
+      // all, so retry with it once before giving up.
+      if (!found && !isFallback && _navigationProfile != 'walking') {
+        final originalProfile = _navigationProfile;
+        _navigationProfile = 'walking';
+        found = await _fetchRoute(isFallback: true);
+        if (found) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No driving route available — showing walking directions.')),
+            );
+          }
+        } else {
+          _navigationProfile = originalProfile;
+        }
+      } else if (!found && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No route found to this destination.')),
+        );
       }
     } catch (e) {
       debugPrint('Route fetch error: $e');
@@ -341,6 +368,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         setState(() => _isLoading = false);
       }
     }
+    return found;
   }
 
   /// Decodes a Google "encoded polyline" into [lng, lat] pairs (GeoJSON order)

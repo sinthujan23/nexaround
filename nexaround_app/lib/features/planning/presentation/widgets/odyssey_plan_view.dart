@@ -2067,7 +2067,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0') ||
         lowerCost.endsWith(' 0.00');
 
-    // If activity is Free and we have a platform action button (Headout, GetYourGuide, Uber, Google Hotels, etc.)
+    // If activity is Free and we have a platform action button (GetYourGuide, Uber, Google Hotels, etc.)
     // show [Paid] badge chip beside the platform logo (except for LIST restaurant sheet)
     if (isFree && act.type != ActivityType.dining) {
       return Row(
@@ -2122,17 +2122,19 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
-  /// Headout button for ticketed attraction activities (shows clean logo only, no box/container).
+  /// GetYourGuide button for ticketed attraction activities (shows clean logo only, no box/container).
+  /// Was Headout — the client reported it surfacing wrong results (a generic
+  /// site-wide text search rarely matched the specific attraction).
   Widget _buildAttractionButton(OdysseyActivity act) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
         final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
         final query = Uri.encodeComponent('${act.name} tickets$dest');
-        _launchExternalUrl('https://www.headout.com/search/?q=$query');
+        _launchExternalUrl('https://www.getyourguide.com/s/?q=$query');
       },
       child: Image.asset(
-        'assets/images/headout.png',
+        'assets/images/getyourguide.png',
         height: 20,
         fit: BoxFit.contain,
       ),
@@ -3321,7 +3323,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final name = providerName.toLowerCase().trim();
     if (name.contains('booking')) return 'assets/images/booking_logo.jpg';
     if (name.contains('uber')) return 'assets/images/uber_logo.png';
-    if (name.contains('headout')) return 'assets/images/headout.png';
     if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
     if (name.contains('viator')) return 'assets/images/viator.png';
     if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
@@ -3479,7 +3480,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     bool isAiGenerated = false,
   }) {
     final bool isBookingLogo = logoPath != null && logoPath.contains('booking_logo');
-    final bool isHeadoutLogo = logoPath != null && logoPath.contains('headout');
     final bool isGYGLogo = logoPath != null && logoPath.contains('getyourguide');
     final bool isSwapping = isAiGenerated && widget.swappingPartnerName == title;
     return Container(
@@ -3529,16 +3529,16 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   height: 48,
                   decoration: BoxDecoration(
                     color: logoPath != null
-                        ? (isHeadoutLogo || isGYGLogo ? Colors.transparent : Colors.white)
+                        ? (isGYGLogo ? Colors.transparent : Colors.white)
                         : color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
-                    border: logoPath != null && !isHeadoutLogo && !isGYGLogo
+                    border: logoPath != null && !isGYGLogo
                         ? Border.all(color: Colors.black.withValues(alpha: 0.08))
                         : null,
                   ),
                   child: logoPath != null
                       ? ClipOval(
-                          child: (isHeadoutLogo || isGYGLogo)
+                          child: isGYGLogo
                               ? Image.asset(
                                   logoPath,
                                   width: 48,

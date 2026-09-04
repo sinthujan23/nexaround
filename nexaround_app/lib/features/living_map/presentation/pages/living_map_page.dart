@@ -51,8 +51,6 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/animated_
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
-import 'package:nexaround_app/core/services/connectivity_service.dart';
-import 'package:nexaround_app/core/widgets/network_aware_widget.dart';
 
 class _LocalEvent {
   final String title;
@@ -142,23 +140,7 @@ class _LivingMapPageState extends State<LivingMapPage>
       _SpotlightPoint3D(30.0, 31.2), // Cairo
     ];
 
-    ConnectivityService.instance.reconnectTrigger.addListener(_onReconnected);
     _checkLocationAndInit();
-  }
-
-  void _onReconnected() {
-    // Auto-retry data fetch when connectivity is restored
-    if (mounted && _userLatitude != null && _userLongitude != null) {
-      debugPrint('🔄 LivingMap: Auto-retrying data fetch after reconnect');
-      context.read<MapBloc>().add(
-        FetchNearbyAttractions(
-          latitude: _userLatitude!,
-          longitude: _userLongitude!,
-          useLegacy: false,
-        ),
-      );
-      _fetchBandedSections(_userLatitude!, _userLongitude!);
-    }
   }
 
   List<_SpotlightPoint3D> _generateWorldMapPoints() {
@@ -199,7 +181,6 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   @override
   void dispose() {
-    ConnectivityService.instance.reconnectTrigger.removeListener(_onReconnected);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _globeController.dispose();
@@ -1040,31 +1021,6 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ),
 
                   ...() {
-                    // ── Network failure with no cached data: show error view ──
-                    if (state.status == MapStatus.failure &&
-                        masterAttractions.isEmpty) {
-                      return [
-                        SliverToBoxAdapter(
-                          child: NetworkErrorView(
-                            onRetry: () {
-                              if (_userLatitude != null && _userLongitude != null) {
-                                context.read<MapBloc>().add(
-                                  FetchNearbyAttractions(
-                                    latitude: _userLatitude!,
-                                    longitude: _userLongitude!,
-                                    useLegacy: false,
-                                  ),
-                                );
-                                _fetchBandedSections(_userLatitude!, _userLongitude!);
-                              } else {
-                                _checkLocationAndInit();
-                              }
-                            },
-                          ),
-                        ),
-                      ];
-                    }
-
                     if (state.status == MapStatus.loading ||
                         state.status == MapStatus.initial ||
                         masterAttractions.isEmpty) {

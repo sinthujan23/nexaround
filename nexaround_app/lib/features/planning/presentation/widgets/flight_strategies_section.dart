@@ -742,7 +742,6 @@ class FlightStrategiesSection extends StatelessWidget {
     final name = providerName.toLowerCase().trim();
     if (name.contains('booking')) return 'assets/images/booking_logo.jpg';
     if (name.contains('uber')) return 'assets/images/uber_logo.png';
-    if (name.contains('headout')) return 'assets/images/headout.png';
     if (name.contains('skyscanner')) return 'assets/images/skyscanner.png';
     if (name.contains('getyourguide')) return 'assets/images/getyourguide.png';
     if (name.contains('viator')) return 'assets/images/viator.png';

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:ui';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
@@ -158,6 +159,16 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
           if (widget.latitude != null && widget.latitude != 0.0) 'lat': widget.latitude,
           if (widget.longitude != null && widget.longitude != 0.0) 'lng': widget.longitude,
         },
+        // This is enrichment, not core content — the page already has name,
+        // rating and category without it. The app-wide 60s timeout left users
+        // staring at shimmer for up to a minute whenever this call queued
+        // behind other Google-bound requests; failing fast here means they see
+        // the "no reviews/hours available" fallback in a few seconds instead,
+        // and can still use the page while this was never going to be quick.
+        options: Options(
+          sendTimeout: const Duration(seconds: 12),
+          receiveTimeout: const Duration(seconds: 12),
+        ),
       );
       if (response.statusCode == 200) {
         final data = response.data as Map<String, dynamic>?;

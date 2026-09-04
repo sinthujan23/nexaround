@@ -899,21 +899,43 @@ async def generate_hotel_strategies(
     # at all, rather than a fixed constant applied to every trip regardless
     # of budget.
     min_rating = 4.0
+    nights = max(days - 1, 1)
+    rooms = _rooms_for(travelers)
     ground_floor = trip_cost_floor.on_ground_floor(
         destination=destination, days=days, travelers=travelers, currency=currency,
     )
     if ground_floor is not None:
-        nights = max(days - 1, 1)
-        rooms = _rooms_for(travelers)
         affordable_per_night = max(budget - ground_floor, 0) / nights / rooms
-        affordable_usd = trip_cost_floor.to_usd(affordable_per_night, currency)
-        if affordable_usd is not None:
-            if affordable_usd < 20:
-                min_rating = 0.0
-            elif affordable_usd < 40:
-                min_rating = 3.0
-            elif affordable_usd < 70:
-                min_rating = 3.5
+    else:
+        # Destination not in trip_cost_floor's place-name tables (a large but
+        # necessarily incomplete list) — silently keeping the 4.0 default here
+        # was the original bug: for destinations outside that list, this whole
+        # budget-aware adjustment never engaged at all. Fall back to a plain
+        # budget-share estimate (lodging as ~35% of total, the same rule of
+        # thumb the overall budget waterfall elsewhere in this function uses)
+        # rather than giving up on being budget-aware.
+        affordable_per_night = (budget * 0.35) / nights / rooms
+
+    affordable_usd = trip_cost_floor.to_usd(affordable_per_night, currency)
+    if affordable_usd is not None:
+        # A tester's real Colombo trip (50,000 LKR / 5 days / 1 traveller)
+        # works out to ~$28/night affordable — comfortably enough for a real
+        # budget guesthouse, most of which simply aren't formally star-rated
+        # on Google at all. The previous <$20/<$40/<$70 breakpoints put that
+        # exact case at a 3.0 floor, which is why "still only 3+ star hotels"
+        # kept showing up even on a tight budget — raised throughout.
+        if affordable_usd < 35:
+            min_rating = 0.0
+        elif affordable_usd < 55:
+            min_rating = 3.0
+        elif affordable_usd < 80:
+            min_rating = 3.5
+    else:
+        # Currency not in the FX table either — can't compare to the USD
+        # breakpoints at all. Default to a moderate floor rather than the
+        # strictest one so an unresolvable currency doesn't silently force
+        # expensive hotels on a budget trip.
+        min_rating = 3.0
 
     # ── Primary path: SerpAPI direct extraction ──────────────────────────────
     if serpapi_key:

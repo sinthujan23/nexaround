@@ -13,7 +13,7 @@ import 'package:nexaround_app/core/utils/number_format.dart';
 /// Activity type classification for rendering type-specific action buttons.
 enum ActivityType {
   transport,   // "Travel to X" → Uber/taxi button
-  attraction,  // Museums, temples, landmarks → Headout ticket button
+  attraction,  // Museums, temples, landmarks → GetYourGuide ticket button
   dining,      // Lunch, Dinner → Restaurant LIST button
   exploration, // "Explore X" (free/self-guided) → GET A GUIDE button
   accommodation, // Check into hotel
