@@ -9977,14 +9977,21 @@ HOW TO FORMAT EVERY REPLY:
                             ? '${dM.round()} M'
                             : '${(dM / 1000).toStringAsFixed(1)} KM';
                       }
+                      // isTargetInView is also what puts the small navigation
+                      // bubble on screen, positioned close enough above this
+                      // HUD that a wrapped (two-line) place name can run into
+                      // it — cyan-on-cyan made the overlap unreadable.
+                      // Switching to the brand green here only while that
+                      // bubble is up keeps the two visually distinct.
+                      final hudColor = isTargetInView ? AppColors.brandGreen : cyan;
                       return Text(
                             displayDist.toUpperCase(),
-                            style: const TextStyle(
-                              color: cyan,
+                            style: TextStyle(
+                              color: hudColor,
                               fontSize: 72,
                               fontWeight: FontWeight.w900,
                               letterSpacing: -2,
-                              shadows: [Shadow(color: cyan, blurRadius: 30)],
+                              shadows: [Shadow(color: hudColor, blurRadius: 30)],
                             ),
                           )
                           .animate(onPlay: (c) => c.repeat(reverse: true))
