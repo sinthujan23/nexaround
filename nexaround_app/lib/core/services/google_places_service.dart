@@ -163,12 +163,15 @@ class GooglePlacesService {
   static final Map<String, List<AttractionEntity>> _clientCache = {};
   static final Map<String, DateTime> _clientCacheExpiry = {};
 
-  static String _buildClientCacheKey(double lat, double lng, String? categoryName, int radius, bool useLegacy) {
+  static String _buildClientCacheKey(double lat, double lng, String? categoryName, int radius, bool useLegacy, int limit) {
     // Snap coordinates to 3 decimal places (~100m grid) for client-side debouncing
     final sLat = lat.toStringAsFixed(3);
     final sLng = lng.toStringAsFixed(3);
     final cat = (categoryName ?? 'all').toLowerCase();
-    return '$sLat:$sLng:$cat:$radius:$useLegacy';
+    // [limit] belongs in the key: a caller asking for 100 and a caller asking
+    // for the default 20 are not interchangeable, and sharing one entry would
+    // hand whichever asked first a list of the wrong depth.
+    return '$sLat:$sLng:$cat:$radius:$useLegacy:$limit';
   }
 
   /// Fetch one Around You / Discovery section, already split into distance
@@ -254,14 +257,27 @@ class GooglePlacesService {
     }
   }
 
+  /// [cancelToken] lets a caller abort the request mid-flight. The AR stream
+  /// uses it to stop the moment it has collected its cap of places, so the
+  /// remaining category requests don't keep burning quota and battery for
+  /// results that would be discarded anyway. A cancelled call returns an empty
+  /// list rather than throwing, so it reads as "nothing more to stream" and
+  /// never trips a caller's error path.
+  ///
+  /// [limit] is how many places the backend should return per call; it slices
+  /// an already-fetched list server-side, so raising it costs no extra upstream
+  /// requests. The default of 20 matches the endpoint's own default and keeps
+  /// every existing caller's behaviour unchanged.
   static Future<List<AttractionEntity>> fetchNearbyPlaces({
     required double latitude,
     required double longitude,
     String? categoryName,
     int radius = 5000,
     bool useLegacy = false,
+    CancelToken? cancelToken,
+    int limit = 20,
   }) async {
-    final cacheKey = _buildClientCacheKey(latitude, longitude, categoryName, radius, useLegacy);
+    final cacheKey = _buildClientCacheKey(latitude, longitude, categoryName, radius, useLegacy, limit);
     final now = DateTime.now();
     if (_clientCache.containsKey(cacheKey) && _clientCacheExpiry.containsKey(cacheKey)) {
       if (now.isBefore(_clientCacheExpiry[cacheKey]!)) {
@@ -279,7 +295,9 @@ class GooglePlacesService {
           'category': categoryName,
           'radius': radius,
           'use_legacy': useLegacy,
+          'limit': limit,
         },
+        cancelToken: cancelToken,
       );
 
       if (response.statusCode == 200) {
@@ -297,6 +315,14 @@ class GooglePlacesService {
       }
       return [];
     } on DioException catch (e) {
+      // A caller-initiated cancel is not a failure — the AR stream aborts its
+      // in-flight requests once it hits the place cap. Report it as "no more
+      // results" so it can't be mistaken for a network error and surface a
+      // spurious retry prompt.
+      if (CancelToken.isCancel(e)) {
+        debugPrint('⏹ Places fetch cancelled for ${categoryName ?? 'All'}.');
+        return [];
+      }
       // Log the backend's actual reply (status + body) so failures like a 500
       // from the Google Places passthrough (billing / API-not-enabled / key
       // restriction) are diagnosable instead of silently becoming "no places".

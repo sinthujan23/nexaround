@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:dio/dio.dart' show CancelToken;
 import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:nexaround_app/core/services/google_directions_service.dart';
@@ -147,6 +148,53 @@ class _ArCameraPageState extends State<ArCameraPage>
   List<_ArLandmark> _allLandmarks = [];
   bool _isFetchingPlaces = false;
   DateTime? _lastFetchTime;
+
+  // ═══════════════════════════════════════════════════════════════════
+  // PROGRESSIVE PLACE STREAM
+  // ═══════════════════════════════════════════════════════════════════
+  // Places are rendered as they arrive rather than after every category
+  // request has settled. The category calls run in parallel and push into
+  // [_streamPending]; a flush timer drains that buffer a few places per tick
+  // and inserts them into the live list in distance order, so the AR view
+  // fills in continuously instead of sitting on a spinner and then jumping.
+  //
+  // The stream is bounded, not post-filtered: the moment [_streamedCount]
+  // reaches the cap the run stops — pending buffer dropped, in-flight requests
+  // aborted through [_placesStreamCancel], far-ring sampling skipped. That is
+  // the difference from the old flow, which fetched everything and only then
+  // trimmed to the cap, paying full latency and quota for results it discarded.
+
+  /// Places placed on screen by the current stream run. Drives the progress
+  /// pill's "n / cap" readout.
+  int _streamedCount = 0;
+
+  /// True once the run hit its cap and stopped early. Held after the run ends
+  /// so the pill can show a completed state before it fades out.
+  bool _isStreamCapped = false;
+
+  /// Aborts the in-flight category requests of the current run.
+  CancelToken? _placesStreamCancel;
+
+  /// Drains [_streamPending] into the rendered list on a fixed cadence.
+  Timer? _streamFlushTimer;
+
+  /// Places fetched but not yet rendered, waiting for the next flush tick.
+  final List<_ArLandmark> _streamPending = [];
+
+  /// Frame budget for the flush timer. ~60ms reads as a steady fill rather
+  /// than either a stutter or an instant dump.
+  static const Duration _streamFlushInterval = Duration(milliseconds: 60);
+
+  /// Floor on places rendered per flush tick. The real batch size scales with
+  /// the backlog, so a warm cache — where every category resolves at once —
+  /// still finishes in well under a second instead of being throttled to a
+  /// crawl by the fixed floor.
+  static const int _streamFlushMinBatch = 5;
+
+  /// Upper bound on how long the whole stream should take to render, used to
+  /// derive the adaptive batch size. Keeps a large backlog from outlasting the
+  /// user's patience while still reading as a stream.
+  static const Duration _streamTargetDuration = Duration(milliseconds: 900);
   // Distinguishes "still loading" from "finished and found nothing" so the UI
   // can stop showing "SCANNING…" forever when a fetch comes back empty.
   bool _hasCompletedInitialFetch = false;
@@ -159,6 +207,12 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   // Client-side session cache for range results
   final Map<String, List<_ArLandmark>> _sessionRangeLandmarks = {};
+  /// "filter_range" keys that have already had a real network fetch at this
+  /// position. An outer ring that is genuinely empty (sparse area) would
+  /// otherwise fail [_hasBandPlaces] forever and re-run the 24-request far-ring
+  /// sweep on every switch; this records that we asked and the answer was none.
+  /// Cleared alongside [_sessionRangeLandmarks] when the user moves.
+  final Set<String> _bandFetchAttempted = {};
   geo.Position? _lastFetchPosition;
   bool _isEagerPreFetching = false;
 
@@ -933,6 +987,28 @@ class _ArCameraPageState extends State<ArCameraPage>
     return result;
   }
 
+  /// Strict test: does [pool] genuinely contain places inside the *selected
+  /// band* for [filter]?
+  ///
+  /// Unlike [_placesForFilter] this has no near-place fallback, and that is the
+  /// whole point. The fallback exists so the view isn't blank while the outer
+  /// ring loads, but it must never decide whether a fetch is needed: asked
+  /// about the 2–10 km band it happily reports the 0–2 km places as
+  /// displayable, which made the cache look adequate and skipped the network
+  /// call for the far ring entirely — so switching to 2–10 km re-showed the
+  /// same nearby places forever.
+  bool _hasBandPlaces(String filter, List<_ArLandmark> pool) {
+    final bucket = _filterBucketKey[filter];
+    final double minRangeM = _getMinRangeM(_rangeKm, filter);
+    final double maxRangeM = (_rangeKm * 1000).toDouble();
+    return pool.any(
+      (lm) =>
+          (minRangeM == 0.0 ? lm.distanceM >= 0.0 : lm.distanceM > minRangeM) &&
+          lm.distanceM <= maxRangeM &&
+          (filter == 'All' || _displayCategoryKey(lm) == bucket),
+    );
+  }
+
   /// Count places for a filter using the master list so chip numbers stay stable.
   int _countForFilter(String filter) {
     final bucket = _filterBucketKey[filter];
@@ -1299,6 +1375,15 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   void _triggerLimitNotice() {
     if (_selectedFilter != 'All') return;
+    // Only fire when the list is genuinely at the ceiling. Two of this
+    // method's call sites — AR tab entry and the filter chips — fire
+    // unconditionally, which was harmless only while the notice widget was
+    // built but never mounted. Now that it renders, the cap has to be real or
+    // it would claim a limit on every entry and every chip tap.
+    if (!_isStreamCapped &&
+        _allLandmarks.length < _maxPlacesForRange(_rangeKm)) {
+      return;
+    }
     _maxPlacesLimitNoticeTimer?.cancel();
     setState(() {
       _showMaxPlacesLimitNotice = true;
@@ -1371,6 +1456,13 @@ class _ArCameraPageState extends State<ArCameraPage>
     _rangeHintTimer?.cancel();
     _maxPlacesLimitNoticeTimer?.cancel();
     _searchDebounceTimer?.cancel();
+    // Tear the place stream down with the page, or its flush timer keeps
+    // firing setState on a dead State and its requests keep running.
+    _streamFlushTimer?.cancel();
+    _streamFlushTimer = null;
+    _streamPending.clear();
+    _placesStreamCancel?.cancel('AR page disposed');
+    _placesStreamCancel = null;
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
@@ -1701,6 +1793,16 @@ class _ArCameraPageState extends State<ArCameraPage>
     return d;
   }
 
+  /// Whether a landmark should be treated as coastline for the one-beach-per-
+  /// direction rule applied while streaming. Matches on the query bucket, the
+  /// real place types, and the name, because a beach reaches the app through
+  /// any of the three depending on which category surfaced it.
+  static bool _isBeachLandmark(_ArLandmark lm) {
+    return lm.category == 'NATURE' ||
+        lm.tags.contains('beach') ||
+        lm.name.toLowerCase().contains('beach');
+  }
+
   /// Low-pass filter for the compass heading. Handles the wrap-around between
   /// 359° and 0° so a tiny rotation across north doesn't snap the smoothed
   /// value all the way back around the circle.
@@ -2010,10 +2112,20 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// inside the target ring. Distances
   /// are recomputed from the REAL user position, because the backend reports
   /// distance relative to each offset query centre, not the user.
+  ///
+  /// Feeds the caller's stream rather than mutating a list: [onPlace] receives
+  /// each landmark as it is built, [shouldStop] is polled between bearings so a
+  /// capped stream abandons the remaining centres, and [isKnown]/[markKnown]
+  /// share the caller's dedupe set so a place already streamed from a
+  /// user-centred query isn't emitted twice.
   Future<void> _sampleFarRing(
-    geo.Position pos,
-    List<_ArLandmark> collected,
-  ) async {
+    geo.Position pos, {
+    required void Function(_ArLandmark landmark) onPlace,
+    required bool Function() shouldStop,
+    required bool Function(String name) isKnown,
+    required void Function(String name) markKnown,
+    CancelToken? cancelToken,
+  }) async {
     if (_rangeKm <= 2) return;
 
     const double minRangeM = 2000.0;
@@ -2046,6 +2158,12 @@ class _ArCameraPageState extends State<ArCameraPage>
       // would otherwise surface as failed calls and an empty ring.
       final List<AttractionEntity> places = [];
       for (final b in bearings) {
+        // Polled per bearing so a stream that caps mid-sweep abandons the
+        // remaining centres instead of finishing all four for nothing.
+        if (shouldStop()) {
+          debugPrint('🛰 AR: Far-ring sampling stopped early (stream capped).');
+          break;
+        }
         final c = _offsetLatLng(pos.latitude, pos.longitude, b, midM);
         final List<List<AttractionEntity>> perCat = await Future.wait(
           sampleCategories.map(
@@ -2055,6 +2173,7 @@ class _ArCameraPageState extends State<ArCameraPage>
                   longitude: c[1],
                   radius: sampleRadius,
                   categoryName: cat,
+                  cancelToken: cancelToken,
                 ).catchError((err) {
                   debugPrint(
                     'AR far-ring sample (bearing ${b.toStringAsFixed(0)}, $cat) failed: $err',
@@ -2068,7 +2187,8 @@ class _ArCameraPageState extends State<ArCameraPage>
 
       int added = 0;
       for (final p in places) {
-        if (collected.any((l) => l.name == p.name)) continue;
+        if (shouldStop()) break;
+        if (isKnown(p.name)) continue;
 
         // Distance vs. the USER, not the offset centre the backend measured from.
         final double rawDistM = geo.Geolocator.distanceBetween(
@@ -2091,7 +2211,8 @@ class _ArCameraPageState extends State<ArCameraPage>
             ? '${rawDistM.toInt()} m'
             : '${distKm.toStringAsFixed(1)} km';
 
-        collected.add(
+        markKnown(p.name);
+        onPlace(
           _ArLandmark(
             p.name,
             p.photoUrls.isNotEmpty
@@ -2112,7 +2233,7 @@ class _ArCameraPageState extends State<ArCameraPage>
         );
         added++;
       }
-      debugPrint('🛰 AR: Far-ring sampling added $added places to the ring.');
+      debugPrint('🛰 AR: Far-ring sampling streamed $added places into the ring.');
     } catch (e) {
       debugPrint('AR far-ring sampling failed: $e');
     }
@@ -2166,6 +2287,7 @@ class _ArCameraPageState extends State<ArCameraPage>
       // If user moved more than 100m, clear the session cache to trigger fresh requests
       if (distanceMoved > 100.0) {
         _sessionRangeLandmarks.clear();
+        _bandFetchAttempted.clear();
       }
     }
 
@@ -2174,10 +2296,6 @@ class _ArCameraPageState extends State<ArCameraPage>
     // 1) Serve from session cache if available (instant range cycling)
     if (_sessionRangeLandmarks.containsKey(sessionCacheKey)) {
       var cachedForRange = _sessionRangeLandmarks[sessionCacheKey]!;
-      debugPrint(
-        '🚀 AR: Range $_rangeKm km served instantly from session cache.',
-      );
-
       // Recalculate dynamic distance/bearing for cached items using current position
       cachedForRange = cachedForRange.map((lm) {
         if (lm.lat == null || lm.lng == null) return lm;
@@ -2204,16 +2322,33 @@ class _ArCameraPageState extends State<ArCameraPage>
         );
       }).toList();
 
-      if (mounted) {
-        setState(() {
-          _landmarks = cachedForRange;
-          _allLandmarks = List.of(cachedForRange);
-          _placesFetchError = false;
-          _hasCompletedInitialFetch = true;
-          _isFetchingPlaces = false;
-        });
+      // An entry that holds nothing inside the selected band is stale — it was
+      // written before this band had ever been fetched. Drop it and fall
+      // through to the network rather than serving the wrong ring forever.
+      if (!_hasBandPlaces(_selectedFilter, cachedForRange) &&
+          !_bandFetchAttempted.contains(sessionCacheKey)) {
+        debugPrint(
+          '♻️ AR: Session entry for $sessionCacheKey has no places inside the '
+          '${_rangeKm}km band — discarding it and fetching the ring.',
+        );
+        _sessionRangeLandmarks.remove(sessionCacheKey);
+      } else {
+        debugPrint(
+          '🚀 AR: Range $_rangeKm km served instantly from session cache.',
+        );
+        if (mounted) {
+          setState(() {
+            _landmarks = cachedForRange;
+            _allLandmarks = List.of(cachedForRange);
+            _streamedCount = cachedForRange.length;
+            _isStreamCapped = false;
+            _placesFetchError = false;
+            _hasCompletedInitialFetch = true;
+            _isFetchingPlaces = false;
+          });
+        }
+        return;
       }
-      return;
     }
 
     // 2) Serve from persistent (local database) cache – no loading spinner
@@ -2221,12 +2356,16 @@ class _ArCameraPageState extends State<ArCameraPage>
 
     if (_landmarks.isNotEmpty) {
       // Verify the display annulus actually has places (not just nearby ones
-      // that fall outside the target band like 2-5km).
+      // that fall outside the target band like 2-5km). This has to be the
+      // strict test: _placesForFilter substitutes near places when the band is
+      // empty, so asking it here would always answer "yes" and the outer ring
+      // would never be fetched.
       _capCache.clear(); // force recalculation after landmarks changed
-      final displayable = _placesForFilter(_selectedFilter);
-      if (displayable.isNotEmpty) {
+      final bool bandCovered = _hasBandPlaces(_selectedFilter, _landmarks) ||
+          _bandFetchAttempted.contains(sessionCacheKey);
+      if (bandCovered) {
         debugPrint(
-          '🚀 AR: Range $_rangeKm km served instantly from persistent cache (${displayable.length} displayable places).',
+          '🚀 AR: Range $_rangeKm km served instantly from persistent cache.',
         );
         // Cache into session so subsequent switches to this range are instant too
         _sessionRangeLandmarks[sessionCacheKey] = List.of(_landmarks);
@@ -2238,7 +2377,8 @@ class _ArCameraPageState extends State<ArCameraPage>
         return; // Serve cached data instantly — no network fetch needed
       } else {
         debugPrint(
-          '📦 AR: Persistent cache has ${_landmarks.length} places but none in the ${_rangeKm}km annulus. Proceeding to network fetch.',
+          '📦 AR: Persistent cache has ${_landmarks.length} places but none in '
+          'the ${_rangeKm}km annulus. Proceeding to network fetch.',
         );
       }
     }
@@ -2271,13 +2411,53 @@ class _ArCameraPageState extends State<ArCameraPage>
       });
     }
     _lastFetchTime = now;
+    // This band is about to be fetched for real. Recorded so a genuinely empty
+    // outer ring is asked for once per position, not on every switch.
+    _bandFetchAttempted.add(sessionCacheKey);
+
+    // ═══════════════════════════════════════════════════════════════
+    // NETWORK STREAM — render places as they arrive, stop at the cap
+    // ═══════════════════════════════════════════════════════════════
+    // Supersede any run still in flight, then open a fresh one.
+    _placesStreamCancel?.cancel('superseded by a newer place stream');
+    _streamFlushTimer?.cancel();
+    _streamFlushTimer = null;
+    _streamPending.clear();
+
+    final CancelToken cancelToken = CancelToken();
+    _placesStreamCancel = cancelToken;
+
+    if (mounted) {
+      setState(() {
+        _streamedCount = 0;
+        _isStreamCapped = false;
+      });
+    }
+
+    // The cap is the stream's stop condition, not a trailing filter.
+    final int streamCap = _maxPlacesForRange(_rangeKm);
+    final double streamMinRangeM = _getMinRangeM(_rangeKm, 'All');
+    final double streamMaxRangeM = _rangeKm * 1000.0;
 
     try {
-      List<_ArLandmark> collected = [];
-      List<AttractionEntity> allPlaces = []; // to save to cache later
+      // Rendered so far, held in ascending distance order.
+      final List<_ArLandmark> collected = [];
+      // Name keys already rendered, and the wider set already rendered OR
+      // queued — the second stops the same place being buffered twice when two
+      // category requests return it before either has been flushed.
+      final Set<String> collectedKeys = {};
+      final Set<String> queuedKeys = {};
+      // Inside the max radius but outside the selected band. Held aside so an
+      // empty band can be back-filled without a second round of requests.
+      final List<_ArLandmark> outOfBand = [];
+      final List<AttractionEntity> allPlaces = []; // to save to cache later
       // True if any category call failed with a real error (vs. empty result).
       // Lets the empty-state UI say "couldn't load / retry" instead of "none".
       bool fetchHadError = false;
+      // Set the moment the cap is hit; every producer and the flusher check it.
+      bool capReached = false;
+      bool producersDone = false;
+      final Completer<void> streamDrained = Completer<void>();
 
       final List<String?> categoriesToFetch;
       if (_selectedFilter == 'All') {
@@ -2328,9 +2508,11 @@ class _ArCameraPageState extends State<ArCameraPage>
       final int maxRangeM = _rangeKm * 1000;
       final List<int> activeRadii = [maxRangeM];
 
-      // Helper: convert raw API result into an _ArLandmark (deduped against collected)
+      // Helper: convert raw API result into an _ArLandmark (deduped against
+      // everything already rendered or queued for render)
       _ArLandmark? _toLandmark(dynamic p, double radiusLimit) {
-        if (collected.any((l) => l.name == p.name)) return null;
+        final String nameKey = (p.name as String).trim().toLowerCase();
+        if (nameKey.isEmpty || queuedKeys.contains(nameKey)) return null;
         final double rawDistM = (p.latitude != null && p.longitude != null && p.latitude != 0.0 && p.longitude != 0.0)
             ? geo.Geolocator.distanceBetween(
                 pos.latitude,
@@ -2353,6 +2535,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             ? '${rawDistM.toInt()} m'
             : '${distKm.toStringAsFixed(1)} km';
         allPlaces.add(p);
+        queuedKeys.add(nameKey);
 
         final isBeach =
             p.categoryName == 'Beach' ||
@@ -2382,60 +2565,170 @@ class _ArCameraPageState extends State<ArCameraPage>
         );
       }
 
-      // Helper: push whatever we have so far to the UI immediately
-      void _pushProgressiveUpdate() {
-        if (!mounted || collected.isEmpty) return;
-        final Set<String> seenLandmarkNames = {};
-        final uniqueCollected = <_ArLandmark>[];
-        for (final lm in collected) {
-          final nameKey = lm.name.trim().toLowerCase();
-          if (nameKey.isNotEmpty && seenLandmarkNames.add(nameKey)) {
-            uniqueCollected.add(lm);
+      /// Route a freshly-built landmark to the render buffer, or to the
+      /// out-of-band reserve when it sits outside the selected ring.
+      void _enqueue(_ArLandmark lm) {
+        if (lm.distanceM > streamMaxRangeM) return;
+        final bool inBand = streamMinRangeM == 0.0
+            ? lm.distanceM >= 0.0
+            : lm.distanceM > streamMinRangeM;
+        if (inBand) {
+          _streamPending.add(lm);
+        } else {
+          outOfBand.add(lm);
+        }
+      }
+
+      /// Insert at the distance-sorted position. Returns false when the place
+      /// is dropped as a duplicate, or as a beach in a direction already taken.
+      bool _insertStreamed(_ArLandmark lm) {
+        final String key = lm.name.trim().toLowerCase();
+        if (key.isEmpty || !collectedKeys.add(key)) return false;
+
+        // One beach per direction: a coastline yields dozens of near-identical
+        // entries along the same bearing that would crowd out everything else.
+        if (_isBeachLandmark(lm)) {
+          for (final other in collected) {
+            if (_isBeachLandmark(other) &&
+                _signedAngleDelta(lm.bearing, other.bearing).abs() < 30.0) {
+              return false;
+            }
           }
         }
-        // Sort by distance for a clean display order
-        final sorted = uniqueCollected
-          ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-        setState(() {
-          _landmarks = sorted;
-          _allLandmarks = List.of(sorted);
-          _hasCompletedInitialFetch =
-              true; // dismiss scanning spinner on first batch
-          _placesFetchError = false;
-          _currentPosition = pos;
-        });
+
+        int lo = 0;
+        int hi = collected.length;
+        while (lo < hi) {
+          final int mid = (lo + hi) >> 1;
+          if (collected[mid].distanceM <= lm.distanceM) {
+            lo = mid + 1;
+          } else {
+            hi = mid;
+          }
+        }
+        collected.insert(lo, lm);
+        // At the ceiling a nearer arrival still wins, and the farthest drops.
+        if (collected.length > streamCap) collected.removeLast();
+        return true;
       }
+
+      void _endStream() {
+        _streamFlushTimer?.cancel();
+        _streamFlushTimer = null;
+        if (!streamDrained.isCompleted) streamDrained.complete();
+      }
+
+      /// One flush tick: buffer → screen.
+      void _flushStream() {
+        if (capReached) {
+          _endStream();
+          return;
+        }
+        if (_streamPending.isEmpty) {
+          if (producersDone) _endStream();
+          return;
+        }
+
+        // Nearest-first. The buffer arrives in response order, but AR should
+        // fill outward from the user, and it makes the cap keep the closest
+        // places rather than whichever category happened to answer first.
+        _streamPending.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+
+        // Adaptive batch: a warm cache resolves every category at once, and a
+        // fixed batch would stretch that dump over many seconds. Scaling with
+        // the backlog keeps the whole stream inside _streamTargetDuration while
+        // still reading as a fill rather than a jump.
+        final int ticksLeft = (_streamTargetDuration.inMilliseconds /
+                _streamFlushInterval.inMilliseconds)
+            .ceil();
+        final int batchSize = max(
+          _streamFlushMinBatch,
+          (_streamPending.length / ticksLeft).ceil(),
+        );
+
+        int added = 0;
+        while (_streamPending.isNotEmpty && added < batchSize) {
+          if (_insertStreamed(_streamPending.removeAt(0))) added++;
+          if (collected.length >= streamCap) {
+            capReached = true;
+            break;
+          }
+        }
+
+        if (added > 0 || capReached) {
+          final List<_ArLandmark> rendered = List<_ArLandmark>.of(collected);
+          if (mounted) {
+            setState(() {
+              _landmarks = rendered;
+              _allLandmarks = List.of(rendered);
+              _streamedCount = rendered.length;
+              _currentPosition = pos;
+              _placesFetchError = false;
+              // Places are on screen — the stream is now the loading
+              // affordance, so drop the initial scanning state.
+              _hasCompletedInitialFetch = true;
+              if (capReached) _isStreamCapped = true;
+            });
+          }
+          _capCache.clear(); // landmark list changed; per-filter counts stale
+        }
+
+        if (capReached) {
+          debugPrint(
+            '🏁 AR: Stream hit its $streamCap-place cap — '
+            'aborting in-flight requests and skipping far-ring sampling.',
+          );
+          _streamPending.clear();
+          if (!cancelToken.isCancelled) {
+            cancelToken.cancel('AR place cap reached');
+          }
+          if (mounted) _triggerLimitNotice();
+          _endStream();
+          return;
+        }
+
+        if (producersDone && _streamPending.isEmpty) _endStream();
+      }
+
+      _streamFlushTimer =
+          Timer.periodic(_streamFlushInterval, (_) => _flushStream());
 
       for (final radius in activeRadii) {
         final currentCategories = categoriesToFetch;
 
         if (currentCategories.isEmpty) continue;
+        if (capReached) break;
 
         debugPrint(
-          '🔍 AR: Searching radius $radius m across categories: $currentCategories...',
+          '🔍 AR: Streaming radius $radius m across categories: $currentCategories...',
         );
 
-        // Launch all category fetches in parallel and update the UI progressively as each returns.
-        // This ensures the user sees places on screen instantly (within ~700ms-1s) instead of waiting 6s for the slowest category.
+        // Every category request goes out at once and feeds the buffer the
+        // moment it lands, so the first places reach the screen at the speed of
+        // the *fastest* category instead of the slowest.
         final fetches = currentCategories.map((cat) async {
+          if (capReached) return;
           try {
             final places = await GooglePlacesService.fetchNearbyPlaces(
               latitude: pos.latitude,
               longitude: pos.longitude,
               radius: radius,
               categoryName: cat,
+              cancelToken: cancelToken,
+              // The endpoint defaults to 20 per call, which meant the AR view
+              // could only ever assemble ~140 raw candidates across all seven
+              // categories — before band filtering, well under the cap. The
+              // limit slices a list the backend has already fetched, so asking
+              // for a full cap's worth costs no extra upstream requests and
+              // gives the stream something to actually stream. Clamped because
+              // the endpoint rejects a limit above 100 with a 422, and the cap
+              // is derived from _maxVisibleMarkers rather than fixed here.
+              limit: streamCap.clamp(1, 100),
             );
-            if (places.isNotEmpty) {
-              for (final p in places) {
-                final lm = _toLandmark(p, radius.toDouble());
-                if (lm != null) {
-                  final nameKey = lm.name.trim().toLowerCase();
-                  if (!collected.any((e) => e.name.trim().toLowerCase() == nameKey)) {
-                    collected.add(lm);
-                  }
-                }
-              }
-              _pushProgressiveUpdate();
+            if (capReached) return;
+            for (final p in places) {
+              final lm = _toLandmark(p, radius.toDouble());
+              if (lm != null) _enqueue(lm);
             }
           } catch (err) {
             debugPrint('Error fetching category $cat: $err');
@@ -2447,82 +2740,54 @@ class _ArCameraPageState extends State<ArCameraPage>
       }
 
       // Far-ring sampling: a single user-centred query can't reach the outer
-      // annulus, so the 25 km (10–25) and 50 km (25–50) rings come back empty.
-      // This places search centres ON the annulus and back-fills them. No-op
-      // for the 2/5/10 km ranges, so their behaviour is unchanged.
-      await _sampleFarRing(pos, collected);
+      // annulus, so the 15 km ring comes back empty. This places search centres
+      // ON the annulus and back-fills them. No-op for the 2 km range, and
+      // skipped outright once the cap is met — 24 extra requests for results
+      // that have nowhere to land is exactly what the cap exists to prevent.
+      if (!capReached) {
+        await _sampleFarRing(
+          pos,
+          onPlace: (lm) {
+            if (!capReached) _enqueue(lm);
+          },
+          shouldStop: () => capReached,
+          cancelToken: cancelToken,
+          isKnown: (name) => queuedKeys.contains(name.trim().toLowerCase()),
+          markKnown: (name) => queuedKeys.add(name.trim().toLowerCase()),
+        );
+      }
+
+      // Producers are finished; let the flusher drain what's left and close.
+      producersDone = true;
+      if (_streamFlushTimer == null && !streamDrained.isCompleted) {
+        // Timer already torn down (capped mid-flight) — nothing left to drain.
+        streamDrained.complete();
+      }
+      // Bounded so a flush timer torn down from outside this run (dispose, a
+      // superseding fetch) can't park this frame forever and leave
+      // _isFetchingPlaces stuck true.
+      await streamDrained.future.timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {},
+      );
+
+      // Fallback: the selected band produced nothing (common on the outer ring
+      // in a sparse area), so back-fill nearest-first from whatever landed
+      // inside the max radius rather than showing an empty view.
+      if (collected.isEmpty && outOfBand.isNotEmpty) {
+        outOfBand.sort((a, b) => a.distanceM.compareTo(b.distanceM));
+        for (final lm in outOfBand) {
+          _insertStreamed(lm);
+          if (collected.length >= streamCap) break;
+        }
+      }
 
       if (collected.isNotEmpty) {
-        // Separate beaches and non-beaches to ensure beaches are never truncated
-        final beaches = collected
-            .where(
-              (l) =>
-                  l.category == 'NATURE' ||
-                  l.name.toLowerCase().contains('beach') ||
-                  l.tags.contains('beach'),
-            )
-            .toList();
-
-        // Sort beaches by distance first (closest first)
-        beaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
-
-        // Filter beaches so we only keep one beach per direction (e.g. 30 degrees bearing difference)
-        final List<_ArLandmark> uniqueDirectionBeaches = [];
-        for (final beach in beaches) {
-          bool hasBeachInDirection = false;
-          for (final addedBeach in uniqueDirectionBeaches) {
-            final diff = _signedAngleDelta(
-              beach.bearing,
-              addedBeach.bearing,
-            ).abs();
-            if (diff < 30.0) {
-              hasBeachInDirection = true;
-              break;
-            }
-          }
-          if (!hasBeachInDirection) {
-            uniqueDirectionBeaches.add(beach);
-          }
-        }
-
-        final nonBeaches = collected
-            .where((l) => !beaches.any((b) => b.name == l.name))
-            .toList();
-
-        // Sort non-beaches by distance and truncate
-        nonBeaches.sort((a, b) => a.distanceM.compareTo(b.distanceM));
-
-        // Combine beaches + non-beaches, keep only those within the selected
-        // range interval, sort by distance, then show the CLOSEST N where N scales with
-        // the range — so 2 km feels light and 50 km full (a clean, viable count).
-        final double minRangeM = _getMinRangeM(_rangeKm, 'All');
-        final int rangeCap = _maxPlacesForRange(_rangeKm);
-        var inBand =
-            [...nonBeaches, ...uniqueDirectionBeaches]
-                .where(
-                  (l) =>
-                      (minRangeM == 0.0
-                          ? l.distanceM >= 0.0
-                          : l.distanceM > minRangeM) &&
-                      l.distanceM <= _rangeKm * 1000,
-                )
-                .toList()
-              ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-
-        // Fallback: if inBand is empty, backfill with closest places within max radius
-        if (inBand.isEmpty) {
-          inBand = [...nonBeaches, ...uniqueDirectionBeaches]
-              .where((l) => l.distanceM <= _rangeKm * 1000)
-              .toList()
-            ..sort((a, b) => a.distanceM.compareTo(b.distanceM));
-        }
-
-        collected = inBand.take(rangeCap).toList();
-
         if (mounted) {
           setState(() {
             _landmarks = collected;
             _allLandmarks = List.of(collected);
+            _streamedCount = collected.length;
             _currentPosition = pos;
             _lastFetchPosition = pos; // Update last fetch position
             _sessionRangeLandmarks[sessionCacheKey] =
@@ -2532,6 +2797,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             // the smart picker is in charge again.
             _userPickedLocationName = null;
           });
+          _capCache.clear();
         }
 
         // Cache the newly fetched places to the persistent cache so other screens can use them
@@ -2562,24 +2828,30 @@ class _ArCameraPageState extends State<ArCameraPage>
           debugPrint('AR: Failed to cache fetched places: $e');
         }
       } else {
-        // If collected is empty (e.g. timeout or no result), clear the old landmarks so they don't leak
+        // Stream produced nothing (e.g. timeout or no result) — clear the old
+        // landmarks so they don't leak into the new location.
         if (mounted) {
           setState(() {
             _landmarks = [];
             _allLandmarks = [];
+            _streamedCount = 0;
             _sessionRangeLandmarks[sessionCacheKey] = [];
             _currentPosition = pos;
             // No results: distinguish a real failure (all calls errored) from a
             // genuinely empty area, so the UI shows the right message.
             _placesFetchError = fetchHadError;
           });
+          _capCache.clear();
         }
       }
 
       // Option A: surface famous far-away places (Text Search) for the current
-      // category/range — Nearby Search alone misses distant landmarks.
-      _famousFarKeys.clear();
-      _loadFamousFarForSelection();
+      // category/range — Nearby Search alone misses distant landmarks. Skipped
+      // when capped, for the same reason far-ring sampling is.
+      if (!capReached) {
+        _famousFarKeys.clear();
+        _loadFamousFarForSelection();
+      }
 
       // Resolve a friendly name for the "Your Location" pill.
       _resolveCurrentLocationName(pos.latitude, pos.longitude);
@@ -2589,6 +2861,12 @@ class _ArCameraPageState extends State<ArCameraPage>
       // of an endless "SCANNING…" spinner.
       if (mounted) setState(() => _placesFetchError = true);
     } finally {
+      _streamFlushTimer?.cancel();
+      _streamFlushTimer = null;
+      _streamPending.clear();
+      if (identical(_placesStreamCancel, cancelToken)) {
+        _placesStreamCancel = null;
+      }
       _isFetchingPlaces = false;
       // First fetch has now finished (success, empty, or error) — let the UI
       // switch away from the initial scanning state.
@@ -2610,6 +2888,8 @@ class _ArCameraPageState extends State<ArCameraPage>
         _placesFetchError = false;
         _hasCompletedInitialFetch =
             false; // show "scanning" again while retrying
+        _streamedCount = 0;
+        _isStreamCapped = false;
       });
     }
     _lastFetchTime = null; // bypass the 15s cooldown for an explicit retry
@@ -4631,7 +4911,27 @@ class _ArCameraPageState extends State<ArCameraPage>
     );
   }
 
+  /// Live readout for the place stream.
+  ///
+  /// Replaces the old indeterminate "LOADING PLACES…" spinner, which stayed up
+  /// unchanged for the whole fetch and so read as a stall even while places
+  /// were arriving. This reports actual progress — a determinate ring and a
+  /// climbing "n / cap" count — and switches to a settled state the moment the
+  /// stream hits its cap and stops.
   Widget _buildFetchingPlacesPill() {
+    final int cap = _maxPlacesForRange(_rangeKm);
+    final int count = _streamedCount;
+    final bool waitingForFirst = count == 0 && !_isStreamCapped;
+    // Determinate as soon as there is something to measure; before the first
+    // place lands there is no honest fraction to show, so it spins.
+    final double? progress = waitingForFirst
+        ? null
+        : (cap == 0 ? 1.0 : (count / cap).clamp(0.0, 1.0));
+
+    final String label = _isStreamCapped
+        ? '$cap PLACES READY'
+        : (waitingForFirst ? 'FINDING PLACES…' : 'STREAMING  $count / $cap');
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -4648,17 +4948,27 @@ class _ArCameraPageState extends State<ArCameraPage>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
+          SizedBox(
             width: 12,
             height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-            ),
+            child: _isStreamCapped
+                ? const Icon(
+                    Icons.check_rounded,
+                    size: 12,
+                    color: Colors.white,
+                  )
+                : CircularProgressIndicator(
+                    value: progress,
+                    strokeWidth: 2,
+                    backgroundColor: Colors.white.withOpacity(0.28),
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Colors.white,
+                    ),
+                  ),
           ),
           const SizedBox(width: 10),
           Text(
-            'LOADING PLACES...',
+            label,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 10,
@@ -4768,13 +5078,26 @@ class _ArCameraPageState extends State<ArCameraPage>
               !_isNavigating)
             _buildRangeSlider(),
 
-          // Dynamic Loading Indicator for Range/Places Fetching
+          // Live progress for the place stream (count + determinate ring)
           if (_isFetchingPlaces && !_isSearching)
             Positioned(
               top: MediaQuery.of(context).padding.top + 146,
               left: 0,
               right: 0,
               child: Center(child: _buildFetchingPlacesPill()),
+            ),
+
+          // "Capped at 100" explainer, shown for 3s once the stream stops early.
+          // The widget already existed but was never mounted, so hitting the cap
+          // gave the user no feedback at all. Sits below the progress pill so
+          // the two read as one message when they overlap.
+          if (_showMaxPlacesLimitNotice && !_isSearching)
+            Positioned(
+              top: MediaQuery.of(context).padding.top +
+                  (_isFetchingPlaces ? 186 : 146),
+              left: 24,
+              right: 24,
+              child: Center(child: _buildMaxPlacesLimitNotice()),
             ),
 
           // Selected place direction guidance (card floating on screen + turn chevrons)
