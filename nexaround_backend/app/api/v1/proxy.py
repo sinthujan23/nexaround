@@ -53,6 +53,27 @@ def _snap_pair(latlng: str) -> str:
     return f"{_snap(parts[0])},{_snap(parts[1])}"
 
 
+# Directions' destination is a discrete POI (from a search result / place
+# details), not noisy device GPS — there is no jitter to absorb, so it must
+# NOT share the ~555m grid above. Two POIs a few tens of metres apart
+# (routinely the case for adjacent shops/hotels) were snapping to the same
+# cell and getting served each other's cached route/distance — every nearby
+# destination showed identical, stale numbers. This only rounds off float
+# formatting noise (~11cm), never real-world distinct locations.
+def _snap_fine(value: str) -> str:
+    try:
+        return f"{float(value):.6f}"
+    except (TypeError, ValueError):
+        return "?"
+
+
+def _snap_pair_fine(latlng: str) -> str:
+    parts = (latlng or "").split(",")
+    if len(parts) != 2:
+        return "?"
+    return f"{_snap_fine(parts[0])},{_snap_fine(parts[1])}"
+
+
 def _google_maps_cache_key(path: str, params: dict) -> str | None:
     """Normalised identity of a proxied Google Maps call.
 
@@ -66,7 +87,7 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
         return f"fpt:{(q.get('input') or '').strip().lower()}|{snapped}"
     if path.startswith("directions"):
         return (f"dir:{_snap_pair(q.get('origin',''))}>"
-                f"{_snap_pair(q.get('destination',''))}|{q.get('mode','driving')}")
+                f"{_snap_pair_fine(q.get('destination',''))}|{q.get('mode','driving')}")
     if path.startswith("geocode"):
         return f"geo:{_snap_pair(q.get('latlng','')) if q.get('latlng') else (q.get('address') or '').strip().lower()}"
     if path.startswith("place/details"):

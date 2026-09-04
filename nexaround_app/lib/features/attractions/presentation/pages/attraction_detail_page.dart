@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/gemini_service.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
+import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/features/attractions/data/models/attraction_model.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -114,7 +115,7 @@ class _AttractionDetailPageState extends State<AttractionDetailPage> {
         final durSec = routeData['duration_seconds'] as double;
         
         setState(() {
-          _routeDistanceStr = '${(distM / 1000).toStringAsFixed(1)} km';
+          _routeDistanceStr = formatDistance(distM);
           if (durSec > 0) {
             final mins = (durSec / 60).round();
             if (mins > 60) {

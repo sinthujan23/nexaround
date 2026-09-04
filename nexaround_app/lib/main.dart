@@ -5,6 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:nexaround_app/app/app.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/services/config_key_service.dart';
+import 'package:nexaround_app/core/services/connectivity_service.dart';
 import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
@@ -58,6 +59,13 @@ void main() async {
     await NotificationService.instance.init();
   } catch (e) {
     debugPrint('Firebase init failed: $e');
+  }
+
+  // Network connectivity monitoring (non-fatal if it fails).
+  try {
+    await ConnectivityService.instance.init();
+  } catch (e) {
+    debugPrint('Connectivity service init failed: $e');
   }
 
   // Fetch public client SDK keys (Mapbox token, Google Maps key) from the

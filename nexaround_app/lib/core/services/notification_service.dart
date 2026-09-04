@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -23,7 +24,23 @@ class NotificationService {
   String? get apnsToken => _apnsToken;
 
   /// Set by the app shell to route a notification tap (e.g. open Blueprints).
-  void Function(Map<String, dynamic> data)? onOpen;
+  void Function(Map<String, dynamic> data)? _onOpen;
+  Map<String, dynamic>? _pendingInitialData;
+  DateTime? _lastOpenedTime;
+  String? _lastOpenedMessageId;
+
+  void Function(Map<String, dynamic> data)? get onOpen => _onOpen;
+
+  set onOpen(void Function(Map<String, dynamic> data)? handler) {
+    _onOpen = handler;
+    if (_onOpen != null && _pendingInitialData != null) {
+      final data = _pendingInitialData!;
+      _pendingInitialData = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _onOpen?.call(data);
+      });
+    }
+  }
 
   Future<void> init() async {
     if (_initialized) return;
@@ -117,8 +134,25 @@ class NotificationService {
 
   /// Notification tapped (from background/terminated) → record + route.
   void _opened(RemoteMessage m) {
+    final now = DateTime.now();
+    if (_lastOpenedTime != null && now.difference(_lastOpenedTime!) < const Duration(milliseconds: 1500)) {
+      if (m.messageId != null && m.messageId == _lastOpenedMessageId) {
+        debugPrint('📲 Duplicate notification tap ignored for message ${m.messageId}');
+        return;
+      }
+      debugPrint('📲 Rapid notification tap ignored (<1500ms)');
+      return;
+    }
+    _lastOpenedMessageId = m.messageId;
+    _lastOpenedTime = now;
+
     _record(m);
-    onOpen?.call(m.data.map((k, v) => MapEntry(k, v)));
+    final data = m.data.map((k, v) => MapEntry(k, v));
+    if (_onOpen != null) {
+      _onOpen!(data);
+    } else {
+      _pendingInitialData = data;
+    }
   }
 
   /// Push the device token to the backend. Safe to call repeatedly; requires

@@ -24,6 +24,9 @@ import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
+import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/widgets/network_aware_widget.dart';
 
 class HomePage extends StatefulWidget {
   static final GlobalKey<HomePageState> homeKey = GlobalKey<HomePageState>();
@@ -104,8 +107,28 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     NotificationService.instance.syncToken();
   }
 
+  DateTime? _lastPlanOpenedAt;
+  DateTime? _lastOdysseyOpenedAt;
+  bool _isNavigatingToMapFromPlan = false;
+
   void openDiscoveryPlan(String result, {String? location, String? mode, String? mood}) {
+    final now = DateTime.now();
+    if (_lastPlanOpenedAt != null && now.difference(_lastPlanOpenedAt!) < const Duration(milliseconds: 1000)) {
+      debugPrint('Debouncing duplicate openDiscoveryPlan call');
+      return;
+    }
+    _lastPlanOpenedAt = now;
+
+    // Clear the discovery badge since the plan is being actively viewed
+    CacheService.discoveryResultNotifier.value = null;
+
+    // Dismiss any active bottom sheets / modal dialogs before presenting the plan
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
+
     switchToExplore();
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -116,11 +139,69 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         initialResult: result,
         initialMode: mode,
         initialMood: mood,
+        onPlaceSelected: (placeName) async {
+          if (!mounted) return;
+          if (_isNavigatingToMapFromPlan) return;
+          _isNavigatingToMapFromPlan = true;
+
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Locating $placeName...'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+
+          try {
+            final results = await GooglePlacesService.searchPlaces(
+              query: placeName,
+              latitude: CacheService.getLastFetchLat() ?? 6.9271,
+              longitude: CacheService.getLastFetchLng() ?? 79.8612,
+            );
+
+            if (!mounted) return;
+
+            if (results.isNotEmpty) {
+              final matchedPlace = results.first;
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SmartTourismMapPage(
+                    initialLat: matchedPlace.latitude,
+                    initialLng: matchedPlace.longitude,
+                    destinationName: matchedPlace.name,
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Could not locate $placeName on the map.')),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Error finding place.')),
+              );
+            }
+          } finally {
+            _isNavigatingToMapFromPlan = false;
+          }
+        },
       ),
     );
   }
 
   void openOdysseyDetail(Odyssey odyssey) {
+    final now = DateTime.now();
+    if (_lastOdysseyOpenedAt != null && now.difference(_lastOdysseyOpenedAt!) < const Duration(milliseconds: 1000)) {
+      return;
+    }
+    _lastOdysseyOpenedAt = now;
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
     switchToPlans();
     Navigator.of(context).push(
       MaterialPageRoute(
@@ -130,8 +211,19 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   }
 
   Future<void> openOdysseyById(String? odysseyId) async {
+    final now = DateTime.now();
+    if (_lastOdysseyOpenedAt != null && now.difference(_lastOdysseyOpenedAt!) < const Duration(milliseconds: 1000)) {
+      return;
+    }
+    _lastOdysseyOpenedAt = now;
+
+    if (Navigator.of(context).canPop()) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    }
     switchToPlans();
-    if (odysseyId == null || odysseyId.isEmpty) return;
+    if (odysseyId == null || odysseyId.isEmpty) {
+      return;
+    }
 
     try {
       final repo = OdysseyRepository();
@@ -139,7 +231,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       Odyssey? odyssey = await repo.getOdysseyById(odysseyId);
       odyssey ??= repo.getCachedOdysseys().where((o) => o.id == odysseyId).firstOrNull;
       if (odyssey != null && mounted) {
-        Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => OdysseyDetailPage(odyssey: odyssey!),
           ),
@@ -278,20 +370,31 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         backgroundColor: AppColors.background,
         extendBody: true,
         resizeToAvoidBottomInset: false,
-        body: BlocListener<AuthBloc, AuthState>(
-          listener: (context, state) {
-            if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
-              Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
-                (route) => false,
-              );
-              return;
-            }
-          },
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: pages,
-          ),
+        body: Stack(
+          children: [
+            BlocListener<AuthBloc, AuthState>(
+              listener: (context, state) {
+                if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
+                    (route) => false,
+                  );
+                  return;
+                }
+              },
+              child: IndexedStack(
+                index: _selectedIndex,
+                children: pages,
+              ),
+            ),
+            // Global offline banner — sits above all tabs
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: OfflineBanner(),
+            ),
+          ],
         ),
         bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),
       ),

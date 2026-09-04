@@ -513,6 +513,10 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
       ),
       onTapLink: (text, href, title) {
         if (href != null && href.startsWith('place:')) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          if (now - _lastPlaceTapEpoch < 1200) return;
+          _lastPlaceTapEpoch = now;
+
           final encodedPlace = href.substring(6);
           final placeName = Uri.decodeComponent(encodedPlace);
           if (widget.onPlaceSelected != null) {
@@ -522,6 +526,8 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
       },
     );
   }
+
+  int _lastPlaceTapEpoch = 0;
 
   Future<void> _submitToGemini() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
@@ -571,11 +577,11 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
       }
     } catch (e) {
       CacheService.isDiscoveringNotifier.value = false;
-      CacheService.discoveryResultNotifier.value = "Oops, I hit a snag trying to craft your perfect plan. Mind trying again?";
+      CacheService.discoveryResultNotifier.value = null; // Do NOT contaminate plan result with error string
       
       scaffoldMessenger.showSnackBar(
         SnackBar(
-          content: const Text('Oops! Neva encountered an error. Check the banner for details.'),
+          content: const Text('Oops! Neva encountered an error. Please try again.'),
           backgroundColor: AppColors.error,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),

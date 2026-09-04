@@ -4,6 +4,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
+import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -364,12 +365,12 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
           final plat = (place['latitude'] as num?)?.toDouble() ?? lat;
           final plng = (place['longitude'] as num?)?.toDouble() ?? lng;
           final d = Geolocator.distanceBetween(lat, lng, plat, plng);
-          final distKm = d / 1000;
 
           hospitals.add({
             'name': rawName,
             'address': place['address'] ?? '',
-            'dist': '${distKm.toStringAsFixed(1)} km',
+            'dist': formatDistance(d),
+            'distM': d,
             'open': place['opening_hours']?['open_now'],
             'placeId': placeId,
             'lat': plat,
@@ -378,8 +379,8 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
           if (hospitals.length >= 5) break;
         }
         hospitals.sort((a, b) {
-          final da = double.tryParse((a['dist'] as String).replaceAll(' km', '')) ?? 999;
-          final db = double.tryParse((b['dist'] as String).replaceAll(' km', '')) ?? 999;
+          final da = (a['distM'] as double?) ?? double.infinity;
+          final db = (b['distM'] as double?) ?? double.infinity;
           return da.compareTo(db);
         });
       }
@@ -1553,7 +1554,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
           name: place.name,
           category: place.categoryName ?? 'Attraction',
           rating: place.rating,
-          distance: '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+          distance: formatDistance(place.distanceM),
           emoji: '📍',
           imageUrl: place.photoUrls.isNotEmpty ? place.photoUrls.first : null,
           latitude: place.latitude,
@@ -1675,7 +1676,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                     Icon(Icons.location_on_rounded, size: 12, color: Colors.white.withOpacity(0.7)),
                     const SizedBox(width: 3),
                     Text(
-                      '${((place.distanceM ?? 0) / 1000).toStringAsFixed(1)} km',
+                      formatDistance(place.distanceM),
                       style: TextStyle(fontSize: 12, color: Colors.white.withOpacity(0.7)),
                     ),
                   ],
@@ -1812,7 +1813,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                         Text(' ${a.rating}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         const SizedBox(width: 10),
                         const Icon(Icons.near_me_rounded, size: 12, color: AppColors.textTertiary),
-                        Text(' ${((a.distanceM ?? 0) / 1000).toStringAsFixed(1)} km', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
+                        Text(' ${formatDistance(a.distanceM)}', style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
                       ],
                     ),
                     const SizedBox(height: 6),
@@ -3276,8 +3277,8 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
 
 
   Widget _buildNatureItem(AttractionEntity item, int index) {
-    final dist = ((item.distanceM ?? 0) / 1000).toStringAsFixed(1);
-    
+    final dist = formatDistance(item.distanceM);
+
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
@@ -3286,7 +3287,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
           name: item.name,
           category: item.categoryName ?? 'Nature',
           rating: item.rating,
-          distance: '$dist km',
+          distance: dist,
           emoji: '🍃',
           imageUrl: item.photoUrls.isNotEmpty ? item.photoUrls.first : null,
           latitude: item.latitude,
@@ -3316,7 +3317,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                  const SizedBox(width: 12),
                  Icon(Icons.near_me_rounded, size: 12, color: AppColors.primary),
                  const SizedBox(width: 4),
-                 Text('$dist km', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                 Text(dist, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
                ],
             ),
             const SizedBox(width: 16),

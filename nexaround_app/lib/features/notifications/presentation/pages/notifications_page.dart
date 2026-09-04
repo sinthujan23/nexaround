@@ -32,7 +32,15 @@ class _NotificationsPageState extends State<NotificationsPage> {
     await CacheService.markNotificationsRead();
   }
 
+  bool _isHandlingTap = false;
+
   void _onTap(Map<String, dynamic> n) async {
+    if (_isHandlingTap) return;
+    _isHandlingTap = true;
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (mounted) _isHandlingTap = false;
+    });
+
     final type = (n['type'] ?? '').toString();
     final data = (n['data'] as Map?)?.cast<String, dynamic>() ?? n;
     final odysseyId = (data['odyssey_id'] ?? data['itinerary_id'] ?? data['id'] ?? data['odysseyId'] ?? n['odyssey_id'] ?? n['id'])?.toString();

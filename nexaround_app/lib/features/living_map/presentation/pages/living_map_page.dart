@@ -51,6 +51,8 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/animated_
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
+import 'package:nexaround_app/core/services/connectivity_service.dart';
+import 'package:nexaround_app/core/widgets/network_aware_widget.dart';
 
 class _LocalEvent {
   final String title;
@@ -140,8 +142,23 @@ class _LivingMapPageState extends State<LivingMapPage>
       _SpotlightPoint3D(30.0, 31.2), // Cairo
     ];
 
-    CacheService.discoveryResultNotifier.addListener(_onDiscoveryResultChanged);
+    ConnectivityService.instance.reconnectTrigger.addListener(_onReconnected);
     _checkLocationAndInit();
+  }
+
+  void _onReconnected() {
+    // Auto-retry data fetch when connectivity is restored
+    if (mounted && _userLatitude != null && _userLongitude != null) {
+      debugPrint('🔄 LivingMap: Auto-retrying data fetch after reconnect');
+      context.read<MapBloc>().add(
+        FetchNearbyAttractions(
+          latitude: _userLatitude!,
+          longitude: _userLongitude!,
+          useLegacy: false,
+        ),
+      );
+      _fetchBandedSections(_userLatitude!, _userLongitude!);
+    }
   }
 
   List<_SpotlightPoint3D> _generateWorldMapPoints() {
@@ -182,7 +199,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
   @override
   void dispose() {
-    CacheService.discoveryResultNotifier.removeListener(_onDiscoveryResultChanged);
+    ConnectivityService.instance.reconnectTrigger.removeListener(_onReconnected);
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _globeController.dispose();
@@ -1023,6 +1040,31 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ),
 
                   ...() {
+                    // ── Network failure with no cached data: show error view ──
+                    if (state.status == MapStatus.failure &&
+                        masterAttractions.isEmpty) {
+                      return [
+                        SliverToBoxAdapter(
+                          child: NetworkErrorView(
+                            onRetry: () {
+                              if (_userLatitude != null && _userLongitude != null) {
+                                context.read<MapBloc>().add(
+                                  FetchNearbyAttractions(
+                                    latitude: _userLatitude!,
+                                    longitude: _userLongitude!,
+                                    useLegacy: false,
+                                  ),
+                                );
+                                _fetchBandedSections(_userLatitude!, _userLongitude!);
+                              } else {
+                                _checkLocationAndInit();
+                              }
+                            },
+                          ),
+                        ),
+                      ];
+                    }
+
                     if (state.status == MapStatus.loading ||
                         state.status == MapStatus.initial ||
                         masterAttractions.isEmpty) {
@@ -1616,13 +1658,18 @@ class _LivingMapPageState extends State<LivingMapPage>
     });
   }
 
-  void _onDiscoveryResultChanged() {
-    if (mounted && CacheService.discoveryResultNotifier.value != null) {
-      _showDiscoveryEngineSheet(context);
-    }
-  }
+  bool _isOpeningDiscoverySheet = false;
+  bool _isNavigatingToPlace = false;
 
   void _showDiscoveryEngineSheet(BuildContext parentContext) async {
+    if (_isOpeningDiscoverySheet) return;
+    _isOpeningDiscoverySheet = true;
+
+    // Pop any open modal bottom sheets/dialogs first so duplicate sheets never stack
+    if (Navigator.of(parentContext).canPop()) {
+      Navigator.of(parentContext).popUntil((route) => route.isFirst);
+    }
+
     final readyResult = CacheService.discoveryResultNotifier.value;
     if (readyResult != null) {
       CacheService.discoveryResultNotifier.value = null; // Clear the badge
@@ -1658,8 +1705,11 @@ class _LivingMapPageState extends State<LivingMapPage>
       }
     }
 
-    if (!mounted) return;
-    showModalBottomSheet(
+    if (!mounted) {
+      _isOpeningDiscoverySheet = false;
+      return;
+    }
+    await showModalBottomSheet(
       context: parentContext,
       isScrollControlled: true,
       showDragHandle: false,
@@ -1674,6 +1724,10 @@ class _LivingMapPageState extends State<LivingMapPage>
         initialMood: mood,
         onPlaceSelected: (placeName) async {
           if (!mounted) return;
+          if (_isNavigatingToPlace) return; // Prevent multiple rapid clicks from opening multiple maps
+          _isNavigatingToPlace = true;
+
+          ScaffoldMessenger.of(parentContext).hideCurrentSnackBar();
           ScaffoldMessenger.of(parentContext).showSnackBar(
             SnackBar(
               content: Text('Locating $placeName...'),
@@ -1692,7 +1746,7 @@ class _LivingMapPageState extends State<LivingMapPage>
             
             if (results.isNotEmpty) {
               final matchedPlace = results.first;
-              Navigator.push(
+              await Navigator.push(
                 parentContext,
                 MaterialPageRoute(
                   builder: (_) => SmartTourismMapPage(
@@ -1713,10 +1767,13 @@ class _LivingMapPageState extends State<LivingMapPage>
                 const SnackBar(content: Text('Error finding place.')),
               );
             }
+          } finally {
+            _isNavigatingToPlace = false;
           }
         },
       ),
     );
+    _isOpeningDiscoverySheet = false;
   }
 
   Widget _buildGlassCircle(

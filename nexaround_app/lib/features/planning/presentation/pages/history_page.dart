@@ -22,6 +22,7 @@ class _HistoryPageState extends State<HistoryPage> {
   final _miniRepo = MiniTourRepository();
   List<Odyssey> _completedTrips = const [];
   List<Map<String, dynamic>> _miniTours = const [];
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -307,14 +308,20 @@ class _HistoryPageState extends State<HistoryPage> {
       ),
       child: GestureDetector(
         onTap: () async {
-          final deleted = await Navigator.push<bool>(
-            context,
-            MaterialPageRoute(
-              builder: (_) => OdysseyDetailPage(odyssey: o, isReadOnly: true),
-            ),
-          );
-          if (deleted == true) {
-            _load();
+          if (_isOpeningDetail) return;
+          _isOpeningDetail = true;
+          try {
+            final deleted = await Navigator.push<bool>(
+              context,
+              MaterialPageRoute(
+                builder: (_) => OdysseyDetailPage(odyssey: o, isReadOnly: true),
+              ),
+            );
+            if (deleted == true) {
+              _load();
+            }
+          } finally {
+            _isOpeningDetail = false;
           }
         },
         child: Container(

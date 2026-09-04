@@ -720,15 +720,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  bool _isLaunchingUrl = false;
+
   Future<void> _launchExternalUrl(String url) async {
+    if (_isLaunchingUrl) return;
+    _isLaunchingUrl = true;
     final trimmed = url.trim();
-    if (trimmed.isEmpty) return;
+    if (trimmed.isEmpty) {
+      _isLaunchingUrl = false;
+      return;
+    }
     try {
       final uri = Uri.parse(trimmed);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      Future.delayed(const Duration(milliseconds: 1000), () {
+        if (mounted) _isLaunchingUrl = false;
+      });
+    }
   }
 
   Widget _buildPriceDisclaimerBanner(String text) {
@@ -2091,16 +2103,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   Widget _buildTransportButton(OdysseyActivity act) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () async {
+      onTap: () {
         // Strip directional prefix and append destination for accurate geocoding
         final placeName = act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim();
         final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
         final fullAddress = dest.isNotEmpty ? '$placeName, $dest' : placeName;
         final destination = Uri.encodeComponent(fullAddress);
-        final uberUri = Uri.parse('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
-        if (await canLaunchUrl(uberUri)) {
-          await launchUrl(uberUri, mode: LaunchMode.externalApplication);
-        }
+        _launchExternalUrl('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(4),
@@ -2117,13 +2126,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   Widget _buildAttractionButton(OdysseyActivity act) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () async {
+      onTap: () {
         final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
         final query = Uri.encodeComponent('${act.name} tickets$dest');
-        final url = Uri.parse('https://www.headout.com/search/?q=$query');
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-        }
+        _launchExternalUrl('https://www.headout.com/search/?q=$query');
       },
       child: Image.asset(
         'assets/images/headout.png',
@@ -3235,9 +3241,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  int _lastMapNavEpoch = 0;
+
   /// Geocodes a place name and navigates to the Smart Tourism Map.
   void _navigateToSmartMap(BuildContext context, String placeName) async {
-    if (_isNavigatingToMap) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_isNavigatingToMap || now - _lastMapNavEpoch < 1200) return;
+    _lastMapNavEpoch = now;
     _isNavigatingToMap = true;
 
     final dest = widget.odyssey.destination;
