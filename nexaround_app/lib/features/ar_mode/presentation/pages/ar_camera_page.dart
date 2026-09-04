@@ -230,14 +230,17 @@ class _ArCameraPageState extends State<ArCameraPage>
   ];
 
   bool _categoryHasRange(String filter) {
-    return filter != 'All' && filter != 'Others';
+    final lower = filter.trim().toLowerCase();
+    return lower != 'all' && lower != 'others';
   }
 
   int _maxRangeForCategory(String filter) {
+    if (!_categoryHasRange(filter)) return 2;
     return 10;
   }
 
   List<int> _rangeStepsForCategory(String filter) {
+    if (!_categoryHasRange(filter)) return const [2];
     return const [2, 10];
   }
 
@@ -4584,6 +4587,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   /// Single rectangular tap-to-cycle KM range button beside "AR LIVE".
   Widget _buildKmRangePicker() {
+    if (!_categoryHasRange(_selectedFilter)) return const SizedBox.shrink();
     final steps = _rangeStepsForCategory(_selectedFilter);
     return GestureDetector(
       onTap: () {
@@ -5002,7 +5006,9 @@ class _ArCameraPageState extends State<ArCameraPage>
 
                   setState(() {
                     _selectedFilter = id;
-                    // Intentionally preserving _rangeKm so user's expanded range isn't lost
+                    if (!_categoryHasRange(id)) {
+                      _rangeKm = 2;
+                    }
                   });
 
                   _capCache.clear();
@@ -5749,7 +5755,8 @@ class _ArCameraPageState extends State<ArCameraPage>
 
 
                                       // Range button
-                                      GestureDetector(
+                                      if (_categoryHasRange(_selectedFilter))
+                                        GestureDetector(
                                           behavior: HitTestBehavior.opaque,
                                           onTap: () {
                                             final steps =
@@ -5979,9 +5986,11 @@ class _ArCameraPageState extends State<ArCameraPage>
                                         ],
                                       ),
                                     ),
-                                    const Spacer(),
+                                    if (_categoryHasRange(_selectedFilter))
+                                      const Spacer(),
                                     // Range tap button
-                                    GestureDetector(
+                                    if (_categoryHasRange(_selectedFilter))
+                                      GestureDetector(
                                       behavior: HitTestBehavior.opaque,
                                       onTap: () {
                                         final steps =
@@ -8520,7 +8529,8 @@ HOW TO FORMAT EVERY REPLY:
                                               ),
                                             ),
                                             // Range button
-                                            GestureDetector(
+                                            if (_categoryHasRange(_selectedFilter))
+                                              GestureDetector(
                                               behavior:
                                                   HitTestBehavior.opaque,
                                               onTap: () {

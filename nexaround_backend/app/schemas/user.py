@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Any
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
@@ -87,6 +87,10 @@ class UserPreferencesUpdate(BaseModel):
     preferred_transport: Optional[str] = None
     currency: Optional[str] = None
     nationality: Optional[str] = None
+    favorite_places: Optional[list[dict[str, Any]]] = None
+    saved_places: Optional[list[dict[str, Any]]] = None
+
+    model_config = ConfigDict(extra="allow")
 
 
 class FcmTokenRequest(BaseModel):

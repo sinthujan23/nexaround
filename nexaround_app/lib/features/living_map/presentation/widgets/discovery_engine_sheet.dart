@@ -17,6 +17,8 @@ class DiscoveryEngineSheet extends StatefulWidget {
   final double? longitude;
   final Function(String)? onPlaceSelected;
   final String? initialResult;
+  final String? initialMode;
+  final String? initialMood;
 
   const DiscoveryEngineSheet({
     super.key,
@@ -26,6 +28,8 @@ class DiscoveryEngineSheet extends StatefulWidget {
     this.longitude,
     this.onPlaceSelected,
     this.initialResult,
+    this.initialMode,
+    this.initialMood,
   });
 
   @override
@@ -50,6 +54,13 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
     _currentLatitude = widget.latitude;
     _currentLongitude = widget.longitude;
 
+    // Reopening a result (app resume, push notification, history tap) must
+    // show the mode/mood the user actually picked for that request, not the
+    // sheet's fresh-start defaults — those only apply when starting a new
+    // Discovery from scratch.
+    if (widget.initialMode != null) _selectedMode = widget.initialMode;
+    if (widget.initialMood != null) _selectedMood = widget.initialMood!;
+
     if (widget.initialResult != null) {
       _sheetState = SheetState.result;
       _aiResult = widget.initialResult!;
@@ -61,7 +72,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
 
   String _selectedMood = 'Happy';
   String? _selectedMode = 'Explore';
-  
+
   // Details
   String _timeAvailable = '5 Hours';
   String _companions = 'Solo';
@@ -1054,6 +1065,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
 
                           final location = item['location'] as String? ?? 'Unknown Location';
                           final mode = item['mode'] as String? ?? 'Explore';
+                          final mood = item['mood'] as String?;
                           final result = item['result'] as String? ?? '';
 
                           return ListTile(
@@ -1078,6 +1090,7 @@ class _DiscoveryEngineSheetState extends State<DiscoveryEngineSheet> {
                                 _aiResult = result;
                                 _planLocationName = location;
                                 _selectedMode = mode;
+                                if (mood != null) _selectedMood = mood;
                                 _sheetState = SheetState.result;
                               });
                             },

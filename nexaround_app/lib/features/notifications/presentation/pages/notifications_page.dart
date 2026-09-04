@@ -72,8 +72,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
         if (target != null) {
           final res = target['result'] as String?;
           final loc = target['location'] as String?;
+          final mode = target['mode'] as String?;
+          final mood = target['mood'] as String?;
           if (res != null && res.isNotEmpty) {
-            HomePage.homeKey.currentState?.openDiscoveryPlan(res, location: loc);
+            HomePage.homeKey.currentState?.openDiscoveryPlan(res, location: loc, mode: mode, mood: mood);
           }
         }
       } catch (e) {

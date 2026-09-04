@@ -90,8 +90,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           if (target != null && mounted) {
             final res = target['result'] as String?;
             final loc = target['location'] as String?;
+            final mode = target['mode'] as String?;
+            final mood = target['mood'] as String?;
             if (res != null && res.isNotEmpty) {
-              openDiscoveryPlan(res, location: loc);
+              openDiscoveryPlan(res, location: loc, mode: mode, mood: mood);
             }
           }
         } catch (e) {
@@ -102,7 +104,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     NotificationService.instance.syncToken();
   }
 
-  void openDiscoveryPlan(String result, {String? location}) {
+  void openDiscoveryPlan(String result, {String? location, String? mode, String? mood}) {
     switchToExplore();
     showModalBottomSheet(
       context: context,
@@ -112,6 +114,8 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       builder: (sheetContext) => DiscoveryEngineSheet(
         locationName: location ?? '',
         initialResult: result,
+        initialMode: mode,
+        initialMood: mood,
       ),
     );
   }

@@ -135,6 +135,7 @@ async def _run_discovery_generation(
                 user_id=user_id,
                 location=data.location,
                 mode=data.mode,
+                mood=data.mood,
                 result=clean_response,
             )
             saved_item = await repo.create(item)

@@ -107,6 +107,11 @@ class CloudStorageService {
 
     } catch (e) {
       print("Google Drive Integration Error: $e");
+      if (e is drive.DetailedApiRequestError) {
+        if (e.status == 403 && (e.message?.contains('Google Drive API') == true || e.message?.contains('disabled') == true)) {
+          throw Exception("Google Drive API is disabled for Google Cloud Project 375268962043. Please enable Google Drive API in Google Cloud Console.");
+        }
+      }
       rethrow;
     }
   }
@@ -235,6 +240,11 @@ class CloudStorageService {
 
     } catch (e) {
       print("Google Drive Deletion Error: $e");
+      if (e is drive.DetailedApiRequestError) {
+        if (e.status == 403 && (e.message?.contains('Google Drive API') == true || e.message?.contains('disabled') == true)) {
+          throw Exception("Google Drive API is disabled for Google Cloud Project 375268962043. Please enable Google Drive API in Google Cloud Console.");
+        }
+      }
       rethrow;
     }
   }

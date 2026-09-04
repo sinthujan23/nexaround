@@ -659,7 +659,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
               ),
             )
-          else if (!_isEffectivelyReadOnly)
+          else
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, color: Colors.black54, size: 20),
               onPressed: _delete,

@@ -388,7 +388,9 @@ class AuthService:
         if not user:
             raise NotFoundException(detail="User not found")
 
-        user.preferences = {**user.preferences, **preferences}
+        from sqlalchemy.orm.attributes import flag_modified
+        user.preferences = {**(user.preferences or {}), **preferences}
+        flag_modified(user, "preferences")
         user = await self.repo.update(user)
         return UserResponse.model_validate(user)
 

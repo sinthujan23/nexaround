@@ -181,6 +181,9 @@ class OdysseyRepository {
 
   Future<void> delete(String id) async {
     await _dio.delete('${ApiConstants.itineraries}/$id');
+    final cachedRaw = CacheService.getCachedOdysseysRaw();
+    cachedRaw.removeWhere((item) => item['id']?.toString() == id);
+    await CacheService.cacheOdysseys(cachedRaw);
     revision.value++;
   }
 }

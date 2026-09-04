@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:nexaround_app/core/network/api_client.dart';
+import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/auth/domain/entities/user.dart';
 import 'package:nexaround_app/features/auth/data/models/user_model.dart';
 
@@ -66,18 +69,60 @@ class CacheService {
     final prefsMap = Map<String, dynamic>.from(user.preferences);
     await saveUserPreferences(prefsMap);
 
-    if (prefsMap.containsKey('saved_places') && prefsMap['saved_places'] is List) {
-      final List rawSaved = prefsMap['saved_places'] as List;
-      final List<String> stringList = rawSaved.map((item) => json.encode(item)).toList();
-      await _prefs.setStringList('saved_places_data', stringList);
-      savedPlacesNotifier.value++;
+    // Unify both 'favorite_places' and 'saved_places' from server preferences
+    final List<dynamic> serverFavorites = [];
+    if (prefsMap['favorite_places'] is List) {
+      serverFavorites.addAll(prefsMap['favorite_places'] as List);
+    }
+    if (prefsMap['saved_places'] is List) {
+      for (final item in prefsMap['saved_places'] as List) {
+        if (!serverFavorites.any((e) => (e['id'] ?? e['name']) == (item['id'] ?? item['name']))) {
+          serverFavorites.add(item);
+        }
+      }
     }
 
-    if (prefsMap.containsKey('favorite_places') && prefsMap['favorite_places'] is List) {
-      final List rawFav = prefsMap['favorite_places'] as List;
-      final List<String> stringList = rawFav.map((item) => json.encode(item)).toList();
-      await _prefs.setStringList('favorite_places_data', stringList);
+    final bool wasLoggedIn = isLoggedIn();
+    final List<String> serverStrings = serverFavorites.map((item) => json.encode(item)).toList();
+
+    if (!wasLoggedIn) {
+      // First time logging in on this device: merge any offline guest favorites with server favorites
+      final existingLocal = [
+        ...(_prefs.getStringList('favorite_places_data') ?? []),
+        ...(_prefs.getStringList('saved_places_data') ?? []),
+      ];
+      final Map<String, String> merged = {};
+      for (final s in [...serverStrings, ...existingLocal]) {
+        try {
+          final d = json.decode(s);
+          final id = (d['id'] ?? d['name'])?.toString() ?? '';
+          if (id.isNotEmpty) merged[id] = s;
+        } catch (_) {}
+      }
+      final mergedList = merged.values.toList();
+      await _prefs.setStringList('favorite_places_data', mergedList);
+      await _prefs.setStringList('saved_places_data', mergedList);
       favoritePlacesNotifier.value++;
+      savedPlacesNotifier.value++;
+
+      // If local had offline items not on server, sync merged result back to server
+      if (mergedList.length > serverStrings.length) {
+        syncFavoritesToBackend();
+      }
+    } else {
+      // Existing session refresh: server is the source of truth
+      if (prefsMap.containsKey('favorite_places') || prefsMap.containsKey('saved_places')) {
+        await _prefs.setStringList('favorite_places_data', serverStrings);
+        await _prefs.setStringList('saved_places_data', serverStrings);
+        favoritePlacesNotifier.value++;
+        savedPlacesNotifier.value++;
+      } else {
+        // Server has no favorites key at all, but local has some
+        final local = getFavoritePlaceMaps();
+        if (local.isNotEmpty) {
+          syncFavoritesToBackend();
+        }
+      }
     }
 
     if (prefsMap.containsKey('explorer_xp')) {
@@ -279,6 +324,30 @@ class CacheService {
     currentPrefs['favorite_places'] = getFavoritePlaceMaps();
     currentPrefs['saved_places'] = getFavoritePlaceMaps();
     await saveUserPreferences(currentPrefs);
+
+    syncFavoritesToBackend();
+  }
+
+  static Timer? _favSyncDebounce;
+
+  /// Syncs favorite and saved places to the backend user preferences so they persist across devices.
+  static void syncFavoritesToBackend() {
+    _favSyncDebounce?.cancel();
+    _favSyncDebounce = Timer(const Duration(milliseconds: 600), () async {
+      try {
+        if (!isLoggedIn()) return;
+        final favorites = getFavoritePlaceMaps();
+        await ApiClient.instance.put(
+          ApiConstants.updatePreferences,
+          data: {
+            'favorite_places': favorites,
+            'saved_places': favorites,
+          },
+        );
+      } catch (e) {
+        debugPrint('Syncing favorites to backend failed: $e');
+      }
+    });
   }
 
   static Future<void> toggleSavedPlace(Map<String, dynamic> placeData) async {

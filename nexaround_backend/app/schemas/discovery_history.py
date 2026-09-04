@@ -7,6 +7,7 @@ from datetime import datetime
 class DiscoveryHistoryBase(BaseModel):
     location: str
     mode: str
+    mood: Optional[str] = None
     result: str
 
 

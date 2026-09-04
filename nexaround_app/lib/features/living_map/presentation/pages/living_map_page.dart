@@ -24,6 +24,7 @@ import 'package:nexaround_app/features/mini_tour/presentation/widgets/mini_tour_
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/currency_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/services/discovery_history_service.dart';
 import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/features/notifications/presentation/pages/notifications_page.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
@@ -1621,23 +1622,56 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
-  void _showDiscoveryEngineSheet(BuildContext parentContext) {
+  void _showDiscoveryEngineSheet(BuildContext parentContext) async {
     final readyResult = CacheService.discoveryResultNotifier.value;
     if (readyResult != null) {
       CacheService.discoveryResultNotifier.value = null; // Clear the badge
     }
 
+    // The notifier only carries the result text, so this used to fall back
+    // to the page's *current* live location/mode/mood — wrong whenever the
+    // user moved, or picked a different mode/mood, since this result was
+    // dispatched. Re-fetch history and use its most recent entry instead,
+    // matching the same pattern home_page.dart and notifications_page.dart
+    // already use for their own discovery-ready reopen paths.
+    String locationName = _currentLocationName;
+    String? district = _currentDistrict;
+    double? latitude = _userLatitude;
+    double? longitude = _userLongitude;
+    String? mode;
+    String? mood;
+    // Only look up history when actually reopening a finished result — a
+    // fresh "start a new Discovery" open (readyResult == null, e.g. the
+    // Around You refresh-button fallback) should keep the sheet's normal
+    // fresh-start defaults, not silently pre-fill the last session's picks.
+    if (readyResult != null) {
+      try {
+        final history = await DiscoveryHistoryService.fetchHistory();
+        if (history.isNotEmpty) {
+          final target = history.first;
+          locationName = (target['location'] as String?) ?? locationName;
+          mode = target['mode'] as String?;
+          mood = target['mood'] as String?;
+        }
+      } catch (e) {
+        debugPrint('Error fetching discovery history for reopen: $e');
+      }
+    }
+
+    if (!mounted) return;
     showModalBottomSheet(
       context: parentContext,
       isScrollControlled: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => DiscoveryEngineSheet(
-        locationName: _currentLocationName,
-        district: _currentDistrict,
-        latitude: _userLatitude,
-        longitude: _userLongitude,
+        locationName: locationName,
+        district: district,
+        latitude: latitude,
+        longitude: longitude,
         initialResult: readyResult,
+        initialMode: mode,
+        initialMood: mood,
         onPlaceSelected: (placeName) async {
           if (!mounted) return;
           ScaffoldMessenger.of(parentContext).showSnackBar(

@@ -212,6 +212,59 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
+  Future<bool> _showDeleteConfirmation(Odyssey o) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: const Text('Delete Odyssey?', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        content: Text('Are you sure you want to permanently delete "${o.title}" from your history?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('DELETE', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _deleteOdyssey(Odyssey o, {bool showConfirm = true}) async {
+    final id = o.id;
+    if (id == null) return;
+
+    if (showConfirm) {
+      final confirmed = await _showDeleteConfirmation(o);
+      if (!confirmed) return;
+    }
+
+    setState(() {
+      _completedTrips = _completedTrips.where((trip) => trip.id != id).toList();
+    });
+
+    try {
+      await _repo.delete(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Odyssey deleted successfully.')),
+        );
+      }
+    } catch (e) {
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting odyssey: $e')),
+        );
+      }
+    }
+  }
+
   Widget _odysseyCard(Odyssey o) {
     final prefixText = o.formattedDateRange.isNotEmpty
         ? '${o.destination.isNotEmpty ? "${o.destination} · " : ""}${o.formattedDateRange} · '
@@ -223,66 +276,107 @@ class _HistoryPageState extends State<HistoryPage> {
     final int done = o.visitedActivities;
     final double pct = total > 0 ? (done / total).clamp(0.0, 1.0) : 1.0;
 
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => OdysseyDetailPage(odyssey: o, isReadOnly: true),
+    return Dismissible(
+      key: Key('odyssey_${o.id ?? o.title}_${o.createdAt?.millisecondsSinceEpoch}'),
+      direction: DismissDirection.endToStart,
+      confirmDismiss: (_) => _showDeleteConfirmation(o),
+      onDismissed: (_) => _deleteOdyssey(o, showConfirm: false),
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withValues(alpha: 0.9),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Text(
+              'Delete',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+            SizedBox(width: 8),
+            Icon(Icons.delete_outline_rounded, color: Colors.white, size: 22),
+          ],
         ),
       ),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.black12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppColors.brandGreen.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.flight_takeoff_rounded,
-                      color: AppColors.brandGreen, size: 22),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        o.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$prefixText${o.currency} ${formatAmount(o.budget)}',
-                        style: const TextStyle(fontSize: 12.5, color: Colors.black54),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.arrow_forward_ios_rounded,
-                    size: 14, color: Colors.black38),
-              ],
+      child: GestureDetector(
+        onTap: () async {
+          final deleted = await Navigator.push<bool>(
+            context,
+            MaterialPageRoute(
+              builder: (_) => OdysseyDetailPage(odyssey: o, isReadOnly: true),
             ),
-            if (total > 0) ...[
-              const SizedBox(height: 12),
+          );
+          if (deleted == true) {
+            _load();
+          }
+        },
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.black12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.brandGreen.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.flight_takeoff_rounded,
+                        color: AppColors.brandGreen, size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          o.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '$prefixText${o.currency} ${formatAmount(o.budget)}',
+                          style: const TextStyle(fontSize: 12.5, color: Colors.black54),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        size: 20, color: Colors.black38),
+                    splashRadius: 20,
+                    tooltip: 'Delete Odyssey',
+                    onPressed: () => _deleteOdyssey(o),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded,
+                      size: 14, color: Colors.black38),
+                ],
+              ),
+              if (total > 0) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     done == total ? 'All $total stops completed 🎉' : '$done / $total stops visited',
@@ -327,8 +421,9 @@ class _HistoryPageState extends State<HistoryPage> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _miniTourCard(Map<String, dynamic> t) {
     final area = (t['area'] ?? 'Walk').toString();
