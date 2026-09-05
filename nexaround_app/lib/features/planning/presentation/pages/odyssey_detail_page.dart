@@ -26,6 +26,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
   final _repo = OdysseyRepository();
   bool _deleting = false;
   bool _loadingFresh = false;
+  bool _retrying = false;
   Timer? _pollTimer;
 
   /// Local working copy so AI swaps update the view in place.
@@ -69,7 +70,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
         });
 
         // If it's still being generated on the server, poll until ready
-        if (fresh.isGenerating || fresh.dayPlans.isEmpty) {
+        if (fresh.isGenerating) {
           _startPollTimer(id);
         } else {
           _pollTimer?.cancel();
@@ -87,8 +88,11 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
     int attempts = 0;
     _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
       attempts++;
-      if (attempts > 20 || !mounted) {
+      if (attempts > 50 || !mounted) {
         timer.cancel();
+        if (mounted && _loadingFresh) {
+          setState(() => _loadingFresh = false);
+        }
         return;
       }
       try {
@@ -97,15 +101,51 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
           timer.cancel();
           return;
         }
-        if (fresh != null && (fresh.dayPlans.isNotEmpty || !fresh.isGenerating)) {
-          setState(() {
-            _odyssey = fresh;
-            _loadingFresh = false;
-          });
-          timer.cancel();
+        if (fresh != null) {
+          if (fresh.isFailed) {
+            setState(() {
+              _odyssey = fresh;
+              _loadingFresh = false;
+            });
+            timer.cancel();
+          } else if (fresh.dayPlans.isNotEmpty || !fresh.isGenerating) {
+            setState(() {
+              _odyssey = fresh;
+              _loadingFresh = false;
+            });
+            timer.cancel();
+          }
         }
       } catch (_) {}
     });
+  }
+
+  Future<void> _retryGeneration() async {
+    final id = _odyssey.id;
+    if (id == null || _retrying) return;
+    setState(() => _retrying = true);
+    try {
+      final updated = await _repo.retryGeneration(id);
+      if (!mounted) return;
+      setState(() {
+        _odyssey = updated;
+        _loadingFresh = true;
+        _retrying = false;
+      });
+      _startPollTimer(id);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Re-crafting your Odyssey blueprint...'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _retrying = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Retry failed: $e')),
+      );
+    }
   }
 
   /// Move a place to a new position, possibly into a different day.
@@ -666,49 +706,133 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
             ),
         ],
       ),
-      body: (_loadingFresh && _odyssey.dayPlans.isEmpty)
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
+      body: _odyssey.isFailed
+          ? _buildFailedView()
+          : (_loadingFresh && _odyssey.dayPlans.isEmpty)
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(
+                          width: 44,
+                          height: 44,
+                          child: CircularProgressIndicator(color: Colors.black, strokeWidth: 3),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text(
+                          'Finalizing your Odyssey blueprint...',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.black87,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Generating days, activities, and strategies',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'Finalizing your Odyssey blueprint...',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Generating days, activities, and strategies',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                  ],
+                  ),
+                )
+              : OdysseyPlanView(
+                  odyssey: _odyssey,
+                  onReorderActivity: _isEffectivelyReadOnly ? null : _reorderActivity,
+                  onToggleVisited: _isEffectivelyReadOnly ? null : _toggleVisited,
+                  onSwapPartner: _isEffectivelyReadOnly ? null : _swapPartner,
+                  swappingPartnerName: _swappingPartnerName,
+                  onActualCostChanged: _isEffectivelyReadOnly ? null : _updateActualCost,
+                ),
+    );
+  }
+
+  Widget _buildFailedView() {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: Colors.redAccent.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.error_outline_rounded,
+                color: Colors.redAccent,
+                size: 38,
+              ),
+            ),
+            const SizedBox(height: 24),
+            const Text(
+              'Plan Generation Failed',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
+                color: Colors.black87,
+                letterSpacing: -0.3,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'We were unable to complete your trip blueprint due to a temporary service glitch or network timeout. Please retry.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton.icon(
+                onPressed: _retrying ? null : _retryGeneration,
+                icon: _retrying
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+                label: Text(
+                  _retrying ? 'RETRYING...' : 'RETRY GENERATION',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.2,
+                    color: Colors.white,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
-            )
-          : OdysseyPlanView(
-              odyssey: _odyssey,
-              onReorderActivity: _isEffectivelyReadOnly ? null : _reorderActivity,
-              onToggleVisited: _isEffectivelyReadOnly ? null : _toggleVisited,
-              onSwapPartner: _isEffectivelyReadOnly ? null : _swapPartner,
-              swappingPartnerName: _swappingPartnerName,
-              onActualCostChanged: _isEffectivelyReadOnly ? null : _updateActualCost,
             ),
+          ],
+        ),
+      ),
     );
   }
 }

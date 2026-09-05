@@ -540,3 +540,79 @@ def test_no_hotels_at_all_costs_nothing_rather_than_guessing():
 
     assert required_stay_cost({}, [{"city": "Colombo", "nights": 5}], 2) == 0.0
     assert required_stay_cost({"strategies": []}, [], 2) == 0.0
+
+
+# ── Budget Allocation tiers ────────────────────────────────────────────────
+#
+# Client report: "This rate never changes when shifting the budget level tabs."
+# Stay / Accommodation showed an identical figure on Minimum, Recommended and
+# Comfortable while transit, food and activities all moved, because every
+# scenario was priced at `min(rates)`. Hotels are now ranked by price the same
+# way flight strategies are.
+
+
+def test_stay_cost_moves_with_the_budget_tier():
+    """The reported bug: all three tabs quoted one stay figure."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Colombo", "nights": 5}]
+    # Four hotels, which is what SerpApi returns per leg (max_hotels=4).
+    strategies = _stays_tab_totals(
+        {"Colombo": [40, 60, 95, 155]}, travelers=2, legs=legs,
+    )
+
+    minimum = required_stay_cost({"strategies": strategies}, legs, 2, "minimum")
+    recommended = required_stay_cost({"strategies": strategies}, legs, 2, "recommended")
+    comfortable = required_stay_cost({"strategies": strategies}, legs, 2, "comfortable")
+
+    # 5 nights x 1 room, at the cheapest / median / dearest nightly rate.
+    assert minimum == 200.0
+    assert recommended == 475.0
+    assert comfortable == 775.0
+    assert minimum < recommended < comfortable
+
+
+def test_stay_cost_default_tier_is_the_cheapest_room():
+    """The feasibility floor and every existing caller depend on this default."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Colombo", "nights": 5}]
+    strategies = _stays_tab_totals(
+        {"Colombo": [40, 60, 95, 155]}, travelers=2, legs=legs,
+    )
+
+    assert required_stay_cost({"strategies": strategies}, legs, 2) == 200.0
+    assert required_stay_cost(
+        {"strategies": strategies}, legs, 2,
+    ) == required_stay_cost({"strategies": strategies}, legs, 2, "minimum")
+
+
+def test_single_hotel_leg_prices_every_tier_the_same():
+    """One room to choose from is one price — honest, not a repeat of the bug."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Jaffna", "nights": 2}]
+    strategies = _stays_tab_totals({"Jaffna": [50]}, travelers=2, legs=legs)
+
+    tiers = {
+        required_stay_cost({"strategies": strategies}, legs, 2, t)
+        for t in ("minimum", "recommended", "comfortable")
+    }
+    assert tiers == {100.0}
+
+
+def test_unsearched_leg_tracks_the_tier_it_is_carried_onto():
+    """A leg with no hotels borrows the trip's rates, ranked by the same tier."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Siem Reap", "nights": 3}, {"city": "Battambang", "nights": 2}]
+    strategies = _stays_tab_totals(
+        {"Siem Reap": [30, 90]}, travelers=2, legs=legs[:1],
+    )
+
+    # Comfortable: 90x3 for the searched leg + 90x2 carried onto the empty one.
+    assert required_stay_cost(
+        {"strategies": strategies}, legs, 2, "comfortable",
+    ) == 450.0
+    # Minimum keeps the old behaviour exactly: 30x3 + 30x2.
+    assert required_stay_cost({"strategies": strategies}, legs, 2) == 150.0

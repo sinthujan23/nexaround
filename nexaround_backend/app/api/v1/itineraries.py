@@ -56,6 +56,26 @@ async def generate_odyssey(
         except Exception:
             pass
 
+    generation_params = {
+        "destination": data.destination,
+        "mood": data.mood,
+        "budget": data.budget,
+        "days": data.days,
+        "currency": data.currency,
+        "travelers": data.travelers,
+        "include_flights": data.include_flights,
+        "departure_city": data.departure_city or "",
+        "departure_country": data.departure_country or "",
+        "nationality": data.nationality or "",
+        "has_visa": data.has_visa,
+        "flight_start_date": data.flight_start_date,
+        "flight_end_date": data.flight_end_date,
+        "include_hotels": data.include_hotels,
+        "hotel_check_in_date": data.hotel_check_in_date,
+        "hotel_check_out_date": data.hotel_check_out_date,
+        "start_date": data.start_date,
+        "end_date": data.end_date,
+    }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
         mood=data.mood,
@@ -67,6 +87,7 @@ async def generate_odyssey(
         start_date=start_dt_str,
         end_date=end_dt_str,
         departure_city=data.departure_city or "",
+        generation_params=generation_params,
         budget_breakdown={
             "stay": round(data.budget * 0.35, 2),
             "transit": round(data.budget * 0.30, 2),
@@ -145,6 +166,10 @@ async def _run_odyssey_generation(
             logger.error("Odyssey generation skipped: gemini_api_key not configured")
             print(f"[ODYSSEY] FAILED {itinerary_id}: gemini_api_key not configured", flush=True)
             itin.status = "failed"
+            if itin.items and isinstance(itin.items, list) and len(itin.items) > 0:
+                first_item = dict(itin.items[0])
+                first_item["failure_reason"] = "Gemini API key is not configured"
+                itin.items = [first_item] + list(itin.items[1:])
             await repo.update(itin)
             return
 
@@ -192,6 +217,10 @@ async def _run_odyssey_generation(
             logger.error(f"Odyssey generation failed for {itinerary_id}: {e}")
             print(f"[ODYSSEY] FAILED {itinerary_id}: {e}\n{tb}", flush=True)
             itin.status = "failed"
+            if itin.items and isinstance(itin.items, list) and len(itin.items) > 0:
+                first_item = dict(itin.items[0])
+                first_item["failure_reason"] = str(e)
+                itin.items = [first_item] + list(itin.items[1:])
         await repo.update(itin)
 
         if itin.status == "active":
@@ -358,6 +387,75 @@ async def swap_odyssey_partner(
     items[meta_idx] = meta
     itin.items = items  # reassign whole list so SQLAlchemy persists the JSON change
     return await repo.update(itin)
+
+
+@router.post("/{itinerary_id}/odyssey/retry", response_model=ItineraryResponse, status_code=status.HTTP_202_ACCEPTED)
+async def retry_odyssey_generation(
+    itinerary_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Re-trigger generation for a failed Odyssey."""
+    repo = ItineraryRepository(db)
+    itin = await repo.get_by_id(itinerary_id, current_user.id)
+    if not itin:
+        raise HTTPException(status_code=404, detail="Itinerary not found")
+
+    items = [dict(it) for it in (itin.items or [])]
+    meta = next((it for it in items if it.get("kind") == "odyssey_meta"), {})
+    if not meta:
+        raise HTTPException(status_code=400, detail="Not an Odyssey")
+
+    gen_params = meta.get("generation_params") or {}
+    destination = gen_params.get("destination") or meta.get("destination") or itin.title or ""
+    mood = gen_params.get("mood") or meta.get("mood") or "balanced"
+    budget = float(gen_params.get("budget") or meta.get("budget") or 1000.0)
+    days = int(gen_params.get("days") or meta.get("days") or 3)
+    currency = gen_params.get("currency") or meta.get("currency") or "USD"
+    travelers = int(gen_params.get("travelers") or meta.get("travelers") or 1)
+    include_flights = bool(gen_params.get("include_flights", False))
+    departure_city = gen_params.get("departure_city") or meta.get("departure_city") or ""
+    departure_country = gen_params.get("departure_country") or ""
+    nationality = gen_params.get("nationality") or ""
+    has_visa = bool(gen_params.get("has_visa", False))
+    flight_start_date = gen_params.get("flight_start_date")
+    flight_end_date = gen_params.get("flight_end_date")
+    include_hotels = bool(gen_params.get("include_hotels", False))
+    hotel_check_in_date = gen_params.get("hotel_check_in_date")
+    hotel_check_out_date = gen_params.get("hotel_check_out_date")
+    start_date = gen_params.get("start_date") or meta.get("start_date") or ""
+    end_date = gen_params.get("end_date") or meta.get("end_date") or ""
+
+    meta.pop("failure_reason", None)
+    itin.status = "generating"
+    itin.items = [meta]
+    saved = await repo.update(itin)
+
+    background_tasks.add_task(
+        _run_odyssey_generation,
+        itinerary_id=saved.id,
+        user_id=current_user.id,
+        destination=destination,
+        mood=mood,
+        budget=budget,
+        days=days,
+        currency=currency,
+        travelers=travelers,
+        include_flights=include_flights,
+        departure_city=departure_city,
+        departure_country=departure_country,
+        nationality=nationality,
+        has_visa=has_visa,
+        flight_start_date=flight_start_date,
+        flight_end_date=flight_end_date,
+        include_hotels=include_hotels,
+        hotel_check_in_date=hotel_check_in_date,
+        hotel_check_out_date=hotel_check_out_date,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    return saved
 
 
 @router.post("/generate", response_model=dict)

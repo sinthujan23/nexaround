@@ -213,6 +213,7 @@ def build_meta_item(
     practical_info: dict = None,
     booking_plan: list[dict] = None,
     legs: list[dict] = None,
+    generation_params: dict = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
@@ -248,6 +249,7 @@ def build_meta_item(
         # reader must treat an empty list as "one leg covering the whole trip"
         # rather than as "no accommodation".
         "legs": legs or [],
+        "generation_params": generation_params or {},
     }
 
 
@@ -1144,18 +1146,47 @@ def _rooms_for(travelers: int) -> int:
     return serpapi_rooms_for(travelers)
 
 
+def _rate_for_tier(rates: list[float], tier: str) -> float:
+    """One leg's nightly rate for a budget tier, chosen by price rank.
+
+    Mirrors how flights are tiered (see the `priced.sort` block in
+    `_price_ai_flight_strategies` and `_tier_flight_cost`): cheapest room is
+    the Minimum tier, dearest is Comfortable, and the median sits between.
+
+    Before this existed every tier was priced at `min(rates)`, which is why
+    Stay / Accommodation showed an identical figure on all three Budget
+    Allocation tabs while transit, food and activities all moved with the
+    tier — the client-reported bug.
+    """
+    if not rates:
+        return 0.0
+    ordered = sorted(rates)
+    if tier == "minimum":
+        return ordered[0]
+    if tier == "comfortable":
+        return ordered[-1]
+    return ordered[len(ordered) // 2]
+
+
 def required_stay_cost(
     hotel_strategies: dict | None,
     city_legs: list[dict],
     travelers: int,
+    tier: str = "minimum",
 ) -> float:
     """What the accommodation actually costs the party, across every city.
 
-    For each city the trip sleeps in: that city's own cheapest nightly rate x
+    For each city the trip sleeps in: that city's nightly rate for [tier] x
     that leg's nights x the rooms the party needs. This is the Budget
     Allocation's "Stay / Accommodation" line, and it is deliberately the same
     arithmetic the Stays tab quotes each hotel's Est. Total with — the two are
     a reconciliation, not two independent estimates, and are tested together.
+
+    [tier] defaults to "minimum" — the cheapest room, which is what the
+    feasibility floor has to be measured against and what every existing
+    caller and test expects. The Budget Allocation tabs pass their own tier so
+    Comfortable prices a comfortable room rather than repeating the Minimum
+    figure.
 
     The figure this replaced was a single `min()` over one trip-wide hotel
     search, so a four-city trip was budgeted one city's stay, party size never
@@ -1186,12 +1217,14 @@ def required_stay_cost(
         rates_ = nightly_by_leg.get(leg_i)
         if not rates_:
             # A leg whose search came back empty still has to be slept in.
-            # Carry the trip's cheapest known rate rather than pricing those
-            # nights at zero, which is what made a budget look sufficient.
+            # Carry the trip's known rates rather than pricing those nights at
+            # zero, which is what made a budget look sufficient. Pooled across
+            # legs, then tiered the same way, so an empty leg tracks the tier
+            # instead of always falling back to the cheapest room.
             if not nightly_by_leg:
                 continue
-            rates_ = [min(r for rr in nightly_by_leg.values() for r in rr)]
-        total_ += min(rates_) * nights_ * rooms_
+            rates_ = [r for rr in nightly_by_leg.values() for r in rr]
+        total_ += _rate_for_tier(rates_, tier) * nights_ * rooms_
     return round(total_, 2)
 
 
@@ -1590,10 +1623,20 @@ async def generate_odyssey(
         has_visa=has_visa,
         legs=city_legs,
     )
-    text, grounding_chunks = await _call_gemini(
-        prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
-    )
-    plan = _parse_json(text)
+    try:
+        text, grounding_chunks = await _call_gemini(
+            prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
+        )
+        plan = _parse_json(text)
+    except Exception as e:
+        logger.warning(
+            "Grounded Gemini generation/parsing failed (%s) — falling back to standard ungrounded generation",
+            e,
+        )
+        text, grounding_chunks = await _call_gemini(
+            prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=False,
+        )
+        plan = _parse_json(text)
 
     g_days = _as_int(plan.get("days"), days)
     nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
@@ -1638,15 +1681,28 @@ async def generate_odyssey(
         hotel_strategies, city_legs, travelers,
     )
 
+    def _tier_stay_cost(tier: str) -> float:
+        """Party-total stay cost for one tier, falling back to the cheapest.
+
+        The counterpart of `_tier_flight_cost`. Without it every scenario
+        repeated `cheapest_hotel_cost`, so Stay / Accommodation was the one
+        line that never moved between the Minimum, Recommended and Comfortable
+        tabs.
+        """
+        cost = required_stay_cost(hotel_strategies, city_legs, travelers, tier)
+        return cost if cost > 0 else cheapest_hotel_cost
+
     # Base budget allocation. Parameterized on `total` so the same waterfall
     # can price out Minimum/Comfortable scenarios below without a second
-    # Gemini call. `flight_cost` now varies per scenario: each budget scenario
-    # is priced against *its own* flight tier, so the Budget tab and the
-    # Flights tab quote the same transit figure. `cheapest_hotel_cost` stays
-    # fixed (hotels are not tiered the same way) while `total` scales.
-    def _waterfall(total: float, flight_cost: float = 0.0) -> dict:
+    # Gemini call. `flight_cost` and `stay_cost` both vary per scenario: each
+    # budget scenario is priced against *its own* flight and hotel tier, so the
+    # Budget tab, the Flights tab and the Stays tab quote the same figures.
+    def _waterfall(
+        total: float, flight_cost: float = 0.0, stay_cost: float = 0.0,
+    ) -> dict:
         tot_ = total if total > 0 else 1.0
         flight_cost_ = flight_cost if flight_cost > 0 else cheapest_flight_cost
+        stay_cost_ = stay_cost if stay_cost > 0 else cheapest_hotel_cost
 
         if flight_cost_ > 0:
             transit_amt_ = min(flight_cost_, round(tot_ * 0.85, 2))
@@ -1655,19 +1711,25 @@ async def generate_odyssey(
 
         rem_after_transit_ = max(tot_ - transit_amt_, round(tot_ * 0.15, 2))
 
-        if cheapest_hotel_cost > 0:
+        if stay_cost_ > 0:
             # The stay costs what it costs. Capping it at a share of what the
             # flights left over is what showed 13,500 against a real 17,900 and
             # called the plan affordable — the traveller cannot book 60% of a
             # room. When this overruns the budget, the feasibility check below
             # is what must say so.
-            stay_amt_ = round(cheapest_hotel_cost, 2)
+            stay_amt_ = round(stay_cost_, 2)
         else:
             stay_amt_ = round(rem_after_transit_ * 0.45, 2)
 
         rem_for_food_act_ = max(tot_ - (transit_amt_ + stay_amt_), round(tot_ * 0.05, 2))
         food_amt_ = round(rem_for_food_act_ * 0.60, 2)
-        activities_amt_ = round(tot_ - (stay_amt_ + transit_amt_ + food_amt_), 2)
+        # Floored at zero: a tier whose own flights and rooms outrun its total
+        # would otherwise quote a negative activities budget. The scenario
+        # totals below are floored against each tier's real cost precisely so
+        # this stays a guard rather than a routine outcome.
+        activities_amt_ = round(
+            max(tot_ - (stay_amt_ + transit_amt_ + food_amt_), 0.0), 2
+        )
 
         return {
             "stay": stay_amt_,
@@ -1707,22 +1769,54 @@ async def generate_odyssey(
     real_minimum_cost = cheapest_flight_cost + cheapest_hotel_cost + on_ground
     budget_is_sufficient = (user_budget >= real_minimum_cost) or real_minimum_cost <= 0
 
+    def _tier_floor(tier: str) -> float:
+        """What one tier actually costs: its flights, its rooms, and the ground.
+
+        `real_minimum_cost` is exactly `_tier_floor("minimum")`, so the
+        feasibility check and `minimum_required` are unchanged by this — only
+        the dearer tiers now price themselves honestly instead of reusing the
+        cheapest room.
+        """
+        return _tier_flight_cost(tier) + _tier_stay_cost(tier) + on_ground
+
+    def _scenario_total(nominal: float, tier: str) -> float:
+        """A scenario's headline total, never below what that tier costs.
+
+        A tier priced against its own dearer flights and rooms can outrun a
+        multiple of the user's budget; letting it would drive the food and
+        activities lines to zero and quote a tab the traveller cannot book.
+        """
+        floor_ = _tier_floor(tier)
+        return max(nominal, round(floor_ * 1.05, 2)) if floor_ > 0 else nominal
+
     if budget_is_sufficient:
         # User's budget IS the Recommended tier — normal flow.
         tot = user_budget
-        budget_breakdown = _waterfall(tot, _tier_flight_cost("recommended"))
+        # Recommended is the user's own budget, left exactly as entered — it is
+        # the headline total on the card, so it is never floored upward.
+        budget_breakdown = _waterfall(
+            tot,
+            _tier_flight_cost("recommended"),
+            _tier_stay_cost("recommended"),
+        )
 
         budget_scenarios = {}
         # Only show a Minimum tier if there's meaningful headroom below.
         if real_minimum_cost > 0 and tot > real_minimum_cost * 1.25:
             budget_scenarios["minimum"] = _waterfall(
-                tot * _SCENARIO_MULTIPLIERS["minimum"],
+                _scenario_total(
+                    tot * _SCENARIO_MULTIPLIERS["minimum"], "minimum",
+                ),
                 _tier_flight_cost("minimum"),
+                _tier_stay_cost("minimum"),
             )
         budget_scenarios["recommended"] = budget_breakdown
         budget_scenarios["comfortable"] = _waterfall(
-            tot * _SCENARIO_MULTIPLIERS["comfortable"],
+            _scenario_total(
+                tot * _SCENARIO_MULTIPLIERS["comfortable"], "comfortable",
+            ),
             _tier_flight_cost("comfortable"),
+            _tier_stay_cost("comfortable"),
         )
         feasible = True
         if real_minimum_cost > 0 and (tot - real_minimum_cost) / real_minimum_cost < 0.2:
@@ -1732,16 +1826,33 @@ async def generate_odyssey(
         minimum_required = real_minimum_cost if real_minimum_cost > 0 else None
     else:
         # Budget is INSUFFICIENT — override with realistic tiers built
-        # from actual SerpApi flight + hotel prices.
-        min_total = real_minimum_cost * 1.15   # +15% buffer for food/activities
-        rec_total = real_minimum_cost * 1.35   # ~35% above minimum
-        comf_total = real_minimum_cost * 1.80  # ~80% above minimum
+        # from actual SerpApi flight + hotel prices. Each tier is costed
+        # against *its own* floor (that tier's flights and rooms), not three
+        # multiples of the cheapest one: scaling a single floor is what made
+        # every tab quote the same stay figure while the others moved.
+        # `_tier_floor("minimum")` is `real_minimum_cost`, so `minimum_required`
+        # and the feasibility banner are unchanged.
+        min_total = _tier_floor("minimum") * 1.15   # +15% buffer for food/activities
+        rec_total = _tier_floor("recommended") * 1.35   # ~35% above its own floor
+        comf_total = _tier_floor("comfortable") * 1.80  # ~80% above its own floor
 
-        budget_breakdown = _waterfall(rec_total, _tier_flight_cost("recommended"))
+        budget_breakdown = _waterfall(
+            rec_total,
+            _tier_flight_cost("recommended"),
+            _tier_stay_cost("recommended"),
+        )
         budget_scenarios = {
-            "minimum": _waterfall(min_total, _tier_flight_cost("minimum")),
+            "minimum": _waterfall(
+                min_total,
+                _tier_flight_cost("minimum"),
+                _tier_stay_cost("minimum"),
+            ),
             "recommended": budget_breakdown,
-            "comfortable": _waterfall(comf_total, _tier_flight_cost("comfortable")),
+            "comfortable": _waterfall(
+                comf_total,
+                _tier_flight_cost("comfortable"),
+                _tier_stay_cost("comfortable"),
+            ),
         }
         tot = rec_total  # Display total = recommended realistic cost
         feasible = False
@@ -1817,6 +1928,26 @@ async def generate_odyssey(
         practical_info=practical_info,
         booking_plan=booking_plan,
         legs=city_legs,
+        generation_params={
+            "destination": final_destination,
+            "mood": mood,
+            "budget": budget,
+            "currency": currency,
+            "days": days,
+            "travelers": travelers,
+            "include_flights": include_flights,
+            "departure_city": departure_city,
+            "departure_country": departure_country,
+            "nationality": nationality,
+            "has_visa": has_visa,
+            "flight_start_date": flight_start_date,
+            "flight_end_date": flight_end_date,
+            "include_hotels": include_hotels,
+            "hotel_check_in_date": hotel_check_in_date,
+            "hotel_check_out_date": hotel_check_out_date,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )
 
     day_items: list[dict] = []
@@ -2427,6 +2558,16 @@ def _parse_json(raw: str) -> dict:
                 return parsed
         except Exception:
             pass
+    # Attempt repair for truncated JSON cut off near token limits
+    if start != -1:
+        candidate = raw[start:]
+        for suffix in ["}", "\n}", "\n]}", "\n]}}", "\n}]}}"]:
+            try:
+                parsed = json.loads(candidate + suffix)
+                if isinstance(parsed, dict):
+                    return parsed
+            except Exception:
+                pass
     raise ValueError("Gemini did not return a JSON object")
 
 

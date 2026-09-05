@@ -71,6 +71,16 @@ class OdysseyRepository {
     return Odyssey.fromItinerary(json);
   }
 
+  /// Re-trigger generation for a failed Odyssey.
+  Future<Odyssey> retryGeneration(String id) async {
+    final response = await _dio.post(
+      '${ApiConstants.itineraries}/$id/odyssey/retry',
+    );
+    revision.value++;
+    final json = (response.data as Map).cast<String, dynamic>();
+    return Odyssey.fromItinerary(json);
+  }
+
   /// Persist edits to an existing Odyssey (e.g. per-place check-off marking
   /// activities visited, or flipping status to `completed`). Sends the whole
   /// plan back via PUT so the nested `visited` flags and status are saved.
