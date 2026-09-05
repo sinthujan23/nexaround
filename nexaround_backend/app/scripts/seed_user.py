@@ -15,6 +15,21 @@ async def seed_user():
         # User list
         users_to_seed = [
             {
+                "email": "reviewer@nexaround.com",
+                "password": "Password123!",
+                "display_name": "Play Console Reviewer"
+            },
+            {
+                "email": "guest@nexaround.com",
+                "password": "NexAround2025!",
+                "display_name": "Guest Explorer"
+            },
+            {
+                "email": "playstore@nexaround.com",
+                "password": "NexAround2025!",
+                "display_name": "Play Store Reviewer"
+            },
+            {
                 "email": "test@nexaround.com",
                 "password": "password123",
                 "display_name": "Nex Explorer"
@@ -35,13 +50,16 @@ async def seed_user():
                 # Update password to ensure it matches what we expect
                 existing_user.password_hash = get_password_hash(u["password"])
                 existing_user.display_name = u["display_name"]
+                existing_user.is_active = True
+                existing_user.is_verified = True
                 print(f"Updated existing user: {u['email']}")
             else:
                 new_user = User(
                     email=u["email"],
                     password_hash=get_password_hash(u["password"]),
                     display_name=u["display_name"],
-                    is_active=True
+                    is_active=True,
+                    is_verified=True
                 )
                 session.add(new_user)
                 print(f"Created new user: {u['email']}")

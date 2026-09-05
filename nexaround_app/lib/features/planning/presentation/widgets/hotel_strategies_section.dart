@@ -164,8 +164,20 @@ class HotelStrategiesSection extends StatelessWidget {
     );
   }
 
+  /// "5 nights x 2 rooms" — the arithmetic behind Est. Total, or null when the
+  /// backend sent no nights to base it on (every Odyssey saved before hotels
+  /// carried them).
+  static String? _stayBasis(HotelStrategy hs) {
+    if (hs.nights <= 0) return null;
+    final rooms = hs.rooms > 0 ? hs.rooms : 1;
+    final nightWord = hs.nights == 1 ? 'night' : 'nights';
+    final roomWord = rooms == 1 ? 'room' : 'rooms';
+    return '${hs.nights} $nightWord \u00d7 $rooms $roomWord';
+  }
+
   Widget _buildHotelCard(BuildContext context, HotelStrategy hs, String? scenarioTag) {
     final isHighlighted = highlightScenario != null && scenarioTag == highlightScenario;
+    final stayBasis = _stayBasis(hs);
     const scenarioLabels = {
       'minimum': 'MINIMUM BUDGET PICK',
       'recommended': 'RECOMMENDED PICK',
@@ -287,6 +299,29 @@ class HotelStrategiesSection extends StatelessWidget {
                                 ],
                               ),
                             ),
+                          // Star class, kept visually distinct from the gold
+                          // review badge beside it. They are different
+                          // measures — a 3-star hotel can be rated 3.9 by
+                          // guests, and an unclassed guesthouse 4.8 — and
+                          // showing only the review score is what made the
+                          // "3-star and above" filter impossible to verify
+                          // from the app.
+                          if (hs.hotelClass > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                '${hs.hotelClass}-star',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.black87,
+                                ),
+                              ),
+                            ),
                           if (hs.category.isNotEmpty)
                             Text(
                               hs.category,
@@ -353,13 +388,38 @@ class HotelStrategiesSection extends StatelessWidget {
             ],
             if (hs.totalEstimatedCost.isNotEmpty) ...[
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.receipt_long_rounded, size: 14, color: Colors.black45),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 1),
+                    child: Icon(Icons.receipt_long_rounded, size: 14, color: Colors.black45),
+                  ),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(
-                      'Est. Total: ${formatPriceString(hs.totalEstimatedCost, targetCurrency: odyssey.currency)}',
-                      style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Est. Total: ${formatPriceString(hs.totalEstimatedCost, targetCurrency: odyssey.currency)}',
+                          style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.w700),
+                        ),
+                        // What the total is a total *of*. Without it the
+                        // figure was read as one room's price and compared
+                        // against the budget's Stay line — which had already
+                        // multiplied by the rooms the party needs — so the
+                        // same stay appeared to cost two different amounts.
+                        // The leg header carries this too, but only on
+                        // multi-city trips; a single-city trip showed it
+                        // nowhere.
+                        if (stayBasis != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Text(
+                              stayBasis,
+                              style: const TextStyle(fontSize: 11, color: Colors.black54),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ],

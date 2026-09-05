@@ -707,9 +707,18 @@ class HotelStrategy {
 
   /// Nights spent on this leg, and rooms the party needs. `totalEstimatedCost`
   /// is `nights x rooms x nightly` — showing these makes it legible as a leg
-  /// total rather than a whole-trip one.
+  /// total rather than a whole-trip one, and is what reconciles it with the
+  /// stay line in the budget allocation, which is the same arithmetic on the
+  /// cheapest hotel of each leg.
   final int nights;
   final int rooms;
+
+  /// Star class of the property (3 = a 3-star hotel), 0 when Google lists none.
+  ///
+  /// Not the same thing as [rating], which is the guest review score out of 5.
+  /// Conflating the two is what made "only 3-star and above" admit a hostel
+  /// its guests rated 4.8 while excluding a 3-star hotel rated 3.9.
+  final int hotelClass;
 
   const HotelStrategy({
     required this.rank,
@@ -729,6 +738,7 @@ class HotelStrategy {
     this.city = '',
     this.nights = 0,
     this.rooms = 0,
+    this.hotelClass = 0,
   });
 
   factory HotelStrategy.fromJson(Map<String, dynamic> json) => HotelStrategy(
@@ -753,6 +763,7 @@ class HotelStrategy {
         city: (json['city'] ?? '').toString(),
         nights: FlightStrategy._parseInt(json['nights'], 0),
         rooms: FlightStrategy._parseInt(json['rooms'], 0),
+        hotelClass: FlightStrategy._parseInt(json['hotel_class'], 0),
       );
 
   Map<String, dynamic> toJson() => {
@@ -773,6 +784,7 @@ class HotelStrategy {
         'city': city,
         'nights': nights,
         'rooms': rooms,
+        'hotel_class': hotelClass,
       };
 }
 

@@ -9,7 +9,6 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 import asyncio
 import json
 import logging
-import math
 import re
 import urllib.parse
 import httpx
@@ -20,6 +19,7 @@ from app.services.serpapi_service import (
     format_hotel_results_for_gemini,
     extract_hotel_strategies_from_serpapi,
     extract_flight_strategies_from_serpapi,
+    rooms_for as serpapi_rooms_for,
 )
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,22 @@ _SCENARIO_MULTIPLIERS = {"minimum": 0.7, "comfortable": 1.4}
 # then derived as rooms x rate (`_rooms_for`), the same reasoning the flight
 # search documents for querying one seat at a time.
 _STANDARD_ROOM_ADULTS = 2
+
+# "Show only 3-star and above" — the star class every hotel search starts from.
+# Google classifies properties 2-5 stars; unclassed guesthouses, hostels and
+# apartments carry no class and are excluded by any class filter at all.
+_BASE_HOTEL_CLASS = 3
+
+# Nightly spend (USD, one room) above which a trip is treated as able to afford
+# 4-star. Set against the 3-star baseline rather than derived: below it the
+# floor simply stays at 3, so the number only decides who gets a *stricter*
+# search, never who gets a worse one.
+_FOUR_STAR_NIGHTLY_USD = 80.0
+
+# Class floors to try in order when a search comes back empty. The traveller
+# sees an unclassed property (0 = no class filter) only after 3-star and 2-star
+# have both returned nothing for their destination and dates.
+_HOTEL_CLASS_FALLBACKS = [3, 2, 0]
 
 
 def _model_url(model: str) -> str:
@@ -879,26 +895,34 @@ async def generate_hotel_strategies(
 ) -> dict:
     """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
 
-    Option A: Uses SerpAPI results directly with a budget-aware minimum rating
-    filter (see min_rating below). Gemini is NOT used for hotel selection —
-    prices, ratings, and hotel names come straight from Google Hotels via
-    SerpAPI for 100% accuracy.
+    Uses SerpAPI results directly, filtered to a minimum **star class** (see
+    `min_hotel_class` below) rather than to a guest review score. Gemini is NOT
+    used for hotel selection — prices, classes, ratings and hotel names come
+    straight from Google Hotels via SerpAPI.
 
-    Falls back to Gemini-based generation only if SerpAPI returns no results.
+    Falls back to Gemini-based generation only after every rung of the class
+    ladder has come back empty.
     """
 
-    # A flat 4.0★ floor priced budget travellers out of their own destination:
-    # filtering to 4★+ properties — and, among those, keeping whichever four
-    # Google returns first rather than the cheapest — is why a 50,000 LKR /
-    # 5-day Colombo trip surfaced hotels the traveller could never afford,
-    # dragging the whole plan's cost with it: the itinerary prompt takes this
-    # exact price range as a mandatory, non-negotiable check-in/out cost (see
-    # hotel_price_range in _build_prompt). Size the floor to what the trip can
-    # actually spend on a room, using the same real-cost-floor machinery
-    # `generate_odyssey` already uses to judge whether a budget is realistic
-    # at all, rather than a fixed constant applied to every trip regardless
-    # of budget.
-    min_rating = 4.0
+    # Filter on **star class**, not on guest review score.
+    #
+    # The floor this replaces was `overall_rating >= 4.0` — a guest score out
+    # of 5 — standing in for "3-star and above". They are unrelated measures: a
+    # hostel dorm rated 4.6 by its guests cleared a 4.0 review floor while
+    # every 3-star hotel rated 3.9 was excluded, which is the opposite of what
+    # the filter was for. Google indexes the star class directly, so ask it for
+    # the classes wanted (`hotel_class=3,4,5`) and let the filtering happen
+    # against the whole index rather than over one page of results.
+    #
+    # The floor is still sized to what the trip can spend on a room — a flat
+    # ceiling is what priced a 50,000 LKR / 5-day Colombo trip out of its own
+    # destination, and the itinerary prompt takes this price range as a
+    # mandatory check-in/out cost (see hotel_price_range in _build_prompt) — but
+    # it now only ever moves *up* from 3. Below 3-star is reached by the
+    # fallback ladder when a class-filtered search comes back empty, so a
+    # traveller sees an unclassed guesthouse because nothing else exists in
+    # their range, never because their budget was assumed to be small.
+    min_hotel_class = _BASE_HOTEL_CLASS
     nights = max(days - 1, 1)
     rooms = _rooms_for(travelers)
     ground_floor = trip_cost_floor.on_ground_floor(
@@ -917,87 +941,74 @@ async def generate_hotel_strategies(
         affordable_per_night = (budget * 0.35) / nights / rooms
 
     affordable_usd = trip_cost_floor.to_usd(affordable_per_night, currency)
-    if affordable_usd is not None:
-        # A tester's real Colombo trip (50,000 LKR / 5 days / 1 traveller)
-        # works out to ~$28/night affordable — comfortably enough for a real
-        # budget guesthouse, most of which simply aren't formally star-rated
-        # on Google at all. The previous <$20/<$40/<$70 breakpoints put that
-        # exact case at a 3.0 floor, which is why "still only 3+ star hotels"
-        # kept showing up even on a tight budget — raised throughout.
-        if affordable_usd < 35:
-            min_rating = 0.0
-        elif affordable_usd < 55:
-            min_rating = 3.0
-        elif affordable_usd < 80:
-            min_rating = 3.5
-    else:
-        # Currency not in the FX table either — can't compare to the USD
-        # breakpoints at all. Default to a moderate floor rather than the
-        # strictest one so an unresolvable currency doesn't silently force
-        # expensive hotels on a budget trip.
-        min_rating = 3.0
+    if affordable_usd is not None and affordable_usd >= _FOUR_STAR_NIGHTLY_USD:
+        # Only when the trip can comfortably afford it does the floor move
+        # above 3-star. Everything below this stays at the 3-star baseline
+        # instead of being quietly dropped to a lower class: a tight budget is
+        # a reason to sort by price, which this search already does, not a
+        # reason to show the traveller worse hotels than they asked for.
+        min_hotel_class = 4
 
     # ── Primary path: SerpAPI direct extraction ──────────────────────────────
     if serpapi_key:
         try:
-            logger.info(f"Fetching live hotel data via SerpApi (Google Hotels) with {min_rating}★ min rating...")
             serp = SerpApiService(serpapi_key)
-            serp_result = await serp.search_hotels(
-                destination=destination,
-                check_in_date=hotel_check_in_date,
-                check_out_date=hotel_check_out_date,
-                adults=_STANDARD_ROOM_ADULTS,
-                currency=currency,
-                min_rating=min_rating,
-                # Lowest-price-first, not Google's relevance default. A rating
-                # floor alone still surfaced whichever prominent (often
-                # pricier) chains Google ranks first among the eligible pool —
-                # this is what actually lets the cheapest eligible options
-                # through, so the Minimum/Recommended/Comfortable tiers span a
-                # real price range instead of four similarly-priced hotels.
-                sort_by=3,
-            )
+            # Walk down the class ladder from this trip's floor. The previous
+            # version retried exactly once and then gave up on live prices
+            # entirely, handing the whole stay to a Gemini guess — for a small
+            # town where Google lists no classed hotel at all, that is every
+            # time. Trying 2-star and then unfiltered keeps real Google prices
+            # in the plan for those destinations.
+            attempts = [c for c in _HOTEL_CLASS_FALLBACKS if c <= min_hotel_class]
+            if min_hotel_class not in attempts:
+                attempts.insert(0, min_hotel_class)
 
-            properties = serp_result.get("properties") or []
-            if properties:
-                logger.info(f"SerpAPI returned {len(properties)} hotels rated {min_rating}★+ for {destination}")
-                result = extract_hotel_strategies_from_serpapi(
-                    serp_result,
-                    destination=destination,
-                    currency=currency,
-                    check_in_date=hotel_check_in_date,
-                    check_out_date=hotel_check_out_date,
-                    travelers=travelers,
-                    max_hotels=4,
+            for attempt, class_floor in enumerate(attempts):
+                label = f"{class_floor}-star+" if class_floor else "any class"
+                logger.info(
+                    "Fetching live hotel data via SerpApi (Google Hotels), %s, for %s...",
+                    label, destination,
                 )
-                return result
-            elif min_rating > 0:
-                logger.warning(f"SerpAPI returned 0 hotels after {min_rating}★ filter for {destination}. "
-                              "Trying with a lower minimum...")
-                # Retry with a lower threshold
-                retry_rating = max(min_rating - 1.0, 0.0)
                 serp_result = await serp.search_hotels(
                     destination=destination,
                     check_in_date=hotel_check_in_date,
                     check_out_date=hotel_check_out_date,
                     adults=_STANDARD_ROOM_ADULTS,
                     currency=currency,
-                    min_rating=retry_rating,
+                    min_hotel_class=class_floor,
+                    # Lowest-price-first, not Google's relevance default. A
+                    # quality floor alone still surfaced whichever prominent
+                    # (often pricier) chains Google ranks first among the
+                    # eligible pool — this is what actually lets the cheapest
+                    # eligible options through, so the Minimum/Recommended/
+                    # Comfortable tiers span a real price range instead of four
+                    # similarly-priced hotels.
                     sort_by=3,
                 )
+
                 properties = serp_result.get("properties") or []
-                if properties:
-                    logger.info(f"SerpAPI returned {len(properties)} hotels rated {retry_rating}★+ for {destination}")
-                    result = extract_hotel_strategies_from_serpapi(
-                        serp_result,
-                        destination=destination,
-                        currency=currency,
-                        check_in_date=hotel_check_in_date,
-                        check_out_date=hotel_check_out_date,
-                        travelers=travelers,
-                        max_hotels=4,
+                if not properties:
+                    logger.warning(
+                        "SerpAPI returned 0 hotels at %s for %s%s",
+                        label, destination,
+                        "; widening the class filter" if attempt + 1 < len(attempts) else "",
                     )
-                    return result
+                    continue
+
+                logger.info(
+                    "SerpAPI returned %d hotels (%s) for %s",
+                    len(properties), label, destination,
+                )
+                return extract_hotel_strategies_from_serpapi(
+                    serp_result,
+                    destination=destination,
+                    currency=currency,
+                    check_in_date=hotel_check_in_date,
+                    check_out_date=hotel_check_out_date,
+                    travelers=travelers,
+                    nights=nights,
+                    max_hotels=4,
+                )
 
         except Exception as e:
             logger.warning(f"SerpApi hotel search failed, falling back to Gemini: {e}")
@@ -1085,6 +1096,7 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
         data = _parse_json(text)
         strategies = data.get("strategies")
         if isinstance(strategies, list):
+            rooms = _rooms_for(travelers)
             for strat in strategies:
                 if isinstance(strat, dict):
                     provider = strat.get("provider_name") or "Google Hotels"
@@ -1098,6 +1110,20 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
                         travelers=travelers,
                         is_flight=False,
                     )
+                    # Put the model's stay total on the same footing as the
+                    # SerpApi path's. Left as written, it is a number Gemini
+                    # chose — for one room, or for the party, or for one night,
+                    # unknowably — while the budget's stay line is computed from
+                    # `price_per_night` x nights x rooms either way. This is the
+                    # last path on which the Stays tab and the budget could
+                    # still quote one stay at two prices.
+                    strat["nights"] = nights
+                    strat["rooms"] = rooms
+                    nightly = _extract_lowest_price(strat.get("price_per_night") or "")
+                    if nightly > 0:
+                        strat["total_estimated_cost"] = (
+                            f"{currency} {nightly * nights * rooms:,.0f}"
+                        )
         return data
     except Exception as e:
         logger.error(f"Failed to generate hotel strategies: {e}")
@@ -1110,8 +1136,63 @@ def _rooms_for(travelers: int) -> int:
     Accommodation used to ignore party size entirely — it reached SerpApi as
     `adults=` and never became rooms — so three travellers were budgeted one
     room's worth of nights.
+
+    Delegates to `serpapi_service.rooms_for`, which the Stays tab's own stay
+    totals are built from: a second copy of this rule here is how the budget's
+    stay line and the Stays tab came to quote different totals for one stay.
     """
-    return max(1, math.ceil(max(int(travelers or 1), 1) / 2))
+    return serpapi_rooms_for(travelers)
+
+
+def required_stay_cost(
+    hotel_strategies: dict | None,
+    city_legs: list[dict],
+    travelers: int,
+) -> float:
+    """What the accommodation actually costs the party, across every city.
+
+    For each city the trip sleeps in: that city's own cheapest nightly rate x
+    that leg's nights x the rooms the party needs. This is the Budget
+    Allocation's "Stay / Accommodation" line, and it is deliberately the same
+    arithmetic the Stays tab quotes each hotel's Est. Total with — the two are
+    a reconciliation, not two independent estimates, and are tested together.
+
+    The figure this replaced was a single `min()` over one trip-wide hotel
+    search, so a four-city trip was budgeted one city's stay, party size never
+    became rooms, and — when no dates reached SerpApi — a single night stood in
+    for the whole trip.
+
+    Module-level rather than a closure inside `generate_odyssey` so it can be
+    tested against the Stays tab's totals directly, which is the only way to
+    catch the two drifting apart again.
+    """
+    strategies_ = (hotel_strategies or {}).get("strategies")
+    if not isinstance(strategies_, list) or not city_legs:
+        return 0.0
+    rooms_ = _rooms_for(travelers)
+    nightly_by_leg: dict[int, list[float]] = {}
+    for s in strategies_:
+        if not isinstance(s, dict):
+            continue
+        rate = _extract_lowest_price(s.get("price_per_night"))
+        if rate > 0:
+            nightly_by_leg.setdefault(int(s.get("leg_index") or 0), []).append(rate)
+
+    total_ = 0.0
+    for leg_i, leg_ in enumerate(city_legs):
+        nights_ = int(leg_.get("nights") or 0)
+        if nights_ <= 0:
+            continue
+        rates_ = nightly_by_leg.get(leg_i)
+        if not rates_:
+            # A leg whose search came back empty still has to be slept in.
+            # Carry the trip's cheapest known rate rather than pricing those
+            # nights at zero, which is what made a budget look sufficient.
+            if not nightly_by_leg:
+                continue
+            rates_ = [min(r for rr in nightly_by_leg.values() for r in rr)]
+        total_ += min(rates_) * nights_ * rooms_
+    return round(total_, 2)
 
 
 async def generate_hotel_strategies_for_legs(
@@ -1174,7 +1255,13 @@ async def generate_hotel_strategies_for_legs(
                 continue
             strategy["leg_index"] = index
             strategy["city"] = leg.get("city") or ""
-            strategy["nights"] = int(leg.get("nights") or 0)
+            # Only overwrite with a real figure. A leg carrying no nights would
+            # otherwise stamp 0 over the nights the stay total was actually
+            # priced with, leaving the Stays tab showing a total it then
+            # describes as covering no nights at all.
+            leg_nights = int(leg.get("nights") or 0)
+            if leg_nights > 0:
+                strategy["nights"] = leg_nights
             strategy["rooms"] = _rooms_for(travelers)
             merged.append(strategy)
         if result.get("best_areas"):
@@ -1547,42 +1634,9 @@ async def generate_odyssey(
 
     cheapest_flight_cost = _tier_flight_cost("minimum")
 
-    # What the accommodation actually costs: for every city the trip sleeps in,
-    # its own cheapest nightly rate x that leg's nights x the rooms the party
-    # needs.
-    #
-    # The old figure was a single `min()` over one trip-wide hotel search, so a
-    # four-city trip was budgeted one city's stay, party size never became
-    # rooms, and — when no dates reached SerpApi — `total_estimated_cost` fell
-    # back to a *single night* standing in for the whole trip.
-    def _required_stay_cost() -> float:
-        strategies_ = (hotel_strategies or {}).get("strategies")
-        if not isinstance(strategies_, list) or not city_legs:
-            return 0.0
-        rooms_ = _rooms_for(travelers)
-        nightly_by_leg: dict[int, list[float]] = {}
-        for s in strategies_:
-            if not isinstance(s, dict):
-                continue
-            rate = _extract_lowest_price(s.get("price_per_night"))
-            if rate > 0:
-                nightly_by_leg.setdefault(int(s.get("leg_index") or 0), []).append(rate)
-
-        total_ = 0.0
-        for leg_i, leg_ in enumerate(city_legs):
-            nights_ = int(leg_.get("nights") or 0)
-            rates_ = nightly_by_leg.get(leg_i)
-            if not rates_ or nights_ <= 0:
-                # A leg whose search came back empty still has to be slept in.
-                # Carry the trip's cheapest known rate rather than pricing those
-                # nights at zero, which is what made a budget look sufficient.
-                rates_ = [min(r for rr in nightly_by_leg.values() for r in rr)] if nightly_by_leg else None
-                if not rates_ or nights_ <= 0:
-                    continue
-            total_ += min(rates_) * nights_ * rooms_
-        return round(total_, 2)
-
-    cheapest_hotel_cost = _required_stay_cost()
+    cheapest_hotel_cost = required_stay_cost(
+        hotel_strategies, city_legs, travelers,
+    )
 
     # Base budget allocation. Parameterized on `total` so the same waterfall
     # can price out Minimum/Comfortable scenarios below without a second

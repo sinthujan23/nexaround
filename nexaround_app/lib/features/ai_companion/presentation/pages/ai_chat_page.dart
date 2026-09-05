@@ -837,12 +837,6 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
       'dropoff[nickname]': name,
     });
 
-    final bookingUri = Uri.https('www.booking.com', '/searchresults.html', {
-      'ss': name.trim(),
-      'latitude': finalLat.toStringAsFixed(6),
-      'longitude': finalLng.toStringAsFixed(6),
-    });
-
     Widget circleActionButton({
       Widget? child,
       IconData? icon,
@@ -945,36 +939,6 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
             onTap: () async {
               try {
                 await launchUrl(uberUri, mode: LaunchMode.externalApplication);
-              } catch (_) {}
-            },
-          ),
-          const SizedBox(width: 16),
-          circleActionButton(
-            imagePath: 'assets/images/booking_logo.jpg',
-            color: Colors.white,
-            index: 2,
-            onTap: () async {
-              try {
-                await launchUrl(
-                  bookingUri,
-                  mode: LaunchMode.externalApplication,
-                );
-              } catch (_) {}
-            },
-          ),
-          const SizedBox(width: 16),
-          circleActionButton(
-            imagePath: 'assets/images/headout.png',
-            color: Colors.transparent,
-            index: 3,
-            fillImage: true,
-            onTap: () async {
-              final headoutUri = await GooglePlacesService.getHeadoutSearchUri(finalLat, finalLng, name);
-              try {
-                await launchUrl(
-                  headoutUri,
-                  mode: LaunchMode.externalApplication,
-                );
               } catch (_) {}
             },
           ),

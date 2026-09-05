@@ -8,7 +8,11 @@ Sign up at https://serpapi.com for a free API key (250 searches/month).
 """
 import json
 import logging
+import math
+import re
 import urllib.parse
+from datetime import datetime
+
 import httpx
 from app.services import telemetry
 from typing import Dict, Any, List
@@ -38,6 +42,88 @@ def resolve_search_currency(currency: str) -> str:
     """The currency to ask SerpApi for, which may not be the one to display in."""
     code = (currency or "USD").strip().upper()
     return code if code in _SERPAPI_CURRENCIES else "USD"
+
+
+# Google Hotels only classifies properties from 2 to 5 stars. Anything below
+# that — and every unclassed guesthouse, hostel and apartment — has no class to
+# filter on, so a floor outside this range means "do not filter".
+_MIN_GOOGLE_HOTEL_CLASS = 2
+_MAX_GOOGLE_HOTEL_CLASS = 5
+
+
+def hotel_class_param(min_hotel_class: int) -> str:
+    """SerpApi's `hotel_class` value for a star-class floor: 3 -> "3,4,5".
+
+    Empty when the floor asks for nothing Google can filter on, which is the
+    signal to send no `hotel_class` parameter at all rather than one Google
+    would reject.
+    """
+    try:
+        floor = int(min_hotel_class)
+    except (TypeError, ValueError):
+        return ""
+    if floor < _MIN_GOOGLE_HOTEL_CLASS or floor > _MAX_GOOGLE_HOTEL_CLASS:
+        return ""
+    return ",".join(str(c) for c in range(floor, _MAX_GOOGLE_HOTEL_CLASS + 1))
+
+
+def property_hotel_class(prop: Dict[str, Any]) -> int:
+    """Star class of a Google Hotels property, or 0 when it has none.
+
+    SerpApi gives the class twice: `extracted_hotel_class` as an integer and
+    `hotel_class` as prose ("4-star hotel"). The integer is not always present,
+    so fall back to reading it out of the string before concluding a property
+    is unclassed — treating a 4-star hotel as unclassed would drop it from a
+    filtered search.
+    """
+    if not isinstance(prop, dict):
+        return 0
+    extracted = prop.get("extracted_hotel_class")
+    if isinstance(extracted, bool):
+        return 0
+    if isinstance(extracted, (int, float)):
+        return int(extracted)
+    if isinstance(extracted, str) and extracted.strip().isdigit():
+        return int(extracted.strip())
+    label = prop.get("hotel_class")
+    if isinstance(label, (int, float)) and not isinstance(label, bool):
+        return int(label)
+    if isinstance(label, str):
+        match = re.search(r"\d+", label)
+        if match:
+            return int(match.group())
+    return 0
+
+
+# Hotels are priced per room, so a party of three needs two rooms and pays
+# twice the nightly rate. Defined here, beside the extraction that quotes the
+# stay total, so the Stays tab and the budget allocation cannot drift apart:
+# both derive rooms from this one rule. Showing a one-room total on a tab
+# headed "2 rooms", against a budget line that had multiplied by two, is what
+# made the same stay look like two different prices.
+def rooms_for(travelers: int) -> int:
+    """Rooms a party needs, at two to a room."""
+    try:
+        party = int(travelers or 1)
+    except (TypeError, ValueError):
+        party = 1
+    return max(1, math.ceil(max(party, 1) / 2))
+
+
+def nights_between(check_in_date: str, check_out_date: str) -> int:
+    """Nights spanned by a check-in/check-out pair, or 0 if undeterminable.
+
+    0 means "the caller must supply the nights", never "a one-night stay":
+    quoting one night for a whole trip is precisely the failure this replaces.
+    """
+    if not check_in_date or not check_out_date:
+        return 0
+    try:
+        start = datetime.strptime(str(check_in_date).strip(), "%Y-%m-%d").date()
+        end = datetime.strptime(str(check_out_date).strip(), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return 0
+    return max((end - start).days, 0)
 
 
 # Live USD rates, refreshed at most every few hours.
@@ -237,17 +323,35 @@ class SerpApiService:
         adults: int = 1,
         currency: str = "USD",
         min_rating: float = 0.0,
+        min_hotel_class: int = 0,
         sort_by: int | None = None,
     ) -> Dict[str, Any]:
         """Search Google Hotels via SerpApi.
 
         Returns a dict with:
           - properties: list of hotel results with prices, ratings, amenities
-        If min_rating > 0, properties below that rating are filtered out.
+
+        Two different quality filters, which are not the same thing and were
+        conflated before:
+
+        `min_hotel_class` is the property's **star class** (3 = a 3-star hotel)
+        and is what "only 3-star and above" means. It is sent to Google as the
+        native `hotel_class` request parameter — a comma-separated list of the
+        classes to keep, e.g. `3,4,5` — so the filtering happens in Google's
+        index rather than over one page of already-returned results. Google
+        supports classes 2-5 only, and the parameter excludes vacation rentals
+        outright (they have no star class to filter on).
+
+        `min_rating` is the **guest review score** out of 5 (4.0 = "rated 4.0
+        or better by guests"), applied here over the returned page. A hostel
+        can be rated 4.8 by guests and still be an unclassed property, which is
+        why a 4.0 review floor never delivered the 3-star-and-above hotels it
+        was standing in for.
+
         `sort_by` is SerpApi's Google Hotels sort code: 3 = lowest price,
         8 = highest rating, 13 = most reviewed. Without it, Google's default
         "relevance" order applies, which skews toward prominent (often
-        pricier) chains — the reason a min_rating floor alone still surfaced
+        pricier) chains — the reason a quality floor alone still surfaced
         the same well-known hotels first even once budget travelers were
         allowed into the results.
         """
@@ -273,6 +377,12 @@ class SerpApiService:
             params["check_out_date"] = check_out_date
         if sort_by:
             params["sort_by"] = str(sort_by)
+        # Google only knows classes 2-5. A floor of 3 becomes "3,4,5"; a floor
+        # of 0 or 1 is no filter at all rather than "1,2,3,4,5", which Google
+        # rejects.
+        class_filter = hotel_class_param(min_hotel_class)
+        if class_filter:
+            params["hotel_class"] = class_filter
 
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -300,6 +410,26 @@ class SerpApiService:
                         and p["overall_rating"] >= min_rating
                     ]
 
+                # Verify the star class Google actually returned rather than
+                # trusting the request parameter. `hotel_class` is a filter
+                # Google applies to its own index, and a property that carries
+                # no class at all (a guesthouse, an apartment) has been seen to
+                # slip through it — which would put exactly the properties this
+                # filter exists to exclude back in front of the traveller.
+                if class_filter and "properties" in data:
+                    kept = [
+                        p for p in data["properties"]
+                        if isinstance(p, dict)
+                        and property_hotel_class(p) >= min_hotel_class
+                    ]
+                    dropped = len(data["properties"]) - len(kept)
+                    if dropped:
+                        logger.info(
+                            "[SerpApi] Dropped %d of %d properties below %d-star class",
+                            dropped, len(data["properties"]), min_hotel_class,
+                        )
+                    data["properties"] = kept
+
                 return data
 
         except Exception as e:
@@ -315,6 +445,7 @@ def extract_hotel_strategies_from_serpapi(
     check_in_date: str = "",
     check_out_date: str = "",
     travelers: int = 1,
+    nights: int = 0,
     max_hotels: int = 4,
 ) -> Dict[str, Any]:
     """Convert raw SerpAPI Google Hotels results directly into hotel strategy
@@ -332,6 +463,20 @@ def extract_hotel_strategies_from_serpapi(
     """
     raw_properties = serpapi_data.get("properties") or []
     strategies: List[Dict[str, Any]] = []
+
+    # The stay is quoted for the party, not for one room: `travelers` used to be
+    # accepted here and never read, so a party of three saw a one-room total on
+    # the Stays tab while the budget allocation had already multiplied the same
+    # nightly rate by two rooms. Same nights, same rooms, same arithmetic as
+    # `_required_stay_cost` in the odyssey service — that is what makes the two
+    # screens agree.
+    rooms = rooms_for(travelers)
+    # The trip's own planned nights win over the dates when both are known: the
+    # budget's stay line is built from the leg's nights, so deriving a
+    # different number here from a date window that happens to disagree would
+    # reintroduce the very mismatch this shares. Dates are the fallback for
+    # callers that pass no nights.
+    nights = int(nights or 0) or nights_between(check_in_date, check_out_date)
 
     # Strictly filter for available properties that have valid, active pricing and names
     properties: List[Dict[str, Any]] = []
@@ -411,7 +556,6 @@ def extract_hotel_strategies_from_serpapi(
         provider = "Google Hotels"
 
         # Clean hotel name by stripping room specifications
-        import re
         clean_name = re.sub(
             r'\s*[-–—]\s*(Family|Standard|Deluxe|Executive|Superior|Suite|Villa|Room|Bed|King|Queen|Twin|Double|Single|Sea View|Garden View|Ocean View|Penthouse|Bungalow|Apartment|Studio|Cottage|Luxury|Chalet|Resort|One|Two|Three|Four|Five|\d+).*',
             '',
@@ -463,6 +607,30 @@ def extract_hotel_strategies_from_serpapi(
         else:
             price_str = ""
 
+        # Whole-stay total = nightly x nights x rooms.
+        #
+        # Google's own `total_rate` is one room for the window it was searched
+        # with, and is missing entirely when the search carried no dates — in
+        # which case the nightly rate was being shown as if it were the trip
+        # total. Deriving the total instead means the figure always states the
+        # same thing, is defined for every property, and matches the stay line
+        # in the budget allocation, which is built from this same arithmetic on
+        # the cheapest hotel of each leg.
+        stay_total_str = ""
+        if converted_nightly > 0 and nights > 0:
+            stay_total_str = f"{display_code} {converted_nightly * nights * rooms:,.0f}"
+        elif total_extracted:
+            # No usable nightly rate: fall back to Google's own stay total,
+            # scaled to the rooms the party needs.
+            converted_total = convert_from_search_currency(
+                float(total_extracted), display_code,
+            )
+            stay_total_str = f"{display_code} {converted_total * rooms:,.0f}"
+        elif total_display and rooms == 1:
+            # Only safe to pass through verbatim for a single room — for more,
+            # an unparsed string cannot be multiplied and would understate.
+            stay_total_str = total_display
+
         strategies.append({
             "rank": rank,
             "name": name,
@@ -471,13 +639,12 @@ def extract_hotel_strategies_from_serpapi(
             "rating": rating_str,
             "reviews": reviews if isinstance(reviews, int) else 0,
             "price_per_night": price_str,
-            # Same conversion as the nightly rate: a whole-stay total in the
-            # search currency would be relabelled, not converted, downstream.
-            "total_estimated_cost": (
-                f"{display_code} {convert_from_search_currency(float(total_extracted), display_code):,.0f}"
-                if total_extracted and convert_from_search_currency(float(total_extracted), display_code) != float(total_extracted)
-                else (total_display or "")
-            ),
+            "total_estimated_cost": stay_total_str,
+            "nights": nights,
+            "rooms": rooms,
+            # Star class, so the app can show what was actually filtered on and
+            # a reviewer can tell a 3-star hotel from a 4.5-guest-rated hostel.
+            "hotel_class": property_hotel_class(p),
             "location": location,
             "amenities": amenities,
             "description": description or f"Well-rated hotel in {destination} with excellent guest reviews.",
@@ -491,12 +658,24 @@ def extract_hotel_strategies_from_serpapi(
         general_tips.append(f"Prices shown are live rates for {check_in_date} to {check_out_date}.")
     general_tips.append("Prices may vary — tap to view the latest rates on the booking site.")
     if strategies:
-        avg_rating = sum(
-            float(s["rating"].replace(" ★", ""))
-            for s in strategies
-            if s["rating"] != "N/A"
-        ) / max(len([s for s in strategies if s["rating"] != "N/A"]), 1)
-        general_tips.append(f"All hotels shown are rated {avg_rating:.1f}★ or higher.")
+        # State the star class actually met, not the average guest score. The
+        # old line read "All hotels shown are rated 4.3★ or higher" off the
+        # *mean* review score, so it was both a different measure from the one
+        # being filtered on and arithmetically wrong — an average is not a
+        # floor, and half the list sat below it.
+        classes = [int(s.get("hotel_class") or 0) for s in strategies]
+        classed = [c for c in classes if c > 0]
+        if classed and len(classed) == len(classes):
+            general_tips.append(
+                f"Every hotel here is {min(classed)}-star class or above."
+            )
+        if nights > 0:
+            room_word = "room" if rooms == 1 else "rooms"
+            general_tips.append(
+                f"Est. Total covers {nights} {'night' if nights == 1 else 'nights'} "
+                f"x {rooms} {room_word} for {max(int(travelers or 1), 1)} "
+                f"{'traveller' if max(int(travelers or 1), 1) == 1 else 'travellers'}."
+            )
 
     # Best areas from the results
     areas = set()
