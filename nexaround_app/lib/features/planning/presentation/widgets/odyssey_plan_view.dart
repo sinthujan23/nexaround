@@ -3481,7 +3481,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   }) {
     final bool isBookingLogo = logoPath != null && logoPath.contains('booking_logo');
     final bool isGYGLogo = logoPath != null && logoPath.contains('getyourguide');
-    final bool isSwapping = isAiGenerated && widget.swappingPartnerName == title;
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -3581,33 +3580,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     ],
                   ),
                 ),
-                if (isSwapping)
-                  const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.brandGreen,
-                    ),
-                  )
-                else if (isAiGenerated && widget.onSwapPartner != null)
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () {},
-                    child: IconButton(
-                      icon: const Icon(Icons.autorenew_rounded, size: 18, color: Colors.black45),
-                      onPressed: () => widget.onSwapPartner!(title),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  )
-                else
-                  const Icon(
-                    Icons.arrow_forward_ios_rounded,
-                    size: 14,
-                    color: Colors.black26,
-                  ),
+                const Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: Colors.black26,
+                ),
               ],
             ),
           ),

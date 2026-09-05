@@ -425,51 +425,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ).animate().fade(delay: 150.ms),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: ['Kandy', 'Paris', 'New York'].map((place) {
-              final isSelected = _destinationController.text.trim().toLowerCase() == place.toLowerCase();
-              return InkWell(
-                onTap: () {
-                  setState(() {
-                    _destinationController.text = place;
-                  });
-                },
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Colors.black : Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: isSelected ? Colors.black : Colors.black12,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.place_rounded,
-                        size: 13,
-                        color: isSelected ? Colors.white : Colors.black54,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        place,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: isSelected ? Colors.white : Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ).animate().fade(delay: 200.ms),
           const SizedBox(height: 28),
           const Text(
             'TRIP DATES',
@@ -531,7 +486,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ),
           const SizedBox(height: 12),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(18),
@@ -541,49 +496,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               children: [
                 const Icon(Icons.people_rounded, color: Colors.black54),
                 const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'How many travelers?',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      TextField(
-                        controller: _travelersController,
-                        keyboardType: TextInputType.number,
-                        scrollPadding: const EdgeInsets.only(bottom: 140),
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.black,
-                        ),
-                        onTap: () {
-                          _travelersController.selection = TextSelection(
-                            baseOffset: 0,
-                            extentOffset: _travelersController.text.length,
-                          );
-                        },
-                        onChanged: (val) {
-                          final parsed = int.tryParse(val);
-                          if (parsed != null && parsed > 0) {
-                            setState(() => _travelers = parsed);
-                          }
-                        },
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          contentPadding: EdgeInsets.symmetric(vertical: 4),
-                          border: InputBorder.none,
-                          hintText: '1',
-                        ),
-                      ),
-                    ],
+                const Expanded(
+                  child: Text(
+                    'How many travelers?',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 IconButton(
@@ -600,6 +520,48 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                           });
                         }
                       : null,
+                ),
+                SizedBox(
+                  width: 36,
+                  child: TextField(
+                    controller: _travelersController,
+                    keyboardType: TextInputType.number,
+                    textAlign: TextAlign.center,
+                    scrollPadding: const EdgeInsets.only(bottom: 140),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black,
+                    ),
+                    onTap: () {
+                      _travelersController.selection = TextSelection(
+                        baseOffset: 0,
+                        extentOffset: _travelersController.text.length,
+                      );
+                    },
+                    onChanged: (val) {
+                      final parsed = int.tryParse(val);
+                      if (parsed != null && parsed > 0) {
+                        setState(() => _travelers = parsed);
+                      }
+                    },
+                    onSubmitted: (_) {
+                      if (_travelersController.text.isEmpty ||
+                          (int.tryParse(_travelersController.text) ?? 0) <= 0) {
+                        _travelersController.text = _travelers.toString();
+                      }
+                    },
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      contentPadding: EdgeInsets.zero,
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      fillColor: Colors.transparent,
+                      hintText: '1',
+                    ),
+                  ),
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline_rounded),
