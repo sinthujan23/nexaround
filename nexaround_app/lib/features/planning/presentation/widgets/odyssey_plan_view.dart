@@ -1844,6 +1844,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool isCompleted = widget.odyssey.status == 'completed';
     final bool checkable = widget.onToggleVisited != null;
     final bool reorderable = widget.onReorderActivity != null && !isCompleted;
+    final bool hasPlaceList =
+        act.type == ActivityType.dining || act.restaurants.isNotEmpty;
+    final bool isHotel = _isHotelActivity(act);
 
     return Material(
       key: key,
@@ -1898,7 +1901,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                     ),
                   Expanded(
                     child: InkWell(
-                      onTap: () => _navigateToSmartMap(context, act.name),
+                      onTap: () {
+                        if (hasPlaceList) {
+                          _showRestaurantSheet(context, act);
+                        } else if (isHotel) {
+                          DefaultTabController.of(context).animateTo(_staysTabIndex);
+                        } else {
+                          _navigateToSmartMap(context, act.name);
+                        }
+                      },
                       borderRadius: BorderRadius.circular(6),
                       child: Padding(
                         padding: const EdgeInsets.symmetric(vertical: 2),
@@ -1915,15 +1926,16 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       ),
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () => _navigateToSmartMap(context, act.name),
-                    behavior: HitTestBehavior.opaque,
-                    child: const Padding(
-                      padding: EdgeInsets.only(left: 2, right: 2),
-                      child: Icon(Icons.directions_rounded,
-                          size: 19, color: AppColors.brandGreen),
+                  if (!hasPlaceList && !isHotel)
+                    GestureDetector(
+                      onTap: () => _navigateToSmartMap(context, act.name),
+                      behavior: HitTestBehavior.opaque,
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 2, right: 2),
+                        child: Icon(Icons.directions_rounded,
+                            size: 19, color: AppColors.brandGreen),
+                      ),
                     ),
-                  ),
                   if (reorderable)
                     ReorderableDragStartListener(
                       index: rowIndex ?? _rowIndexOf(dayIndex, activityIndex),
@@ -2147,6 +2159,25 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         widget.odyssey.flightGeneralTips.isNotEmpty ||
         widget.odyssey.flightBestMonths.isNotEmpty;
     return hasFlights ? 3 : 2;
+  }
+
+  /// Identifies whether an activity is a hotel / accommodation stay.
+  bool _isHotelActivity(OdysseyActivity act, [String? sourceTag]) {
+    final lowerName = act.name.toLowerCase();
+    final lowerTag = (sourceTag ?? '').toLowerCase();
+    return act.type == ActivityType.accommodation ||
+        lowerTag.contains('google hotels') ||
+        lowerTag.contains('hotel') ||
+        lowerName.contains('hotel') ||
+        lowerName.contains('check-in') ||
+        lowerName.contains('check in') ||
+        lowerName.contains('check-out') ||
+        lowerName.contains('check out') ||
+        lowerName.contains('freshen up') ||
+        lowerName.contains('resort') ||
+        lowerName.contains('hostel') ||
+        lowerName.contains('villa') ||
+        lowerName.contains('guest house');
   }
 
   /// Button for accommodation activities. The itinerary no longer names a
@@ -2610,6 +2641,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final destQ = Uri.encodeComponent(dest);
     String targetUrl;
 
+    if (lowerTag.contains('google hotels') || lowerTag.contains('hotel') || act.type == ActivityType.accommodation) {
+      if (mounted) {
+        DefaultTabController.of(context).animateTo(_staysTabIndex);
+      }
+      return;
+    }
+
     if (lowerTag.contains('uber') || lowerTip.contains('uber') || lowerName.contains('uber')) {
       targetUrl = 'https://m.uber.com/looking?pickup=$destQ';
     } else if (lowerTag.contains('pickme') || lowerTip.contains('pickme') || lowerName.contains('pickme')) {
@@ -2652,6 +2690,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final iconBg = ctx.$5;
     final iconColor = ctx.$6;
     final displayCost = ctx.$7;
+    final isHotel = _isHotelActivity(act, sourceTag);
 
     showModalBottomSheet(
       context: context,
@@ -2782,11 +2821,18 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                               const SizedBox(height: 12),
                               // Clickable source banner
                               InkWell(
-                                onTap: () => _openPricingSourceUrl(
-                                  sourceTag,
-                                  act,
-                                  widget.odyssey.destination,
-                                ),
+                                onTap: () {
+                                  if (isHotel) {
+                                    Navigator.pop(ctxModal);
+                                    DefaultTabController.of(context).animateTo(_staysTabIndex);
+                                  } else {
+                                    _openPricingSourceUrl(
+                                      sourceTag,
+                                      act,
+                                      widget.odyssey.destination,
+                                    );
+                                  }
+                                },
                                 borderRadius: BorderRadius.circular(10),
                                 child: Container(
                                   padding: const EdgeInsets.all(10),
@@ -2814,9 +2860,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            const Text(
-                                              'PRICING SOURCE',
-                                              style: TextStyle(
+                                            Text(
+                                              isHotel ? 'VIEW IN STAYS' : 'PRICING SOURCE',
+                                              style: const TextStyle(
                                                 fontSize: 9.5,
                                                 fontWeight: FontWeight.w800,
                                                 letterSpacing: 0.8,
@@ -2835,7 +2881,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                             if (sourceDetail.isNotEmpty) ...[
                                               const SizedBox(height: 2),
                                               Text(
-                                                sourceDetail,
+                                                isHotel
+                                                    ? 'Tap to view curated hotel options & booking partners in the Stays tab.'
+                                                    : sourceDetail,
                                                 style: const TextStyle(
                                                   fontSize: 11,
                                                   color: Colors.black54,
@@ -2846,15 +2894,46 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                                           ],
                                         ),
                                       ),
-                                      const Icon(
-                                        Icons.open_in_new_rounded,
-                                        size: 16,
-                                        color: Colors.black45,
+                                      Icon(
+                                        isHotel
+                                            ? Icons.arrow_forward_ios_rounded
+                                            : Icons.open_in_new_rounded,
+                                        size: 14,
+                                        color: isHotel ? const Color(0xFF9333EA) : Colors.black45,
                                       ),
                                     ],
                                   ),
                                 ),
                               ),
+                              if (isHotel) ...[
+                                const SizedBox(height: 12),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
+                                    onPressed: () {
+                                      Navigator.pop(ctxModal);
+                                      DefaultTabController.of(context).animateTo(_staysTabIndex);
+                                    },
+                                    icon: const Icon(Icons.hotel_rounded, size: 16),
+                                    label: const Text(
+                                      'Go to Stays Tab',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF9333EA),
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
