@@ -47,6 +47,36 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   String _departureCountry = '';
   String? _nationality;
 
+  // What the place picker knew when the user tapped a destination. The picker
+  // has always returned these; they were dropped on the floor, and the backend
+  // was left to infer a country from the name alone. That is how a trip to
+  // "Sri Vijaya Puram" (Port Blair, in the Andamans) came back as an itinerary
+  // for Kandy — the name reads as Sri Lankan.
+  //
+  // Always written through [_setDestination] so the name and the coordinates
+  // cannot drift apart. The field itself is readOnly + AbsorbPointer, so these
+  // are the only two ways a destination is ever set.
+  String _destPlaceId = '';
+  double? _destLat;
+  double? _destLng;
+  String _destAddress = '';
+
+  /// Set the destination and everything we know about where it is, together.
+  void _setDestination(
+    String name, {
+    String placeId = '',
+    double? latitude,
+    double? longitude,
+    String address = '',
+  }) {
+    _destinationController.text = name;
+    _destPlaceId = placeId;
+    // A picker that could not resolve a place reports 0,0 rather than null.
+    _destLat = (latitude == null || latitude == 0.0) ? null : latitude;
+    _destLng = (longitude == null || longitude == 0.0) ? null : longitude;
+    _destAddress = address;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -133,7 +163,15 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         if (name.isNotEmpty &&
             name != 'Nearby' &&
             _destinationController.text.trim().isEmpty) {
-          _destinationController.text = name;
+          // The position that produced this name is right here — passing it on
+          // costs nothing and spares the backend a lookup. No place_id: this
+          // came from a reverse geocode, not a picked place.
+          _setDestination(
+            name,
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            address: country == 'Nearby' ? '' : country,
+          );
         }
       });
     } catch (_) {
@@ -151,7 +189,15 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     ).then((result) {
       if (result != null && result is Map) {
         setState(() {
-          _destinationController.text = result['name']?.toString() ?? '';
+          // 'place_id' is absent entirely on the "use current location" path,
+          // which returns coordinates and no identifier.
+          _setDestination(
+            result['name']?.toString() ?? '',
+            placeId: result['place_id']?.toString() ?? '',
+            latitude: (result['latitude'] as num?)?.toDouble(),
+            longitude: (result['longitude'] as num?)?.toDouble(),
+            address: result['address']?.toString() ?? '',
+          );
         });
       }
     });
@@ -236,6 +282,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     try {
       await _repository.requestGeneration(
         destination: _destinationController.text.trim(),
+      destinationPlaceId: _destPlaceId,
+      destinationLatitude: _destLat,
+      destinationLongitude: _destLng,
+      destinationAddress: _destAddress,
         mood: _selectedMood,
         budget: _budget * _travelers,
         days: _days,

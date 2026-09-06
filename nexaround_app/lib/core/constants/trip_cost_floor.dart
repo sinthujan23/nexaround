@@ -85,7 +85,12 @@ class TripCostFloor {
     'antalya': 'TR', 'india': 'IN', 'delhi': 'IN',
     'mumbai': 'IN', 'chennai': 'IN', 'bangalore': 'IN',
     'goa': 'IN', 'kerala': 'IN', 'kochi': 'IN',
-    'jaipur': 'IN', 'agra': 'IN', 'nepal': 'NP',
+    'jaipur': 'IN', 'agra': 'IN',
+    // Andaman & Nicobar. Port Blair's 2024 rename to Sri Vijaya Puram reads as
+    // Sri Lankan, which is how an Andaman trip came back as a Kandy itinerary.
+    'andaman': 'IN', 'andamans': 'IN', 'andaman islands': 'IN',
+    'port blair': 'IN', 'sri vijaya puram': 'IN', 'nicobar': 'IN',
+    'nepal': 'NP',
     'kathmandu': 'NP', 'pokhara': 'NP', 'maldives': 'MV',
     'male': 'MV', 'bangkok': 'TH', 'thailand': 'TH',
     'phuket': 'TH', 'chiang mai': 'TH', 'krabi': 'TH',

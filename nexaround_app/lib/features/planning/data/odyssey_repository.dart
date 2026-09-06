@@ -42,6 +42,12 @@ class OdysseyRepository {
     String? hotelCheckOutDate,
     String? startDate,
     String? endDate,
+    // What the place picker resolved. All optional — the backend resolves the
+    // destination itself, so omitting these only costs it a lookup.
+    String destinationPlaceId = '',
+    double? destinationLatitude,
+    double? destinationLongitude,
+    String destinationAddress = '',
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -64,6 +70,10 @@ class OdysseyRepository {
         'hotel_check_out_date': hotelCheckOutDate,
         'start_date': startDate,
         'end_date': endDate,
+        'destination_place_id': destinationPlaceId,
+        'destination_latitude': destinationLatitude,
+        'destination_longitude': destinationLongitude,
+        'destination_address': destinationAddress,
       },
     );
     revision.value++;

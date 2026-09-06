@@ -75,6 +75,13 @@ async def generate_odyssey(
         "hotel_check_out_date": data.hotel_check_out_date,
         "start_date": data.start_date,
         "end_date": data.end_date,
+        # Stored, not just forwarded: the retry endpoint rebuilds its call from
+        # these, so leaving them out would make a retried Odyssey lose the
+        # grounding the first attempt had.
+        "destination_place_id": data.destination_place_id or "",
+        "destination_latitude": data.destination_latitude,
+        "destination_longitude": data.destination_longitude,
+        "destination_address": data.destination_address or "",
     }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
@@ -127,6 +134,10 @@ async def generate_odyssey(
         hotel_check_out_date=data.hotel_check_out_date,
         start_date=data.start_date,
         end_date=data.end_date,
+        destination_place_id=data.destination_place_id or "",
+        destination_latitude=data.destination_latitude,
+        destination_longitude=data.destination_longitude,
+        destination_address=data.destination_address or "",
     )
     return saved
 
@@ -152,6 +163,10 @@ async def _run_odyssey_generation(
     hotel_check_out_date: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    destination_place_id: str = "",
+    destination_latitude: Optional[float] = None,
+    destination_longitude: Optional[float] = None,
+    destination_address: str = "",
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -199,6 +214,10 @@ async def _run_odyssey_generation(
                 hotel_check_out_date=hotel_check_out_date,
                 start_date=start_date or "",
                 end_date=end_date or "",
+                destination_place_id=destination_place_id or "",
+                destination_latitude=destination_latitude,
+                destination_longitude=destination_longitude,
+                destination_address=destination_address or "",
             )
             itin.title = title
             itin.items = items
@@ -426,6 +445,16 @@ async def retry_odyssey_generation(
     hotel_check_out_date = gen_params.get("hotel_check_out_date")
     start_date = gen_params.get("start_date") or meta.get("start_date") or ""
     end_date = gen_params.get("end_date") or meta.get("end_date") or ""
+    # A retry must not be less grounded than the first attempt. Falls back to
+    # whatever the finished meta recorded, so an Odyssey generated before the
+    # client sent these still retries with the context the backend resolved.
+    _dctx = meta.get("destination_context") or {}
+    destination_place_id = gen_params.get("destination_place_id") or _dctx.get("place_id") or ""
+    destination_latitude = gen_params.get("destination_latitude") or _dctx.get("latitude")
+    destination_longitude = gen_params.get("destination_longitude") or _dctx.get("longitude")
+    destination_address = (
+        gen_params.get("destination_address") or _dctx.get("formatted_address") or ""
+    )
 
     meta.pop("failure_reason", None)
     itin.status = "generating"
@@ -454,6 +483,10 @@ async def retry_odyssey_generation(
         hotel_check_out_date=hotel_check_out_date,
         start_date=start_date,
         end_date=end_date,
+        destination_place_id=destination_place_id,
+        destination_latitude=destination_latitude,
+        destination_longitude=destination_longitude,
+        destination_address=destination_address,
     )
     return saved
 

@@ -51,6 +51,16 @@ class OdysseyGenerateRequest(BaseModel):
     hotel_check_out_date: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    # What the app's place picker already knew when the user tapped the
+    # destination, and used to throw away. All optional: the backend resolves
+    # the destination on its own, so older builds and free-text stay correct —
+    # these only let it skip a lookup and disambiguate a name Google would
+    # otherwise have to guess at.
+    destination_place_id: str = ""
+    destination_latitude: Optional[float] = None
+    destination_longitude: Optional[float] = None
+    destination_address: str = ""
+
 
 class OdysseySwapRequest(BaseModel):
     """Request body for swapping a single activity in a saved Odyssey for an

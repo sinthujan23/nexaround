@@ -10,9 +10,10 @@ import asyncio
 import json
 import logging
 import re
+from dataclasses import dataclass
 import urllib.parse
 import httpx
-from app.services import telemetry, trip_cost_floor
+from app.services import geo_resolver, telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -159,7 +160,14 @@ _SYSTEM = (
     "You are NexAround's expert local travel designer. "
     "You craft realistic, budget-aware, day-by-day trip blueprints. You always "
     "reply with a single JSON object that matches the requested schema exactly - "
-    "no markdown, no commentary, no code fences."
+    "no markdown, no commentary, no code fences. "
+    # A destination whose name resembles somewhere else is the one case where
+    # recalling harder makes the answer worse: a trip to Sri Vijaya Puram (the
+    # Andamans, India) came back touring Kandy. When the prompt states a
+    # country, that country is a fact about the request, not a guess to revise.
+    "When a prompt states the destination's country, that country is "
+    "authoritative and overrides anything the place name reminds you of. Never "
+    "relocate a trip to a different country, however similar the names look."
 )
 
 
@@ -214,12 +222,20 @@ def build_meta_item(
     booking_plan: list[dict] = None,
     legs: list[dict] = None,
     generation_params: dict = None,
+    destination_context: dict = None,
+    geo_check: dict = None,
 ) -> dict:
     """The `odyssey_meta` header stored as items[0]. Used both for the initial
     'generating' placeholder and for the finished plan."""
     return {
         "kind": "odyssey_meta",
         "destination": destination,
+        # What the destination string actually resolved to, and whether the
+        # finished itinerary stayed inside it. Additive keys — the app ignores
+        # what it does not know, and the swap endpoint can read the context
+        # back out so a replaced activity cannot drift country either.
+        "destination_context": destination_context or {},
+        "geo_check": geo_check or {},
         "mood": mood,
         "budget": budget,
         "currency": currency,
@@ -319,6 +335,17 @@ _AIRPORT_CODES = {
     "cochin": "COK", "goa": "GOI", "ahmedabad": "AMD", "trivandrum": "TRV",
     "thiruvananthapuram": "TRV", "kathmandu": "KTM", "dhaka": "DAC",
     "karachi": "KHI", "lahore": "LHE", "islamabad": "ISB",
+    "pune": "PNQ", "jaipur": "JAI", "varanasi": "VNS", "amritsar": "ATQ",
+    "srinagar": "SXR", "leh": "IXL", "lucknow": "LKO", "guwahati": "GAU",
+    # Andaman & Nicobar. Port Blair was renamed Sri Vijaya Puram in 2024, and
+    # the new name reads as Sri Lankan to a model — a tester's Andaman trip was
+    # routed to CMB and given a Kandy itinerary. Both spellings are pinned here
+    # so the resolution never reaches the LLM guess that produced that.
+    "port blair": "IXZ", "sri vijaya puram": "IXZ", "andaman": "IXZ",
+    "andamans": "IXZ", "andaman islands": "IXZ",
+    "andaman and nicobar islands": "IXZ", "andaman & nicobar islands": "IXZ",
+    "havelock island": "IXZ", "swaraj dweep": "IXZ",
+    "neil island": "IXZ", "shaheed dweep": "IXZ",
     # South-East & East Asia
     "singapore": "SIN", "kuala lumpur": "KUL", "bangkok": "BKK",
     "phuket": "HKT", "chiang mai": "CNX", "hanoi": "HAN",
@@ -375,7 +402,59 @@ _METRO_CODES = {
 _airport_code_cache: dict[str, str] = {}
 
 
-async def _resolve_airport_code(place: str, country: str, api_key: str) -> str:
+async def _verify_airport_codes(
+    codes: list[str],
+    latitude: float | None,
+    longitude: float | None,
+    country_code: str,
+    *,
+    max_km: float = 1000.0,
+    budget=None,
+) -> list[str]:
+    """Drop airports that are not where the trip is.
+
+    Runs only on the guessed path. A model asked which airport serves an
+    unfamiliar place will confidently name a real one in the wrong country —
+    that is exactly how an Andaman trip got a bookable Colombo flight, with a
+    genuine price attached, which is far harder for a traveller to spot than an
+    obvious error.
+
+    Anything that cannot be checked is KEPT. An unavailable Places API must not
+    be able to delete a correct airport; the check only removes what it has
+    positively disproved.
+    """
+    kept: list[str] = []
+    for code in codes:
+        check = await geo_resolver.verify_place(
+            f"{code} airport",
+            near=geo_resolver.DestinationContext(
+                query=code, country_code=country_code,
+                latitude=latitude, longitude=longitude,
+            ),
+            max_km=max_km if latitude is not None else None,
+            budget=budget,
+        )
+        if check.checked and not check.ok:
+            logger.warning(
+                "Rejecting airport %s: resolved to %s (%s), %s km from the destination.",
+                code, check.resolved_name or "?", check.country_code or "?",
+                f"{check.distance_km:.0f}" if check.distance_km is not None else "?",
+            )
+            continue
+        kept.append(code)
+    return kept
+
+
+async def _resolve_airport_code(
+    place: str,
+    country: str,
+    api_key: str,
+    *,
+    latitude: float | None = None,
+    longitude: float | None = None,
+    country_code: str = "",
+    budget=None,
+) -> str:
     """Resolve a place name to an IATA code SerpApi will accept.
 
     Static table first (free and instant, covers the common routes), then one
@@ -392,6 +471,13 @@ async def _resolve_airport_code(place: str, country: str, api_key: str) -> str:
     key = raw.lower().split(",")[0].strip()
     if key in _AIRPORT_CODES:
         return _AIRPORT_CODES[key]
+
+    # A renamed city is the same airport under either name. Port Blair became
+    # Sri Vijaya Puram in 2024; whichever the traveller typed, the answer is
+    # IXZ, and letting this fall through to the model is what produced CMB.
+    for alias in geo_resolver.aliases_for(key):
+        if alias in _AIRPORT_CODES:
+            return _AIRPORT_CODES[alias]
 
     # Already a code (or comma-separated codes), or a "City (CMB)" string.
     upper = raw.upper().replace(" ", "")
@@ -411,11 +497,25 @@ async def _resolve_airport_code(place: str, country: str, api_key: str) -> str:
         return ""
 
     location = f"{raw}, {country}" if country else raw
+    # The destination used to reach this prompt as a bare name with country="",
+    # while the origin got its country. "Sri Vijaya Puram" alone reads as Sri
+    # Lankan, and the answer came back CMB — a real airport, 1500 km from the
+    # trip. Anything we resolved goes in, and "NONE" is an allowed answer.
+    where = f'"{location}"'
+    if latitude is not None and longitude is not None:
+        where += f" at coordinates {latitude:.4f}, {longitude:.4f}"
+    country_rule = ""
+    if country:
+        country_rule = (
+            f'The airport MUST be in {country}. If the nearest airport is in a '
+            f'different country, answer NONE. '
+        )
     prompt = (
-        f'Which airports serve "{location}"? Answer with IATA airport codes ONLY, '
+        f'Which airports serve {where}? Answer with IATA airport codes ONLY, '
         f"comma-separated, most important first, maximum 3. If the city has several airports "
         f"list them all (e.g. London -> LHR,LGW,STN). If the place has no airport of its own, "
-        f"give the nearest major international airport. Never answer with a metropolitan area "
+        f"give the nearest major international airport. {country_rule}"
+        f"Never answer with a metropolitan area "
         f"code such as LON or NYC. No other text."
     )
     try:
@@ -424,6 +524,12 @@ async def _resolve_airport_code(place: str, country: str, api_key: str) -> str:
         # Metro codes are silently rejected by Google Flights — drop any that
         # slipped through rather than shipping a search that returns nothing.
         codes = [c for c in dict.fromkeys(codes) if c not in _METRO_CODES][:3]
+        # Only the model's answers are verified — the static table above is
+        # curated, and the live SerpApi path never reaches here at all.
+        if codes and country_code:
+            codes = await _verify_airport_codes(
+                codes, latitude, longitude, country_code, budget=budget,
+            )
         if codes:
             code = ",".join(codes)
             _airport_code_cache[cache_key] = code
@@ -449,6 +555,33 @@ def _derive_return_date(start_date: str, days: int) -> str:
         return (start + _timedelta(days=max(days - 1, 1))).isoformat()
     except Exception:
         return ""
+
+
+def _enforce_route_destination(data: dict, dest_code: str, origin_code: str = "") -> dict:
+    """Rewrite each strategy's `route` to the airports we actually resolved.
+
+    Only touches the AI-estimate path: on the live SerpApi path the route is
+    built from the flight legs Google returned, so it is already correct. The
+    model, by contrast, invents this string, and it is the string the booking
+    link and the Flights card are both read from — so a wrong arrival airport
+    there is visible and clickable. Codes we resolved beat codes it imagined.
+    """
+    strategies = data.get("strategies")
+    if not isinstance(strategies, list) or not dest_code:
+        return data
+
+    dest_first = dest_code.split(",")[0].strip().upper()
+    origin_first = (origin_code or "").split(",")[0].strip().upper()
+    for strat in strategies:
+        if not isinstance(strat, dict):
+            continue
+        route_str = str(strat.get("route") or "")
+        parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
+        left = origin_first or (parts[0].upper() if parts else "")
+        if not left:
+            continue
+        strat["route"] = f"{left} → {dest_first}"
+    return data
 
 
 def _apply_flight_booking_urls(
@@ -477,16 +610,23 @@ def _apply_flight_booking_urls(
         else:
             strat["airlines"] = [str(a) for a in airlines]
 
-        # Extract origin & destination airport/city from route (e.g. "CMB → LHR")
+        # Extract origin & destination airport/city from route (e.g. "CMB → LHR").
+        #
+        # Only a well-formed IATA code is trusted here. On the AI-estimate path
+        # the model writes this field freehand, and a hallucinated arrival
+        # airport used to flow straight into the booking link — an Andaman trip
+        # whose route said "COK → CMB" produced a Google Flights search for
+        # Colombo. Anything that is not a code falls back to the real
+        # destination, which is resolved rather than generated.
         route_str = str(strat.get("route") or "")
         route_origin = departure_city
         route_dest = destination
         if route_str:
             r_parts = [p.strip() for p in route_str.replace("->", "→").split("→") if p.strip()]
-            if r_parts:
-                route_origin = r_parts[0]
-            if len(r_parts) > 1:
-                route_dest = r_parts[-1]
+            if r_parts and _AIRPORT_CODE_RE.match(r_parts[0].upper()):
+                route_origin = r_parts[0].upper()
+            if len(r_parts) > 1 and _AIRPORT_CODE_RE.match(r_parts[-1].upper()):
+                route_dest = r_parts[-1].upper()
 
         strat["provider_name"] = "Google Flights"
         strat["booking_url"] = _build_deep_booking_url(
@@ -642,6 +782,8 @@ async def generate_flight_strategies(
     flight_end_date: str = "",
     api_key: str,
     serpapi_key: str = "",
+    destination_geo=None,
+    geo_budget=None,
 ) -> dict:
     """Generates tiered flight strategies from live SerpApi Google Flights data.
 
@@ -675,9 +817,21 @@ async def generate_flight_strategies(
     # passenger service), complete with a fabricated price and a booking link
     # that leads nowhere. Bailing out here with no strategies at all (hiding
     # the Flights tab) is the honest answer for a pair with no real route.
+    # The destination used to be resolved with country="" while the origin got
+    # its country — the asymmetry that let an Andaman trip resolve to Colombo.
+    # Anything we know about the destination goes in on the same footing.
+    _dgeo = destination_geo
     origin_code, dest_code = await asyncio.gather(
         _resolve_airport_code(departure_city, departure_country, api_key),
-        _resolve_airport_code(destination, "", api_key),
+        _resolve_airport_code(
+            destination,
+            (_dgeo.country if _dgeo is not None and _dgeo.resolved else ""),
+            api_key,
+            latitude=(_dgeo.latitude if _dgeo is not None else None),
+            longitude=(_dgeo.longitude if _dgeo is not None else None),
+            country_code=(_dgeo.country_code if _dgeo is not None else ""),
+            budget=geo_budget,
+        ),
     )
     if origin_code and dest_code and set(origin_code.split(",")) & set(dest_code.split(",")):
         logger.info(
@@ -762,6 +916,15 @@ INSTRUCTION: Base your strategies on the real Google Flights data above. Extract
 
     trip_basis = "round trip (outbound AND return)" if return_date else "one way"
 
+    # Every worked example below used to be hard-coded "CMB → KUL". Five
+    # Colombo literals in one prompt is a standing nudge toward Sri Lanka, and
+    # an Andaman trip duly came back routed to CMB. Seed the examples with the
+    # codes actually resolved for THIS trip; fall back to obviously-fake
+    # placeholders rather than any real airport when nothing resolved.
+    ex_o = (origin_code.split(",")[0].strip().upper() if origin_code else "AAA")
+    ex_d = (dest_code.split(",")[0].strip().upper() if dest_code else "BBB")
+    ex_route = f"{ex_o} → {ex_d}"
+
     prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
 The travelers want to find the cheapest flight options.
 
@@ -783,7 +946,8 @@ These can be:
 - "nearby_airport": Flying into or out of a nearby airport.
 
 IMPORTANT RULES:
-- In the "route" field, always use real IATA airport codes (e.g., CMB, BKK, KUL, NRT, LHR). If the departure city (e.g., Kinniya) does not have an airport, use the nearest major airport (e.g., CMB for Colombo).
+- In the "route" field, always use real IATA airport codes. The route MUST be "{ex_route}" — {ex_o} is the airport for "{departure_city}" and {ex_d} is the airport for "{destination}". If a city has no airport of its own, its nearest major airport is already reflected in those codes.
+- The arrival airport MUST be {ex_d}. Never route to an airport in a different country from "{destination}", however similar the names look.
 - provider_name MUST be "Google Flights" for all strategies.
 - PRICE BASIS (critical): every "estimated_price_range" is the fare for ONE traveller for the
   ENTIRE {trip_basis} journey, in {currency}, taxes and fees included. Never quote a group
@@ -795,7 +959,7 @@ Field Rules:
 - "provider_name": MUST be "Google Flights".
 - "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
 - "estimated_price_range": Short price string only (e.g., "USD 180 - 300"). REQUIRED on every strategy.
-- "route": Short IATA airport code route (e.g., "CMB → KUL").
+- "route": Short IATA airport code route — use exactly "{ex_route}".
 - "convenience": Star rating string ONLY (e.g., "★★★☆☆").
 - "tip": Short booking tip.
 - "booking_url": Leave empty, will be generated server-side.
@@ -814,7 +978,7 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
       "estimated_savings": "Save ~15%",
       "estimated_price_range": "{currency} 200 - 400",
       "airlines": ["Airline A", "Airline B"],
-      "route": "CMB → KUL",
+      "route": "{ex_route}",
       "stops": 0,
       "total_duration": "4h 30m",
       "convenience": "★★★★★",
@@ -830,7 +994,7 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
       "estimated_savings": "Save ~25%",
       "estimated_price_range": "{currency} 150 - 280",
       "airlines": ["Airline C"],
-      "route": "CMB → KUL",
+      "route": "{ex_route}",
       "stops": 1,
       "total_duration": "6h 15m",
       "convenience": "★★★☆☆",
@@ -846,7 +1010,7 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
       "estimated_savings": "Save ~10%",
       "estimated_price_range": "{currency} 220 - 350",
       "airlines": ["Airline A"],
-      "route": "CMB → KUL",
+      "route": "{ex_route}",
       "stops": 0,
       "total_duration": "4h 45m",
       "convenience": "★★★★☆",
@@ -870,6 +1034,10 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
             outbound_date=outbound_date,
             return_date=return_date,
         )
+        # The model wrote these routes freehand. Where we resolved real codes,
+        # they win — this is the last point before the route reaches the card
+        # and the booking link.
+        data = _enforce_route_destination(data, dest_code, origin_code)
         return _apply_flight_booking_urls(
             data,
             departure_city=departure_city,
@@ -1314,7 +1482,7 @@ async def generate_hotel_strategies_for_legs(
     return {"strategies": merged, "general_tips": tips, "best_areas": ", ".join(areas[:3])}
 
 
-def _single_leg(destination: str, days: int, start_date: str = "") -> list[dict]:
+def _single_leg(destination: str, days: int, start_date: str = "", geo=None) -> list[dict]:
     """The whole trip as one leg in one city — the shape before city legs existed.
 
     Every failure path in leg planning lands here, so a bad or unparseable model
@@ -1324,7 +1492,10 @@ def _single_leg(destination: str, days: int, start_date: str = "") -> list[dict]
     days = max(int(days or 1), 1)
     leg = {
         "city": destination,
-        "country": "",
+        # Stamped from the resolved destination when we have one, so the safe
+        # fallback carries the same country the prompts are constrained to
+        # rather than an empty string that reads as "unknown".
+        "country": (geo.country_code if geo is not None and geo.resolved else ""),
         "start_day": 1,
         "end_day": days,
         "nights": max(days - 1, 0),
@@ -1355,7 +1526,7 @@ def _date_leg(leg: dict, start_date: str) -> None:
     leg["check_out_date"] = check_out.isoformat()
 
 
-def _validate_legs(raw, destination: str, days: int, start_date: str = "") -> list[dict]:
+def _validate_legs(raw, destination: str, days: int, start_date: str = "", geo=None) -> list[dict]:
     """Coerce a model's leg list into one that actually covers the trip.
 
     Rejects rather than repairs anything structural: legs must be contiguous,
@@ -1365,23 +1536,44 @@ def _validate_legs(raw, destination: str, days: int, start_date: str = "") -> li
     it — so anything that does not line up falls back to a single leg.
     """
     if not isinstance(raw, list) or not raw:
-        return _single_leg(destination, days, start_date)
+        return _single_leg(destination, days, start_date, geo)
 
     legs: list[dict] = []
     expected_start = 1
     for entry in raw:
         if not isinstance(entry, dict):
-            return _single_leg(destination, days, start_date)
+            return _single_leg(destination, days, start_date, geo)
         city = str(entry.get("city") or "").strip()
         if not city:
-            return _single_leg(destination, days, start_date)
+            return _single_leg(destination, days, start_date, geo)
         try:
             start_day = int(entry.get("start_day"))
             end_day = int(entry.get("end_day"))
         except (TypeError, ValueError):
-            return _single_leg(destination, days, start_date)
+            return _single_leg(destination, days, start_date, geo)
         if start_day != expected_start or end_day < start_day or end_day > days:
-            return _single_leg(destination, days, start_date)
+            return _single_leg(destination, days, start_date, geo)
+
+        # Country gate. Free — this field was already being parsed and then
+        # discarded, and the model volunteers it unprompted. A trip to the
+        # Andamans came back with {"city": "Kandy", "country": "LK"} sitting
+        # right here, and nothing looked at it; the hotel search then went to
+        # Kandy. Reject rather than repair, like every other check in here:
+        # a plausible-but-wrong route is the dangerous failure.
+        leg_country = str(entry.get("country") or "").strip().upper()
+        if geo is not None and geo.resolved:
+            claimed = leg_country if len(leg_country) == 2 else (
+                trip_cost_floor.country_for(city) or ""
+            ).upper()
+            # Silence is tolerated; disagreement is not. A model that omits the
+            # country tells us nothing, and guessing on its behalf would reject
+            # legitimate routes in countries our own table has never heard of.
+            if claimed and claimed != geo.country_code:
+                logger.warning(
+                    "Leg %r declares country %s but the trip resolved to %s — "
+                    "falling back to a single leg.", city, claimed, geo.country_code,
+                )
+                return _single_leg(destination, days, start_date, geo)
 
         leg = {
             "city": city,
@@ -1398,15 +1590,184 @@ def _validate_legs(raw, destination: str, days: int, start_date: str = "") -> li
         expected_start = end_day + 1
 
     if expected_start != days + 1:
-        return _single_leg(destination, days, start_date)
+        return _single_leg(destination, days, start_date, geo)
 
     # The last leg's final day is a departure day, not a night slept.
     legs[-1]["nights"] = max(legs[-1]["nights"] - 1, 0)
     _date_leg(legs[-1], start_date)
     if sum(int(l["nights"]) for l in legs) != max(days - 1, 0):
-        return _single_leg(destination, days, start_date)
+        return _single_leg(destination, days, start_date, geo)
 
     return legs
+
+
+# ── Geographic drift detection ─────────────────────────────────────────────
+#
+# The prompt grounding in `_build_prompt` is what actually keeps the itinerary
+# in the right country. This is the backstop for when it does not, and it is
+# built to be nearly free: Tier 1 is one regex pass over text already in
+# memory, and it is the check that would have caught the reported bug twice —
+# once on the day theme "Arrival and Kandy Exploration" and again on "Sri
+# Lankan rice and curry".
+
+# How many generated place names Tier 2 will pay to geocode. Set to 0 to turn
+# the paid tier off entirely and rely on Tier 1 alone.
+_DRIFT_SAMPLE_SIZE = 3
+
+# One regeneration, ever. The retry is a straight line, not a loop.
+_MAX_DESTINATION_RETRIES = 1
+
+
+def _drift_scan_texts(plan: dict) -> list[tuple[str, str]]:
+    """(where, text) pairs worth scanning for foreign place names.
+
+    Deliberately narrow. `visa`, `logistics`, `practical_info` and
+    `booking_partners` all legitimately name the traveller's own country and
+    the country they fly from — scanning those would flag every international
+    trip ever planned.
+    """
+    out: list[tuple[str, str]] = []
+    summary = str(plan.get("summary") or "")
+    if summary:
+        out.append(("summary", summary))
+    for d in (plan.get("day_plans") or plan.get("plan") or []):
+        if not isinstance(d, dict):
+            continue
+        theme = str(d.get("theme") or "")
+        if theme:
+            out.append(("day theme", theme))
+        for a in (d.get("activities") or []):
+            if not isinstance(a, dict):
+                continue
+            name = str(a.get("name") or a.get("attraction_name") or "")
+            if name:
+                out.append(("activity", name))
+            tip = str(a.get("tip") or "")
+            if tip:
+                out.append(("tip", tip))
+            for r in (a.get("restaurants") or []):
+                if isinstance(r, dict):
+                    for key in ("name", "cuisine"):
+                        val = str(r.get(key) or "")
+                        if val:
+                            out.append((f"restaurant {key}", val))
+    return out
+
+
+def _drift_sample_names(plan: dict, limit: int) -> list[str]:
+    """Distinct, proper-noun-ish activity names spread across the trip."""
+    seen: set[str] = set()
+    picked: list[str] = []
+    for d in (plan.get("day_plans") or plan.get("plan") or []):
+        if not isinstance(d, dict):
+            continue
+        for a in (d.get("activities") or []):
+            if not isinstance(a, dict):
+                continue
+            if str(a.get("type") or "").strip().lower() not in {
+                "attraction", "exploration", "dining", "sightseeing"
+            }:
+                continue
+            name = str(a.get("name") or a.get("attraction_name") or "").strip()
+            low = name.lower()
+            if len(name) < 6 or low in seen:
+                continue
+            if "check-in" in low or "check in" in low or "check-out" in low:
+                continue
+            seen.add(low)
+            picked.append(name)
+            break  # at most one per day, so the sample spans the trip
+        if len(picked) >= limit:
+            break
+    return picked[:limit]
+
+
+@dataclass
+class GeoDrift:
+    ok: bool = True
+    reasons: list = None
+    offending: list = None
+
+    def __post_init__(self):
+        if self.reasons is None:
+            self.reasons = []
+        if self.offending is None:
+            self.offending = []
+
+
+async def detect_geo_drift(
+    plan: dict,
+    geo,
+    *,
+    sample: int = _DRIFT_SAMPLE_SIZE,
+    allow_codes: tuple = (),
+    budget=None,
+) -> "GeoDrift":
+    """Has the model written an itinerary for the wrong country?
+
+    Tier 1 is free and always runs. Tier 2 geocodes a few generated names and
+    only runs when Tier 1 found nothing, so the common case — a clean plan —
+    costs at most `sample` lookups and a drifted one costs none.
+    """
+    if geo is None or not geo.resolved or not isinstance(plan, dict):
+        return GeoDrift(ok=True)
+
+    allow = frozenset(c.upper() for c in allow_codes if c)
+    home = geo.country_code
+    country = geo.country or home
+
+    # ── Tier 1: free name scan ──
+    hits: dict[str, str] = {}
+    reasons: list[str] = []
+    for where, text in _drift_scan_texts(plan):
+        found = geo_resolver.foreign_place_hits(text, home, allow)
+        if not found:
+            continue
+        # A single passing mention in a tip is weak evidence; a foreign name in
+        # an activity name or a day theme is the itinerary itself relocating.
+        strong = where in {"activity", "day theme", "restaurant name"}
+        for name, code in found.items():
+            hits[name] = code
+            if strong and name not in [r.split('"')[1] for r in reasons if '"' in r]:
+                reasons.append(f'The {where} "{text}" names "{name}", which is in {code}, not {country}.')
+
+    if reasons or len(hits) >= 2:
+        if not reasons:
+            listed = ", ".join(sorted(hits))
+            reasons.append(
+                f"The plan repeatedly names places outside {country}: {listed}."
+            )
+        return GeoDrift(ok=False, reasons=reasons, offending=sorted(hits))
+
+    # ── Tier 2: paid, bounded, only when Tier 1 is clean ──
+    if sample <= 0 or not geo.has_coords:
+        return GeoDrift(ok=True)
+
+    names = _drift_sample_names(plan, sample)
+    if not names:
+        return GeoDrift(ok=True)
+
+    checks = await asyncio.gather(*(
+        geo_resolver.verify_place(n, near=geo, max_km=None, budget=budget)
+        for n in names
+    ), return_exceptions=True)
+
+    bad = [
+        c for c in checks
+        if isinstance(c, geo_resolver.PlaceCheck) and c.checked and not c.ok
+    ]
+    # Two independent misses, not one. A single mis-geocoded name is a fact
+    # about Google's index, not evidence the trip moved country.
+    if len(bad) >= 2:
+        return GeoDrift(
+            ok=False,
+            reasons=[
+                f'"{c.query}" resolves to {c.country_code or "elsewhere"}, not {country}.'
+                for c in bad
+            ],
+            offending=[c.query for c in bad],
+        )
+    return GeoDrift(ok=True)
 
 
 async def plan_city_legs(
@@ -1417,6 +1778,7 @@ async def plan_city_legs(
     travelers: int,
     api_key: str,
     start_date: str = "",
+    geo=None,
 ) -> list[dict]:
     """Decide which cities the trip stays in, and for how long.
 
@@ -1431,10 +1793,32 @@ async def plan_city_legs(
     """
     days = max(int(days or 1), 1)
     if not api_key or days < 2:
-        return _single_leg(destination, days, start_date)
+        return _single_leg(destination, days, start_date, geo)
+
+    # This call is where the hotel search's city strings come from, so an
+    # invented country here is expensive: it books rooms in the wrong place.
+    geo_line = ""
+    if geo is not None and geo.resolved:
+        country = geo.country or geo.country_code
+        geo_line = (
+            f"\n{destination} is in {country}"
+            + (f", {geo.admin_area}" if geo.admin_area else "")
+            + (f", at {geo.latitude:.4f}, {geo.longitude:.4f}" if geo.has_coords else "")
+            + ".\n"
+        )
+
+    country_rule = ""
+    if geo is not None and geo.resolved:
+        country_rule = (
+            f"- EVERY leg must be a real city or town in "
+            f"{geo.country or geo.country_code}, and the \"country\" field of "
+            f"every leg MUST be exactly \"{geo.country_code}\". If the "
+            f"destination's name resembles a place in another country, ignore "
+            f"the resemblance.\n"
+        )
 
     prompt = f"""Plan the city-by-city route for a {days}-day trip to {destination}.
-
+{geo_line}
 Group: {travelers} traveller(s). Travel style: {mood or "balanced"}.
 
 Return ONLY this JSON:
@@ -1451,17 +1835,17 @@ Rules:
 - Prefer fewer, longer legs. Do not move city more often than every 2 days
   unless {destination} is small enough that it makes sense.
 - If {destination} is a single city, return exactly one leg for it.
-- No commentary, no markdown."""
+{country_rule}- No commentary, no markdown."""
 
     try:
         raw, _ = await _call_gemini(prompt, api_key, max_tokens=1024, use_grounding=False)
         parsed = json.loads(raw)
         legs = _validate_legs(
-            (parsed or {}).get("legs"), destination, days, start_date,
+            (parsed or {}).get("legs"), destination, days, start_date, geo,
         )
     except Exception as e:
         logger.warning(f"City-leg planning failed, using a single leg: {e}")
-        return _single_leg(destination, days, start_date)
+        return _single_leg(destination, days, start_date, geo)
 
     logger.info(
         "Planned %d city leg(s) for %s: %s",
@@ -1493,9 +1877,37 @@ async def generate_odyssey(
     hotel_check_out_date: str = "",
     start_date: str = "",
     end_date: str = "",
+    destination_place_id: str = "",
+    destination_latitude: float | None = None,
+    destination_longitude: float | None = None,
+    destination_address: str = "",
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
     final_destination = str(destination)
+
+    # Resolve WHERE this trip is before anything reads the destination string.
+    # Everything downstream that used to see a bare, ambiguous name — the leg
+    # planner, the airport lookup, the itinerary prompt — gets a country
+    # instead. The client sends coordinates when it has them; the lookup here
+    # is what makes older app builds and already-saved drafts correct too.
+    geo_budget = geo_resolver.GeoBudget()
+    geo = await geo_resolver.resolve_destination(
+        final_destination,
+        place_id=destination_place_id,
+        latitude=destination_latitude,
+        longitude=destination_longitude,
+        address_hint=destination_address,
+        budget=geo_budget,
+    )
+    if geo.resolved:
+        logger.info(
+            "Destination %r resolved to %s via %s", final_destination, geo.label(), geo.source,
+        )
+    else:
+        logger.warning(
+            "Destination %r did not resolve — generating without geographic grounding.",
+            final_destination,
+        )
 
     # 1. Fetch Unsplash cover photo, flight strategies, and hotel strategies concurrently FIRST
     async def _get_cover():
@@ -1522,6 +1934,8 @@ async def generate_odyssey(
                     flight_end_date=flight_end_date or "",
                     api_key=api_key,
                     serpapi_key=serpapi_key,
+                    destination_geo=geo,
+                    geo_budget=geo_budget,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
@@ -1538,6 +1952,7 @@ async def generate_odyssey(
         travelers=travelers,
         api_key=api_key,
         start_date=hotel_check_in_date or start_date or "",
+        geo=geo,
     )
 
     async def _get_hotels():
@@ -1622,6 +2037,7 @@ async def generate_odyssey(
         nationality=nationality,
         has_visa=has_visa,
         legs=city_legs,
+        geo=geo,
     )
     try:
         text, grounding_chunks = await _call_gemini(
@@ -1637,6 +2053,77 @@ async def generate_odyssey(
             prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=False,
         )
         plan = _parse_json(text)
+
+    # ── Geographic drift backstop ──────────────────────────────────────────
+    # The grounding above is what keeps the itinerary honest; this catches the
+    # residue. Structurally incapable of looping: one await, one regeneration,
+    # and the retry cannot re-enter this block.
+    geo_check: dict = {"status": "skipped"}
+    if geo.resolved:
+        # The traveller's own country and the one they fly from get named all
+        # over a legitimate plan — neither is drift.
+        allow = tuple(
+            c for c in (
+                (trip_cost_floor.country_for(departure_country) or "").upper(),
+                (trip_cost_floor.country_for(nationality) or "").upper(),
+                (trip_cost_floor.country_for(departure_city) or "").upper(),
+            ) if c
+        )
+        drift = await detect_geo_drift(plan, geo, allow_codes=allow, budget=geo_budget)
+        geo_check = {
+            "status": "clean" if drift.ok else "drifted",
+            "regenerated": False,
+            "reasons": list(drift.reasons),
+        }
+        if not drift.ok:
+            logger.warning(
+                "Geographic drift for %s (%s): %s",
+                geo.label(), geo.country_code, "; ".join(drift.reasons),
+            )
+            for _ in range(_MAX_DESTINATION_RETRIES):
+                try:
+                    retry_prompt = _build_prompt(
+                        destination=final_destination, mood=mood, budget=budget,
+                        days=days, currency=currency, travelers=travelers,
+                        hotel_price_range=hotel_price_range,
+                        confirmed_flight=primary_flight,
+                        departure_city=departure_city,
+                        departure_country=departure_country,
+                        nationality=nationality, has_visa=has_visa,
+                        legs=city_legs, geo=geo,
+                        correction="\n".join(drift.reasons),
+                    )
+                    retry_text, retry_chunks = await _call_gemini(
+                        retry_prompt, api_key, max_tokens=8192,
+                        thinking_budget=0, use_grounding=True,
+                    )
+                    retry_plan = _parse_json(retry_text)
+                    retry_drift = await detect_geo_drift(
+                        retry_plan, geo, allow_codes=allow, budget=geo_budget,
+                    )
+                    # Keep the retry only when it is actually better. A second
+                    # attempt that drifts just as badly is not an improvement,
+                    # and the first plan at least had the grounded pass behind it.
+                    if retry_drift.ok or len(retry_drift.reasons) < len(drift.reasons):
+                        plan, grounding_chunks, drift = retry_plan, retry_chunks, retry_drift
+                    geo_check = {
+                        "status": "clean" if drift.ok else "uncertain",
+                        "regenerated": True,
+                        "reasons": list(drift.reasons),
+                    }
+                except Exception as e:
+                    logger.warning("Geo-corrective regeneration failed, keeping the first plan: %s", e)
+                    geo_check["regenerated"] = True
+                break
+            if not drift.ok:
+                # Decision: ship it and record it. Hotels and flights are
+                # grounded separately and are correct, so the traveller still
+                # gets a usable plan; the warning is how we find out it happened.
+                logger.warning(
+                    "Geographic drift PERSISTED after regeneration for %s: %s",
+                    geo.label(), "; ".join(drift.reasons),
+                )
+    logger.info("Geo lookups used for this Odyssey: %d", geo_budget.spent)
 
     g_days = _as_int(plan.get("days"), days)
     nights = _as_int(plan.get("nights"), g_days - 1 if g_days > 1 else 0)
@@ -1903,6 +2390,8 @@ async def generate_odyssey(
 
     meta = build_meta_item(
         destination=final_destination,
+        destination_context=geo.as_dict(),
+        geo_check=geo_check,
         mood=mood,
         budget=tot,
         currency=final_currency,
@@ -2191,6 +2680,8 @@ def _build_prompt(
     nationality: str = "",
     has_visa: bool = False,
     legs: list[dict] | None = None,
+    geo: "DestinationContext | None" = None,
+    correction: str = "",
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
@@ -2200,6 +2691,61 @@ def _build_prompt(
     # fixed table is what stops the itinerary wandering across cities the trip
     # has no accommodation in — a tester's plan moved through four Cambodian
     # cities while every day linked to one city's hotels.
+    # ── Geographic identity ────────────────────────────────────────────────
+    # Emitted whenever the destination resolved, INDEPENDENT of leg count. That
+    # independence is the fix: `route_rules` below only fires for multi-city
+    # trips, so a single-city trip previously reached the model with no
+    # geographic constraint whatsoever beyond the bare destination string. That
+    # is the hole a trip to "Sri Vijaya Puram" fell through, coming back as a
+    # tour of Kandy because the name reads as Sri Lankan.
+    geo_rules = ""
+    if geo is not None and geo.resolved:
+        # A single city is a day-trip radius; a multi-city route needs to span
+        # its own legs plus a day trip at either end.
+        radius_km = 150
+        if legs and len(legs) > 1:
+            radius_km = 400
+        alias_line = ""
+        if geo.aliases:
+            spelled = " and ".join(f'"{a.title()}"' for a in geo.aliases)
+            alias_line = (
+                f"- {geo.display_name} is also known as {spelled}. Those names all "
+                f"refer to the SAME place in {geo.country or geo.country_code}.\n"
+            )
+        coord_line = ""
+        if geo.has_coords:
+            coord_line = (
+                f"- It is at coordinates {geo.latitude:.4f}, {geo.longitude:.4f}. "
+                f"Everything you name must be within roughly {radius_km} km of there.\n"
+            )
+        country = geo.country or geo.country_code
+        geo_rules = f"""
+CRITICAL - DESTINATION IDENTITY (this overrides your prior knowledge):
+- This trip is to {geo.label()}. It is in {country}. It is NOT in any other country.
+{coord_line}{alias_line}- EVERY city, town, landmark, temple, museum, beach, restaurant, dish and
+  transport link you name MUST be a real place in {country}.
+- If the destination's name resembles a place in another country, ignore the
+  resemblance completely. The country stated above is authoritative.
+- Never substitute a similarly-named or culturally-adjacent place from a
+  neighbouring country. If a name you are about to write is not in {country},
+  it is wrong - use the google_search tool to find a real equivalent that is.
+- Unless the plan explicitly crosses a border for a named day trip that returns
+  the same day, every overnight stay is in {country}.
+"""
+
+    # A regeneration after drift was detected. Naming the specific places that
+    # were wrong works far better than repeating the constraint louder.
+    correction_rules = ""
+    if correction:
+        country = (geo.country or geo.country_code) if geo is not None else ""
+        correction_rules = f"""
+CRITICAL - YOUR PREVIOUS ATTEMPT WAS GEOGRAPHICALLY WRONG:
+{correction}
+Those places are not in {country}. You have relocated the trip to the wrong
+country. Rewrite the ENTIRE plan from scratch using only real places in
+{country}. Do not reuse any place name from the previous attempt.
+"""
+
     route_rules = ""
     if legs and len(legs) > 1:
         table = "\n".join(
@@ -2289,11 +2835,28 @@ Do NOT output any visa application procedures, application steps, or visa warnin
 6. In "visa".note, provide clear, step-by-step application guidance, required documents, and where to apply.
 7. "visa".confidence follows the same Fixed/Typical/Estimated scale used for prices below."""
 
-    return f"""Design a {days}-day travel Odyssey for a group of {travelers} traveler(s).
+    # The destination line used to be the model's ONLY geographic input. Each
+    # extra line here is emitted only when we actually resolved that fact, so
+    # an unresolved destination produces byte-identical output to before.
+    dest_anchor = (
+        f"{geo.label()} ({geo.country or geo.country_code})"
+        if geo is not None and geo.resolved
+        else f'"{destination}"'
+    )
+    dest_lines = f"- Destination: {geo.display_name if geo is not None else destination}\n"
+    if geo is not None and geo.resolved:
+        dest_lines += f"- Country (authoritative): {geo.country or geo.country_code} ({geo.country_code})\n"
+        if geo.admin_area:
+            dest_lines += f"- Region / state: {geo.admin_area}\n"
+        if geo.has_coords:
+            dest_lines += f"- Coordinates: {geo.latitude:.4f}, {geo.longitude:.4f}\n"
+        if geo.aliases:
+            dest_lines += f"- Also known as / formerly: {', '.join(a.title() for a in geo.aliases)}\n"
 
+    return f"""Design a {days}-day travel Odyssey for a group of {travelers} traveler(s).
+{correction_rules}{geo_rules}
 Trip brief:
-- Destination: {destination}
-- Travel style / mood: {mood}
+{dest_lines}- Travel style / mood: {mood}
 - Group size: {travelers} traveler(s)
 - Total budget: {int(budget)} {currency} for the whole group of {travelers} (hard cap for the entire trip; about {per_person} {currency} per person)
 - Currency to use in all costs: {currency}
@@ -2409,7 +2972,7 @@ Rules for "type" field in each activity:
 General rules:
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
 - Keep the SUM of all activity costs within the "activities" and "food" budget portion of {int(budget)} {currency}.
-- Use real, recognisable places near "{destination}".
+- Use real, recognisable places in and around {dest_anchor}.
 - Be concise; tips under ~12 words.
 """
 

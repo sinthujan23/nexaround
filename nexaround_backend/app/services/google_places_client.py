@@ -1061,6 +1061,133 @@ async def find_place_id_legacy(
         return None
 
 
+# Field mask for destination resolution. Identity + geometry + address
+# components only: Places (New) bills by the tier the mask reaches into, and
+# every field here sits in Essentials/Pro. Deliberately NOT reusing
+# `_DETAILS_FIELD_MASK_NEW`, which pulls reviews/photos/rating from the
+# Enterprise+Atmosphere tier — a needless bill when all this needs is
+# "which country is this place in, and where".
+_GEO_FIELD_MASK = (
+    "places.id,places.displayName,places.formattedAddress,"
+    "places.location,places.addressComponents,places.types"
+)
+
+# Same mask minus addressComponents. Text Search has historically been fussier
+# about which fields it will accept than Place Details is; if Google rejects
+# the component list we retry without it and read the country off the tail of
+# the formatted address instead, which is worth strictly more than nothing.
+_GEO_FIELD_MASK_NO_COMPONENTS = (
+    "places.id,places.displayName,places.formattedAddress,"
+    "places.location,places.types"
+)
+
+
+def _component(place: dict, wanted_type: str) -> tuple[str, str]:
+    """(long_text, short_text) of the first address component of a type."""
+    for comp in place.get("addressComponents") or []:
+        if wanted_type in (comp.get("types") or []):
+            return (comp.get("longText") or "", comp.get("shortText") or "")
+    return ("", "")
+
+
+async def resolve_place_geo(
+    name: str,
+    *,
+    bias_lat: Optional[float] = None,
+    bias_lng: Optional[float] = None,
+    bias_radius_m: float = 50_000.0,
+) -> Optional[dict]:
+    """Resolve a free-text place name to its identity, country and coordinates.
+
+    One Text Search call. Returns None rather than raising, so a caller can
+    always fall back to whatever it does today.
+
+    Unlike `find_place_id_legacy`, the location bias here is optional and wide.
+    That function biases to 200 m because it is disambiguating one clinic branch
+    from another; this one is identifying a *destination*, where a tight circle
+    around a rough coordinate would exclude the very city being named.
+    """
+    clean_name = (name or "").strip()
+    if not clean_name:
+        return None
+
+    async with async_session() as db:
+        settings_service = SettingsService(db)
+        google_maps_key = await settings_service.get_setting("google_maps_api_key")
+
+    if not google_maps_key:
+        print("⚠️ google_maps_api_key not set in admin settings — cannot resolve destination")
+        return None
+
+    body: dict = {"textQuery": clean_name, "maxResultCount": 1}
+    if bias_lat is not None and bias_lng is not None:
+        body["locationBias"] = {"circle": {
+            "center": {"latitude": bias_lat, "longitude": bias_lng},
+            "radius": float(min(max(bias_radius_m, 1000.0), 50_000.0)),
+        }}
+        bias_key = f"{_snap_coord(bias_lat)},{_snap_coord(bias_lng)}"
+    else:
+        bias_key = ""
+    cache_key = f"geo:{clean_name.lower()}|{bias_key}"
+
+    async def _post(field_mask: str):
+        client = await _get_http_client()
+        async with _google_call_semaphore:
+            async with telemetry.track(
+                "google_maps", "resolve_place_geo",
+                sku="text_search_pro",
+                cache_key=cache_key,
+            ) as t:
+                resp = await client.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    json=body,
+                    headers={
+                        "X-Goog-Api-Key": google_maps_key,
+                        "Content-Type": "application/json",
+                        "X-Goog-FieldMask": field_mask,
+                    },
+                )
+                t.upstream(resp)
+        return resp
+
+    try:
+        resp = await _post(_GEO_FIELD_MASK)
+        if resp.status_code == 400:
+            # Most likely the component list. Retry without it before giving up.
+            resp = await _post(_GEO_FIELD_MASK_NO_COMPONENTS)
+        resp.raise_for_status()
+        data = resp.json()
+
+        if "error" in data:
+            err = data.get("error") or {}
+            print(f"⚠️ Places geo resolve {err.get('status')}: {err.get('message')}")
+            return None
+
+        candidates = data.get("places") or []
+        if not candidates:
+            return None
+        place = candidates[0]
+
+        country_name, country_code = _component(place, "country")
+        admin_area, _ = _component(place, "administrative_area_level_1")
+        loc = place.get("location") or {}
+
+        return {
+            "place_id": place.get("id") or "",
+            "name": (place.get("displayName") or {}).get("text") or clean_name,
+            "formatted_address": place.get("formattedAddress") or "",
+            "latitude": loc.get("latitude"),
+            "longitude": loc.get("longitude"),
+            "country": country_name,
+            "country_code": (country_code or "").upper(),
+            "admin_area": admin_area,
+            "types": place.get("types") or [],
+        }
+    except Exception as e:
+        print(f"⚠️ Error resolving destination geo for {clean_name!r}: {e}")
+        return None
+
+
 # Fields the detail page renders, named as Places API (New) names them. New
 # bills by the tier the mask reaches into, so this is the same bargain the
 # legacy `fields` list struck: Essentials/Pro for identity and geometry,
