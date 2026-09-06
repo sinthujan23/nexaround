@@ -45,6 +45,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   bool _hasVisa = false;
   String _departureCity = '';
   String _departureCountry = '';
+  // The point the departure name was derived from. Kept because the name is
+  // not always usable: when the reverse geocode fails it yields the literal
+  // word "Nearby", which the backend used to hand to the AI as if it were a
+  // city — a traveller in Trincomalee was quoted a flight from Chennai. The
+  // coordinates let the backend recover at least the country.
+  double? _departureLat;
+  double? _departureLng;
   String? _nationality;
 
   // What the place picker knew when the user tapped a destination. The picker
@@ -156,10 +163,20 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       
       final name = details['location_name'] ?? 'Nearby';
       final country = details['country'] ?? 'Nearby';
-      
+
+      // 'Nearby' is the backend's sentinel for "all three geocoders failed",
+      // not a place. Send it as empty so it reads as unknown rather than as a
+      // city somewhere for the AI to find an airport near.
+      final cityOut = name == 'Nearby' ? '' : name;
+      final countryOut = country == 'Nearby' ? '' : country;
+
       setState(() {
-        _departureCity = name;
-        _departureCountry = country;
+        _departureCity = cityOut;
+        _departureCountry = countryOut;
+        // Always kept, even when the name resolved — it costs nothing and is
+        // the only thing left to work from if the name turns out unusable.
+        _departureLat = pos.latitude;
+        _departureLng = pos.longitude;
         if (name.isNotEmpty &&
             name != 'Nearby' &&
             _destinationController.text.trim().isEmpty) {
@@ -286,6 +303,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       destinationLatitude: _destLat,
       destinationLongitude: _destLng,
       destinationAddress: _destAddress,
+      departureLatitude: _departureLat,
+      departureLongitude: _departureLng,
         mood: _selectedMood,
         budget: _budget * _travelers,
         days: _days,

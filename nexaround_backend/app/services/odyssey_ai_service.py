@@ -388,6 +388,34 @@ _AIRPORT_CODES = {
 
 _AIRPORT_CODE_RE = re.compile(r"^[A-Z]{3}(,[A-Z]{3})*$")
 
+# Strings the app sends when it has no answer, not places anyone can fly to.
+# The planner falls back to the literal word "Nearby" when a GPS reverse-geocode
+# fails, and that reached the airport resolver as if it were a city: asked
+# "which airports serve Nearby?", the model does not decline — it answered MAA,
+# and a traveller in Trincomalee was quoted a flight from Chennai. A model will
+# always produce a plausible airport, so the guard has to be here, before it.
+_NON_PLACE_TOKENS = {
+    "nearby", "unknown", "current location", "my location", "your location",
+    "n/a", "na", "none", "null", "-", "somewhere", "here",
+}
+
+
+def _is_non_place(text: str) -> bool:
+    return (text or "").strip().lower() in _NON_PLACE_TOKENS
+
+
+def _country_fallback_code(country: str) -> str:
+    """The country's own airport, for when the city could not be resolved.
+
+    A last resort, deliberately consulted only after the place itself has
+    failed: "Sri Lanka" -> CMB is the right answer for an unknown Sri Lankan
+    town, but it would be the wrong answer for Kandy, which has its own entry.
+    """
+    c = (country or "").strip().lower()
+    if not c or _is_non_place(c):
+        return ""
+    return _AIRPORT_CODES.get(c, "")
+
 # IATA metropolitan codes. Google Flights returns nothing for these, so they
 # must never reach a search — they are expanded via _AIRPORT_CODES instead.
 # (BER and SHA are deliberately absent — both are real operating airports.)
@@ -464,7 +492,16 @@ async def _resolve_airport_code(
     """
     raw = (place or "").strip()
     if not raw:
-        return ""
+        return _country_fallback_code(country)
+
+    # A placeholder is not a place. Fall through to the country, which is
+    # sometimes still known, rather than asking a model to name its airport.
+    if _is_non_place(raw):
+        logger.info(
+            "Departure/destination %r is a placeholder, not a place — "
+            "falling back to the country (%r).", raw, country,
+        )
+        return _country_fallback_code(country)
 
     # A city we know wins over anything else — "London" must expand to its
     # four airports rather than being taken at face value.
@@ -538,7 +575,14 @@ async def _resolve_airport_code(
     except Exception as e:
         logger.warning(f"Airport code lookup failed for '{location}': {e}")
 
-    return ""
+    # Nothing usable from the model either. The country's main airport beats
+    # returning nothing, which would skip the flight search altogether.
+    fallback = _country_fallback_code(country)
+    if fallback:
+        logger.info(
+            "Falling back to the country airport for '%s' -> %s", location, fallback,
+        )
+    return fallback
 
 
 def _derive_return_date(start_date: str, days: int) -> str:
@@ -784,6 +828,8 @@ async def generate_flight_strategies(
     serpapi_key: str = "",
     destination_geo=None,
     geo_budget=None,
+    departure_latitude: float | None = None,
+    departure_longitude: float | None = None,
 ) -> dict:
     """Generates tiered flight strategies from live SerpApi Google Flights data.
 
@@ -817,12 +863,35 @@ async def generate_flight_strategies(
     # passenger service), complete with a fabricated price and a booking link
     # that leads nowhere. Bailing out here with no strategies at all (hiding
     # the Flights tab) is the honest answer for a pair with no real route.
+    # The app sends the literal word "Nearby" when its reverse geocode fails,
+    # and that used to reach the resolver as if it were a city. If the name is
+    # unusable but we have the point it came from, recover at least the country
+    # so the origin lands in the right one — a traveller in Trincomalee should
+    # depart CMB, not the MAA a model volunteered for "Nearby".
+    dep_country = departure_country
+    if (_is_non_place(departure_city) or not departure_city.strip()) and (
+        _is_non_place(departure_country) or not departure_country.strip()
+    ):
+        if departure_latitude is not None and departure_longitude is not None:
+            name, code = await geo_resolver.country_from_coordinates(
+                departure_latitude, departure_longitude, budget=geo_budget,
+            )
+            if name or code:
+                dep_country = name or code
+                logger.info(
+                    "Departure %r was unusable; coordinates resolved it to %s.",
+                    departure_city, dep_country,
+                )
+
     # The destination used to be resolved with country="" while the origin got
     # its country — the asymmetry that let an Andaman trip resolve to Colombo.
     # Anything we know about the destination goes in on the same footing.
     _dgeo = destination_geo
     origin_code, dest_code = await asyncio.gather(
-        _resolve_airport_code(departure_city, departure_country, api_key),
+        _resolve_airport_code(
+            departure_city, dep_country, api_key,
+            latitude=departure_latitude, longitude=departure_longitude,
+        ),
         _resolve_airport_code(
             destination,
             (_dgeo.country if _dgeo is not None and _dgeo.resolved else ""),
@@ -838,6 +907,20 @@ async def generate_flight_strategies(
             "No distinct flight route: '%s' and '%s' both resolve to %s — "
             "skipping flight generation.",
             departure_city, destination, origin_code,
+        )
+        return {}
+
+    # An endpoint we could not resolve is not an endpoint a model should be
+    # asked to guess. Without SerpApi every flight comes from the estimation
+    # prompt below, and that prompt will always name *some* airport: asked to
+    # fly from "Nearby" it answered MAA, and the traveller got a plausible
+    # Chennai fare with a real-looking price. No Flights tab is the honest
+    # outcome, and the one the reporter would rather have seen.
+    if not origin_code or not dest_code:
+        logger.warning(
+            "Skipping flight generation: unresolved route (departure=%r -> %s, "
+            "destination=%r -> %s).",
+            departure_city, origin_code or "?", destination, dest_code or "?",
         )
         return {}
 
@@ -1881,6 +1964,8 @@ async def generate_odyssey(
     destination_latitude: float | None = None,
     destination_longitude: float | None = None,
     destination_address: str = "",
+    departure_latitude: float | None = None,
+    departure_longitude: float | None = None,
 ) -> tuple[str, list[dict]]:
     """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
     final_destination = str(destination)
@@ -1920,7 +2005,12 @@ async def generate_odyssey(
         return ""
 
     async def _get_flights():
-        if include_flights and departure_city:
+        # Coordinates alone are enough: the country recovered from them gives a
+        # real origin airport, where the name may only have been "Nearby".
+        _has_departure = bool(str(departure_city or "").strip()) or (
+            departure_latitude is not None and departure_longitude is not None
+        )
+        if include_flights and _has_departure:
             try:
                 return await generate_flight_strategies(
                     departure_city=departure_city,
@@ -1936,6 +2026,8 @@ async def generate_odyssey(
                     serpapi_key=serpapi_key,
                     destination_geo=geo,
                     geo_budget=geo_budget,
+                    departure_latitude=departure_latitude,
+                    departure_longitude=departure_longitude,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")

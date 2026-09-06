@@ -325,3 +325,86 @@ def test_andaman_places_are_known_to_the_country_table():
     """Powers the free drift scan, and must stay mirrored in the Dart copy."""
     for name in ("port blair", "sri vijaya puram", "andaman", "andaman islands"):
         assert trip_cost_floor.PLACE_COUNTRY[name] == "IN"
+
+
+# ── Departure side: the "Nearby" sentinel ───────────────────────────────────
+#
+# Second client report: a traveller in Trincomalee was quoted MAA -> IXZ. The
+# destination (IXZ) was right; the ORIGIN was invented. The app's reverse
+# geocode had failed and sent the literal word "Nearby" as the departure city,
+# and asked "which airports serve Nearby?", the model answered MAA rather than
+# declining. Same shape as the Andaman bug, on the other endpoint.
+
+from app.services.odyssey_ai_service import (  # noqa: E402
+    _country_fallback_code,
+    _is_non_place,
+    generate_flight_strategies,
+)
+
+
+@pytest.mark.parametrize("token", [
+    "Nearby", "nearby", "  NEARBY  ", "unknown", "current location",
+    "my location", "n/a", "none", "-",
+])
+def test_sentinels_are_recognised_as_non_places(token):
+    assert _is_non_place(token) is True
+
+
+@pytest.mark.parametrize("place", ["Trincomalee", "Kandy", "Port Blair", "Paris"])
+def test_real_places_are_not_mistaken_for_sentinels(place):
+    assert _is_non_place(place) is False
+
+
+def test_nearby_never_resolves_to_an_airport():
+    """The exact regression: no api_key here, but the guard fires first."""
+    assert asyncio.run(_resolve_airport_code("Nearby", "Nearby", "")) == ""
+
+
+def test_nearby_with_a_known_country_falls_back_to_that_country():
+    """A traveller somewhere in Sri Lanka departs CMB, not somewhere invented."""
+    assert asyncio.run(_resolve_airport_code("Nearby", "Sri Lanka", "")) == "CMB"
+
+
+def test_empty_departure_with_a_known_country_still_resolves():
+    assert asyncio.run(_resolve_airport_code("", "Sri Lanka", "")) == "CMB"
+
+
+def test_country_fallback_ignores_a_sentinel_country():
+    assert _country_fallback_code("Nearby") == ""
+    assert _country_fallback_code("") == ""
+    assert _country_fallback_code("Sri Lanka") == "CMB"
+
+
+def test_a_real_departure_city_still_wins_over_its_country():
+    """The city's own airport, not the country's, where one is known."""
+    assert asyncio.run(_resolve_airport_code("Trincomalee", "Sri Lanka", "")) == "CMB"
+    assert asyncio.run(_resolve_airport_code("Pune", "India", "")) == "PNQ"
+
+
+def test_flights_are_skipped_when_an_endpoint_cannot_be_resolved():
+    """No Flights tab beats a confident flight from the wrong airport.
+
+    Without a SerpApi key every flight comes from the Gemini estimation
+    prompt, which always names *some* airport — so the route has to be
+    settled before that prompt is ever reached.
+    """
+    result = asyncio.run(generate_flight_strategies(
+        departure_city="Nearby", departure_country="Nearby",
+        destination="Sri Vijaya Puram", days=8, budget=150000,
+        currency="INR", travelers=3, api_key="", serpapi_key="",
+    ))
+    assert result == {}
+
+
+def test_flights_survive_when_both_endpoints_resolve_statically():
+    """The guard must not starve a route the static table already knows."""
+    async def _run():
+        # Same-airport pairs return {} for a different, pre-existing reason,
+        # so use two genuinely distinct endpoints.
+        from app.services.odyssey_ai_service import _resolve_airport_code as r
+        return (await r("Trincomalee", "Sri Lanka", ""),
+                await r("Sri Vijaya Puram", "India", ""))
+
+    origin, dest = asyncio.run(_run())
+    assert origin == "CMB" and dest == "IXZ"
+    assert origin != dest  # a real, distinct route survives the guard

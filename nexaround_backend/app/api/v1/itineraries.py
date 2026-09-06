@@ -82,6 +82,8 @@ async def generate_odyssey(
         "destination_latitude": data.destination_latitude,
         "destination_longitude": data.destination_longitude,
         "destination_address": data.destination_address or "",
+        "departure_latitude": data.departure_latitude,
+        "departure_longitude": data.departure_longitude,
     }
     meta = odyssey_ai_service.build_meta_item(
         destination=data.destination,
@@ -138,6 +140,8 @@ async def generate_odyssey(
         destination_latitude=data.destination_latitude,
         destination_longitude=data.destination_longitude,
         destination_address=data.destination_address or "",
+        departure_latitude=data.departure_latitude,
+        departure_longitude=data.departure_longitude,
     )
     return saved
 
@@ -167,6 +171,8 @@ async def _run_odyssey_generation(
     destination_latitude: Optional[float] = None,
     destination_longitude: Optional[float] = None,
     destination_address: str = "",
+    departure_latitude: Optional[float] = None,
+    departure_longitude: Optional[float] = None,
 ) -> None:
     """Runs after the response is sent. Uses its own DB session because the
     request-scoped one is already closed."""
@@ -218,6 +224,8 @@ async def _run_odyssey_generation(
                 destination_latitude=destination_latitude,
                 destination_longitude=destination_longitude,
                 destination_address=destination_address or "",
+                departure_latitude=departure_latitude,
+                departure_longitude=departure_longitude,
             )
             itin.title = title
             itin.items = items
@@ -455,6 +463,8 @@ async def retry_odyssey_generation(
     destination_address = (
         gen_params.get("destination_address") or _dctx.get("formatted_address") or ""
     )
+    departure_latitude = gen_params.get("departure_latitude")
+    departure_longitude = gen_params.get("departure_longitude")
 
     meta.pop("failure_reason", None)
     itin.status = "generating"
@@ -487,6 +497,8 @@ async def retry_odyssey_generation(
         destination_latitude=destination_latitude,
         destination_longitude=destination_longitude,
         destination_address=destination_address,
+        departure_latitude=departure_latitude,
+        departure_longitude=departure_longitude,
     )
     return saved
 

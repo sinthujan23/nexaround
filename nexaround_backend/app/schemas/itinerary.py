@@ -60,6 +60,13 @@ class OdysseyGenerateRequest(BaseModel):
     destination_latitude: Optional[float] = None
     destination_longitude: Optional[float] = None
     destination_address: str = ""
+    # Where the traveller is flying FROM. The app derives departure_city by
+    # reverse-geocoding these, and when that fails it sends the literal word
+    # "Nearby" — which the airport resolver then asked a model about, quoting a
+    # traveller in Trincomalee a flight from Chennai. Carrying the raw point
+    # lets the backend recover the country when the name is unusable.
+    departure_latitude: Optional[float] = None
+    departure_longitude: Optional[float] = None
 
 
 class OdysseySwapRequest(BaseModel):

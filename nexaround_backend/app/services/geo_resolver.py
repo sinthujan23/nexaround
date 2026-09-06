@@ -483,3 +483,46 @@ async def verify_place(
         query=q, resolved_name=geo.get("name") or "", country_code=code,
         latitude=lat, longitude=lng, distance_km=dist, ok=ok, checked=True,
     )
+
+
+async def country_from_coordinates(
+    latitude: float, longitude: float, *, budget: Optional[GeoBudget] = None,
+) -> tuple[str, str]:
+    """(country name, ISO-2) for a raw coordinate. ("", "") when unknown.
+
+    A last resort for a departure whose reverse geocode came back as the
+    literal string "Nearby" — the sentinel the proxy returns when Geoapify,
+    Mapbox and Google have all failed on those coordinates. Re-running that
+    same reverse geocode here would fail the same way, so this deliberately
+    takes a different route: one Places text search biased to the point, which
+    answers with the country of the nearest locality.
+
+    Only the country is wanted. It feeds `_country_fallback_code`, which turns
+    "Sri Lanka" into CMB — the honest answer for a traveller whose exact town
+    we could not name, and a great deal better than letting a model invent an
+    airport, which is how a departure from Trincomalee was quoted from Chennai.
+    """
+    if latitude is None or longitude is None:
+        return ("", "")
+    if budget is not None and not budget.take():
+        return ("", "")
+    try:
+        geo = await asyncio.wait_for(
+            google_places_client.resolve_place_geo(
+                "city", bias_lat=latitude, bias_lng=longitude, bias_radius_m=50_000.0,
+            ),
+            timeout=_RESOLVE_TIMEOUT_S,
+        )
+    except Exception as e:
+        logger.debug("country_from_coordinates(%s, %s) failed: %s", latitude, longitude, e)
+        return ("", "")
+    if not geo:
+        return ("", "")
+
+    code = (geo.get("country_code") or "").upper()
+    if not code:
+        tail = (geo.get("formatted_address") or "").split(",")[-1].strip()
+        code = (trip_cost_floor.country_for(tail) or "").upper()
+    if not code:
+        return ("", "")
+    return (geo.get("country") or _COUNTRY_NAMES.get(code, ""), code)

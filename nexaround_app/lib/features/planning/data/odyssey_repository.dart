@@ -48,6 +48,10 @@ class OdysseyRepository {
     double? destinationLatitude,
     double? destinationLongitude,
     String destinationAddress = '',
+    // Where the traveller is flying from. The name is derived from these and
+    // is not always usable, so the point itself travels alongside it.
+    double? departureLatitude,
+    double? departureLongitude,
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -74,6 +78,8 @@ class OdysseyRepository {
         'destination_latitude': destinationLatitude,
         'destination_longitude': destinationLongitude,
         'destination_address': destinationAddress,
+        'departure_latitude': departureLatitude,
+        'departure_longitude': departureLongitude,
       },
     );
     revision.value++;
