@@ -138,7 +138,7 @@
       phones.forEach(function(p, n){ p.classList.toggle('is-active', n === i); });
       tabs.forEach(function(t, n){ t.classList.toggle('is-active', n === i); });
     }
-    function start(){ stop(); timer = setInterval(function(){ show((cur + 1) % phones.length); }, 4200); }
+    function start(){ stop(); timer = setInterval(function(){ show((cur + 1) % phones.length); }, 4500); }
     function stop(){ if(timer) clearInterval(timer); }
 
     tabs.forEach(function(t){
@@ -295,5 +295,6 @@
       initYTPlayer('ytAppHeroPlayer');
     }
   }
+
 })();
 

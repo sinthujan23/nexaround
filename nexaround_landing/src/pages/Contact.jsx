@@ -142,6 +142,19 @@ export default function Contact() {
               </h3>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', fontSize: '0.95rem', color: 'var(--text-secondary)' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                  <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', color: 'var(--brand-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: '2px' }}>
+                    <MapPin style={{ width: '20px', height: '20px' }} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--dark-charcoal)' }}>Colombo Office</div>
+                    <address style={{ fontStyle: 'normal', color: 'var(--text-secondary)', lineHeight: 1.5, marginTop: '2px' }}>
+                      No.47/3/1/1, 4th Lane, Madiwela,<br />
+                      Kotte, Colombo, Sri Lanka
+                    </address>
+                  </div>
+                </div>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
                   <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', color: 'var(--brand-teal)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Mail style={{ width: '20px', height: '20px' }} />

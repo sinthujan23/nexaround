@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Target, Cpu, GitCommit, CheckCircle2, ShieldCheck, 
   ArrowRight, Sparkles, Code2, Users, Layers, Lock, Award,
-  Compass, Globe, Smartphone, Landmark
+  Compass, Globe, Smartphone, Landmark, MapPin
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
@@ -27,6 +27,7 @@ export default function About() {
     }, 4500);
     return () => clearInterval(timer);
   }, []);
+
   const values = [
     { title: 'Innovation with Purpose', desc: 'Blending spatial AR computing and artificial intelligence to enrich human cultural discovery.' },
     { title: 'Privacy & Security First', desc: 'Zero data brokering, enterprise-grade encryption, and strict GDPR/CCPA compliance.' },
@@ -226,6 +227,126 @@ export default function About() {
         </div>
       </section>
 
+      {/* ═══ FLAGSHIP PRODUCT (WE BUILD FOR OURSELVES TOO) ═══ */}
+      <section style={{ 
+        background: '#080a14', 
+        padding: '90px 0', 
+        borderTop: '1px solid rgba(255,255,255,0.08)', 
+        borderBottom: '1px solid rgba(255,255,255,0.08)', 
+        position: 'relative', 
+        overflow: 'hidden' 
+      }}>
+        {/* Subtle glowing backdrop */}
+        <div style={{
+          position: 'absolute',
+          top: '50%',
+          left: '25%',
+          transform: 'translate(-50%, -50%)',
+          width: '500px',
+          height: '500px',
+          background: 'radial-gradient(circle, rgba(0, 210, 211, 0.12) 0%, rgba(8, 10, 20, 0) 70%)',
+          pointerEvents: 'none',
+          zIndex: 0
+        }} />
+
+        <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '56px', alignItems: 'center' }} className="grid-2">
+            
+            {/* Left: Flagship AI & AR Mobile App Showcase */}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', width: '100%' }}>
+              <div 
+                style={{
+                  position: 'relative',
+                  width: '100%',
+                  maxWidth: '440px',
+                  borderRadius: '28px',
+                  background: '#000000',
+                  border: '1.5px solid rgba(255, 255, 255, 0.16)',
+                  overflow: 'hidden',
+                  boxShadow: '0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 211, 0.25)',
+                  transition: 'transform 0.4s cubic-bezier(0.25, 1, 0.35, 1), box-shadow 0.4s cubic-bezier(0.25, 1, 0.35, 1), border-color 0.4s cubic-bezier(0.25, 1, 0.35, 1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px) scale(1.01)';
+                  e.currentTarget.style.borderColor = 'rgba(0, 210, 211, 0.45)';
+                  e.currentTarget.style.boxShadow = '0 30px 70px -10px rgba(0, 0, 0, 0.9), 0 0 45px rgba(0, 210, 211, 0.4)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0) scale(1)';
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.16)';
+                  e.currentTarget.style.boxShadow = '0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 211, 0.25)';
+                }}
+              >
+                <img
+                  src="/about_flagship_showcase.jpg?v=2"
+                  alt="nexARound AI & AR Smart Tourism Companion"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block',
+                    objectFit: 'cover'
+                  }}
+                />
+              </div>
+            </div>
+
+
+            {/* Right: Content */}
+            <div style={{ textAlign: 'left' }}>
+              <div style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '6px 14px',
+                borderRadius: '9999px',
+                background: 'rgba(0, 210, 211, 0.12)',
+                border: '1px solid rgba(0, 210, 211, 0.3)',
+                color: '#00d2d3',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.8px',
+                marginBottom: '18px'
+              }}>
+                Flagship Product
+              </div>
+
+              <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3.2rem)', fontWeight: 500, color: '#ffffff', margin: '0 0 18px', lineHeight: 1.15, letterSpacing: '-0.02em' }}>
+                We build for ourselves too
+              </h2>
+
+              <p style={{ fontSize: '1.05rem', color: 'rgba(255, 255, 255, 0.82)', lineHeight: 1.75, margin: '0 0 28px' }}>
+                nexARound application is our flagship AI &amp; AR powered smart tourism companion, built entirely in-house. It is where our computer vision, conversational AI, mobile, and dynamic trip planning engineering come together in one innovative product.
+              </p>
+
+              <NavLink
+                to="/app"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: '#00d2d3',
+                  color: '#080a14',
+                  fontWeight: 600,
+                  fontSize: '0.96rem',
+                  padding: '14px 28px',
+                  borderRadius: '9999px',
+                  textDecoration: 'none',
+                  boxShadow: '0 4px 20px rgba(0, 210, 211, 0.4)',
+                  transition: 'all 0.25s ease'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 25px rgba(0, 210, 211, 0.6)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 20px rgba(0, 210, 211, 0.4)'; }}
+              >
+                <span>Explore the app</span>
+                <ArrowRight style={{ width: '16px', height: '16px' }} />
+              </NavLink>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       {/* ═══ CORE VALUES ═══ */}
       <section className="section-padding" style={{ background: 'var(--bg-light)', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
         <div className="container">
@@ -279,6 +400,81 @@ export default function About() {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{exp.desc}</p>
               </div>
             ))}
+          </div>
+
+        </div>
+      </section>
+
+      {/* ═══ GLOBAL OFFICES / PRESENCE ═══ */}
+      <section className="section-padding" style={{ background: 'var(--bg-light)', borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+        <div className="container">
+          
+          <div style={{ textAlign: 'center', maxWidth: '680px', margin: '0 auto 60px' }}>
+            <div className="badge badge-teal" style={{ marginBottom: '16px' }}>Global Presence</div>
+            <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3rem)', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 16px', letterSpacing: '-0.025em' }}>
+              Our Global <span className="text-gradient-teal">Offices</span>
+            </h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
+              NexAround operates internationally across three continents with strategic corporate and engineering hubs in Sri Lanka, the UAE, and the United Kingdom.
+            </p>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '28px' }} className="grid-3">
+            
+            {/* Sri Lanka Office */}
+            <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
+                  <MapPin style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '4px 10px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Sri Lanka 🇱🇰
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 6px' }}>Colombo Office</h3>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--brand-teal)', marginBottom: '12px' }}>NEXAROUND</div>
+              <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                No.47/3/1/1, 4th Lane, Madiwela,<br />
+                Kotte, Colombo, Sri Lanka
+              </address>
+            </div>
+
+            {/* UAE Office */}
+            <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
+                  <MapPin style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '4px 10px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  UAE 🇦🇪
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 6px' }}>UAE Office</h3>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--brand-teal)', marginBottom: '12px' }}>NEXAROUND TECHNOLOGIES L.L.C</div>
+              <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                Property Investment Office 4 - S1, Plot Number 516-0,<br />
+                Dubai Investment Park First, Dubai, United Arab Emirates
+              </address>
+            </div>
+
+            {/* UK Office */}
+            <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
+                  <MapPin style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '4px 10px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  United Kingdom 🇬🇧
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 6px' }}>UK Office</h3>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--brand-teal)', marginBottom: '12px' }}>NEXAROUND LTD</div>
+              <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                Office 20243, 182-184 High Street North,<br />
+                East Ham, London, United Kingdom, E6 2JA
+              </address>
+            </div>
+
           </div>
 
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileText, ShieldAlert, CheckCircle2, AlertTriangle, Scale, Ban, Sparkles, Smartphone, Mail } from 'lucide-react';
+import { FileText, ShieldAlert, CheckCircle2, AlertTriangle, Scale, Ban, Sparkles, Smartphone, Mail, MapPin } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 const heroBackgrounds = [
@@ -116,9 +116,15 @@ export default function Terms() {
             <p style={{ fontSize: '0.94rem', color: 'var(--text-secondary)', lineHeight: 1.6, margin: '0 0 16px' }}>
               For formal legal inquiries, EULA questions, or enterprise terms:
             </p>
-            <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-              <Mail style={{ width: '16px', height: '16px' }} /> support@nexaround.com
-            </a>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <a href="mailto:support@nexaround.com" style={{ color: 'var(--brand-teal)', fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                <Mail style={{ width: '16px', height: '16px' }} /> support@nexaround.com
+              </a>
+              <div style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', display: 'inline-flex', alignItems: 'flex-start', gap: '8px' }}>
+                <MapPin style={{ width: '16px', height: '16px', color: 'var(--brand-teal)', flexShrink: 0, marginTop: '3px' }} />
+                <span>NexAround Technologies, No.47/3/1/1, 4th Lane, Madiwela, Kotte, Colombo, Sri Lanka</span>
+              </div>
+            </div>
           </div>
 
         </div>
