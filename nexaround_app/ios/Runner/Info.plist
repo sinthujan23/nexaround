@@ -26,6 +26,13 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Declares that the app uses no non-exempt encryption. This is the same
+	     answer as picking "None of the algorithms mentioned above" in App Store
+	     Connect, and stating it here stops TestFlight asking on every build.
+	     Revisit if the app ever ships its own crypto beyond the HTTPS/TLS that
+	     Apple's platform already provides. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

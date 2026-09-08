@@ -3846,12 +3846,28 @@ class _ArCameraPageState extends State<ArCameraPage>
     }
   }
 
+  /// Drop focus and close the platform keyboard.
+  ///
+  /// `unfocus()` on its own is not enough after a voice search: the field can
+  /// be left holding no focus while the platform keyboard is still raised, and
+  /// with nothing focused there is nothing for unfocus to act on, so the
+  /// keyboard stays up. Asking the text input channel to hide closes it in
+  /// either state.
+  void _dismissKeyboard() {
+    // Hide first, and unconditionally: this half is safe to run even once the
+    // page is gone, whereas touching a disposed focus node throws. The old
+    // code reached for FocusScope.of(context) after an await, which had that
+    // exposure.
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+    if (!mounted) return;
+    _searchFocusNode.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   Future<void> _onSearchSuggestionSelected(
     Map<String, dynamic> suggestion,
   ) async {
-    // Hide keyboard
-    _searchFocusNode.unfocus();
-    FocusScope.of(context).unfocus();
+    _dismissKeyboard();
     updateState(() {
       _isSearching = false;
       _searchController.clear();
@@ -3927,7 +3943,7 @@ class _ArCameraPageState extends State<ArCameraPage>
       _searchController.clear();
       _searchResults.clear();
     });
-    FocusScope.of(context).unfocus();
+    _dismissKeyboard();
   }
 
   /// Search once the recording ends, however it ends.
@@ -3998,6 +4014,9 @@ class _ArCameraPageState extends State<ArCameraPage>
     });
     _speechToText.listen(
       onResult: (result) {
+        // A result can still land after the query was submitted and the user
+        // has moved on; writing it would refill the field they just cleared.
+        if (_voiceSubmitted) return;
         _searchController.text = result.recognizedWords;
         if (result.finalResult) {
           // An empty final result falls back to the last words heard rather
