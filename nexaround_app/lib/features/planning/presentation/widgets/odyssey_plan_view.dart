@@ -9,6 +9,7 @@ import 'package:nexaround_app/features/planning/presentation/widgets/hotel_strat
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -2050,28 +2051,29 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
 
   /// Builds the type-specific action button for an activity.
   Widget _buildActionButton(OdysseyActivity act, int dayIndex, int activityIndex) {
-    Widget btn;
+    // null means "this type has no partner button", which is deliberately
+    // different from a builder returning SizedBox.shrink() to opt the row out
+    // altogether. Transport, attraction and exploration lost their buttons
+    // when the partner logos were removed, but they still earn the cost badge
+    // below — that badge is about what the activity costs, not about who sells
+    // it, so it must not disappear along with the logo.
+    Widget? btn;
     switch (act.type) {
       case ActivityType.transport:
-        btn = _buildTransportButton(act);
-        break;
       case ActivityType.attraction:
-        btn = _buildAttractionButton(act);
-        break;
+      case ActivityType.exploration:
+        break; // btn stays null
       case ActivityType.accommodation:
         btn = _buildAccommodationButton(act);
         break;
       case ActivityType.dining:
         btn = _buildDiningButton(act, dayIndex, activityIndex);
         break;
-      case ActivityType.exploration:
-        btn = _buildExplorationButton(act);
-        break;
       case ActivityType.other:
-        btn = const SizedBox.shrink();
-        break;
+        return const SizedBox.shrink();
     }
 
+    // A builder that opted out renders nothing at all, badge included.
     if (btn is SizedBox) return btn;
 
     final lowerCost = act.cost.trim().toLowerCase();
@@ -2082,8 +2084,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         lowerCost.endsWith(' 0') ||
         lowerCost.endsWith(' 0.00');
 
-    // If activity is Free and we have a platform action button (GetYourGuide, Uber, Google Hotels, etc.)
-    // show [Paid] badge chip beside the platform logo (except for LIST restaurant sheet)
+    // The plan lists no cost, but the activity is not actually free — flag it
+    // with a [Paid] chip so the traveller budgets for it. Shown beside the
+    // platform button where one still exists, and on its own where it does not
+    // (except for the LIST restaurant sheet).
     if (isFree && act.type != ActivityType.dining) {
       return Row(
         mainAxisSize: MainAxisSize.min,
@@ -2105,55 +2109,15 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               ),
             ),
           ),
-          const SizedBox(width: 5),
-          btn,
+          if (btn != null) ...[
+            const SizedBox(width: 5),
+            btn,
+          ],
         ],
       );
     }
 
-    return btn;
-  }
-
-  /// Uber button for transport activities (shows clean logo only, no box/container).
-  Widget _buildTransportButton(OdysseyActivity act) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        // Strip directional prefix and append destination for accurate geocoding
-        final placeName = act.name.replaceAll(RegExp(r'^(Travel|Drive|Taxi|Transfer|Ride)\s+to\s+', caseSensitive: false), '').trim();
-        final dest = widget.odyssey.destination.isNotEmpty ? widget.odyssey.destination : '';
-        final fullAddress = dest.isNotEmpty ? '$placeName, $dest' : placeName;
-        final destination = Uri.encodeComponent(fullAddress);
-        _launchExternalUrl('https://m.uber.com/ul/?action=setPickup&dropoff[formatted_address]=$destination');
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Image.asset(
-          'assets/images/uber_logo.png',
-          height: 20,
-          fit: BoxFit.contain,
-        ),
-      ),
-    );
-  }
-
-  /// GetYourGuide button for ticketed attraction activities (shows clean logo only, no box/container).
-  /// Was Headout — the client reported it surfacing wrong results (a generic
-  /// site-wide text search rarely matched the specific attraction).
-  Widget _buildAttractionButton(OdysseyActivity act) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
-        final query = Uri.encodeComponent('${act.name} tickets$dest');
-        _launchExternalUrl('https://www.getyourguide.com/s/?q=$query');
-      },
-      child: Image.asset(
-        'assets/images/getyourguide.png',
-        height: 20,
-        fit: BoxFit.contain,
-      ),
-    );
+    return btn ?? const SizedBox.shrink();
   }
 
   /// Index of the Stays tab, accounting for the Flights tab being optional.
@@ -2249,27 +2213,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  /// GetYourGuide logo button for exploration activities (shows clean logo only).
-  Widget _buildExplorationButton(OdysseyActivity act) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () async {
-        final placeName = act.name.replaceAll(RegExp(r'^(Explore|Wander|Walk through|Stroll)\s+', caseSensitive: false), '').trim();
-        final dest = widget.odyssey.destination.isNotEmpty ? ' ${widget.odyssey.destination}' : '';
-        final query = Uri.encodeComponent('$placeName guided tour$dest');
-        final url = Uri.parse('https://www.getyourguide.com/s/?q=$query');
-        if (await canLaunchUrl(url)) {
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-        }
-      },
-      child: Image.asset(
-        'assets/images/getyourguide.png',
-        height: 22,
-        fit: BoxFit.contain,
       ),
     );
   }
@@ -3346,10 +3289,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
 
     try {
+      // searchQuery already names the destination, so no bias is needed —
+      // it only must not be a bias to somewhere else entirely. These were
+      // pinned to Colombo unconditionally.
       final results = await GooglePlacesService.searchPlaces(
         query: searchQuery,
-        latitude: 6.9271,
-        longitude: 79.8612,
+        latitude: CacheService.getLastFetchLat(),
+        longitude: CacheService.getLastFetchLng(),
       );
 
       if (!context.mounted) return;
@@ -3372,8 +3318,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           context,
           MaterialPageRoute(
             builder: (_) => SmartTourismMapPage(
-              initialLat: 6.9271,
-              initialLng: 79.8612,
+              initialLat: CacheService.getLastFetchLat() ?? 0.0,
+              initialLng: CacheService.getLastFetchLng() ?? 0.0,
               destinationName: placeName,
             ),
           ),
@@ -3386,8 +3332,8 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         context,
         MaterialPageRoute(
           builder: (_) => SmartTourismMapPage(
-            initialLat: 6.9271,
-            initialLng: 79.8612,
+            initialLat: CacheService.getLastFetchLat() ?? 0.0,
+            initialLng: CacheService.getLastFetchLng() ?? 0.0,
             destinationName: placeName,
           ),
         ),
@@ -3816,10 +3762,12 @@ class _RestaurantListBottomSheetState extends State<_RestaurantListBottomSheet> 
           ? 'restaurants in $location, ${widget.destination}'
           : 'restaurants in $location';
 
+      // The query already names the location and destination; bias only by
+      // somewhere we have actually been, if anywhere.
       final places = await GooglePlacesService.searchPlaces(
         query: query,
-        latitude: 6.9271,
-        longitude: 79.8612,
+        latitude: CacheService.getLastFetchLat(),
+        longitude: CacheService.getLastFetchLng(),
       );
 
       if (mounted) {

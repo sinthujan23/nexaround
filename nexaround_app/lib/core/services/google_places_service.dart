@@ -131,35 +131,6 @@ class GooglePlacesService {
     }
   }
 
-  /// Generates a Headout search URL for a given location, appending the city/district
-  /// name to the query to ensure Headout finds relevant experiences instead of
-  /// falling back to defaults like Vietnam/Singapore.
-  static Future<Uri> getHeadoutSearchUri(
-    double lat,
-    double lng,
-    String placeName,
-  ) async {
-    final details = await reverseGeocodeDetailed(lat, lng);
-    final district = details['district'] ?? '';
-
-    String query = placeName.trim();
-    if (district.isNotEmpty && district != 'Nearby') {
-      if (query.isNotEmpty) {
-        query = '$query, $district';
-      } else {
-        query = district;
-      }
-    } else if (query.isEmpty) {
-      query = '$lat,$lng';
-    }
-
-    return Uri.https('www.headout.com', '/search', {
-      'q': query,
-      'latitude': lat.toStringAsFixed(6),
-      'longitude': lng.toStringAsFixed(6),
-    });
-  }
-
   static final Map<String, List<AttractionEntity>> _clientCache = {};
   static final Map<String, DateTime> _clientCacheExpiry = {};
 
@@ -452,10 +423,16 @@ class GooglePlacesService {
   /// alongside it: it tells the backend `query` is already a locality-stripped
   /// subject ("atm", not "atm near me"), so it can resolve specific POI types
   /// (atm, bakery, gym, ...) directly instead of treating it as a proper name.
+  /// [latitude]/[longitude] bias results towards the user and are optional:
+  /// pass null when the real position is unknown. They used to be required,
+  /// which forced callers to invent a coordinate — every one of them picked
+  /// Colombo, so a search for a Paris restaurant was ranked by distance from
+  /// Sri Lanka. A query that already names its destination needs no bias at
+  /// all; an unbiased search is the honest answer when we have no position.
   static Future<List<AttractionEntity>> searchPlaces({
     required String query,
-    required double latitude,
-    required double longitude,
+    double? latitude,
+    double? longitude,
     double? radiusM,
     bool nearMe = false,
   }) async {
@@ -464,8 +441,8 @@ class GooglePlacesService {
         '${ApiConstants.apiVersion}/places/search',
         queryParameters: {
           'query': query,
-          'lat': latitude,
-          'lng': longitude,
+          if (latitude != null) 'lat': latitude,
+          if (longitude != null) 'lng': longitude,
           if (radiusM != null) 'radius_m': radiusM,
           if (nearMe) 'near_me': true,
         },
@@ -490,12 +467,18 @@ class GooglePlacesService {
           }
         }
 
-        // Sort by distance ascending if available
-        models.sort((a, b) {
-          final distA = a.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, a.latitude, a.longitude);
-          final distB = b.distanceM ?? geo.Geolocator.distanceBetween(latitude, longitude, b.latitude, b.longitude);
-          return distA.compareTo(distB);
-        });
+        // Sort by distance ascending when we have somewhere to measure from.
+        // Without a reference point the backend's own ordering stands, which
+        // beats ranking by distance from a coordinate we made up.
+        final double? refLat = latitude;
+        final double? refLng = longitude;
+        if (refLat != null && refLng != null) {
+          models.sort((a, b) {
+            final distA = a.distanceM ?? geo.Geolocator.distanceBetween(refLat, refLng, a.latitude, a.longitude);
+            final distB = b.distanceM ?? geo.Geolocator.distanceBetween(refLat, refLng, b.latitude, b.longitude);
+            return distA.compareTo(distB);
+          });
+        }
 
         print(
           '✅ Places searched: ${models.length} items',
@@ -613,15 +596,24 @@ class GooglePlacesService {
 
   /// High-speed place suggestions/autocomplete powered by Google Places API proxy + in-memory LRU cache.
   /// Delivers Google Maps-grade performance (< 100ms response, 0ms on cache hits).
+  /// [latitude]/[longitude] bias the results towards the user and are
+  /// optional: pass null when the real position is unknown. They used to be
+  /// required, which pushed every caller into inventing a coordinate — all of
+  /// them defaulted to Colombo, quietly reordering suggestions around the
+  /// wrong continent. An unbiased query is the honest answer instead.
   static Future<List<Map<String, dynamic>>> getAutocompleteSuggestions({
     required String input,
-    required double latitude,
-    required double longitude,
+    double? latitude,
+    double? longitude,
   }) async {
     final cleanedInput = input.trim();
     if (cleanedInput.isEmpty) return [];
 
-    final cacheKey = '${cleanedInput.toLowerCase()}|${latitude.toStringAsFixed(2)},${longitude.toStringAsFixed(2)}';
+    final bool hasBias = latitude != null && longitude != null;
+    final String biasKey = hasBias
+        ? '${latitude!.toStringAsFixed(2)},${longitude!.toStringAsFixed(2)}'
+        : 'nobias';
+    final cacheKey = '${cleanedInput.toLowerCase()}|$biasKey';
 
     // 1. Instant Cache Hit (0ms)
     if (_autocompleteMemoryCache.containsKey(cacheKey)) {
@@ -639,9 +631,9 @@ class GooglePlacesService {
         '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
         queryParameters: {
           'input': cleanedInput,
-          'location': '$latitude,$longitude',
-          'radius': 50000,
-          'origin': '$latitude,$longitude',
+          if (hasBias) 'location': '$latitude,$longitude',
+          if (hasBias) 'radius': 50000,
+          if (hasBias) 'origin': '$latitude,$longitude',
           'language': 'en',
         },
         cancelToken: cancelToken,

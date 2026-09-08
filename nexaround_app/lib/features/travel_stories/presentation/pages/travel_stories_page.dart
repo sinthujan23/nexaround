@@ -14,6 +14,7 @@ import '../../data/datasources/travel_stories_service.dart';
 import '../widgets/stories_comments_dialog.dart';
 import '../widgets/post_story_sheet.dart';
 import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
@@ -272,8 +273,14 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        double lat = 6.9271;
-        double lng = 79.8612;
+        // Editing must not move the story. It already carries the place it
+        // was posted from; only fall back to the last known position when the
+        // original had none. These were hardcoded to Colombo unconditionally,
+        // so every edit silently re-tagged the story to Sri Lanka.
+        final double lat =
+            story.latitude ?? CacheService.getLastFetchLat() ?? 0.0;
+        final double lng =
+            story.longitude ?? CacheService.getLastFetchLng() ?? 0.0;
         return PostStorySheet(
           userLatitude: lat,
           userLongitude: lng,

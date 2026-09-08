@@ -620,31 +620,54 @@ class _LivingMapPageState extends State<LivingMapPage>
     }
   }
 
+  /// No live fix available. Fall back to the last place we actually saw the
+  /// user — never to a hardcoded city.
+  ///
+  /// This used to pin the user to Colombo (6.9271, 79.8612) and, worse, tell
+  /// them so: it set the location label to "Colombo, Sri Lanka" and fetched
+  /// Colombo attractions. For anyone outside Sri Lanka that turned "we don't
+  /// know where you are" into a confident wrong answer that looked like a
+  /// working screen. When we have no last-known position either, the honest
+  /// outcome is to say nothing and let the existing location banner offer the
+  /// user a way to switch location on.
   void _useFallbackLocation() {
-    if (mounted) {
-      _lastFetchedLatitude = 6.9271;
-      _lastFetchedLongitude = 79.8612;
+    if (!mounted) return;
 
+    final double? lastLat = CacheService.getLastFetchLat();
+    final double? lastLng = CacheService.getLastFetchLng();
+
+    if (lastLat == null || lastLng == null) {
       setState(() {
-        _currentLocationName = 'Colombo, Sri Lanka';
-        _currentDistrict = 'Colombo District';
-        _userLatitude = 6.9271; // Fallback to Colombo
-        _userLongitude = 79.8612;
+        _isLocationServiceEnabled = false;
+        _currentLocationName = 'Location unavailable';
+        _currentDistrict = '';
       });
-
-      // Fetch data with fallback location from Database & Cache (0 Gemini cost)
-      context.read<MapBloc>().add(
-        FetchNearbyAttractions(
-          latitude: 6.9271,
-          longitude: 79.8612,
-          useLegacy: false,
-        ),
-      );
-      context.read<MapBloc>().add(const FetchCategories());
-      _fetchMiniTourPlaces(6.9271, 79.8612);
-      _preFetchArPlaces(6.9271, 79.8612);
-      _fetchBandedSections(6.9271, 79.8612);
+      return;
     }
+
+    _lastFetchedLatitude = lastLat;
+    _lastFetchedLongitude = lastLng;
+
+    setState(() {
+      _currentLocationName =
+          CacheService.getLastFetchLocationName() ?? 'Nearby';
+      _currentDistrict = '';
+      _userLatitude = lastLat;
+      _userLongitude = lastLng;
+    });
+
+    // Fetch data for the last known area from Database & Cache (0 Gemini cost)
+    context.read<MapBloc>().add(
+      FetchNearbyAttractions(
+        latitude: lastLat,
+        longitude: lastLng,
+        useLegacy: false,
+      ),
+    );
+    context.read<MapBloc>().add(const FetchCategories());
+    _fetchMiniTourPlaces(lastLat, lastLng);
+    _preFetchArPlaces(lastLat, lastLng);
+    _fetchBandedSections(lastLat, lastLng);
   }
 
   Future<void> _forceRefreshAroundYou() async {
@@ -1692,10 +1715,25 @@ class _LivingMapPageState extends State<LivingMapPage>
           );
           
           try {
+            final double? searchLat =
+                _userLatitude ?? CacheService.getLastFetchLat();
+            final double? searchLng =
+                _userLongitude ?? CacheService.getLastFetchLng();
+            if (searchLat == null || searchLng == null) {
+              ScaffoldMessenger.of(parentContext).hideCurrentSnackBar();
+              ScaffoldMessenger.of(parentContext).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Location unavailable — turn on location to find nearby places.',
+                  ),
+                ),
+              );
+              return;
+            }
             final results = await GooglePlacesService.searchPlaces(
               query: placeName,
-              latitude: _userLatitude ?? 6.9271,
-              longitude: _userLongitude ?? 79.8612,
+              latitude: searchLat,
+              longitude: searchLng,
             );
             
             if (!mounted) return;
@@ -2898,6 +2936,21 @@ class _LivingMapPageState extends State<LivingMapPage>
   }
 
   void _showPostStorySheet() {
+    // A story carries these coordinates into the database and onto other
+    // users' feeds, so a guessed location would be persisted as fact. Require
+    // a real one rather than defaulting.
+    final double? storyLat = _userLatitude ?? CacheService.getLastFetchLat();
+    final double? storyLng = _userLongitude ?? CacheService.getLastFetchLng();
+    if (storyLat == null || storyLng == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Location unavailable — turn on location to post a story.',
+          ),
+        ),
+      );
+      return;
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -2905,8 +2958,8 @@ class _LivingMapPageState extends State<LivingMapPage>
       backgroundColor: Colors.transparent,
       builder: (context) {
         return PostStorySheet(
-          userLatitude: _userLatitude ?? 6.9271,
-          userLongitude: _userLongitude ?? 79.8612,
+          userLatitude: storyLat,
+          userLongitude: storyLng,
           onStorySubmitted: (newStory) async {
             // Send to backend first to persist in DB and get the real UUID
             final savedStory = await TravelStoriesService().addStory(newStory);
@@ -4068,12 +4121,32 @@ class _LivingMapPageState extends State<LivingMapPage>
                       ),
                     );
                   } else {
+                    // Both the search bias and the "couldn't find it" fallback
+                    // below centre on the user, so they need a real user
+                    // position. Colombo used to stand in for one, which opened
+                    // a Sri Lankan map for a user anywhere in the world.
+                    final double? knownLat =
+                        _userLatitude ?? CacheService.getLastFetchLat();
+                    final double? knownLng =
+                        _userLongitude ?? CacheService.getLastFetchLng();
+                    if (knownLat == null || knownLng == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Location unavailable — turn on location to locate this experience.',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    final double userLat = knownLat;
+                    final double userLng = knownLng;
                     setSheetState(() => locating = true);
                     try {
                       final results = await GooglePlacesService.searchPlaces(
                         query: exp.name,
-                        latitude: _userLatitude ?? 6.9271,
-                        longitude: _userLongitude ?? 79.8612,
+                        latitude: userLat,
+                        longitude: userLng,
                       );
                       if (!mounted) return;
                       Navigator.pop(context);
@@ -4093,8 +4166,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                           context,
                           MaterialPageRoute(
                             builder: (_) => SmartTourismMapPage(
-                              initialLat: _userLatitude ?? 6.9271,
-                              initialLng: _userLongitude ?? 79.8612,
+                              initialLat: userLat,
+                              initialLng: userLng,
                               destinationName: exp.name,
                             ),
                           ),
@@ -4108,8 +4181,8 @@ class _LivingMapPageState extends State<LivingMapPage>
                         context,
                         MaterialPageRoute(
                           builder: (_) => SmartTourismMapPage(
-                            initialLat: _userLatitude ?? 6.9271,
-                            initialLng: _userLongitude ?? 79.8612,
+                            initialLat: userLat,
+                            initialLng: userLng,
                             destinationName: exp.name,
                           ),
                         ),

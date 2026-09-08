@@ -152,10 +152,24 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           );
 
           try {
+            final double? searchLat = CacheService.getLastFetchLat();
+            final double? searchLng = CacheService.getLastFetchLng();
+            if (searchLat == null || searchLng == null) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Location unavailable — turn on location to find nearby places.',
+                  ),
+                ),
+              );
+              return;
+            }
             final results = await GooglePlacesService.searchPlaces(
               query: placeName,
-              latitude: CacheService.getLastFetchLat() ?? 6.9271,
-              longitude: CacheService.getLastFetchLng() ?? 79.8612,
+              latitude: searchLat,
+              longitude: searchLng,
             );
 
             if (!mounted) return;

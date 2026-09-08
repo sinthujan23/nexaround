@@ -9,8 +9,8 @@ import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platf
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class GoogleMapsPage extends StatefulWidget {
   final double initialLat;
@@ -143,8 +143,16 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     } catch (_) {}
 
     if (_userLat == null || _userLng == null) {
-      _userLat = (widget.initialLat != 0.0) ? widget.initialLat : 6.9271;
-      _userLng = (widget.initialLng != 0.0) ? widget.initialLng : 79.8612;
+      if (widget.initialLat != 0.0 && widget.initialLng != 0.0) {
+        _userLat = widget.initialLat;
+        _userLng = widget.initialLng;
+      } else {
+        // Last place we actually saw the user, or nothing. Leaving these null
+        // is correct: the camera below falls back to a world view rather than
+        // asserting the user is in Colombo.
+        _userLat = CacheService.getLastFetchLat();
+        _userLng = CacheService.getLastFetchLng();
+      }
     }
 
     _addUserMarker();
@@ -212,8 +220,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
     } catch (_) {
       if (_userLat == null && mounted) {
         setState(() {
-          _userLat = 6.9271;
-          _userLng = 79.8612;
+          _userLat = CacheService.getLastFetchLat();
+          _userLng = CacheService.getLastFetchLng();
         });
       }
     }
@@ -693,10 +701,12 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
             onMapCreated: _onMapCreated,
             initialCameraPosition: CameraPosition(
               target: LatLng(
-                (widget.initialLat != 0.0) ? widget.initialLat : (_userLat ?? 6.9271),
-                (widget.initialLng != 0.0) ? widget.initialLng : (_userLng ?? 79.8612),
+                (widget.initialLat != 0.0) ? widget.initialLat : (_userLat ?? 20.0),
+                (widget.initialLng != 0.0) ? widget.initialLng : (_userLng ?? 0.0),
               ),
-              zoom: 14.0,
+              // Street level once we know where to look; a world view when we
+              // genuinely do not, instead of a confident wrong city.
+              zoom: (widget.initialLat != 0.0 || _userLat != null) ? 14.0 : 1.5,
               tilt: 0.0,
             ),
             markers: _markers,
@@ -1474,92 +1484,8 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
               }
             },
           ),
-        const SizedBox(height: 10),
-        // Booking.com — find hotels near the destination
-        _buildFab(
-          imagePath: 'assets/images/booking_logo.jpg',
-          color: Colors.white, // logo is blue-on-white
-          onTap: _openBooking,
-        ),
-        const SizedBox(height: 10),
-        // Uber — request a ride to the destination
-        _buildFab(
-          imagePath: 'assets/images/uber_logo.png',
-          color: Colors.black,
-          onTap: _openUber,
-        ),
-        const SizedBox(height: 10),
-        // Headout — book activities & experiences
-        _buildFab(
-          imagePath: 'assets/images/headout.png',
-          color: Colors.transparent,
-          fillImage: true,
-          onTap: _openHeadout,
-        ),
       ],
     );
-  }
-
-  /// Optional Booking.com affiliate id (free to sign up) → earn commission.
-  static const String _bookingAffiliateId = '';
-
-  /// Opens Booking.com hotel search for the destination/area via a deep link
-  /// (no API key) — uses the installed app if present, else the website.
-  Future<void> _openBooking() async {
-    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
-    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
-    final name = _destName;
-    final params = <String, String>{
-      if (name != null && name.trim().isNotEmpty) 'ss': name.trim(),
-      'latitude': lat.toStringAsFixed(6),
-      'longitude': lng.toStringAsFixed(6),
-      if (_bookingAffiliateId.isNotEmpty) 'aid': _bookingAffiliateId,
-    };
-    await _launchExternalUrl(
-      Uri.https('www.booking.com', '/searchresults.html', params),
-    );
-  }
-
-  /// Opens Uber with the drop-off pre-set to the destination via a deep link
-  /// (no API key) — falls back to Uber's site / store if the app is absent.
-  Future<void> _openUber() async {
-    final double dLat = _destLat != 0 ? _destLat : widget.initialLat;
-    final double dLng = _destLng != 0 ? _destLng : widget.initialLng;
-    final name = _destName ?? 'Destination';
-    final params = <String, String>{
-      'action': 'setPickup',
-      'pickup': 'my_location',
-      'dropoff[latitude]': dLat.toStringAsFixed(6),
-      'dropoff[longitude]': dLng.toStringAsFixed(6),
-      'dropoff[nickname]': name,
-    };
-    await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
-  }
-
-  /// Opens Headout for activities & experiences near the destination.
-  Future<void> _openHeadout() async {
-    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
-    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
-    final name = _destName ?? '';
-    final uri = await GooglePlacesService.getHeadoutSearchUri(lat, lng, name);
-    await _launchExternalUrl(uri);
-  }
-
-  Future<void> _launchExternalUrl(Uri uri) async {
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't open the app or website.")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Couldn't open link: $e")),
-        );
-      }
-    }
   }
 
   Widget _buildFab({

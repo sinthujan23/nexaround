@@ -16,7 +16,7 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/google_maps_page.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class SmartTourismMapPage extends StatefulWidget {
   final double initialLat;
@@ -169,11 +169,20 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
       }
     } catch (_) {}
 
-    // Fallback if still null
+    // Fallback if still null. Prefer the caller's target, then the last
+    // position we actually observed. If we have neither, leave the coordinates
+    // null rather than substituting a city — claiming "Colombo" to a user in
+    // Paris is a wrong answer dressed as a working screen.
     if (_userLat == null || _userLng == null) {
-      _userLat = (widget.initialLat != 0.0) ? widget.initialLat : 6.9271;
-      _userLng = (widget.initialLng != 0.0) ? widget.initialLng : 79.8612;
-      _currentNeighborhood = 'Colombo';
+      if (widget.initialLat != 0.0 && widget.initialLng != 0.0) {
+        _userLat = widget.initialLat;
+        _userLng = widget.initialLng;
+      } else {
+        _userLat = CacheService.getLastFetchLat();
+        _userLng = CacheService.getLastFetchLng();
+        _currentNeighborhood =
+            CacheService.getLastFetchLocationName() ?? '';
+      }
     }
 
     // 2. Launch Place Discovery and Route Directions in Parallel
@@ -1554,28 +1563,6 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
                             const SizedBox(height: 8),
                           ],
                           _buildCircleButton(
-                            imagePath: 'assets/images/booking_logo.jpg',
-                            onTap: _openBooking,
-                            bgColor: Colors.white, // Changed to white to match standard white icon background without blue border ring
-                            iconColor: Colors.white,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildCircleButton(
-                            imagePath: 'assets/images/uber_logo.png',
-                            onTap: _openUber,
-                            bgColor: Colors.black,
-                            iconColor: Colors.white,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildCircleButton(
-                            imagePath: 'assets/images/headout.png',
-                            onTap: _openHeadout,
-                            bgColor: Colors.transparent,
-                            iconColor: Colors.white,
-                            fillImage: true,
-                          ),
-                          const SizedBox(height: 8),
-                          _buildCircleButton(
                             icon: Icons.my_location_rounded,
                             onTap: _recenterOnUser,
                             bgColor: Colors.black.withValues(alpha: 0.7),
@@ -1706,69 +1693,6 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
         ),
       ),
     );
-  }
-
-  /// Optional Booking.com affiliate id. Paste your `aid` here (free to sign up)
-  /// to earn commission on hotel bookings; leave empty for plain links.
-  static const String _bookingAffiliateId = '';
-
-  /// Opens Booking.com hotel search for the current destination/area via a deep
-  /// link (no API key) — uses the installed app if present, else the website.
-  Future<void> _openBooking() async {
-    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
-    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
-    final name = _destinationName;
-    final params = <String, String>{
-      if (name != null && name.trim().isNotEmpty) 'ss': name.trim(),
-      'latitude': lat.toStringAsFixed(6),
-      'longitude': lng.toStringAsFixed(6),
-      if (_bookingAffiliateId.isNotEmpty) 'aid': _bookingAffiliateId,
-    };
-    await _launchExternalUrl(
-      Uri.https('www.booking.com', '/searchresults.html', params),
-    );
-  }
-
-  /// Opens Uber with the drop-off pre-set to the current destination via a deep
-  /// link (no API key) — falls back to Uber's site / store if the app is absent.
-  Future<void> _openUber() async {
-    final double dLat = _destLat != 0 ? _destLat : widget.initialLat;
-    final double dLng = _destLng != 0 ? _destLng : widget.initialLng;
-    final name = _destinationName ?? 'Destination';
-    final params = <String, String>{
-      'action': 'setPickup',
-      'pickup': 'my_location',
-      'dropoff[latitude]': dLat.toStringAsFixed(6),
-      'dropoff[longitude]': dLng.toStringAsFixed(6),
-      'dropoff[nickname]': name,
-    };
-    await _launchExternalUrl(Uri.https('m.uber.com', '/ul/', params));
-  }
-
-  /// Opens Headout for activities & experiences near the destination.
-  Future<void> _openHeadout() async {
-    final double lat = _destLat != 0 ? _destLat : (_userLat ?? widget.initialLat);
-    final double lng = _destLng != 0 ? _destLng : (_userLng ?? widget.initialLng);
-    final name = _destinationName ?? '';
-    final uri = await GooglePlacesService.getHeadoutSearchUri(lat, lng, name);
-    await _launchExternalUrl(uri);
-  }
-
-  Future<void> _launchExternalUrl(Uri uri) async {
-    try {
-      final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Couldn't open the app or website.")),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Couldn't open link: $e")),
-        );
-      }
-    }
   }
 
   // ─── Navigation Bottom Card ───

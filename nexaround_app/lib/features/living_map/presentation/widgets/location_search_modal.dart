@@ -8,6 +8,7 @@ import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 class LocationSearchModal extends StatefulWidget {
   final double? currentLatitude;
@@ -318,10 +319,16 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     setState(() => _isLoading = true);
 
     try {
+      // Bias only by somewhere we have actually been. A wrong bias quietly
+      // reorders suggestions around the wrong continent.
+      final double? biasLat =
+          widget.currentLatitude ?? CacheService.getLastFetchLat();
+      final double? biasLng =
+          widget.currentLongitude ?? CacheService.getLastFetchLng();
       final results = await GooglePlacesService.getAutocompleteSuggestions(
         input: trimmed,
-        latitude: widget.currentLatitude ?? 6.9271,
-        longitude: widget.currentLongitude ?? 79.8612,
+        latitude: biasLat,
+        longitude: biasLng,
       );
 
       if (mounted) {

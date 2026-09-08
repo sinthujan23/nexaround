@@ -1445,10 +1445,23 @@ class _ArCameraPageState extends State<ArCameraPage>
       _showSearchResults = true;
     });
     try {
+      final double? searchLat =
+          _currentPosition?.latitude ?? CacheService.getLastFetchLat();
+      final double? searchLng =
+          _currentPosition?.longitude ?? CacheService.getLastFetchLng();
+      if (searchLat == null || searchLng == null) {
+        if (mounted) {
+          setState(() {
+            _isSearching = false;
+            _showSearchResults = false;
+          });
+        }
+        return;
+      }
       final results = await GooglePlacesService.searchPlaces(
         query: query,
-        latitude: _currentPosition?.latitude ?? 6.9271,
-        longitude: _currentPosition?.longitude ?? 79.8612,
+        latitude: searchLat,
+        longitude: searchLng,
       );
       if (mounted) {
         setState(() {
@@ -1475,10 +1488,23 @@ class _ArCameraPageState extends State<ArCameraPage>
     });
 
     try {
+      final double? searchLat =
+          _currentPosition?.latitude ?? CacheService.getLastFetchLat();
+      final double? searchLng =
+          _currentPosition?.longitude ?? CacheService.getLastFetchLng();
+      if (searchLat == null || searchLng == null) {
+        if (mounted) {
+          setState(() {
+            _isSearching = false;
+            _showSearchResults = false;
+          });
+        }
+        return;
+      }
       final results = await GooglePlacesService.searchPlaces(
         query: query,
-        latitude: _currentPosition?.latitude ?? 6.9271,
-        longitude: _currentPosition?.longitude ?? 79.8612,
+        latitude: searchLat,
+        longitude: searchLng,
       );
 
       if (mounted) {
@@ -3772,8 +3798,16 @@ class _ArCameraPageState extends State<ArCameraPage>
     final trimmed = query.trim();
     if (trimmed.isEmpty) return;
 
-    final double lat = _currentPosition?.latitude ?? 6.9271;
-    final double lng = _currentPosition?.longitude ?? 79.8612;
+    // Unbiased beats wrongly biased: without a real position we cannot rank
+    // "near me" results, so stop rather than search around a city the user has
+    // never been to.
+    final double? knownLat =
+        _currentPosition?.latitude ?? CacheService.getLastFetchLat();
+    final double? knownLng =
+        _currentPosition?.longitude ?? CacheService.getLastFetchLng();
+    if (knownLat == null || knownLng == null) return;
+    final double lat = knownLat;
+    final double lng = knownLng;
     final bool isNearMe = _nearMeQualifierRegex.hasMatch(trimmed);
     // Strip the locality phrase but keep the actual subject ("atm",
     // "restaurant", ...) instead of discarding the whole query — the Places
@@ -7643,28 +7677,6 @@ HOW TO FORMAT EVERY REPLY:
                   ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
                   : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(name)}';
 
-              final double finalLat =
-                  lat ?? _currentPosition?.latitude ?? 6.9271;
-              final double finalLng =
-                  lng ?? _currentPosition?.longitude ?? 79.8612;
-
-              final uberUri = Uri.https('m.uber.com', '/ul/', {
-                'action': 'setPickup',
-                'pickup': 'my_location',
-                'dropoff[latitude]': finalLat.toStringAsFixed(6),
-                'dropoff[longitude]': finalLng.toStringAsFixed(6),
-                'dropoff[nickname]': name,
-              });
-
-              final bookingUri =
-                  Uri.https('www.booking.com', '/searchresults.html', {
-                    'ss': name.trim(),
-                    'latitude': finalLat.toStringAsFixed(6),
-                    'longitude': finalLng.toStringAsFixed(6),
-                  });
-
-              // headoutUri calculation removed from here, done dynamically on tap
-
               Widget circleActionButton({
                 Widget? child,
                 IconData? icon,
@@ -7766,58 +7778,9 @@ HOW TO FORMAT EVERY REPLY:
                     ),
                     const SizedBox(width: 16),
                     circleActionButton(
-                      imagePath: 'assets/images/uber_logo.png',
-                      color: Colors.black,
-                      index: 1,
-                      onTap: () async {
-                        try {
-                          await launchUrl(
-                            uberUri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        } catch (_) {}
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    circleActionButton(
-                      imagePath: 'assets/images/booking_logo.jpg',
-                      color: Colors.white,
-                      index: 2,
-                      onTap: () async {
-                        try {
-                          await launchUrl(
-                            bookingUri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        } catch (_) {}
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    circleActionButton(
-                      imagePath: 'assets/images/headout.png',
-                      color: Colors.transparent,
-                      index: 3,
-                      fillImage: true,
-                      onTap: () async {
-                        try {
-                          final headoutUri =
-                              await GooglePlacesService.getHeadoutSearchUri(
-                                finalLat,
-                                finalLng,
-                                name,
-                              );
-                          await launchUrl(
-                            headoutUri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        } catch (_) {}
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    circleActionButton(
                       child: _buildNevaAvatar(44),
                       color: Colors.transparent,
-                      index: 4,
+                      index: 1,
                       onTap: () {
                         _openAskNevaForResult(result);
                       },
@@ -8863,148 +8826,6 @@ HOW TO FORMAT EVERY REPLY:
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    () {
-                                      final double finalLat =
-                                          landmark.lat ??
-                                          _currentPosition?.latitude ??
-                                          6.9271;
-                                      final double finalLng =
-                                          landmark.lng ??
-                                          _currentPosition?.longitude ??
-                                          79.8612;
-                                      final String name = landmark.name;
-
-                                      final uberUri =
-                                          Uri.https('m.uber.com', '/ul/', {
-                                            'action': 'setPickup',
-                                            'pickup': 'my_location',
-                                            'dropoff[latitude]': finalLat
-                                                .toStringAsFixed(6),
-                                            'dropoff[longitude]': finalLng
-                                                .toStringAsFixed(6),
-                                            'dropoff[nickname]': name,
-                                          });
-
-                                      final bookingUri = Uri.https(
-                                        'www.booking.com',
-                                        '/searchresults.html',
-                                        {
-                                          'ss': name.trim(),
-                                          'latitude': finalLat.toStringAsFixed(
-                                            6,
-                                          ),
-                                          'longitude': finalLng.toStringAsFixed(
-                                            6,
-                                          ),
-                                        },
-                                      );
-
-                                      Widget miniCircleActionButton({
-                                        required String imagePath,
-                                        required Color color,
-                                        required VoidCallback onTap,
-                                        required int index,
-                                        bool fillImage = false,
-                                      }) {
-                                        return GestureDetector(
-                                              onTap: onTap,
-                                              child: Container(
-                                                width: 38,
-                                                height: 38,
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  color: color,
-                                                  border: Border.all(
-                                                    color: Colors.white
-                                                        .withOpacity(0.35),
-                                                    width: 1,
-                                                  ),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withOpacity(0.15),
-                                                      blurRadius: 6,
-                                                      offset: const Offset(
-                                                        0,
-                                                        2,
-                                                      ),
-                                                    ),
-                                                  ],
-                                                ),
-                                                child: Center(
-                                                  child: ClipRRect(
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          19,
-                                                        ),
-                                                    child: fillImage
-                                                        ? Image.asset(
-                                                            imagePath,
-                                                            fit: BoxFit.cover,
-                                                            width: 38,
-                                                            height: 38,
-                                                          )
-                                                        : Image.asset(
-                                                            imagePath,
-                                                            width: 22,
-                                                            height: 22,
-                                                            fit: BoxFit.cover,
-                                                          ),
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                            .animate(
-                                              onPlay: (controller) => controller
-                                                  .repeat(reverse: true),
-                                            )
-                                            .moveY(
-                                              begin: -1.5,
-                                              end: 1.5,
-                                              duration:
-                                                  (1400 + (index * 200)).ms,
-                                              curve: Curves.easeInOut,
-                                            );
-                                      }
-
-                                      return Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          miniCircleActionButton(
-                                            imagePath:
-                                                'assets/images/uber_logo.png',
-                                            color: Colors.black,
-                                            index: 0,
-                                            onTap: () async {
-                                              try {
-                                                await launchUrl(
-                                                  uberUri,
-                                                  mode: LaunchMode
-                                                      .externalApplication,
-                                                );
-                                              } catch (_) {}
-                                            },
-                                          ),
-                                          const SizedBox(width: 8),
-                                          miniCircleActionButton(
-                                            imagePath:
-                                                'assets/images/booking_logo.jpg',
-                                            color: Colors.white,
-                                            index: 1,
-                                            onTap: () async {
-                                              try {
-                                                await launchUrl(
-                                                  bookingUri,
-                                                  mode: LaunchMode
-                                                      .externalApplication,
-                                                );
-                                              } catch (_) {}
-                                            },
-                                          ),
-                                        ],
-                                      );
-                                    }(),
                                   ],
                                 ),
                               ),

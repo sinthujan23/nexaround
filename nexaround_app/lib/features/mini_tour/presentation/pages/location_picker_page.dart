@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' as mapbox;
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 
 /// Full-screen Mapbox picker: pan/zoom the map so the centre pin sits over the
 /// area you want a tour in, then confirm. Pops `{lat, lng}` back to the caller.
@@ -14,8 +15,12 @@ class LocationPickerPage extends StatefulWidget {
 
 class _LocationPickerPageState extends State<LocationPickerPage> {
   mapbox.MapboxMap? _map;
-  double _initLat = 6.9271; // Colombo fallback until GPS resolves
-  double _initLng = 79.8612;
+  // Null until we know where the user is. The map falls back to a
+  // zoomed-out world view rather than a specific city: this picker seeds the
+  // point the user then confirms, so starting them in Colombo invited them to
+  // confirm a Sri Lankan coordinate from anywhere in the world.
+  double? _initLat;
+  double? _initLng;
   bool _ready = false;
   bool _confirming = false;
 
@@ -40,8 +45,10 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
         _initLng = pos.longitude;
       }
     } catch (_) {
-      // Keep the fallback centre.
+      // Fall through to the last known position below.
     }
+    _initLat ??= CacheService.getLastFetchLat();
+    _initLng ??= CacheService.getLastFetchLng();
     if (mounted) setState(() => _ready = true);
   }
 
@@ -78,9 +85,11 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
             styleUri: mapbox.MapboxStyles.MAPBOX_STREETS,
             cameraOptions: mapbox.CameraOptions(
               center: mapbox.Point(
-                coordinates: mapbox.Position(_initLng, _initLat),
+                coordinates: mapbox.Position(_initLng ?? 0.0, _initLat ?? 20.0),
               ),
-              zoom: 14.0,
+              // Street level when we know where they are; otherwise a world
+              // view, which reads honestly as "pan to your spot".
+              zoom: _initLat == null ? 1.5 : 14.0,
             ),
             onMapCreated: (m) {
               _map = m;

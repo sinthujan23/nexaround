@@ -826,17 +826,6 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
         ? 'https://www.google.com/maps/search/?api=1&query=$lat,$lng'
         : 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(name)}';
 
-    final double finalLat = (lat as num?)?.toDouble() ?? _userLat ?? 6.9271;
-    final double finalLng = (lng as num?)?.toDouble() ?? _userLng ?? 79.8612;
-
-    final uberUri = Uri.https('m.uber.com', '/ul/', {
-      'action': 'setPickup',
-      'pickup': 'my_location',
-      'dropoff[latitude]': finalLat.toStringAsFixed(6),
-      'dropoff[longitude]': finalLng.toStringAsFixed(6),
-      'dropoff[nickname]': name,
-    });
-
     Widget circleActionButton({
       Widget? child,
       IconData? icon,
@@ -929,17 +918,6 @@ Your goal: make every traveller feel they have a brilliant, caring local friend 
                   );
                 } catch (_) {}
               }
-            },
-          ),
-          const SizedBox(width: 16),
-          circleActionButton(
-            imagePath: 'assets/images/uber_logo.png',
-            color: Colors.black,
-            index: 1,
-            onTap: () async {
-              try {
-                await launchUrl(uberUri, mode: LaunchMode.externalApplication);
-              } catch (_) {}
             },
           ),
         ],
