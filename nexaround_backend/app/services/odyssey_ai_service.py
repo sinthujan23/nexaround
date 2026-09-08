@@ -384,6 +384,43 @@ _AIRPORT_CODES = {
     "zanzibar": "ZNZ", "mauritius": "MRU", "seychelles": "SEZ",
     "sydney": "SYD", "melbourne": "MEL", "brisbane": "BNE", "perth": "PER",
     "auckland": "AKL", "wellington": "WLG", "christchurch": "CHC",
+    # ── Countries ────────────────────────────────────────────────────────────
+    # A country is a destination travellers really do pick, and resolving it
+    # here returns before both the Gemini lookup and the Places verification —
+    # so the common cases cost no API call at all rather than the one Gemini
+    # plus three Places calls they used to spend to produce nothing.
+    #
+    # Only names that cannot be mistaken for a city or a region are listed.
+    # "Georgia" is deliberately absent: it is a US state as often as a country,
+    # and this table is consulted on the raw typed string, before any geocoding
+    # has had a chance to disambiguate it.
+    "australia": "SYD,MEL,BNE", "new zealand": "AKL,CHC",
+    "china": "PEK,PVG,CAN", "japan": "HND,NRT,KIX",
+    "south korea": "ICN,GMP", "taiwan": "TPE",
+    "thailand": "BKK,HKT", "vietnam": "SGN,HAN",
+    "indonesia": "CGK,DPS", "malaysia": "KUL", "philippines": "MNL",
+    "cambodia": "PNH,SAI", "india": "DEL,BOM,MAA", "nepal": "KTM",
+    "pakistan": "KHI,LHE,ISB", "bangladesh": "DAC",
+    "united arab emirates": "DXB,AUH", "uae": "DXB,AUH",
+    "qatar": "DOH", "oman": "MCT", "saudi arabia": "RUH,JED",
+    "jordan": "AMM", "israel": "TLV", "turkey": "IST,AYT",
+    "türkiye": "IST,AYT",
+    "united kingdom": "LHR,LGW,MAN", "france": "CDG,ORY,NCE",
+    "germany": "FRA,MUC,BER", "italy": "FCO,MXP", "spain": "MAD,BCN",
+    "portugal": "LIS,OPO", "netherlands": "AMS", "belgium": "BRU",
+    "switzerland": "ZRH,GVA", "austria": "VIE", "czechia": "PRG",
+    "czech republic": "PRG", "greece": "ATH", "poland": "WAW",
+    "hungary": "BUD", "ireland": "DUB", "iceland": "KEF",
+    "norway": "OSL", "sweden": "ARN", "denmark": "CPH", "finland": "HEL",
+    "croatia": "ZAG", "romania": "OTP", "bulgaria": "SOF",
+    "russia": "SVO,DME,LED",
+    "united states": "JFK,LAX,ORD", "united states of america": "JFK,LAX,ORD",
+    "usa": "JFK,LAX,ORD", "canada": "YYZ,YVR,YUL", "mexico": "MEX,CUN",
+    "brazil": "GRU,GIG", "argentina": "EZE,AEP", "chile": "SCL",
+    "peru": "LIM", "colombia": "BOG",
+    "egypt": "CAI", "morocco": "CMN", "kenya": "NBO",
+    "south africa": "JNB,CPT", "tanzania": "DAR,ZNZ",
+    "ethiopia": "ADD", "nigeria": "LOS", "ghana": "ACC",
 }
 
 _AIRPORT_CODE_RE = re.compile(r"^[A-Z]{3}(,[A-Z]{3})*$")
@@ -429,6 +466,13 @@ _METRO_CODES = {
 # not change, and the same routes recur constantly.
 _airport_code_cache: dict[str, str] = {}
 
+# How far an airport may sit from the destination before we call it the wrong
+# airport. Sized for a city: generous enough for a place served by a hub in the
+# next region, tight enough to catch the wrong country entirely. It is
+# deliberately NOT applied to a whole-country destination — see
+# _verify_airport_codes.
+_AIRPORT_MAX_KM = 1000.0
+
 
 async def _verify_airport_codes(
     codes: list[str],
@@ -436,10 +480,14 @@ async def _verify_airport_codes(
     longitude: float | None,
     country_code: str,
     *,
-    max_km: float = 1000.0,
+    max_km: float | None = _AIRPORT_MAX_KM,
     budget=None,
 ) -> list[str]:
     """Drop airports that are not where the trip is.
+
+    `max_km=None` keeps the country check and drops the distance one. That is
+    the right shape for a whole-country destination, where the coordinates are
+    a centroid and distance from it carries no information.
 
     Runs only on the guessed path. A model asked which airport serves an
     unfamiliar place will confidently name a real one in the wrong country —
@@ -481,6 +529,7 @@ async def _resolve_airport_code(
     latitude: float | None = None,
     longitude: float | None = None,
     country_code: str = "",
+    is_country: bool = False,
     budget=None,
 ) -> str:
     """Resolve a place name to an IATA code SerpApi will accept.
@@ -533,7 +582,9 @@ async def _resolve_airport_code(
     if not api_key:
         return ""
 
-    location = f"{raw}, {country}" if country else raw
+    # A country needs no country suffix — "Australia, Australia" reads worse
+    # to the model than the bare name and adds nothing.
+    location = f"{raw}, {country}" if country and not is_country else raw
     # The destination used to reach this prompt as a bare name with country="",
     # while the origin got its country. "Sri Vijaya Puram" alone reads as Sri
     # Lankan, and the answer came back CMB — a real airport, 1500 km from the
@@ -564,8 +615,16 @@ async def _resolve_airport_code(
         # Only the model's answers are verified — the static table above is
         # curated, and the live SerpApi path never reaches here at all.
         if codes and country_code:
+            # A country destination resolves to its centroid, which for a wide
+            # country sits over 1000km from every airport that actually serves
+            # it — the radius check rejected all three and the traveller got no
+            # Flights section at all. The country check below is the correct
+            # guard there and still catches the wrong-country answer this
+            # verification exists to stop.
             codes = await _verify_airport_codes(
-                codes, latitude, longitude, country_code, budget=budget,
+                codes, latitude, longitude, country_code,
+                max_km=None if is_country else _AIRPORT_MAX_KM,
+                budget=budget,
             )
         if codes:
             code = ",".join(codes)
@@ -899,6 +958,7 @@ async def generate_flight_strategies(
             latitude=(_dgeo.latitude if _dgeo is not None else None),
             longitude=(_dgeo.longitude if _dgeo is not None else None),
             country_code=(_dgeo.country_code if _dgeo is not None else ""),
+            is_country=(_dgeo.is_country if _dgeo is not None else False),
             budget=geo_budget,
         ),
     )

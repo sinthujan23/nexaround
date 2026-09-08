@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 # 30 days. A city does not move, and the rename that motivated this module is
 # the rare exception rather than the rule.
 _CACHE_TTL_SECONDS = 30 * 24 * 3600
-_CACHE_PREFIX = "geo:dest:v2:"
+_CACHE_PREFIX = "geo:dest:v3:"
 
 # Places is a dependency of a background job, not of a request the user is
 # waiting on, but an Odyssey should not stall behind it either.
@@ -147,6 +147,7 @@ class DestinationContext:
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     place_id: str = ""
+    types: tuple[str, ...] = ()
     source: str = "unresolved"  # client | places | static | unresolved
 
     @property
@@ -157,6 +158,25 @@ class DestinationContext:
     @property
     def has_coords(self) -> bool:
         return self.latitude is not None and self.longitude is not None
+
+    @property
+    def is_country(self) -> bool:
+        """True when the destination is a whole country, not a place inside one.
+
+        Read from Google's own classification, which `resolve_place_geo`
+        already asks for in its field mask and already returns — so this costs
+        no additional request. The name comparison is the fallback for the two
+        cases with no Places payload to read: the static table, and entries
+        cached before `types` was carried through.
+
+        Callers use this to decide whether a distance-from-here check is
+        meaningful. For a country it is not: the coordinates are the country's
+        centroid, and every real airport in a country wider than ~2000km sits
+        further from that point than any sane radius would allow.
+        """
+        if "country" in self.types:
+            return True
+        return bool(self.country) and _norm(self.display_name) == _norm(self.country)
 
     @property
     def display_name(self) -> str:
@@ -177,6 +197,7 @@ class DestinationContext:
         known = {f for f in cls.__dataclass_fields__}
         payload = {k: v for k, v in (data or {}).items() if k in known}
         payload["aliases"] = tuple(payload.get("aliases") or ())
+        payload["types"] = tuple(payload.get("types") or ())
         payload.setdefault("query", "")
         return cls(**payload)
 
@@ -187,7 +208,8 @@ class DestinationContext:
             "country": self.country, "country_code": self.country_code,
             "admin_area": self.admin_area, "aliases": list(self.aliases),
             "latitude": self.latitude, "longitude": self.longitude,
-            "place_id": self.place_id, "source": self.source,
+            "place_id": self.place_id, "types": list(self.types),
+            "source": self.source,
         }
 
 
@@ -199,6 +221,7 @@ def _context_from_geo(query: str, geo: dict, source: str) -> DestinationContext:
         query=query,
         name=name,
         formatted_address=geo.get("formatted_address") or "",
+        types=tuple(geo.get("types") or ()),
         country=geo.get("country") or "",
         country_code=(geo.get("country_code") or "").upper(),
         admin_area=geo.get("admin_area") or "",
