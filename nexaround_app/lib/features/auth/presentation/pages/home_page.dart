@@ -381,7 +381,21 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
           },
           child: IndexedStack(
             index: _selectedIndex,
-            children: pages,
+            children: [
+              // Freeze animations on the tabs that aren't currently visible.
+              // IndexedStack keeps every child mounted (it wraps them in
+              // Visibility.maintain, which sets maintainAnimation: true), so
+              // without this the hidden pages' infinite repeat() animations —
+              // the map's globe spin and pulse, the AR overlays — keep ticking
+              // and the app never reaches an idle frame, burning CPU/GPU (and
+              // battery/heat) for pixels nobody can see.
+              //
+              // This is purely a scheduler change: widget identity, State and
+              // every AnimationController are untouched, and a controller
+              // resumes from exactly where it was when its tab comes back.
+              for (int i = 0; i < pages.length; i++)
+                TickerMode(enabled: _selectedIndex == i, child: pages[i]),
+            ],
           ),
         ),
         bottomNavigationBar: _selectedIndex == 1 ? null : _buildBottomNav(),

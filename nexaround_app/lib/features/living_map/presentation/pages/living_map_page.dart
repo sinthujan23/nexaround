@@ -3761,6 +3761,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ? CachedNetworkImage(
                               imageUrl: resolvedUrl,
                               fit: BoxFit.cover,
+                              memCacheWidth: 1080, // 180dp-tall hero at 3x DPR
                               placeholder: (_, __) => Container(
                                 color: AppColors.surfaceVariant,
                                 child: const Center(
@@ -4845,6 +4846,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ? CachedNetworkImage(
                               imageUrl: resolvedUrl,
                               fit: BoxFit.cover,
+                              memCacheWidth: 1080, // card image at 3x DPR
                               placeholder: (_, __) => Container(
                                 color: AppColors.surfaceVariant,
                                 child: const Center(
@@ -5121,6 +5123,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                           ? CachedNetworkImage(
                               imageUrl: resolvedUrl,
                               fit: BoxFit.cover,
+                              memCacheWidth: 1080, // 180dp-tall hero at 3x DPR
                               placeholder: (_, __) => Container(
                                 color: AppColors.surfaceVariant,
                                 child: const Center(
@@ -6918,6 +6921,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   ? CachedNetworkImage(
                       imageUrl: resolvedUrl,
                       fit: BoxFit.cover,
+                      memCacheWidth: 1080, // rounded photo card at 3x DPR
                       placeholder: (_, __) => Container(
                         color: Colors.black.withOpacity(0.3),
                         child: const Center(

@@ -166,6 +166,17 @@ class _GoogleMapsPageState extends State<GoogleMapsPage>
       final h = event.heading;
       if (h == null || !mounted) return;
       if (!_isNavigating) {
+        // Ignore sub-degree compass jitter, the same way the navigating
+        // listener below already does. The sensor fires 20-50x/sec and
+        // _addUserMarker() rebuilds the whole marker set and pushes it across
+        // the platform channel to the native Maps SDK on every event, so
+        // without this the map is doing tens of full marker updates per second
+        // while the user stands still. At 2 degrees the puck's outermost pixel
+        // moves well under 1px, so the rotation looks identical.
+        double d = (h - _navBearing).abs() % 360;
+        if (d > 180) d = 360 - d;
+        if (d < 2) return;
+
         setState(() {
           _navBearing = h;
         });

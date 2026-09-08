@@ -220,6 +220,9 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                   ? CachedNetworkImage(
                       imageUrl: widget.odyssey.coverUrl!,
                       fit: BoxFit.cover,
+                      // Hero cover: 1440 matches a QHD phone's native width,
+                      // so the "sharp" look is preserved on every device.
+                      memCacheWidth: 1440,
                       placeholder: (context, url) => Container(
                         color: const Color(0xFF0F172A),
                         child: const Center(

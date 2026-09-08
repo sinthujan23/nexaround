@@ -331,6 +331,9 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
+        // Journal gallery draws these in a 180dp-tall strip; 768px is well
+        // above what that needs at 3x DPR and caps large camera uploads.
+        memCacheWidth: 768,
         placeholder: (_, __) => const Center(
           child: SizedBox(
             width: 24,
@@ -348,6 +351,7 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
       return CachedNetworkImage(
         imageUrl: fullUrl,
         fit: BoxFit.cover,
+        memCacheWidth: 768, // 180dp-tall gallery strip
         placeholder: (_, __) => const Center(
           child: SizedBox(
             width: 24,
@@ -372,6 +376,7 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
         return CachedNetworkImage(
           imageUrl: fullUrl,
           fit: BoxFit.cover,
+          memCacheWidth: 768, // 180dp-tall gallery strip
           placeholder: (_, __) => const Center(
             child: SizedBox(
               width: 24,

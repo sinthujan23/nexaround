@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -32,6 +33,14 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // debugPrint still writes to the platform log channel in release builds.
+  // The app makes ~250 of these calls, several on per-GPS-fix and per-compass
+  // paths, and each one crosses the Dart/platform boundary. Silence them in
+  // release only — debug and profile builds keep every log exactly as before.
+  if (kReleaseMode) {
+    debugPrint = (String? message, {int? wrapWidth}) {};
+  }
 
   // Before the first screen builds: image widgets read the token synchronously
   // to authenticate photo requests, and an unauthenticated one is served from

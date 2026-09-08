@@ -41,6 +41,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
   mapbox.MapboxMap? _mapboxMap;
   mapbox.PointAnnotationManager? _annotationManager;
   StreamSubscription<CompassEvent>? _compassSub;
+  StreamSubscription<geo.Position>? _posSub;
   double _navBearing = 0;
 
   double? _userLat;
@@ -148,6 +149,7 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     _debounceTimer?.cancel();
     _searchController.dispose();
     _compassSub?.cancel();
+    _posSub?.cancel();
     _pulseController.dispose();
     _alertController.dispose();
     _cardScrollController.dispose();
@@ -456,8 +458,15 @@ class _SmartTourismMapPageState extends State<SmartTourismMapPage>
     // Add 3D building extrusion layer asynchronously in background
     _add3DBuildingLayer();
 
-    // Start location streaming for live tracking
-    geo.Geolocator.getPositionStream(
+    // Start location streaming for live tracking.
+    //
+    // The subscription is held (and cancelled in dispose) so leaving the page
+    // actually stops the GPS. Previously this stream was fired and forgotten,
+    // so every visit to this page started another high-accuracy fix that ran
+    // until the process died — several visits meant several concurrent GNSS
+    // streams draining the battery and heating the device.
+    _posSub?.cancel();
+    _posSub = geo.Geolocator.getPositionStream(
       locationSettings: const geo.LocationSettings(
         accuracy: geo.LocationAccuracy.high,
         distanceFilter: 15,

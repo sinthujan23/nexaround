@@ -605,6 +605,7 @@ class _StoriesCommentsDialogState extends State<StoriesCommentsDialog> {
         child: CachedNetworkImage(
           imageUrl: avatarUrl,
           fit: BoxFit.cover,
+          memCacheWidth: 108, // 36px avatar at 3x DPR
           placeholder: (_, __) => _buildInitialsAvatar(initials),
           errorWidget: (_, __, ___) => _buildInitialsAvatar(initials),
         ),

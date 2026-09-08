@@ -425,6 +425,7 @@ class _MuseumCard extends StatelessWidget {
                           ? CachedNetworkImage(
                               imageUrl: _effectiveImageUrl!,
                               fit: BoxFit.cover,
+                              memCacheWidth: 1080, // grid card at 3x DPR
                               placeholder: (context, url) => Container(
                                 color: AppColors.surface,
                                 child: const Center(

@@ -75,6 +75,11 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
+        // Story photos are user camera uploads and can be 3000px+ wide, which
+        // decodes to tens of MB of bitmap each. The grid never draws them
+        // larger than the card (~360dp at 3x DPR), and tapping through opens
+        // the full-screen viewer, which loads the original untouched.
+        memCacheWidth: 1080,
         placeholder: (_, __) => Container(
           color: AppColors.surface,
           child: const Center(
@@ -95,6 +100,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
       return CachedNetworkImage(
         imageUrl: fullUrl,
         fit: BoxFit.cover,
+        memCacheWidth: 1080, // card is ~360dp wide at 3x DPR
         placeholder: (_, __) => Container(
           color: AppColors.surface,
           child: const Center(
@@ -126,6 +132,7 @@ class _TravelStoryCardState extends State<TravelStoryCard> {
         return CachedNetworkImage(
           imageUrl: fullUrl,
           fit: BoxFit.cover,
+          memCacheWidth: 1080, // card is ~360dp wide at 3x DPR
           placeholder: (_, __) => Container(
             color: AppColors.surface,
             child: const Center(

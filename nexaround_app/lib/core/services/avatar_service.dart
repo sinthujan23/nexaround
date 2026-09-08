@@ -255,6 +255,11 @@ class UserAvatarView extends StatelessWidget {
           avatarContent = CachedNetworkImage(
             imageUrl: avatarUrl,
             fit: BoxFit.cover,
+            // Decode at the size actually drawn (3x covers every phone DPR)
+            // instead of holding a full-resolution bitmap in memory for a
+            // circle this small. memCacheWidth only ever downscales, so a
+            // source smaller than this is left untouched.
+            memCacheWidth: (size * 3).round(),
             placeholder: (context, url) => Container(
               color: AppColors.surfaceVariant,
               child: const Center(
@@ -271,6 +276,7 @@ class UserAvatarView extends StatelessWidget {
           avatarContent = CachedNetworkImage(
             imageUrl: persona.avatarUrl,
             fit: BoxFit.cover,
+            memCacheWidth: (size * 3).round(),
             placeholder: (context, url) => Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -545,10 +551,12 @@ class _AvatarStudioSheetState extends State<_AvatarStudioSheet> {
                             ? CachedNetworkImage(
                                 imageUrl: socialUrl,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 144, // 48px slot at 3x DPR
                               )
                             : CachedNetworkImage(
                                 imageUrl: activePersona.avatarUrl,
                                 fit: BoxFit.cover,
+                                memCacheWidth: 144, // 48px slot at 3x DPR
                               ),
                       ),
                     ),
@@ -696,6 +704,7 @@ class _AvatarStudioSheetState extends State<_AvatarStudioSheet> {
                               width: 52,
                               height: 52,
                               fit: BoxFit.cover,
+                              memCacheWidth: 156, // 52px slot at 3x DPR
                             ),
                           ),
                           const SizedBox(width: 14),
@@ -826,6 +835,7 @@ class _AvatarStudioSheetState extends State<_AvatarStudioSheet> {
                                           child: CachedNetworkImage(
                                             imageUrl: persona.avatarUrl,
                                             fit: BoxFit.cover,
+                                            memCacheWidth: 180, // 60px at 3x
                                             placeholder: (_, __) => Center(
                                               child: Text(
                                                 persona.emoji,

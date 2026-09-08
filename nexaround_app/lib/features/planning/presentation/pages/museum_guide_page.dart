@@ -504,6 +504,9 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
                     CachedNetworkImage(
                       imageUrl: _effectiveImageUrl!,
                       fit: BoxFit.cover,
+                      // Full-width hero: 1440 matches a QHD phone's native
+                      // width, so this only ever bites on oversized sources.
+                      memCacheWidth: 1440,
                       placeholder: (_, __) => Container(
                         color: AppColors.charcoal,
                         child: const Center(

@@ -1614,6 +1614,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                       ? CachedNetworkImage(
                           imageUrl: resolvedUrl,
                           fit: BoxFit.cover,
+                          memCacheWidth: 1080, // full-bleed card background
                           placeholder: (_, __) => Container(
                             color: AppColors.surfaceVariant,
                             child: const Center(
@@ -1734,6 +1735,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                         width: 90,
                         height: 90,
                         fit: BoxFit.cover,
+                        memCacheWidth: 270, // 90px list thumbnail at 3x DPR
                         placeholder: (_, __) => Container(
                           width: 90,
                           height: 90,

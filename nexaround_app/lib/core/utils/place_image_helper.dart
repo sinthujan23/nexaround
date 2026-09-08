@@ -37,6 +37,10 @@ class PlaceImageHelper {
         fit: fit,
         width: width,
         height: height,
+        // Only cap the decode when the caller told us how wide the image will
+        // actually be drawn. When width is null the layout decides the size,
+        // so we leave the decode alone rather than guess and risk softening it.
+        memCacheWidth: width != null ? (width! * 3).round() : null,
         placeholder: (context, url) => Container(
           color: Colors.grey.shade900,
           child: const Center(

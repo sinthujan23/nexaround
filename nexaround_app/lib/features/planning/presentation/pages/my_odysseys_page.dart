@@ -696,6 +696,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 CachedNetworkImage(
                   imageUrl: odyssey.coverUrl!,
                   fit: BoxFit.cover,
+                  memCacheWidth: 1080, // full-bleed list card at 3x DPR
                   placeholder: (context, url) => Container(
                     color: const Color(0xFF0F172A),
                     child: const Center(

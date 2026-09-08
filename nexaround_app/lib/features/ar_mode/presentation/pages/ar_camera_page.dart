@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:nexaround_app/core/services/google_directions_service.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:camera/camera.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -46,7 +47,7 @@ class ArCameraPage extends StatefulWidget {
 }
 
 class _ArCameraPageState extends State<ArCameraPage>
-    with TickerProviderStateMixin {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   CameraController? _controller;
   bool _isCameraReady = false;
   bool _initialPlaceTriggered = false;
@@ -1048,7 +1049,36 @@ class _ArCameraPageState extends State<ArCameraPage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkAndInit();
+  }
+
+  /// Stop feeding camera frames while the app itself is in the background.
+  ///
+  /// Deliberately narrow: it only pauses/resumes the preview and never routes
+  /// through _startArCapture/_stopArCapture, because _startArCapture also fires
+  /// _triggerLimitNotice() (a 3-second banner) and can kick off a place fetch —
+  /// both of which would then fire every time the user alt-tabs back into the
+  /// app. Nothing here changes what the user sees: the preview is resumed
+  /// before the first visible frame after returning.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    if (state == AppLifecycleState.resumed) {
+      // Only resume if the AR tab is the one on screen — otherwise the preview
+      // should stay paused exactly as _stopArCapture left it.
+      if (widget.isActive) {
+        try {
+          controller.resumePreview();
+        } catch (_) {}
+      }
+    } else {
+      try {
+        controller.pausePreview();
+      } catch (_) {}
+    }
   }
 
   Future<void> _checkAndInit() async {
@@ -1142,9 +1172,14 @@ class _ArCameraPageState extends State<ArCameraPage>
             return;
           }
 
-          debugPrint(
-            '📍 AR Location Update: ${pos.latitude}, ${pos.longitude}',
-          );
+          // Guarded so the string interpolation itself is skipped in release —
+          // this runs on every GPS fix (every 2m of walking), unlike the
+          // one-off error logs elsewhere.
+          if (kDebugMode) {
+            debugPrint(
+              '📍 AR Location Update: ${pos.latitude}, ${pos.longitude}',
+            );
+          }
           setState(() {
             _currentPosition = pos;
 
@@ -1378,6 +1413,7 @@ class _ArCameraPageState extends State<ArCameraPage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _accelerometerSubscription?.cancel();
     _compassSubscription?.cancel();
     _positionSubscription?.cancel();

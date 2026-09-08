@@ -141,6 +141,9 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       return CachedNetworkImage(
         imageUrl: url,
         fit: BoxFit.cover,
+        // Full-bleed story image: 1440px covers a 1080p screen at 3x DPR with
+        // headroom, while still capping multi-megapixel camera uploads.
+        memCacheWidth: 1440,
         placeholder: (context, val) => Container(
           color: Colors.white10,
           child: const Center(
@@ -154,6 +157,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       return CachedNetworkImage(
         imageUrl: fullUrl,
         fit: BoxFit.cover,
+        memCacheWidth: 1440, // full-bleed story image
         placeholder: (context, val) => Container(
           color: Colors.white10,
           child: const Center(
@@ -175,6 +179,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
         return CachedNetworkImage(
           imageUrl: fullUrl,
           fit: BoxFit.cover,
+          memCacheWidth: 1440, // full-bleed story image
           placeholder: (context, val) => Container(
             color: Colors.white10,
             child: const Center(
