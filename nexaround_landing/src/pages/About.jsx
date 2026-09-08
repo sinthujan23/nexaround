@@ -415,30 +415,12 @@ export default function About() {
               Our Global <span className="text-gradient-teal">Offices</span>
             </h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '1.05rem', margin: 0, lineHeight: 1.7 }}>
-              NexAround operates internationally across three continents with strategic corporate and engineering hubs in Sri Lanka, the UAE, and the United Kingdom.
+              NexAround operates internationally across three continents with strategic corporate and engineering hubs in the UAE, the United Kingdom, and Sri Lanka.
             </p>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '28px' }} className="grid-3">
             
-            {/* Sri Lanka Office */}
-            <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
-                  <MapPin style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
-                </div>
-                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '4px 10px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Sri Lanka 🇱🇰
-                </span>
-              </div>
-              <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 6px' }}>Colombo Office</h3>
-              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--brand-teal)', marginBottom: '12px' }}>NEXAROUND</div>
-              <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
-                No.47/3/1/1, 4th Lane, Madiwela,<br />
-                Kotte, Colombo, Sri Lanka
-              </address>
-            </div>
-
             {/* UAE Office */}
             <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
@@ -472,6 +454,24 @@ export default function About() {
               <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
                 Office 20243, 182-184 High Street North,<br />
                 East Ham, London, United Kingdom, E6 2JA
+              </address>
+            </div>
+
+            {/* Sri Lanka Office */}
+            <div className="feature-card" style={{ textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+                <div style={{ width: '44px', height: '44px', borderRadius: '12px', background: 'rgba(0, 122, 124, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(0, 122, 124, 0.25)' }}>
+                  <MapPin style={{ width: '20px', height: '20px', color: 'var(--brand-teal)' }} />
+                </div>
+                <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--brand-teal)', background: 'rgba(0, 122, 124, 0.08)', padding: '4px 10px', borderRadius: '9999px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Sri Lanka 🇱🇰
+                </span>
+              </div>
+              <h3 style={{ fontSize: '1.25rem', fontWeight: 500, color: 'var(--dark-charcoal)', margin: '0 0 6px' }}>Colombo Office</h3>
+              <div style={{ fontSize: '0.88rem', fontWeight: 600, color: 'var(--brand-teal)', marginBottom: '12px' }}>NEXAROUND</div>
+              <address style={{ fontStyle: 'normal', fontSize: '0.92rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>
+                No.47/3/1/1, 4th Lane, Madiwela,<br />
+                Kotte, Colombo, Sri Lanka
               </address>
             </div>
 
