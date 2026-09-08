@@ -11,7 +11,16 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
+    env:
+      # Play requires versionCode to increase on every upload, so the build
+      # number is derived from the workflow run counter instead of being
+      # hand-edited in pubspec. The offset continues the published sequence
+      # rather than restarting it: this workflow was at run 407 when the last
+      # build was 161, so run 408 yields 162. Never raise this offset — a
+      # versionCode that does not increase is rejected.
+      BUILD_NUMBER_OFFSET: 246
+
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -34,6 +43,20 @@ jobs:
         working-directory: nexaround_app
         run: flutter pub get
 
+      - name: Compute build number
+        id: buildnum
+        run: |
+          # GITHUB_RUN_NUMBER increments on every run of this workflow — pushes
+          # and manual dispatches alike — so each build gets a fresh number
+          # without anyone editing pubspec.
+          NUMBER=$(( GITHUB_RUN_NUMBER - BUILD_NUMBER_OFFSET ))
+          if [ "$NUMBER" -le 0 ]; then
+            echo "::error::Computed build number $NUMBER is not positive. The run counter was probably reset by renaming this workflow — lower BUILD_NUMBER_OFFSET to match."
+            exit 1
+          fi
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "Building 1.0.4+$NUMBER (run $GITHUB_RUN_NUMBER)"
+
       - name: Setup Keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -52,11 +75,11 @@ jobs:
 
       - name: Build APK
         working-directory: nexaround_app
-        run: flutter build apk --split-per-abi --android-skip-build-dependency-validation
+        run: flutter build apk --split-per-abi --build-number=${{ steps.buildnum.outputs.number }} --android-skip-build-dependency-validation
 
       - name: Build AAB
         working-directory: nexaround_app
-        run: flutter build appbundle --android-skip-build-dependency-validation
+        run: flutter build appbundle --build-number=${{ steps.buildnum.outputs.number }} --android-skip-build-dependency-validation
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4

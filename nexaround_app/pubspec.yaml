@@ -1,8 +1,10 @@
 name: nexaround_app
 description: "NexAround - AI-powered smart tourism companion"
 publish_to: 'none'
-#Build Number for IOS and Andriod 
-version: 1.0.3+161
+# Build number for iOS and Android. The name (1.0.4) is the source of truth for
+# both stores; the +162 only applies to local builds, since CI overrides it with
+# an auto-incrementing value. See .github/workflows/build_apk.yml.
+version: 1.0.4+162
 environment:
   sdk: '>=3.11.0 <4.0.0'
 

@@ -84,6 +84,19 @@ class _ArCameraPageState extends State<ArCameraPage>
   double _distanceToTarget = 0.0;
   bool _isListening = false;
 
+  /// Guards the voice query against being searched twice.
+  ///
+  /// A recording can end through several paths at once — a final result, a
+  /// status change, an error — and each of them routes to the same submit.
+  bool _voiceSubmitted = false;
+
+  /// Grace period between "recording stopped" and searching.
+  ///
+  /// The recognizer reports the microphone closing slightly before it delivers
+  /// its last words, so submitting the instant the status flips would search a
+  /// truncated phrase. Waiting a beat lets a final result overtake the timer.
+  Timer? _voiceFinalizeTimer;
+
   // ═══════════════════════════════════════
   // ROUTE NAVIGATION — Turn-by-turn with chevrons
   // ═══════════════════════════════════════
@@ -1371,6 +1384,7 @@ class _ArCameraPageState extends State<ArCameraPage>
     _rangeHintTimer?.cancel();
     _maxPlacesLimitNoticeTimer?.cancel();
     _searchDebounceTimer?.cancel();
+    _voiceFinalizeTimer?.cancel();
     _controller?.dispose();
     _newPlaceController.dispose();
     _newPlaceDescriptionController.dispose();
@@ -3916,31 +3930,96 @@ class _ArCameraPageState extends State<ArCameraPage>
     FocusScope.of(context).unfocus();
   }
 
-  Future<void> _startVoiceSearch() async {
-    final status = await Permission.microphone.request();
-    if (status.isGranted) {
-      bool available = await _speechToText.initialize(
-        onStatus: (status) {
-          if (status == 'notListening' || status == 'done') {
-            if (mounted) updateState(() => _isListening = false);
-          }
-        },
-      );
-      if (available) {
-        updateState(() {
-          _isListening = true;
-          _isSearching = true;
-        });
-        _speechToText.listen(
-          onResult: (result) {
-            _searchController.text = result.recognizedWords;
-            if (result.finalResult && result.recognizedWords.trim().isNotEmpty) {
-              _performGoogleSearch(result.recognizedWords.trim());
-            }
-          },
+  /// Search once the recording ends, however it ends.
+  ///
+  /// `finalResult` is not dependable on its own: a session regularly closes on
+  /// `error_no_match` or a speech timeout and never sends one, which used to
+  /// leave a correctly transcribed phrase sitting in the box doing nothing
+  /// until the user tapped search. Every exit path now lands here and reads
+  /// back what was heard instead of waiting to be handed it.
+  void _submitVoiceQuery({String? words}) {
+    _voiceFinalizeTimer?.cancel();
+    if (_voiceSubmitted) return;
+    _voiceSubmitted = true;
+
+    final query = (words ?? _speechToText.lastRecognizedWords).trim();
+    if (query.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Didn't catch that — tap the mic to try again"),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Color(0xFFFF5252),
+          ),
         );
       }
+      return;
     }
+
+    _searchDebounceTimer?.cancel();
+    _searchController.text = query;
+    _performGoogleSearch(query);
+  }
+
+  /// Hand a final result a moment to overtake the end-of-recording signal.
+  void _scheduleVoiceFinalize() {
+    _voiceFinalizeTimer?.cancel();
+    _voiceFinalizeTimer = Timer(
+      const Duration(milliseconds: 600),
+      () => _submitVoiceQuery(),
+    );
+  }
+
+  Future<void> _startVoiceSearch() async {
+    final status = await Permission.microphone.request();
+    if (!status.isGranted) return;
+
+    final bool available = await _speechToText.initialize(
+      onStatus: (status) {
+        if (status == 'notListening' || status == 'done') {
+          if (mounted) updateState(() => _isListening = false);
+          _scheduleVoiceFinalize();
+        }
+      },
+      onError: (error) {
+        if (mounted) updateState(() => _isListening = false);
+        // A no-match still tends to arrive with usable partial words, so the
+        // query gets tried before the error is treated as a dead end.
+        _scheduleVoiceFinalize();
+      },
+    );
+    if (!available) return;
+
+    _voiceSubmitted = false;
+    _voiceFinalizeTimer?.cancel();
+    updateState(() {
+      _isListening = true;
+      _isSearching = true;
+    });
+    _speechToText.listen(
+      onResult: (result) {
+        _searchController.text = result.recognizedWords;
+        if (result.finalResult) {
+          // An empty final result falls back to the last words heard rather
+          // than overriding them with nothing and reporting a miss.
+          _submitVoiceQuery(
+            words: result.recognizedWords.trim().isEmpty
+                ? null
+                : result.recognizedWords,
+          );
+        }
+      },
+      // `pauseFor` is what makes this stop on its own: two seconds of silence
+      // ends the recording without the user tapping anything. Android may
+      // apply its own shorter cutoff on top of this — the docs are explicit
+      // that a system pause can override the requested one.
+      listenOptions: SpeechListenOptions(
+        partialResults: true,
+        pauseFor: const Duration(seconds: 2),
+        listenFor: const Duration(seconds: 30),
+        enableHapticFeedback: true,
+      ),
+    );
   }
 
   /// Convert a heading in degrees to a compass cardinal (N, NE, E, …, NW).
@@ -4494,8 +4573,12 @@ class _ArCameraPageState extends State<ArCameraPage>
                     GestureDetector(
                       onTap: () {
                         if (_isListening) {
+                          // Tapping the mic to finish is the same gesture as
+                          // falling silent, so it searches too rather than
+                          // only swapping the icon back.
                           _speechToText.stop();
                           updateState(() => _isListening = false);
+                          _scheduleVoiceFinalize();
                         } else {
                           _startVoiceSearch();
                         }
