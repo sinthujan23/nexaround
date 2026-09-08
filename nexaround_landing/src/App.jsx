@@ -14,6 +14,8 @@ import GetApp from './pages/GetApp';
 import Privacy from './pages/Privacy';
 import Terms from './pages/Terms';
 
+import FaqChatbot from './components/FaqChatbot';
+
 function ScrollToTopOnNavigate() {
   const { pathname, hash } = useLocation();
   
@@ -55,6 +57,7 @@ export default function App() {
         </main>
         <Footer />
         <ScrollToTopButton />
+        <FaqChatbot />
       </div>
     </BrowserRouter>
   );

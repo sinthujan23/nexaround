@@ -26,7 +26,10 @@ MUSEUM_META = {
     "country": "Mexico",
     "annual_visitors": 3700000,
     "rank": 17,
-    "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/1/1a/Museo_Nacional_de_Antropolog%C3%ADa_01.jpg/1280px-Museo_Nacional_de_Antropolog%C3%ADa_01.jpg",
+    # No image_url on purpose. Photos live in museums.image_data and the API
+    # derives /api/v1/museums/{slug}/image from them, so a URL hardcoded here
+    # only competes with that — the Wikimedia link this used to carry had since
+    # 404'd upstream.
     "ticket_url": "https://mna.inah.gob.mx/",
     "website": "https://mna.inah.gob.mx/",
     "opening_hours": "Tuesday to Sunday: 9:00 to 18:00 hours",
@@ -202,7 +205,6 @@ async def seed():
                 country=MUSEUM_META["country"],
                 annual_visitors=MUSEUM_META["annual_visitors"],
                 rank=MUSEUM_META["rank"],
-                image_url=MUSEUM_META["image_url"],
                 ticket_url=MUSEUM_META["ticket_url"],
                 website=MUSEUM_META["website"],
                 opening_hours=MUSEUM_META["opening_hours"],

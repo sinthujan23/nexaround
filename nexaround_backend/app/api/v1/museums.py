@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import hashlib
 
 from app.core.database import get_db
+from app.models.museum import Museum
 from app.repositories.museum_repository import MuseumRepository
 from app.schemas.museum import (
     MuseumListItem,
@@ -27,12 +28,25 @@ from app.schemas.museum import (
 router = APIRouter(prefix="/museums", tags=["Museums"])
 
 
+def _image_url(m: Museum, has_image: bool) -> str | None:
+    """Prefer the photo stored in the DB over whatever pointer the row carries.
+
+    Rows seeded before photos moved into Postgres still hold
+    /api/v1/places/photo?ref=... URLs. That proxy serves anonymous callers from
+    its disk cache only, and image loaders send no Authorization header, so a
+    row left on the old form renders as a grey placeholder forever. Deriving
+    the URL from the bytes we actually hold keeps one stale column from
+    blanking a museum again.
+    """
+    return f"/api/v1/museums/{m.slug}/image" if has_image else m.image_url
+
+
 @router.get("/", response_model=list[MuseumListItem])
 async def list_museums(db: AsyncSession = Depends(get_db)):
     """Return every museum ordered by global visitor rank."""
     museums = await MuseumRepository.get_all(db)
     items = []
-    for m in museums:
+    for m, has_image in museums:
         count = await MuseumRepository.get_masterpiece_count(db, m.id)
         items.append(
             MuseumListItem(
@@ -43,7 +57,7 @@ async def list_museums(db: AsyncSession = Depends(get_db)):
                 country=m.country,
                 annual_visitors=m.annual_visitors,
                 rank=m.rank,
-                image_url=m.image_url,
+                image_url=_image_url(m, has_image),
                 masterpiece_count=count,
             )
         )
@@ -56,7 +70,9 @@ async def get_museum(slug: str, db: AsyncSession = Depends(get_db)):
     museum = await MuseumRepository.get_by_slug(db, slug)
     if museum is None:
         raise HTTPException(status_code=404, detail="Museum not found")
-    return museum
+    detail = MuseumDetail.model_validate(museum)
+    detail.image_url = _image_url(museum, museum.image_data is not None)
+    return detail
 
 
 @router.get("/{slug}/itinerary", response_model=MuseumItinerary)

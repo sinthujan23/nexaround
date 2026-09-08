@@ -1,6 +1,6 @@
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from app.models.museum import Museum, MuseumMasterpiece
 
@@ -8,12 +8,19 @@ from app.models.museum import Museum, MuseumMasterpiece
 class MuseumRepository:
 
     @staticmethod
-    async def get_all(db: AsyncSession) -> list[Museum]:
-        """Return all museums ordered by global rank."""
+    async def get_all(db: AsyncSession) -> list[tuple[Museum, bool]]:
+        """Return all museums ordered by global rank, each with a has-photo flag.
+
+        `image_data` is deferred rather than selected: the listing needs to know
+        only whether a photo exists, and loading it here read all 20MB of JPEG
+        out of Postgres on every call to build a 14KB response.
+        """
         result = await db.execute(
-            select(Museum).order_by(Museum.rank.asc())
+            select(Museum, Museum.image_data.isnot(None).label("has_image"))
+            .options(defer(Museum.image_data))
+            .order_by(Museum.rank.asc())
         )
-        return list(result.scalars().all())
+        return [(row.Museum, row.has_image) for row in result]
 
     @staticmethod
     async def get_by_slug(db: AsyncSession, slug: str) -> Museum | None:
