@@ -248,7 +248,7 @@ export default function About() {
       {/* ═══ FLAGSHIP PRODUCT (WE BUILD FOR OURSELVES TOO) ═══ */}
       <section style={{ 
         background: '#080a14', 
-        padding: '90px 0', 
+        padding: '54px 0', 
         borderTop: '1px solid rgba(255,255,255,0.08)', 
         borderBottom: '1px solid rgba(255,255,255,0.08)', 
         position: 'relative', 
@@ -276,23 +276,24 @@ export default function About() {
                 style={{
                   position: 'relative',
                   width: '100%',
-                  maxWidth: '440px',
-                  borderRadius: '28px',
+                  maxWidth: '300px',
+                  maxHeight: '450px',
+                  borderRadius: '24px',
                   background: '#000000',
                   border: '1.5px solid rgba(255, 255, 255, 0.16)',
                   overflow: 'hidden',
-                  boxShadow: '0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 211, 0.25)',
+                  boxShadow: '0 20px 50px -10px rgba(0, 0, 0, 0.85), 0 0 30px rgba(0, 210, 211, 0.22)',
                   transition: 'transform 0.4s cubic-bezier(0.25, 1, 0.35, 1), box-shadow 0.4s cubic-bezier(0.25, 1, 0.35, 1), border-color 0.4s cubic-bezier(0.25, 1, 0.35, 1)'
                 }}
                 onMouseEnter={(e) => {
                   e.currentTarget.style.transform = 'translateY(-4px) scale(1.01)';
                   e.currentTarget.style.borderColor = 'rgba(0, 210, 211, 0.45)';
-                  e.currentTarget.style.boxShadow = '0 30px 70px -10px rgba(0, 0, 0, 0.9), 0 0 45px rgba(0, 210, 211, 0.4)';
+                  e.currentTarget.style.boxShadow = '0 25px 60px -10px rgba(0, 0, 0, 0.9), 0 0 40px rgba(0, 210, 211, 0.35)';
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.transform = 'translateY(0) scale(1)';
                   e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.16)';
-                  e.currentTarget.style.boxShadow = '0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 35px rgba(0, 210, 211, 0.25)';
+                  e.currentTarget.style.boxShadow = '0 20px 50px -10px rgba(0, 0, 0, 0.85), 0 0 30px rgba(0, 210, 211, 0.22)';
                 }}
               >
                 <img
@@ -301,6 +302,7 @@ export default function About() {
                   style={{
                     width: '100%',
                     height: 'auto',
+                    maxHeight: '450px',
                     display: 'block',
                     objectFit: 'cover'
                   }}

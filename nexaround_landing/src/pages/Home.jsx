@@ -700,12 +700,12 @@ export default function Home() {
             <div className="sticky-mockup" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'sticky', top: '100px' }}>
               <div style={{
                 position: 'relative',
-                maxWidth: '320px',
+                maxWidth: '250px',
                 width: '100%',
-                borderRadius: '34px',
+                borderRadius: '28px',
                 overflow: 'hidden',
-                boxShadow: '0 30px 70px -15px rgba(10, 17, 24, 0.35), 0 0 35px rgba(0, 122, 124, 0.2)',
-                border: '8px solid #111a24',
+                boxShadow: '0 24px 55px -12px rgba(10, 17, 24, 0.35), 0 0 30px rgba(0, 122, 124, 0.18)',
+                border: '6px solid #111a24',
                 background: '#111a24'
               }}>
                 <img
@@ -745,12 +745,12 @@ export default function Home() {
                 <Globe style={{ width: '14px', height: '14px' }} /> Global Sightseeing Library
               </div>
               <h2 style={{ fontSize: 'clamp(2.2rem, 3.8vw, 3.2rem)', fontWeight: 500, color: '#ffffff', margin: 0, letterSpacing: '-0.025em' }}>
-                World Landmarks Ready for <span className="text-gradient-teal">AR Discovery</span>
+                World <span className="text-gradient-teal">Travel Stories</span>
               </h2>
             </div>
             
             <NavLink to="/app" className="btn-glass">
-              <span>Explore All 50+ Cities</span>
+              <span>Explore More...</span>
               <ChevronRight style={{ width: '16px', height: '16px' }} />
             </NavLink>
           </div>
@@ -799,26 +799,6 @@ export default function Home() {
                   }}>
                     {dest.badge}
                   </div>
-
-                  {dest.arEnabled && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '16px',
-                      right: '16px',
-                      background: 'rgba(0, 122, 124, 0.85)',
-                      backdropFilter: 'blur(8px)',
-                      borderRadius: '9999px',
-                      padding: '4px 12px',
-                      fontSize: '0.72rem',
-                      fontWeight: 500,
-                      color: '#ffffff',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px'
-                    }}>
-                      <Camera style={{ width: '12px', height: '12px' }} /> AR Available
-                    </div>
-                  )}
                 </div>
 
                 {/* Content */}
