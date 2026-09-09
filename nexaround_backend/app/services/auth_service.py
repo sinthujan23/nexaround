@@ -33,15 +33,50 @@ from app.core.exceptions import (
     NotFoundException,
     BadRequestException,
 )
-from app.core.rate_limiter import get_redis_client
+from app.core.rate_limiter import get_redis_client, check_account_rate_limit
 
 
 class AuthService:
     """Business logic for authentication and user management."""
 
+    # A 6-digit code has only 10^6 values, so wrong guesses must be capped like
+    # a bank PIN: after this many, the code is destroyed and the user must
+    # request a new one. This is the per-code lockout (NA-05); the per-account
+    # sliding-window limit in verify_* is a second, independent layer.
+    OTP_MAX_ATTEMPTS = 5
+    # Same lifetime as the code itself, so the counter can never outlive the
+    # code and lock out a later, legitimately re-issued one.
+    _OTP_TTL = 600
+
     def __init__(self, db: AsyncSession):
         self.db = db
         self.repo = UserRepository(db)
+
+    async def _otp_matches(self, redis, otp_key: str, attempts_key: str,
+                           stored_otp, otp: str) -> bool:
+        """Constant-time-compare a submitted OTP against the stored one and
+        enforce the per-code lockout.
+
+        Returns True on a correct code (and clears the attempt counter). On a
+        wrong code, increments the counter and — once OTP_MAX_ATTEMPTS is
+        reached — deletes both the code and the counter so the code is dead.
+        Raises BadRequestException("...request a new...") when it locks out.
+        """
+        if stored_otp and secrets.compare_digest(str(stored_otp), str(otp)):
+            if redis:
+                await redis.delete(attempts_key)
+            return True
+        if redis:
+            attempts = await redis.incr(attempts_key)
+            if attempts == 1:
+                await redis.expire(attempts_key, self._OTP_TTL)
+            if attempts >= self.OTP_MAX_ATTEMPTS:
+                await redis.delete(otp_key)
+                await redis.delete(attempts_key)
+                raise BadRequestException(
+                    detail="Too many incorrect attempts. Please request a new verification code."
+                )
+        return False
 
     async def register(self, data: UserRegister) -> RegisterPendingResponse:
         """Register a new user in unverified state and dispatch OTP email."""
@@ -85,6 +120,8 @@ class AuthService:
         redis = await get_redis_client()
         if redis:
             await redis.setex(f"otp:{data.email}", 600, otp_code)
+            # Fresh code starts with a clean lockout counter.
+            await redis.delete(f"otp_attempts:{data.email}")
 
         # Dispatch email
         await send_otp_email(data.email, otp_code)
@@ -96,12 +133,19 @@ class AuthService:
 
     async def verify_otp(self, email: str, otp: str) -> TokenResponse:
         """Verify 6-digit OTP code, mark user as verified, and return tokens."""
+        # Bound OTP guessing per account (6-digit code has only 10^6 values).
+        await check_account_rate_limit(
+            email, action="verify_otp", max_attempts=15, window_seconds=600
+        )
         redis = await get_redis_client()
-        stored_otp = None
-        if redis:
-            stored_otp = await redis.get(f"otp:{email}")
+        otp_key = f"otp:{email}"
+        attempts_key = f"otp_attempts:{email}"
+        stored_otp = await redis.get(otp_key) if redis else None
 
-        if not stored_otp or stored_otp != otp:
+        if not stored_otp:
+            raise BadRequestException(detail="Invalid or expired OTP code")
+        # Per-code lockout (destroys the code after OTP_MAX_ATTEMPTS wrong tries).
+        if not await self._otp_matches(redis, otp_key, attempts_key, stored_otp, otp):
             raise BadRequestException(detail="Invalid or expired OTP code")
 
         user = await self.repo.get_by_email(email)
@@ -112,9 +156,10 @@ class AuthService:
         user.is_verified = True
         await self.repo.update(user)
 
-        # Clean up OTP from Redis
+        # Clean up OTP + attempt counter from Redis
         if redis:
-            await redis.delete(f"otp:{email}")
+            await redis.delete(otp_key)
+            await redis.delete(attempts_key)
 
         return await self._generate_auth_response(user)
 
@@ -138,6 +183,8 @@ class AuthService:
         otp_code = "".join(secrets.choice("0123456789") for _ in range(6))
         if redis:
             await redis.setex(f"otp:{email}", 600, otp_code)
+            # Fresh code starts with a clean lockout counter.
+            await redis.delete(f"otp_attempts:{email}")
 
         # Dispatch email
         await send_otp_email(email, otp_code)
@@ -149,6 +196,11 @@ class AuthService:
 
     async def login(self, email: str, password: str) -> TokenResponse:
         """Authenticate user and return tokens."""
+        # Per-account throttle (IP-independent): bounds password guessing against
+        # a single account even if the per-IP limiter is evaded.
+        await check_account_rate_limit(
+            email, action="login", max_attempts=10, window_seconds=300
+        )
         user = await self.repo.get_by_email(email)
         if not user:
             raise UnauthorizedException(detail="Invalid email or password")
@@ -396,6 +448,11 @@ class AuthService:
 
     async def forgot_password(self, email: str) -> ForgotPasswordResponse:
         """Validate user existence and send a 6-digit password reset OTP."""
+        # Cap reset-code requests per account (on top of the 60s cooldown below),
+        # so a victim's inbox cannot be flooded and OTPs cannot be churned.
+        await check_account_rate_limit(
+            email, action="reset_request", max_attempts=5, window_seconds=3600
+        )
         user = await self.repo.get_by_email(email)
         if not user:
             raise NotFoundException(detail="No account registered with this email address")
@@ -414,6 +471,8 @@ class AuthService:
         otp_code = "".join(secrets.choice("0123456789") for _ in range(6))
         if redis:
             await redis.setex(f"reset_otp:{email}", 600, otp_code)
+            # Fresh code starts with a clean lockout counter.
+            await redis.delete(f"reset_otp_attempts:{email}")
 
         # Send email
         await send_password_reset_email(email, otp_code)
@@ -425,12 +484,19 @@ class AuthService:
 
     async def verify_reset_otp(self, email: str, otp: str) -> VerifyResetOTPResponse:
         """Verify password reset OTP and generate a short-lived reset token."""
+        # Bound reset-code guessing per account (6-digit code -> 10^6 values).
+        await check_account_rate_limit(
+            email, action="verify_reset_otp", max_attempts=15, window_seconds=600
+        )
         redis = await get_redis_client()
-        stored_otp = None
-        if redis:
-            stored_otp = await redis.get(f"reset_otp:{email}")
+        otp_key = f"reset_otp:{email}"
+        attempts_key = f"reset_otp_attempts:{email}"
+        stored_otp = await redis.get(otp_key) if redis else None
 
-        if not stored_otp or stored_otp != otp:
+        if not stored_otp:
+            raise BadRequestException(detail="Invalid or expired verification code")
+        # Per-code lockout (destroys the code after OTP_MAX_ATTEMPTS wrong tries).
+        if not await self._otp_matches(redis, otp_key, attempts_key, stored_otp, otp):
             raise BadRequestException(detail="Invalid or expired verification code")
 
         user = await self.repo.get_by_email(email)
@@ -441,7 +507,8 @@ class AuthService:
         reset_token = uuid.uuid4().hex
         if redis:
             await redis.setex(f"reset_token:{reset_token}", 300, email)  # 5 min TTL
-            await redis.delete(f"reset_otp:{email}")
+            await redis.delete(otp_key)
+            await redis.delete(attempts_key)
 
         return VerifyResetOTPResponse(
             email=email,
@@ -525,5 +592,7 @@ class AuthService:
         if redis:
             await redis.delete(f"otp:{user.email}")
             await redis.delete(f"reset_otp:{user.email}")
+            await redis.delete(f"otp_attempts:{user.email}")
+            await redis.delete(f"reset_otp_attempts:{user.email}")
 
         return {"message": "Account and all associated data permanently deleted."}

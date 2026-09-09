@@ -1,0 +1,19 @@
+# Admin panel (static SPA) served by nginx from the built ./dist folder.
+#
+# Published on loopback ONLY. The host Nginx terminates TLS for
+# admin.nexaround.com and proxies to 127.0.0.1:8020; binding on 0.0.0.0 would
+# additionally expose the panel on the public interface over plaintext HTTP
+# (security finding NA-03). See SECURITY_AUDIT_2026-09.md.
+#
+# Deploy: rebuild the SPA with `npm run build` (updates ./dist, which is
+# volume-mounted live — no container restart needed). Only run
+# `docker compose up -d` here when the container itself must be recreated.
+services:
+  admin:
+    image: nginx:alpine
+    container_name: nexaround_admin_panel
+    restart: always
+    ports:
+      - "127.0.0.1:8020:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html

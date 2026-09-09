@@ -64,10 +64,13 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
     
-    # AI Keys
-    ANTHROPIC_API_KEY: str = ""
-    GOOGLE_API_KEY: str = ""
-    HUGGINGFACE_API_KEY: str = ""
+    # AI / provider keys are NOT read from env. The live values are managed in
+    # the admin panel and stored in system_settings (google_maps_api_key,
+    # gemini_api_key, serpapi_key, geoapify_api_key, mapbox_access_token),
+    # read via SettingsService.get_setting(). The former ANTHROPIC_API_KEY /
+    # GOOGLE_API_KEY / HUGGINGFACE_API_KEY env fields were unused dead config
+    # and are removed; extra="ignore" below means any such env var left in the
+    # environment is harmlessly ignored.
 
     # OAuth Client IDs for token verification
     GOOGLE_CLIENT_IDS: Union[List[str], str] = [

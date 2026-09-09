@@ -7,7 +7,11 @@ services:
       dockerfile: ./docker/Dockerfile
     restart: unless-stopped
     ports:
-      - "8010:8000"
+      # Bind to loopback only. Nginx (on the host) reaches the API at
+      # 127.0.0.1:8010; publishing on 0.0.0.0 additionally exposed the API on
+      # the public interface over plaintext HTTP, bypassing TLS and letting a
+      # direct caller spoof X-Real-IP (defeating the auth rate limiter).
+      - "127.0.0.1:8010:8000"
     environment:
       # Uvicorn reads this as its worker count, and app/core/database.py divides
       # the connection budget by it — one variable so the pool can never be

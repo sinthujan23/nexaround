@@ -1,4 +1,5 @@
 """Rate limiting dependency for authentication endpoints."""
+import ipaddress
 import time
 from typing import Dict, List, Optional
 from fastapi import Request, HTTPException, status
@@ -7,6 +8,33 @@ from app.core.config import settings
 
 _in_memory_store: Dict[str, List[float]] = {}
 _redis_client = None
+
+# Networks whose requests are allowed to set X-Real-IP / X-Forwarded-For.
+# Only our own reverse proxy (Nginx, which reaches the app over the Docker
+# bridge — gateway 172.22.0.1 — or loopback) sits in these ranges. A request
+# arriving from any other peer has its forwarded headers IGNORED and is keyed
+# on its real socket address instead, so a client cannot choose its own
+# rate-limit bucket by sending a header. Defence in depth behind NA-03: the
+# public port is already loopback-only, but the limiter must not rely on that
+# single Nginx line to stay safe.
+_TRUSTED_PROXY_NETS = [
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+]
+
+
+def _is_trusted_proxy(host: Optional[str]) -> bool:
+    if not host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return any(ip in net for net in _TRUSTED_PROXY_NETS)
 
 async def get_redis_client():
     global _redis_client
@@ -23,27 +51,32 @@ async def get_redis_client():
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract real client IP address safely, preventing header spoofing bypasses."""
-    # 1. Prefer X-Real-IP set by trusted reverse proxy (Nginx)
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip and real_ip.strip():
-        return real_ip.strip()
+    """Resolve the client IP used as the rate-limit key.
 
-    # 2. Extract from X-Forwarded-For:
-    # Reverse proxies append real client IP to the END of the chain.
-    # The first element split(",")[0] is client-controlled and easily spoofed.
-    x_forwarded = request.headers.get("X-Forwarded-For")
-    if x_forwarded:
-        ips = [ip.strip() for ip in x_forwarded.split(",") if ip.strip()]
-        if ips:
-            # Use the last IP in the chain appended by the outer edge proxy
-            return ips[-1]
+    Forwarded headers (X-Real-IP / X-Forwarded-For) are only honoured when the
+    immediate peer is one of our trusted proxies (_TRUSTED_PROXY_NETS); anyone
+    else is keyed on their real socket address, so a caller cannot spoof the
+    header to rotate buckets and slip past the limiter (NA-04).
+    """
+    peer = request.client.host if request.client else None
 
-    # 3. Direct socket connection IP
-    if request.client and request.client.host:
-        return request.client.host
+    if _is_trusted_proxy(peer):
+        # Set by Nginx to the true remote address — trusted only because the
+        # request actually came from the proxy.
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip and real_ip.strip():
+            return real_ip.strip()
 
-    return "127.0.0.1"
+        # Nginx appends the real client to the END of the chain.
+        x_forwarded = request.headers.get("X-Forwarded-For")
+        if x_forwarded:
+            ips = [ip.strip() for ip in x_forwarded.split(",") if ip.strip()]
+            if ips:
+                return ips[-1]
+
+    # Untrusted (or unknown) peer: never trust forwarded headers — use the
+    # actual socket address.
+    return peer or "127.0.0.1"
 
 
 class RateLimiter:
@@ -98,3 +131,44 @@ class RateLimiter:
 
 # Default rate limiter for authentication endpoints: 5 attempts per minute
 auth_rate_limiter = RateLimiter(requests_per_minute=5, window_seconds=60)
+
+
+async def check_account_rate_limit(
+    identifier: str,
+    *,
+    action: str,
+    max_attempts: int,
+    window_seconds: int,
+) -> None:
+    """Rate-limit by a stable identity (e.g. email) rather than by IP.
+
+    Per-IP limits can be evaded by rotating the source address / proxy header;
+    an identity limit cannot, because the identity (the account under attack)
+    is part of the request body. This caps password and OTP guessing against
+    any single account regardless of where the requests appear to come from
+    (NA-04 / NA-05). Caps are deliberately generous so a real user typing a
+    wrong code a few times is never affected, while brute-forcing a 6-digit
+    code (10^6 guesses) stays infeasible.
+
+    Fails open on any limiter error — availability of login must not depend on
+    the limiter — and no-ops on an empty identifier.
+    """
+    ident = (identifier or "").strip().lower()
+    if not ident:
+        return
+    key = f"rate_limit:acct:{action}:{ident}"
+    limiter = RateLimiter(requests_per_minute=max_attempts, window_seconds=window_seconds)
+    redis = await get_redis_client()
+    try:
+        exceeded = await limiter._check_rate_limit(key, redis)
+    except Exception:
+        try:
+            exceeded = await limiter._check_rate_limit(key, None)
+        except Exception:
+            return
+    if exceeded:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts for this account. Please wait a few minutes and try again.",
+            headers={"Retry-After": str(window_seconds)},
+        )

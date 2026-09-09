@@ -45,6 +45,24 @@ export default function About() {
     { name: 'Enterprise ERP & Integrations', desc: 'Turnkey ERPNext systems, ticketing APIs, and partner booking gateways.' }
   ];
 
+  const teamMembers = [
+    { tag: 'PRODUCT ENGINEERING', title: 'Lead Software Engineer', desc: 'Leads development teams and delivers robust, scalable and high-performance software solutions.' },
+    { tag: 'USER INTERFACE ENGINEERING', title: 'Lead Frontend Engineer', desc: 'Builds modern, responsive and intuitive user interfaces with a strong focus on performance and experience.' },
+    { tag: 'SYSTEM ENGINEERING', title: 'Software Engineer', desc: 'Develops secure, efficient and scalable backend services and APIs that power our products.' },
+    { tag: 'MOBILE ENGINEERING', title: 'Mobile Application Engineer', desc: 'Develops reliable mobile applications for Android and iOS with a focus on quality and performance.' },
+    { tag: 'INFRASTRUCTURE & DEVOPS', title: 'DevOps Engineer', desc: 'Drives CI/CD, cloud infrastructure, pipelines and automation for reliable and seamless deployments.' },
+    { tag: 'DATA INTELLIGENCE', title: 'Data Engineer', desc: 'Works with data pipelines, analytics and reporting to turn data into actionable insights.' },
+    { tag: 'QUALITY ENGINEERING', title: 'QA Tester', desc: 'Ensures product quality through manual and automated testing with a keen eye for detail.' },
+    { tag: 'SOFTWARE QUALITY', title: 'QA Tester', desc: 'Performs functional, regression and usability testing to deliver reliable and bug-free releases.' },
+    { tag: 'RELEASE ENGINEERING', title: 'DevOps Engineer', desc: 'Automates infrastructure, optimizes deployment pipelines and ensures high availability and scalability.' },
+    { tag: 'TECHNICAL SERVICES', title: 'Technical Support Engineer', desc: 'Provides technical support and ensures smooth communication across projects and teams.' },
+    { tag: 'CLIENT SUCCESS', title: 'Client Support Manager', desc: 'Leads support operations and ensures exceptional client satisfaction.' },
+    { tag: 'APPLICATION ENGINEERING', title: 'Associate Software Engineer', desc: 'Writes efficient code and collaborates on software delivery.' },
+    { tag: 'BUSINESS STRATEGY', title: 'Business Analyst', desc: 'Bridges business requirements and technical delivery across client engagements.' },
+    { tag: 'SOLUTION DEVELOPMENT', title: 'Software Engineer', desc: 'Full-stack development with a focus on PHP and MySQL systems.' },
+    { tag: 'PEOPLE OPERATIONS', title: 'HR Manager & Management Executive', desc: 'Oversees HR and management operations.' }
+  ];
+
   return (
     <div style={{ background: '#ffffff', minHeight: '100vh', paddingBottom: '80px' }}>
       
@@ -400,6 +418,174 @@ export default function About() {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', lineHeight: 1.65, margin: 0 }}>{exp.desc}</p>
               </div>
             ))}
+          </div>
+
+        </div>
+      </section>
+
+      {/* ═══ OUR TEAM & LEADERSHIP ═══ */}
+      <section className="section-padding" style={{ background: '#ffffff', borderTop: '1px solid var(--border-color)' }}>
+        <div className="container">
+          
+          {/* Header */}
+          <div style={{ marginBottom: '40px', borderBottom: '2px solid var(--border-color)', paddingBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+              <div>
+                <h2 style={{ fontSize: 'clamp(2.4rem, 4.5vw, 3.4rem)', fontWeight: 800, color: '#0044cc', margin: 0, lineHeight: 1.05, letterSpacing: '-0.03em', textTransform: 'uppercase' }}>
+                  OUR TEAM
+                </h2>
+                <p style={{ fontSize: '1.12rem', color: 'var(--text-secondary)', fontWeight: 500, margin: '8px 0 0' }}>
+                  The people behind NexARound Technologies
+                </p>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#0044cc', background: 'rgba(0,68,204,0.08)', border: '1px solid rgba(0,68,204,0.2)', padding: '6px 14px', borderRadius: '9999px' }}>
+                  Global Talent
+                </span>
+                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dark-charcoal)', background: 'rgba(10,17,24,0.06)', border: '1px solid var(--border-color)', padding: '6px 14px', borderRadius: '9999px' }}>
+                  15+ Disciplines
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Leadership Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', gap: '24px', marginBottom: '32px', alignItems: 'stretch' }} className="team-responsive-split">
+            {/* Leadership Pill/Badge */}
+            <div style={{
+              background: 'linear-gradient(145deg, #091a38 0%, #030b1c 100%)',
+              borderRadius: '18px',
+              padding: '28px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              textAlign: 'center',
+              color: '#ffffff',
+              boxShadow: '0 10px 28px -6px rgba(9,26,56,0.4)',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.95rem', fontWeight: 800, letterSpacing: '2px', textTransform: 'uppercase', color: '#38bdf8' }}>
+                LEADERSHIP
+              </span>
+              <div style={{ width: '32px', height: '3px', background: '#00d2d3', margin: '12px auto 0', borderRadius: '9999px' }} />
+            </div>
+
+            {/* Leadership Content Card */}
+            <div style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '18px',
+              padding: '30px 36px',
+              display: 'flex',
+              gap: '28px',
+              alignItems: 'center',
+              boxShadow: '0 8px 24px -8px rgba(0,0,0,0.04)'
+            }} className="team-leadership-card">
+              <div style={{
+                width: '76px',
+                height: '76px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                boxShadow: '0 6px 16px rgba(2,132,199,0.18)',
+                border: '2px solid #ffffff'
+              }}>
+                <Users style={{ width: '36px', height: '36px', color: '#0284c7' }} />
+              </div>
+              <div style={{ fontSize: '0.96rem', lineHeight: 1.75, color: '#334155' }}>
+                <p style={{ margin: '0 0 12px' }}>
+                  Our leadership is powered by industry veterans with decades of global experience across multiple geographies and high-impact sectors. They represent a unique blend of deep financial leadership and enterprise technology expertise, with a proven track record of architecting and delivering enterprise-scale ICT and digital transformation programs across <strong>Finance, Sports, Government, Healthcare, Insurance, Education, and Manufacturing</strong> domains.
+                </p>
+                <p style={{ margin: 0, color: '#64748b' }}>
+                  Their collective experience has enabled organizations to transform complexity into competitive advantage through technology-led innovation, operational excellence, and sustainable growth.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Team Grid Row */}
+          <div style={{ display: 'grid', gridTemplateColumns: '190px 1fr', gap: '24px', alignItems: 'stretch' }} className="team-responsive-split">
+            {/* Team Left Pill/Badge */}
+            <div style={{
+              background: 'linear-gradient(145deg, #091a38 0%, #030b1c 100%)',
+              borderRadius: '18px',
+              padding: '36px 18px',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'center',
+              alignItems: 'center',
+              textAlign: 'center',
+              color: '#ffffff',
+              boxShadow: '0 10px 28px -6px rgba(9,26,56,0.4)',
+              border: '1px solid rgba(255,255,255,0.1)'
+            }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: '1.15rem', fontWeight: 800, letterSpacing: '1.5px', textTransform: 'uppercase', color: '#ffffff' }}>
+                OUR TEAM
+              </span>
+              <div style={{ width: '28px', height: '3px', background: '#0044cc', margin: '12px auto 14px', borderRadius: '9999px' }} />
+              <p style={{ fontSize: '0.88rem', color: '#94a3b8', lineHeight: 1.45, margin: 0, fontWeight: 500 }}>
+                Engineers, Architects &amp; Designers
+              </p>
+            </div>
+
+            {/* 15 Role Cards Grid */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: '14px'
+            }}>
+              {teamMembers.map((member, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    background: '#ffffff',
+                    border: '1px solid #dbeafe',
+                    borderRadius: '14px',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    boxShadow: '0 4px 14px -3px rgba(14,49,117,0.06)',
+                    transition: 'all 0.25s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-3px)';
+                    e.currentTarget.style.boxShadow = '0 10px 24px -4px rgba(0,68,204,0.15)';
+                    e.currentTarget.style.borderColor = '#93c5fd';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 14px -3px rgba(14,49,117,0.06)';
+                    e.currentTarget.style.borderColor = '#dbeafe';
+                  }}
+                >
+                  <div style={{
+                    background: '#0044cc',
+                    color: '#ffffff',
+                    padding: '8px 10px',
+                    fontSize: '0.64rem',
+                    fontWeight: 700,
+                    textAlign: 'center',
+                    letterSpacing: '0.6px',
+                    textTransform: 'uppercase',
+                    fontFamily: 'var(--font-mono)'
+                  }}>
+                    {member.tag}
+                  </div>
+                  <div style={{ padding: '14px 12px 16px', display: 'flex', flexDirection: 'column', flex: 1 }}>
+                    <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#0038a8', margin: '0 0 6px', lineHeight: 1.25 }}>
+                      {member.title}
+                    </h4>
+                    <p style={{ fontSize: '0.78rem', lineHeight: 1.45, color: '#475569', margin: 0 }}>
+                      {member.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
         </div>

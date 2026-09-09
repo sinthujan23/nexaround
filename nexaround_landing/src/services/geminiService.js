@@ -1,7 +1,11 @@
-// Google Gemini AI Service for NexAround & Neva AI Concierge
+// Neva AI Concierge service.
+// The Gemini API key is NEVER shipped to the browser. This calls our own
+// backend (which holds the key server-side, like the mobile app does); the
+// backend proxies to Gemini. On any failure we fall back to the local FAQ
+// engine, so the widget always answers. (Security finding NA-02.)
 import { generateNevaResponse } from '../data/faqData';
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
+const NEVA_API_URL = 'https://api.nexaround.com/api/v1/landing/neva';
 
 // System instruction with complete NexAround domain knowledge
 const NEVA_SYSTEM_INSTRUCTION = `
@@ -25,16 +29,9 @@ RESPONSE GUIDELINES:
 - If the user asks about app downloads or features, mention they can explore the app features or download free on iOS/Android.
 `;
 
-const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.5-flash-lite'
-];
-
 /**
- * Ask Google Gemini AI with conversation context and system instructions.
- * Falls back seamlessly to the local FAQ engine if no API key is configured or on network failure.
+ * Ask Neva (via our backend) with conversation context and system instructions.
+ * Falls back seamlessly to the local FAQ engine on any network/backend failure.
  */
 export async function askGemini(prompt, conversationHistory = []) {
   if (!prompt || !prompt.trim()) {
@@ -42,11 +39,6 @@ export async function askGemini(prompt, conversationHistory = []) {
       text: "Please ask a question about NexAround or travel destinations!",
       suggestions: ['How does the AR camera scanner work?', 'How does Odyssey build itineraries?', 'Is NexAround free?']
     };
-  }
-
-  // If no Gemini API key is configured, use the smart local FAQ engine
-  if (!GEMINI_API_KEY || GEMINI_API_KEY.trim() === '' || GEMINI_API_KEY === 'your_gemini_api_key_here') {
-    return generateNevaResponse(prompt);
   }
 
   // Convert past messages into Gemini contents format
@@ -83,33 +75,25 @@ export async function askGemini(prompt, conversationHistory = []) {
     parts: [{ text: prompt }]
   });
 
-  // Try available Gemini models with fallback
-  for (const model of GEMINI_MODELS) {
+  // Call our backend (key stays server-side). One attempt; the backend handles
+  // its own model fallback.
+  {
     try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(NEVA_API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          contents: contents,
-          generationConfig: {
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 600,
-          }
-        })
+        body: JSON.stringify({ contents }),
       });
 
       if (!response.ok) {
-        continue;
+        // Rate limited / temporarily unavailable → local FAQ answer.
+        return generateNevaResponse(prompt);
       }
 
       const data = await response.json();
-      const candidateText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      const candidateText = data.text;
 
       if (candidateText && candidateText.trim()) {
         const actionLinks = [];
@@ -137,7 +121,7 @@ export async function askGemini(prompt, conversationHistory = []) {
         };
       }
     } catch (err) {
-      console.warn(`Error trying Gemini model ${model}:`, err);
+      console.warn('Neva backend call failed:', err);
     }
   }
 
@@ -146,5 +130,7 @@ export async function askGemini(prompt, conversationHistory = []) {
 }
 
 export function isGeminiConfigured() {
-  return Boolean(GEMINI_API_KEY && GEMINI_API_KEY.trim() !== '' && GEMINI_API_KEY !== 'your_gemini_api_key_here');
+  // The key now lives on the backend; the widget is always "AI-capable" from
+  // the client's point of view and degrades to the local FAQ engine on failure.
+  return true;
 }

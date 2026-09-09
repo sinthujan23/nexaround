@@ -10,9 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
+from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.user import User
 from app.services.settings_service import SettingsService
 from app.services import telemetry, spend_guard, place_cache_service
+
+# Public landing chatbot ("Neva") — unauthenticated, so it is rate limited per
+# client IP. Generous enough for a real conversation, tight enough that the
+# endpoint cannot be abused as a free general-purpose Gemini proxy.
+_landing_neva_limiter = RateLimiter(requests_per_minute=15, window_seconds=60)
 
 router = APIRouter(tags=["Proxy API"])
 
@@ -294,6 +300,99 @@ async def get_config_keys(
         "mapbox_access_token": mapbox_token,
         "google_maps_api_key": google_maps_key
     }
+
+
+@router.post("/landing/neva")
+async def landing_neva_chat(
+    payload: dict,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Public proxy for the marketing site's Neva chatbot.
+
+    The landing page used to call Gemini directly from the browser, which
+    shipped the API key in the public bundle (security finding NA-02). It now
+    posts the conversation here and the key stays server-side, exactly like the
+    mobile app's /proxy/gemini/generate — except this endpoint is unauthenticated
+    (anonymous site visitors), so it is defended by a per-IP rate limit, strict
+    input caps, a fixed cheap-model list and a capped output. On any failure the
+    client falls back to its built-in local FAQ engine.
+    """
+    # 1. Per-IP rate limit.
+    ip = get_client_ip(request)
+    rl_key = f"rate_limit:landing_neva:ip:{ip}"
+    redis = await get_redis_client()
+    try:
+        exceeded = await _landing_neva_limiter._check_rate_limit(rl_key, redis)
+    except Exception:
+        exceeded = await _landing_neva_limiter._check_rate_limit(rl_key, None)
+    if exceeded:
+        raise HTTPException(
+            status_code=429,
+            detail="You're sending messages a little too fast. Please wait a moment.",
+        )
+
+    # 2. Validate + bound the input so this can't be used as a free, unbounded
+    #    Gemini proxy.
+    contents = payload.get("contents")
+    if not isinstance(contents, list) or not contents:
+        raise HTTPException(status_code=400, detail="Invalid request")
+    contents = contents[-20:]  # keep only the most recent turns
+    total_chars = sum(
+        len(str(p.get("text") or ""))
+        for c in contents if isinstance(c, dict)
+        for p in (c.get("parts") or []) if isinstance(p, dict)
+    )
+    if total_chars > 8000:
+        raise HTTPException(status_code=413, detail="Message too long")
+
+    # 3. Server-side key (same admin-managed setting the app/backend use).
+    raw_key = await SettingsService(db).get_setting("gemini_api_key")
+    api_key = (raw_key or "").strip().strip('"').strip("'")
+    if not api_key:
+        raise HTTPException(status_code=503, detail="Chat is temporarily unavailable.")
+
+    body = {
+        "contents": contents,
+        # Output/cost are fixed here, never taken from the client.
+        "generationConfig": {
+            "temperature": 0.7,
+            "topK": 40,
+            "topP": 0.95,
+            "maxOutputTokens": 600,
+            "thinkingConfig": {"thinkingBudget": 0},
+        },
+    }
+
+    models = ["gemini-2.5-flash-lite", "gemini-2.5-flash"]
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for model in models:
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent"
+            )
+            try:
+                async with telemetry.track(
+                    "gemini", "landing_neva", sku="gemini_flash_generate",
+                    cache_key=f"landing_neva:{model}",
+                ) as t:
+                    resp = await client.post(url, params={"key": api_key}, json=body)
+                    t.upstream(resp)
+                if resp.status_code != 200:
+                    continue
+                data = resp.json()
+                text = (
+                    ((data.get("candidates") or [{}])[0].get("content") or {})
+                    .get("parts", [{}])[0].get("text")
+                )
+                if text and text.strip():
+                    return {"text": text.strip()}
+            except Exception as e:
+                logging.warning(f"landing_neva model {model} failed: {e}")
+                continue
+
+    # Nothing usable — let the client show its local FAQ answer.
+    raise HTTPException(status_code=502, detail="Chat is temporarily unavailable.")
 
 @router.post("/proxy/gemini/generate")
 async def proxy_gemini_generate(
