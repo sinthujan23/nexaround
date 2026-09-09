@@ -608,17 +608,24 @@ export default function Home() {
                 <div style={{
                   position: 'relative',
                   zIndex: 2,
-                  maxWidth: '320px',
-                  borderRadius: '32px',
+                  maxWidth: '185px',
+                  width: '100%',
+                  borderRadius: '24px',
                   overflow: 'hidden',
-                  boxShadow: '0 25px 60px -15px rgba(10, 17, 24, 0.3), 0 0 30px rgba(0, 122, 124, 0.15)',
-                  border: '8px solid #111a24',
+                  boxShadow: '0 16px 40px -10px rgba(10, 17, 24, 0.28), 0 0 20px rgba(0, 122, 124, 0.15)',
+                  border: '6px solid #111a24',
                   background: '#111a24'
                 }}>
                   <img
                     src={appWorkflow[activeStep].image}
                     alt={appWorkflow[activeStep].title}
-                    style={{ width: '100%', height: 'auto', display: 'block' }}
+                    style={{
+                      width: '100%',
+                      height: 'auto',
+                      maxHeight: '400px',
+                      objectFit: 'contain',
+                      display: 'block'
+                    }}
                   />
                 </div>
               </div>
