@@ -1577,11 +1577,9 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
               // Background Image or Fallback
               Positioned.fill(
                 child: (() {
-                  final hasImage = place.photoUrls.isNotEmpty;
-                  final imageUrl = hasImage ? place.photoUrls.first : null;
-                  final resolvedUrl = imageUrl != null && imageUrl.startsWith('/')
-                      ? '${ApiConstants.baseUrl}$imageUrl'
-                      : imageUrl;
+                  final resolvedUrl = place.photoUrls.isNotEmpty
+                      ? PlaceImageHelper.resolveUrl(place.photoUrls.first)
+                      : null;
 
                   Widget buildFallbackBackground() {
                     return Container(
@@ -1610,9 +1608,13 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                     );
                   }
 
-                  return resolvedUrl != null && resolvedUrl.isNotEmpty
+                  return resolvedUrl != null
                       ? CachedNetworkImage(
                           imageUrl: resolvedUrl,
+                          // See _buildExperienceCard: without the token this
+                          // request is anonymous and can only be served a photo
+                          // that is already cached on disk.
+                          httpHeaders: PlaceImageHelper.headersFor(resolvedUrl),
                           fit: BoxFit.cover,
                           memCacheWidth: 1080, // full-bleed card background
                           placeholder: (_, __) => Container(
@@ -1701,6 +1703,12 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     final catName = (a.categoryName != null && a.categoryName!.isNotEmpty)
         ? a.categoryName!
         : defaultCategory;
+    // Null covers "no photo" and "unusable value" alike, so the icon fallback
+    // is chosen once here rather than half-decided by an isNotEmpty check and
+    // half by CachedNetworkImage failing on a malformed URL.
+    final thumbUrl = a.photoUrls.isNotEmpty
+        ? PlaceImageHelper.resolveUrl(a.photoUrls.first)
+        : null;
 
     return RepaintBoundary(
       child: GestureDetector(
@@ -1727,11 +1735,15 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
               // Thumbnail (Network Image / Fallback Icon Container)
               ClipRRect(
                 borderRadius: BorderRadius.circular(16),
-                child: a.photoUrls.isNotEmpty
+                child: thumbUrl != null
                     ? CachedNetworkImage(
-                        imageUrl: a.photoUrls.first.startsWith('/')
-                            ? '${ApiConstants.baseUrl}${a.photoUrls.first}'
-                            : a.photoUrls.first,
+                        imageUrl: thumbUrl,
+                        // Without this the request reaches /places/photo
+                        // anonymously, and that branch serves only photos
+                        // already on disk — so a place nobody had opened the
+                        // detail page for could never show its picture here,
+                        // however long you waited.
+                        httpHeaders: PlaceImageHelper.headersFor(thumbUrl),
                         width: 90,
                         height: 90,
                         fit: BoxFit.cover,

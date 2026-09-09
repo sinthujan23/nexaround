@@ -42,12 +42,17 @@ async def startup():
     # seed data (SKU rates, guard settings) and CHECK constraints that only the
     # migration knows about. Letting create_all win the race just means the
     # migration then fails on DuplicateTable with a half-built schema.
-    async with engine.begin() as conn:
-        managed = [
-            t for t in Base.metadata.sorted_tables
-            if not t.name.startswith("api_") or t.name == "api_request_logs"
-        ]
-        await conn.run_sync(Base.metadata.create_all, tables=managed)
+    # Serialised across workers: two processes running create_all at once can
+    # race on CREATE TABLE. The lock makes the second wait rather than skip —
+    # on a fresh database it needs the schema to exist before it serves.
+    from app.core import leader
+    async with leader.guard():
+        async with engine.begin() as conn:
+            managed = [
+                t for t in Base.metadata.sorted_tables
+                if not t.name.startswith("api_") or t.name == "api_request_logs"
+            ]
+            await conn.run_sync(Base.metadata.create_all, tables=managed)
 
     # Telemetry: make sure this month's partition exists before anything tries
     # to write, then start the background loops.
@@ -58,18 +63,38 @@ async def startup():
     # Keeping a reference matters regardless — asyncio only holds a weak one and
     # will happily garbage-collect a running task.
     from app.services import telemetry, telemetry_rollup, telemetry_alerts
-    await telemetry.ensure_partitions()
-    _background_tasks.extend([
-        asyncio.create_task(telemetry.flusher_loop()),
-        asyncio.create_task(telemetry_rollup.rollup_loop()),
-        asyncio.create_task(telemetry_rollup.maintenance_loop()),
-        asyncio.create_task(telemetry_alerts.alert_loop()),
-    ])
 
-    # Seed default system settings
+    # Every worker needs this month's partition to exist before its flusher
+    # writes, so it stays on the startup path for all of them — serialised
+    # rather than elected, since two workers creating the same partition race.
+    async with leader.guard():
+        await telemetry.ensure_partitions()
+
+    # The flusher drains this process's own in-memory event buffer, so it runs
+    # in every worker — electing one would strand the others' events.
+    _background_tasks.append(asyncio.create_task(telemetry.flusher_loop()))
+
+    # The other three are database-wide: rollup aggregates api_events into
+    # hourly buckets, maintenance rolls partitions forward, alerts notify. One
+    # worker runs them for the whole deployment, or they double-count and
+    # double-notify.
+    if await leader.try_become_leader():
+        _background_tasks.extend([
+            asyncio.create_task(telemetry_rollup.rollup_loop()),
+            asyncio.create_task(telemetry_rollup.maintenance_loop()),
+            asyncio.create_task(telemetry_alerts.alert_loop()),
+        ])
+        logging.getLogger(__name__).info(
+            "telemetry singleton loops started (this worker is leader)"
+        )
+
+    # Seed default system settings.
+    #
+    # Under the same lock as the schema: this is check-then-set, so two workers
+    # arriving together can both read "missing" and both insert.
     from app.core.database import async_session
     from app.services.settings_service import SettingsService
-    async with async_session() as db:
+    async with leader.guard(), async_session() as db:
         service = SettingsService(db)
         # Check if keys are set, if not seed defaults (placeholder empty strings)
         google_maps_key = await service.get_setting("google_maps_api_key")
@@ -116,7 +141,12 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     from app.services import google_places_client
+    from app.core import leader
     await google_places_client.aclose_http_client()
+    # Hand the singleton loops on promptly. The lock would drop with the
+    # connection anyway, but only once Postgres notices the socket is gone —
+    # long enough that a fast restart can come up with no leader at all.
+    await leader.release_leadership()
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -196,7 +226,8 @@ async def root():
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Detailed health check."""
-    from app.services import telemetry
+    from app.services import telemetry, places_service
+    from app.core import leader
     return {
         "status": "healthy",
         "database": "connected",
@@ -204,6 +235,14 @@ async def health_check():
             "auth": "active",
             "attractions": "active",
         },
+        "worker": {
+            "leader": leader.is_leader(),
+            "pool": engine.pool.status(),
+        },
+        # A climbing `dropped` means background seeding is being shed because
+        # the backlog is full — the pool is being protected, but tiles are
+        # warming more slowly than the traffic wants.
+        "background": places_service.background_stats(),
         # Surfaced so a silently broken metrics pipeline is visible. Rising
         # dropped_* counters mean events are being lost.
         "telemetry": telemetry.get_stats(),

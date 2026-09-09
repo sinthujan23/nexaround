@@ -6,6 +6,37 @@ import 'package:nexaround_app/core/network/auth_token_cache.dart';
 
 /// Central utility to handle place images with category-specific fallback assets.
 class PlaceImageHelper {
+  /// The absolute URL for a stored photo path, or null when there is nothing
+  /// loadable there.
+  ///
+  /// `photo_urls` from our API are relative (`/api/v1/places/photo?ref=...`),
+  /// because the raw Google URL would carry the API key. Third-party covers
+  /// arrive absolute. Both shapes reach every image call site, so each one grew
+  /// its own copy of this ternary — and a call site that resolves the URL by
+  /// hand is a call site that can forget [AuthTokenCache.headersFor], which is
+  /// exactly how Discovery ended up requesting every photo anonymously.
+  ///
+  /// Pair it with [headersFor] at any call site that cannot use
+  /// [buildPlaceImage] directly.
+  static String? resolveUrl(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty || imagePath == 'null') {
+      return null;
+    }
+    final resolved = imagePath.startsWith('/')
+        ? '${ApiConstants.baseUrl}$imagePath'
+        : imagePath;
+    return resolved.startsWith('http') ? resolved : null;
+  }
+
+  /// Auth headers for [resolvedUrl], and only when it points at our backend.
+  ///
+  /// `/places/photo` serves anonymous callers from its disk cache alone and
+  /// 404s on a miss, so that it cannot be used as a free proxy to Google. A
+  /// request without this header can therefore only ever see a photo somebody
+  /// else already paid for.
+  static Map<String, String>? headersFor(String? resolvedUrl) =>
+      AuthTokenCache.headersFor(resolvedUrl);
+
   /// Builds an image widget for a place. If [imagePath] is empty or fails, 
   /// it uses a category-specific asset as a fallback.
   static Widget buildPlaceImage({
@@ -19,14 +50,9 @@ class PlaceImageHelper {
   }) {
     Widget imageWidget;
 
-    String? resolvedUrl = imagePath;
-    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
-      if (resolvedUrl.startsWith('/')) {
-        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
-      }
-    }
+    final String? resolvedUrl = resolveUrl(imagePath);
 
-    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
+    if (resolvedUrl != null) {
       imageWidget = CachedNetworkImage(
         imageUrl: resolvedUrl,
         // Without this the backend sees an anonymous request and will only
@@ -68,13 +94,8 @@ class PlaceImageHelper {
 
   /// Gets an [ImageProvider] for a place. Useful for Map markers or decorations.
   static ImageProvider getImageProvider(String? imagePath, String category, String name) {
-    String? resolvedUrl = imagePath;
-    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null') {
-      if (resolvedUrl.startsWith('/')) {
-        resolvedUrl = '${ApiConstants.baseUrl}$resolvedUrl';
-      }
-    }
-    if (resolvedUrl != null && resolvedUrl.isNotEmpty && resolvedUrl != 'null' && resolvedUrl.startsWith('http')) {
+    final String? resolvedUrl = resolveUrl(imagePath);
+    if (resolvedUrl != null) {
       return CachedNetworkImageProvider(
         resolvedUrl,
         headers: AuthTokenCache.headersFor(resolvedUrl),

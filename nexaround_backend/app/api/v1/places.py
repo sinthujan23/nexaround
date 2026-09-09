@@ -21,6 +21,7 @@ from app.services import (
     banded_places_service,
     places_service,
     photo_cache_service,
+    spend_guard,
     telemetry,
 )
 
@@ -186,9 +187,32 @@ async def get_place_photo(
                 headers={"Cache-Control": "public, max-age=3600"},
             )
     else:
-        path = await photo_cache_service.get_or_fetch(ref, maxwidth=maxwidth, index=i)
-        if path is None:
-            raise HTTPException(status_code=502, detail="Photo unavailable")
+        # The budget applies here too.
+        #
+        # This is the only path on which a photo request can spend money, and
+        # it is now also the busiest: the discovery lists used to request photos
+        # anonymously — 126k refusals in 30 days — and once they started sending
+        # their token, every one of those became a request that *may* buy from
+        # Google. Leaving it ungated would have meant the ceiling covered every
+        # paid call except the most frequent one.
+        allowed, reason = await spend_guard.allowed(current_user.id)
+        if not allowed:
+            # Degrade the way every other guarded path does: serve what is
+            # already on disk, and otherwise let the client fall back to its
+            # category icon. A budget being spent is not this user's error.
+            path = photo_cache_service.cached_path(ref, maxwidth, i)
+            if not (path.exists() and path.stat().st_size > 0):
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Photo not cached ({reason})",
+                    headers={"Cache-Control": "public, max-age=3600"},
+                )
+        else:
+            path = await photo_cache_service.get_or_fetch(
+                ref, maxwidth=maxwidth, index=i
+            )
+            if path is None:
+                raise HTTPException(status_code=502, detail="Photo unavailable")
 
     return FileResponse(
         path,

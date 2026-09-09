@@ -206,12 +206,79 @@ _active_seed_tasks: set[str] = set()
 # so silently losing one is worse than holding the reference.
 _background_tasks: set = set()
 
+# How many background tasks may touch the database at once, and how many may be
+# waiting to.
+#
+# These tasks were previously spawned without any limit. Every /places/nearby
+# and /nearby/banded call fires off seeding and band-fill work, each of which
+# opens its own session and holds that connection through a long serial upsert
+# loop — so a burst of ordinary browsing put more of them in flight than the
+# pool has connections. 497 requests in one 15-minute window died on
+# "QueuePool limit of size 20 overflow 30 reached" after waiting the full 30s
+# timeout, and those were the foreground requests a user was staring at: the
+# background work starved the very screens it exists to speed up.
+#
+# Four is deliberately well under pool_size so foreground requests always find
+# a connection. The queue cap matters as much as the concurrency cap: without
+# it a burst just moves from "all running" to "all pending", and tasks would
+# still be seeding a tile long after the user left it.
+_BACKGROUND_CONCURRENCY = 4
+_BACKGROUND_QUEUE_MAX = 64
+
+_background_semaphore: Optional[asyncio.Semaphore] = None
+_background_dropped = 0
+
+
+def _semaphore() -> asyncio.Semaphore:
+    """The concurrency gate, created lazily.
+
+    Built on first use rather than at import: a Semaphore binds to the running
+    loop, and this module is imported before uvicorn starts one.
+    """
+    global _background_semaphore
+    if _background_semaphore is None:
+        _background_semaphore = asyncio.Semaphore(_BACKGROUND_CONCURRENCY)
+    return _background_semaphore
+
+
+async def _run_background(coro) -> None:
+    async with _semaphore():
+        await coro
+
 
 def spawn_background(coro) -> None:
-    """Run a coroutine detached from the request, without losing it to the GC."""
-    task = asyncio.create_task(coro)
+    """Run a coroutine detached from the request, without losing it to the GC.
+
+    Shed rather than queued without bound when the backlog is already deep.
+    Everything spawned here is opportunistic — seeding a tile, warming a hero
+    photo — so dropping one costs freshness on a later visit and nothing else,
+    which is a far better trade than letting the backlog outlive its usefulness
+    or crowd out the request path.
+    """
+    global _background_dropped
+    if len(_background_tasks) >= _BACKGROUND_QUEUE_MAX:
+        _background_dropped += 1
+        # Closed explicitly: an un-awaited coroutine otherwise warns at GC time.
+        coro.close()
+        if _background_dropped % 50 == 1:
+            print(
+                f"background task backlog full ({_BACKGROUND_QUEUE_MAX}), "
+                f"dropped {_background_dropped} so far"
+            )
+        return
+    task = asyncio.create_task(_run_background(coro))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+
+
+def background_stats() -> dict:
+    """Queue depth and shed count, for /health."""
+    return {
+        "in_flight": len(_background_tasks),
+        "concurrency_limit": _BACKGROUND_CONCURRENCY,
+        "queue_max": _BACKGROUND_QUEUE_MAX,
+        "dropped": _background_dropped,
+    }
 
 
 async def seed_places_from_google_bg(

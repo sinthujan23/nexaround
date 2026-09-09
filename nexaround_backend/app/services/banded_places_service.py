@@ -218,6 +218,31 @@ async def _seed_place_dicts(place_dicts: list[dict]) -> None:
                 ],
             )
 
+            # Every category this batch mentions, resolved in one query before
+            # the loop rather than one query per new name inside it.
+            #
+            # The lookup was already memoised across the batch, but the first
+            # place carrying each name still paid a round trip — and the whole
+            # loop runs with the pooled connection checked out, so those round
+            # trips are time no other request can use the connection. Folding
+            # them into a single SELECT (plus one flush for names that are
+            # genuinely new) keeps the checkout proportional to the upserts
+            # themselves.
+            wanted = {p["category_name"] for p in usable if p.get("category_name")}
+            if wanted:
+                res = await session.execute(
+                    select(Category).where(Category.name.in_(wanted))
+                )
+                cat_cache = {c.name: c for c in res.scalars().all()}
+                missing = wanted - cat_cache.keys()
+                if missing:
+                    for nm in missing:
+                        cat_obj = Category(name=nm, icon="place", color="#607D8B")
+                        session.add(cat_obj)
+                        cat_cache[nm] = cat_obj
+                    # One flush for every new category, not one apiece.
+                    await session.flush()
+
             for p in usable:
                 name = p["name"]
                 plat = p["latitude"]
@@ -232,19 +257,8 @@ async def _seed_place_dicts(place_dicts: list[dict]) -> None:
                 cat_id = None
                 resolved = p.get("category_name")
                 if resolved:
-                    if resolved not in cat_cache:
-                        res = await session.execute(
-                            select(Category).where(Category.name == resolved)
-                        )
-                        cat_obj = res.scalar_one_or_none()
-                        if not cat_obj:
-                            cat_obj = Category(
-                                name=resolved, icon="place", color="#607D8B"
-                            )
-                            session.add(cat_obj)
-                            await session.flush()
-                        cat_cache[resolved] = cat_obj
-                    cat_id = cat_cache[resolved].id
+                    cat_obj = cat_cache.get(resolved)
+                    cat_id = cat_obj.id if cat_obj is not None else None
 
                 # This path had no duplicate check at all, so every band fill
                 # re-inserted places it already held. Shares the seeder used by

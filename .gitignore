@@ -55,3 +55,10 @@ fix_nginx.py
 # Large media / archives
 website/*.zip
 website/*.mp4
+
+# Security audits — findings name live vulnerabilities, hosts and exposed
+# credentials, so they must not enter git history (which has leaked before).
+# Glob, not one filename: each audit is dated and the next one must not have
+# to remember this rule.
+SECURITY_AUDIT*.md
+**/SECURITY_AUDIT*.md

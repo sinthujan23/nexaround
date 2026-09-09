@@ -9,6 +9,13 @@ services:
     ports:
       - "8010:8000"
     environment:
+      # Uvicorn reads this as its worker count, and app/core/database.py divides
+      # the connection budget by it — one variable so the pool can never be
+      # sized for a different number of processes than are actually running.
+      # Two, on a 2-core box: a single event loop was hitting 100% CPU during
+      # background-fill bursts, and /health (which does no work at all) was
+      # taking 1.4s behind it.
+      - WEB_CONCURRENCY=2
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME}

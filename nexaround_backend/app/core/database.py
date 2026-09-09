@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
@@ -8,12 +10,31 @@ from app.core.config import settings
 # opens seven category calls plus the banded ones at once. Past 15 the rest
 # queue for pool_timeout and then fail with
 # "QueuePool limit of size 5 overflow 10 reached" — seen as intermittent 500s.
-# 50 is comfortable against Postgres's max_connections of 100.
+#
+# The budget is for the *application as a whole*, not per process. Uvicorn runs
+# one event loop per worker and each worker builds its own engine, so a pool
+# sized per process silently multiplies by the worker count: the 20+30 that fit
+# comfortably under Postgres's max_connections of 100 became 100 the moment a
+# second worker existed, and pool timeouts would have turned into hard
+# "FATAL: too many connections" refusals — strictly worse than what they
+# replaced. Dividing a fixed budget means worker count can change without
+# anyone remembering to re-derive this.
+#
+# 80 of the 97 usable connections (100 less the 3 reserved for superusers),
+# leaving room for psql, alembic and the admin panel.
+_WORKERS = max(1, int(os.getenv("WEB_CONCURRENCY", "1")))
+_CONNECTION_BUDGET = 80
+_per_worker = max(10, _CONNECTION_BUDGET // _WORKERS)
+# Steady pool vs burst headroom. The overflow half absorbs the fan-out spikes;
+# the steady half is what stays connected between them.
+_POOL_SIZE = max(5, int(_per_worker * 0.4))
+_MAX_OVERFLOW = _per_worker - _POOL_SIZE
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    pool_size=20,
-    max_overflow=30,
+    pool_size=_POOL_SIZE,
+    max_overflow=_MAX_OVERFLOW,
     pool_timeout=30,
     # Recycle below any idle-connection reaper, and check liveness on checkout,
     # so a connection dropped while idle surfaces as a retry rather than an error.
