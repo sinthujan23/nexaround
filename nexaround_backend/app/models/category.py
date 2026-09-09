@@ -18,7 +18,17 @@ class Category(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
-    attractions = relationship("Attraction", back_populates="category", lazy="selectin")
+    # `lazy="raise"`, NOT "selectin". CategoryResponse returns only id/name/icon/
+    # colour, but selectin made `GET /api/v1/categories/` hydrate every
+    # attraction row joined to a category — 92,937 objects, ~106 MiB — and throw
+    # all of it away. That endpoint is unauthenticated and took 6-8 s; two
+    # concurrent calls pushed the whole API's p90 from 3 ms to 756 ms.
+    #
+    # Kept rather than deleted because Attraction.category back_populates
+    # against it. Nothing reads it; load explicitly if that ever changes.
+    attractions = relationship(
+        "Attraction", back_populates="category", lazy="raise",
+        passive_deletes=True)
 
     def __repr__(self) -> str:
         return f"<Category {self.name}>"

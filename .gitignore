@@ -62,3 +62,4 @@ website/*.mp4
 # to remember this rule.
 SECURITY_AUDIT*.md
 **/SECURITY_AUDIT*.md
+PERFORMANCE_REPORT.md

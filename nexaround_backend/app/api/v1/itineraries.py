@@ -1,4 +1,5 @@
 from typing import List, Optional
+import asyncio
 import logging
 import uuid
 import json
@@ -13,6 +14,7 @@ from app.repositories.attraction_repository import AttractionRepository
 from app.services.ai_service import ai_service
 from app.services import odyssey_ai_service
 from app.services.settings_service import SettingsService
+from app.services import place_cache_service
 from app.schemas.itinerary import (
     ItineraryCreate,
     ItineraryUpdate,
@@ -534,31 +536,121 @@ async def generate_ai_itinerary(
     except:
         return {"error": "AI response was not valid JSON", "raw": itinerary_json}
 
+# Cover-photo healing.
+#
+# This path was the single largest source of outbound API traffic on the
+# platform: 325 itineraries produced 8,931 Unsplash calls in nine days — 8.7% of
+# all recorded API operations, at 0% cache hit rate, averaging 240 ms (p95
+# 607 ms) each.
+#
+# Two compounding causes, both fixed below:
+#
+#   1. Nothing recorded a *failed* lookup. When Unsplash returned no match, the
+#      itinerary kept `cover_url` unset, so the very next request tried again —
+#      forever.
+#   2. The odyssey detail screen polls `GET /itineraries/{id}` every 3 seconds
+#      for up to 50 attempts while a plan generates. During generation the plan
+#      has no cover yet, so every one of those polls fired its own Unsplash
+#      request. One generation could cost fifty of them.
+#
+# Both outcomes are now cached by destination, so a repeat lookup — whether it
+# previously succeeded or failed — costs nothing.
+_COVER_CACHE_TTL = 30 * 24 * 3600     # a cover, once found, is stable
+_COVER_NEGATIVE_TTL = 6 * 3600        # "Unsplash had nothing" — worth retrying, but not hourly
+_COVER_MISS = "__none__"              # sentinel; a real value is always a URL
+_COVER_CONCURRENCY = 4                # simultaneous Unsplash lookups per request
+
+
+async def _cover_for_destination(destination: str, api_key: str) -> str:
+    """Resolve a destination to a cover image URL, through a shared cache.
+
+    Caching the miss is the important half — see the note above. Destinations
+    repeat heavily across users, so this cache is shared rather than per-user.
+
+    One deliberate trade-off: two itineraries for the same destination now get
+    the same cover image within the TTL, because the upstream call is Unsplash's
+    `/photos/random`. That is the cost of not re-buying a random photo on every
+    poll, and the URL is persisted per itinerary once assigned.
+    """
+    key = f"cover:unsplash:v1:{destination.strip().lower()}"
+    cached = await place_cache_service.get_raw(key)
+    if cached is not None:
+        return "" if cached == _COVER_MISS else cached
+
+    url = await odyssey_ai_service.fetch_unsplash_cover_photo(destination, api_key)
+    await place_cache_service.set_raw(
+        key,
+        url or _COVER_MISS,
+        ttl=_COVER_CACHE_TTL if url else _COVER_NEGATIVE_TTL,
+    )
+    return url
+
+
+async def _heal_itinerary_covers(
+    itineraries: List[Itinerary], repo: ItineraryRepository, db: AsyncSession
+) -> None:
+    """Fill in missing odyssey cover photos for a batch of itineraries.
+
+    Replaces a per-itinerary sequential loop. Beyond the caching above:
+
+      * one lookup per *distinct destination*, not one per itinerary
+      * lookups run concurrently, bounded by _COVER_CONCURRENCY — sequentially
+        they cost ~240 ms each, so ten uncovered itineraries added ~2.4 s of
+        serial external I/O to a plain "list my trips" call
+    """
+    pending: dict[str, list] = {}
+    for itin in itineraries:
+        items = itin.items or []
+        if not (isinstance(items, list) and items):
+            continue
+        meta = items[0]
+        if not (isinstance(meta, dict) and meta.get("kind") == "odyssey_meta"):
+            continue
+        if meta.get("cover_url"):
+            continue
+        destination = (meta.get("destination") or "").strip()
+        if not destination:
+            continue
+        pending.setdefault(destination, []).append(itin)
+
+    if not pending:
+        return
+
+    api_key = await SettingsService(db).get_setting("unsplash_api_key")
+    if not api_key:
+        return
+
+    async def _resolve(dest: str) -> tuple:
+        try:
+            return dest, await _cover_for_destination(dest, api_key)
+        except Exception:
+            # One destination failing must not lose the others, and must never
+            # fail the request — the cover is decoration.
+            logger.exception("cover lookup failed for destination %r", dest)
+            return dest, ""
+
+    resolved: dict = {}
+    destinations = list(pending)
+    for i in range(0, len(destinations), _COVER_CONCURRENCY):
+        chunk = destinations[i:i + _COVER_CONCURRENCY]
+        for dest, url in await asyncio.gather(*(_resolve(d) for d in chunk)):
+            resolved[dest] = url
+
+    for destination, itins in pending.items():
+        url = resolved.get(destination)
+        if not url:
+            continue
+        for itin in itins:
+            items = itin.items or []
+            new_items = [dict(i) if isinstance(i, dict) else i for i in items]
+            new_items[0]["cover_url"] = url
+            itin.items = new_items
+            await repo.update(itin)
+
+
 async def _heal_itinerary_cover_photo(itin: Itinerary, repo: ItineraryRepository, db: AsyncSession) -> None:
-    items = itin.items or []
-    if not (isinstance(items, list) and len(items) > 0):
-        return
-    meta = items[0]
-    if not (isinstance(meta, dict) and meta.get("kind") == "odyssey_meta"):
-        return
-    
-    if meta.get("cover_url"):
-        return
-        
-    unsplash_key = await SettingsService(db).get_setting("unsplash_api_key")
-    if not unsplash_key:
-        return
-        
-    destination = meta.get("destination")
-    if not destination:
-        return
-        
-    cover_url = await odyssey_ai_service.fetch_unsplash_cover_photo(destination, unsplash_key)
-    if cover_url:
-        new_items = [dict(i) for i in items]
-        new_items[0]["cover_url"] = cover_url
-        itin.items = new_items
-        await repo.update(itin)
+    """Single-itinerary wrapper, kept for the detail endpoint."""
+    await _heal_itinerary_covers([itin], repo, db)
 
 
 @router.get("/", response_model=List[ItineraryResponse])
@@ -568,11 +660,10 @@ async def get_my_itineraries(
 ):
     repo = ItineraryRepository(db)
     itineraries = await repo.get_by_user(current_user.id)
-    for itin in itineraries:
-        try:
-            await _heal_itinerary_cover_photo(itin, repo, db)
-        except Exception as e:
-            logger.error(f"Failed to heal itinerary {itin.id} cover: {e}")
+    try:
+        await _heal_itinerary_covers(itineraries, repo, db)
+    except Exception as e:
+        logger.error(f"Failed to heal itinerary covers: {e}")
     return itineraries
 
 

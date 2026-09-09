@@ -16,7 +16,6 @@ export default function FaqChatbot() {
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
   const [isWideView, setIsWideView] = useState(false);
-  const [hasUnread, setHasUnread] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [inputPrompt, setInputPrompt] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -195,27 +194,8 @@ export default function FaqChatbot() {
           ══════════════════════════════════════════════════════════ */}
       {!isOpen && (
         <div className="faq-launcher-wrapper">
-          
-          {/* Animated Hint Bubble */}
-          {hasUnread && (
-            <div className="faq-launcher-tooltip" onClick={() => setIsOpen(true)}>
-              <span className="faq-tooltip-dot" />
-              <span>Ask Neva AI & Gemini FAQ</span>
-              <button 
-                onClick={(e) => { e.stopPropagation(); setHasUnread(false); }}
-                className="faq-tooltip-close"
-                aria-label="Dismiss hint"
-              >
-                <X size={12} />
-              </button>
-            </div>
-          )}
-
           <button
-            onClick={() => {
-              setIsOpen(true);
-              setHasUnread(false);
-            }}
+            onClick={() => setIsOpen(true)}
             className="faq-launcher-btn"
             aria-label="Open Neva AI Chatbot"
           >

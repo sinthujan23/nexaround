@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   api:
     build:
@@ -42,6 +40,20 @@ services:
     depends_on:
       - db
       - redis
+    # Ceilings, not targets. Steady RSS is ~277 MiB and the stress peak was
+    # 280 MiB, so 1g is roughly 3.5x headroom — enough that a limit never fires
+    # in normal operation, but bounded so a regression cannot take the host
+    # down. (Before the lazy="raise" fix this container reached 1.64 GiB from a
+    # handful of /categories/ calls, with nothing to stop it.)
+    #
+    # This host also runs ERPNext, Moodle, Ziggo, Seaty and Muslim Aid. cpus is
+    # set so a runaway loop here cannot monopolise both cores; at 1.5 it is
+    # above the measured 1.03-core peak and will not bind in normal use.
+    mem_limit: 1g
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 
   db:
     image: postgis/postgis:16-3.4
@@ -56,10 +68,50 @@ services:
       - "5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    # Roomier than it looks like it needs (RSS is ~178 MiB) because a container
+    # memory limit also caps the page cache this cgroup can hold, and Postgres
+    # leans on the OS page cache for reads. The whole database is 792 MB, so
+    # 1.5g leaves real caching headroom rather than just covering shared_buffers
+    # (128 MB) plus work_mem. An OOM kill here is far worse than no limit, so
+    # this errs high.
+    mem_limit: 1.5g
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # maxmemory + an eviction policy, because the default is unlimited with
+    # `noeviction`: memory grew to 594 MB on a host with ~200 MB free, the
+    # kernel swapped 539 MB of it to disk (33 MB resident), and a cache served
+    # from swap is not a cache. `noeviction` also fails in the worst direction —
+    # when full, Redis refuses new writes rather than dropping old entries.
+    #
+    # volatile-lru, NOT allkeys-lru: this instance is not purely a cache. It
+    # also holds the JWT revocation blacklist, in-flight OTP codes, spend-guard
+    # counters and the telemetry queue. allkeys-lru could evict the telemetry
+    # queue (the one key with no TTL). volatile-lru only ever evicts keys that
+    # carry an expiry, which is every cache entry and none of the queue.
+    #
+    # Persistence is kept but thinned to one hourly snapshot (default was three
+    # save points, producing a 442 MB dump.rdb on a disk at 78%). It is kept
+    # rather than disabled because a restart that lost the blacklist would
+    # silently un-revoke every logged-out token until its natural expiry.
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy volatile-lru
+      --save 3600 1
+    # Named, because redis:7-alpine declares VOLUME /data. Left anonymous, every
+    # `compose up` that recreates this service abandons its volume — this host
+    # already carries 51 dangling volumes totalling 5.2 GB.
+    volumes:
+      - redisdata:/data
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
     # No host port published: the api reaches redis over the compose network
     # (REDIS_URL=redis://redis:6379/0). Publishing 6379 on the host collides
     # with the host-level redis-server that starts at boot.
@@ -69,3 +121,4 @@ services:
 volumes:
   pgdata:
   photo_cache:
+  redisdata:
