@@ -369,8 +369,8 @@ export default function Home() {
                 <ArrowRight style={{ width: '15px', height: '15px' }} />
               </NavLink>
 
-              <a 
-                href="#features" 
+              <NavLink 
+                to="/app" 
                 style={{ 
                   background: 'rgba(255, 255, 255, 0.08)', 
                   color: '#ffffff', 
@@ -391,7 +391,7 @@ export default function Home() {
                 onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.08)'; e.currentTarget.style.transform = 'translateY(0)'; }}
               >
                 <span>Explore Features</span>
-              </a>
+              </NavLink>
             </div>
 
           </div>
