@@ -549,27 +549,11 @@ async def get_nearby_banded(
             if far_short:
                 # Fill the gaps after responding and let the next request serve
                 # the richer result. Deferred rather than spawned here: the
-                # background task retires this cache key when it finishes, and
-                # it must not be able to do so before the write below has
-                # happened, or the thinner list would serve out the whole
-                # 14-day TTL.
+                # background task merges into this cache key when it finishes,
+                # and it must not be able to do so before the write below has
+                # happened, or that write would clobber the merged result.
                 defer_bands = far_short
-    # Dedupe: the DB rows and a fresh Google fetch can describe the same place.
-    deduped: list[dict] = []
-    seen_ids: set[str] = set()
-    seen_names: set[tuple] = set()
-    for p in sorted(pool, key=_rank_for_selection):
-        pid = str(p.get("id") or "")
-        name_key = (
-            (p.get("name") or "").strip().lower(),
-            round(p.get("latitude") or 0.0, 4),
-            round(p.get("longitude") or 0.0, 4),
-        )
-        if pid in seen_ids or name_key in seen_names:
-            continue
-        seen_ids.add(pid)
-        seen_names.add(name_key)
-        deduped.append(p)
+    deduped = _dedupe(pool)
     await place_cache_service.set_cached(
         key, deduped,
         ttl=_PARTIAL_CACHE_TTL_S if near_fill_incomplete else None,
@@ -584,6 +568,7 @@ async def get_nearby_banded(
             band_indices=defer_bands,
             bands=bands,
             key=key,
+            partial=near_fill_incomplete,
         ))
     return _assemble(
         latitude, longitude, category, bands, deduped, max_photos,
@@ -600,13 +585,29 @@ async def _fill_bands_bg(
     band_indices: list[int],
     bands: list[tuple[int, int]],
     key: str,
+    partial: bool = False,
 ) -> None:
-    """Fill short bands after responding, then drop the stale cache entry."""
+    """Fill short bands after responding, then merge them into the cache entry.
+
+    Merged, not retired. This used to delete the key so the next request would
+    recompute against the newly seeded rows — but a band that Google cannot
+    fill to quota (rural "Nature" at 20-25 km, say) is short again on that
+    recompute, which starts another fill, which deletes the key again. Every
+    request on such a tile paid for the same Nearby Search: one tile was
+    bought 334 times in two hours under load, and 45 times in a day by real
+    users. Writing the merged pool back instead leaves the tile served from
+    cache for its TTL; the sparse far band is simply what exists there.
+
+    `partial` is the caller's `near_fill_incomplete`: its near-band fill was
+    still running when it wrote a 60 s entry so the next request would rebuild
+    from the seeded rows. Keep that short TTL here, or this merge would pin the
+    thin near band for the full 14 days.
+    """
     if key in _active_fills:
         return
     _active_fills.add(key)
     try:
-        await asyncio.gather(*(
+        filled = await asyncio.gather(*(
             _google_fill_band(
                 latitude=latitude,
                 longitude=longitude,
@@ -617,13 +618,45 @@ async def _fill_bands_bg(
             )
             for i in band_indices
         ))
-        # The newly seeded rows are not in the cached payload, so retire it
-        # rather than leave the thinner list to serve for the full TTL.
-        await place_cache_service.delete_cached(key)
+        new_places = [p for band in filled for p in band]
+        if not new_places:
+            # Nothing to add: the cached list already is the complete answer.
+            return
+        current = await place_cache_service.get_cached(key)
+        if current is None:
+            # The entry expired while Google was answering. Writing only the
+            # far bands would serve a tile with no near band for the full TTL;
+            # the next request rebuilds from the rows this fill seeded.
+            return
+        await place_cache_service.set_cached(
+            key, _dedupe(current + new_places),
+            ttl=_PARTIAL_CACHE_TTL_S if partial else None,
+        )
     except Exception as e:
         print(f"⚠️ background band fill failed for {category}: {e}")
     finally:
         _active_fills.discard(key)
+
+
+def _dedupe(pool: list[dict]) -> list[dict]:
+    """Collapse rows describing one place: the DB and a fresh Google fetch can
+    both carry it, under the same id or merely the same name at the same spot."""
+    deduped: list[dict] = []
+    seen_ids: set[str] = set()
+    seen_names: set[tuple] = set()
+    for p in sorted(pool, key=_rank_for_selection):
+        pid = str(p.get("id") or "")
+        name_key = (
+            (p.get("name") or "").strip().lower(),
+            round(p.get("latitude") or 0.0, 4),
+            round(p.get("longitude") or 0.0, 4),
+        )
+        if pid in seen_ids or name_key in seen_names:
+            continue
+        seen_ids.add(pid)
+        seen_names.add(name_key)
+        deduped.append(p)
+    return deduped
 
 
 def _assemble(

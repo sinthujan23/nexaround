@@ -10,9 +10,13 @@ For now we don't evict; tourist photo sets are small (~10k photos × 100KB
 import asyncio
 import hashlib
 import os
+import time
 from pathlib import Path
 from typing import Optional
-from app.services import google_places_client, telemetry
+
+import httpx
+
+from app.services import google_places_client, place_cache_service, telemetry
 
 
 _CACHE_DIR = Path("app/static/photo_cache")
@@ -56,6 +60,55 @@ def cached_path(photo_reference: str, maxwidth: int, index: int = 0) -> Path:
 # Lock per filename so a thundering herd doesn't fetch the same photo twice.
 _locks: dict[str, asyncio.Lock] = {}
 
+# References Google has rejected, so they are not asked for again for a while.
+#
+# A 4xx here is not transient: the reference is malformed, expired or not ours,
+# and asking again gets the same answer. Without this, every image load for a
+# bad reference went upstream — one hour saw 746 calls for 193 references, the
+# worst retried 14 times. Google does not bill a 4xx, but each one holds the
+# Google semaphore and a client slot for a round trip that cannot succeed.
+#
+# An hour, not longer: a new-API reference is minted per response, so the same
+# photo may come back under a working token after the place is next looked up.
+# 429 and 5xx are deliberately not recorded — those are worth retrying.
+_NEGATIVE_TTL_S = 3600
+_negative: dict[str, float] = {}
+
+
+def _negative_key(name: str) -> str:
+    return f"photo:neg:{name}"
+
+
+def is_known_bad(photo_reference: str, maxwidth: int, index: int = 0) -> bool:
+    """True if Google rejected this photo within the negative-cache window.
+
+    Memory only — the cheap check the request path can make synchronously.
+    `get_or_fetch` also consults Redis so the answer is shared across workers.
+    """
+    name = _safe_name(photo_reference, maxwidth, index)
+    until = _negative.get(name)
+    if until is None:
+        return False
+    if time.time() >= until:
+        _negative.pop(name, None)
+        return False
+    return True
+
+
+async def _is_known_bad_shared(name: str) -> bool:
+    until = _negative.get(name)
+    if until is not None and time.time() < until:
+        return True
+    if await place_cache_service.get_raw(_negative_key(name)) is not None:
+        _negative[name] = time.time() + _NEGATIVE_TTL_S
+        return True
+    return False
+
+
+async def _mark_bad(name: str) -> None:
+    _negative[name] = time.time() + _NEGATIVE_TTL_S
+    await place_cache_service.set_raw(_negative_key(name), "1", ttl=_NEGATIVE_TTL_S)
+
 
 def _lock_for(name: str) -> asyncio.Lock:
     lock = _locks.get(name)
@@ -87,10 +140,19 @@ async def get_or_fetch(
             async with telemetry.track("internal", "place_photo", cache_key=cache_key) as t:
                 t.hit("disk")
             return path
+        if await _is_known_bad_shared(name):
+            async with telemetry.track("internal", "place_photo", cache_key=cache_key) as t:
+                t.hit("negative")
+            return None
         try:
             data, _ctype = await google_places_client.fetch_photo_bytes(
                 photo_reference, maxwidth=maxwidth
             )
+        except httpx.HTTPStatusError as e:
+            status = e.response.status_code
+            if 400 <= status < 500 and status != 429:
+                await _mark_bad(name)
+            return None
         except Exception:
             return None
         tmp = path.with_suffix(".tmp")

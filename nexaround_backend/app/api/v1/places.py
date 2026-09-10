@@ -212,6 +212,16 @@ async def get_place_photo(
                 ref, maxwidth=maxwidth, index=i
             )
             if path is None:
+                if photo_cache_service.is_known_bad(ref, maxwidth, i):
+                    # Google rejected the reference. Tell the device so, with
+                    # the same hour-long Cache-Control the anonymous miss
+                    # carries — an uncacheable 502 had image loaders retrying
+                    # the same dead reference on every rebuild.
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Photo reference rejected",
+                        headers={"Cache-Control": "public, max-age=3600"},
+                    )
                 raise HTTPException(status_code=502, detail="Photo unavailable")
 
     return FileResponse(
