@@ -4,7 +4,7 @@ publish_to: 'none'
 # Build number for iOS and Android. The name (1.0.4) is the source of truth for
 # both stores; the +162 only applies to local builds, since CI overrides it with
 # an auto-incrementing value. See .github/workflows/build_apk.yml.
-version: 1.0.4+162
+version: 1.0.5+162
 environment:
   sdk: '>=3.11.0 <4.0.0'
 
