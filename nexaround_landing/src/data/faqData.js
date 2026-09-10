@@ -1,5 +1,8 @@
 // FAQ Knowledge Base and Intent Search Engine for NexAround & Neva AI Concierge
 
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1';
+export const APP_STORE_URL = 'https://apps.apple.com/lk/app/nexaround/id6806252363';
+
 export const FAQ_CATEGORIES = [
   { id: 'all', label: 'All Topics' },
   { id: 'general', label: 'About & Getting Started' },
@@ -8,7 +11,7 @@ export const FAQ_CATEGORIES = [
   { id: 'odyssey', label: 'Odyssey Trip Planner' },
   { id: 'radar', label: 'Maps & Radar' },
   { id: 'bookings', label: 'Bookings & Tickets' },
-  { id: 'privacy', label: 'Privacy & Offline Mode' },
+  { id: 'privacy', label: 'Privacy & Security' },
 ];
 
 export const FAQ_ITEMS = [
@@ -33,7 +36,9 @@ export const FAQ_ITEMS = [
     answer: `Yes, NexAround is completely free to download on iOS and Android. You can start exploring landmarks with AR, chat with Neva AI, generate basic itineraries with Odyssey, and browse travel stories right away without any upfront subscription or credit card requirement.`,
     keywords: ['free', 'cost', 'pricing', 'subscription', 'price', 'pay', 'charge', 'money', 'trial', 'fee'],
     actionLinks: [
-      { text: 'Get App for Free', url: '/get-app' }
+      { text: 'Download on App Store', url: APP_STORE_URL },
+      { text: 'Get on Google Play', url: PLAY_STORE_URL },
+      { text: 'Get App Overview', url: '/get-app' }
     ],
     relatedIds: ['what-is-nexaround', 'supported-devices']
   },
@@ -45,7 +50,8 @@ export const FAQ_ITEMS = [
     answer: `NexAround is optimized for modern mobile hardware. For iOS, it supports iPhone 8 and newer running iOS 15.0 or later with ARKit support. For Android, it supports devices running Android 9.0+ with ARCore compatibility for real-time spatial AR tracking.`,
     keywords: ['devices', 'ios', 'android', 'iphone', 'samsung', 'compatibility', 'requirements', 'system', 'download', 'phone'],
     actionLinks: [
-      { text: 'Download from Stores', url: '/get-app' }
+      { text: 'Download on App Store', url: APP_STORE_URL },
+      { text: 'Get on Google Play', url: PLAY_STORE_URL }
     ],
     relatedIds: ['what-is-nexaround', 'how-ar-works']
   },
@@ -72,7 +78,7 @@ export const FAQ_ITEMS = [
     actionLinks: [
       { text: 'View AR Technology', url: '/app#camera' }
     ],
-    relatedIds: ['museum-artwork', 'offline-mode']
+    relatedIds: ['museum-artwork', 'privacy-data']
   },
   {
     id: 'museum-artwork',
@@ -102,7 +108,7 @@ export const FAQ_ITEMS = [
     actionLinks: [
       { text: 'Meet Neva AI', url: '/app#neva' }
     ],
-    relatedIds: ['odyssey-how-it-works', 'offline-mode']
+    relatedIds: ['odyssey-how-it-works', 'privacy-data']
   },
   {
     id: 'neva-languages',
@@ -154,7 +160,7 @@ export const FAQ_ITEMS = [
     actionLinks: [
       { text: 'See Radar Features', url: '/app#radar' }
     ],
-    relatedIds: ['bookings-tickets', 'offline-mode']
+    relatedIds: ['bookings-tickets', 'privacy-data']
   },
   {
     id: 'bookings-tickets',
@@ -172,12 +178,12 @@ export const FAQ_ITEMS = [
     relatedIds: ['odyssey-how-it-works', 'radar-discovery']
   },
   {
-    id: 'offline-mode',
+    id: 'internet-requirement',
     category: 'privacy',
-    question: 'Does NexAround work without an active internet connection (offline)?',
-    shortAnswer: 'Yes! You can download offline destination packs, map routes, and landmark guide data before your trip.',
-    answer: `Yes! We know international data roaming can be spotty or expensive. You can pre-download city guides, Odyssey itineraries, and offline spatial landmark packages before your trip to use GPS guidance, landmark details, and maps without cellular data.`,
-    keywords: ['offline', 'no internet', 'roaming', 'download offline', 'airplane mode', 'data connection', 'wifi', 'without data'],
+    question: 'Does NexAround require an active internet connection?',
+    shortAnswer: 'Yes, NexAround requires an active cellular data or Wi-Fi connection for real-time spatial AR vision and AI concierge.',
+    answer: `Yes, NexAround requires an active cellular data (4G/5G) or Wi-Fi internet connection to perform real-time camera spatial recognition, stream live travel recommendations from Neva AI, and update itinerary logistics.`,
+    keywords: ['internet', 'connection', 'cellular', 'wifi', 'data connection', 'online', 'requirements', 'offline'],
     actionLinks: [
       { text: 'Get App', url: '/get-app' }
     ],
@@ -194,7 +200,7 @@ export const FAQ_ITEMS = [
       { text: 'Read Privacy Policy', url: '/privacy' },
       { text: 'Terms of Service', url: '/terms' }
     ],
-    relatedIds: ['offline-mode', 'how-ar-works']
+    relatedIds: ['internet-requirement', 'how-ar-works']
   },
   {
     id: 'contact-support',
@@ -216,7 +222,7 @@ export const STARTER_PROMPTS = [
   'What can Neva AI do for me?',
   'How does Odyssey build itineraries?',
   'Is NexAround free to download?',
-  'Does NexAround work offline?',
+  'Does NexAround require internet?',
   'How do I book skip-the-line tickets?',
   'Which devices are supported?'
 ];
@@ -278,7 +284,7 @@ export function generateNevaResponse(userMessage) {
   const greetings = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening', 'howdy', 'greetings', 'sup', 'yo'];
   if (greetings.some(g => query === g || query.startsWith(g + ' ') || query.endsWith(' ' + g) || query.startsWith(g + '!') || query.startsWith(g + '?'))) {
     return {
-      text: `Hello there! 👋 I'm **Neva**, your 24/7 NexAround AI Travel Concierge.\n\nI'm here to help with anything regarding the **NexAround app**, **AR Landmark Scanning**, **Odyssey Trip Planner**, **offline navigation**, **museum guides**, or **ticket bookings**.\n\nWhat can I help you discover today?`,
+      text: `Hello there! 👋 I'm **Neva**, your 24/7 NexAround AI Travel Concierge.\n\nI'm here to help with anything regarding the **NexAround app**, **AR Landmark Scanning**, **Odyssey Trip Planner**, **smart live navigation**, **museum guides**, or **ticket bookings**.\n\nWhat can I help you discover today?`,
       actionLinks: [
         { text: 'Explore App Features', url: '/app' },
         { text: 'Download App', url: '/get-app' }
@@ -287,7 +293,7 @@ export function generateNevaResponse(userMessage) {
         'How does the AR camera scanner work?',
         'How does Odyssey build itineraries?',
         'Is NexAround free to download?',
-        'Does NexAround work offline?'
+        'Does NexAround require internet?'
       ]
     };
   }
@@ -348,7 +354,7 @@ export function generateNevaResponse(userMessage) {
       suggestions: related.length > 0 ? related : [
         'How does Odyssey build itineraries?',
         'How do I download NexAround?',
-        'Does NexAround work offline?'
+        'Does NexAround require internet?'
       ]
     };
   }

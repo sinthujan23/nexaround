@@ -373,11 +373,11 @@ export default function Services() {
             Download the NexAround mobile app today and experience the world with real-time AR recognition, smart Odyssey itineraries, and Neva 24/7 AI.
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <NavLink to="/get-app" className="btn-teal" style={{ padding: '16px 36px', fontSize: '1rem', textDecoration: 'none' }}>
-              <Smartphone style={{ width: '18px', height: '18px' }} />
-              <span>Get the NexAround App</span>
-              <ArrowRight style={{ width: '16px', height: '16px' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+            <StoreButtons theme="dark" showRating={false} />
+            <NavLink to="/get-app" style={{ fontSize: '0.92rem', color: 'var(--brand-teal)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
+              <span>Learn more about device requirements &amp; QR codes</span>
+              <ArrowRight style={{ width: '15px', height: '15px' }} />
             </NavLink>
           </div>
         </div>

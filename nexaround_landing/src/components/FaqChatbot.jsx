@@ -35,7 +35,7 @@ export default function FaqChatbot() {
         'How does the AR camera scanner work?',
         'How does Odyssey build itineraries?',
         'Is NexAround free to download?',
-        'Does NexAround work offline?'
+        'Does NexAround require internet?'
       ]
     }
   ];
@@ -55,7 +55,6 @@ export default function FaqChatbot() {
   useEffect(() => {
     if (isOpen) {
       scrollToLatestAnswer();
-      setHasUnread(false);
     }
   }, [messages, isOpen, isTyping]);
 

@@ -471,15 +471,16 @@ export default function Solutions() {
             Download the consumer app or partner with us to deploy spatial guides across your landmarks, museums, and hotels.
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <NavLink to="/get-app" className="btn-teal" style={{ padding: '16px 36px', fontSize: '1rem', textDecoration: 'none' }}>
-              <Smartphone style={{ width: '18px', height: '18px' }} />
-              <span>Get the App</span>
-              <ArrowRight style={{ width: '16px', height: '16px' }} />
-            </NavLink>
-            <NavLink to="/contact" className="btn-secondary" style={{ padding: '16px 28px', fontSize: '1rem', textDecoration: 'none' }}>
-              <span>Partner With Us</span>
-            </NavLink>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+            <StoreButtons theme="dark" showRating={false} />
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap', marginTop: '6px' }}>
+              <NavLink to="/get-app" className="btn-secondary" style={{ padding: '12px 24px', fontSize: '0.92rem', textDecoration: 'none' }}>
+                <span>App Details &amp; QR Codes</span>
+              </NavLink>
+              <NavLink to="/contact" className="btn-secondary" style={{ padding: '12px 24px', fontSize: '0.92rem', textDecoration: 'none' }}>
+                <span>Partner With Us</span>
+              </NavLink>
+            </div>
           </div>
         </div>
       </section>

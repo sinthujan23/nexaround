@@ -20,7 +20,7 @@ CORE NEXAROUND KNOWLEDGE:
 5. Living Radar & Maps: Real-time 360-degree proximity radar for attractions, food, crowds, and essentials.
 6. Bookings & Tickets: Integrated skip-the-line museum/attraction tickets (Viator, GetYourGuide, Headout), hotel reservations, and Uber/taxi rides.
 7. Pricing & Download: 100% Free to download on Apple App Store (iOS 15+) and Google Play Store (Android 9.0+). No credit card required.
-8. Privacy & Safety: Camera stream is processed locally for landmark recognition and never stored/recorded. GPS is private and never sold to third-party advertisers. GDPR & CCPA compliant. Works offline with downloadable city packs.
+8. Privacy & Safety: Camera stream is processed locally for landmark recognition and never stored/recorded. GPS is private and never sold to third-party advertisers. GDPR & CCPA compliant. Requires active internet connection for real-time spatial vision & AI guidance.
 
 RESPONSE GUIDELINES:
 - Tone: Welcoming, adventurous, articulate, concise, and helpful.
@@ -98,8 +98,14 @@ export async function askGemini(prompt, conversationHistory = []) {
       if (candidateText && candidateText.trim()) {
         const actionLinks = [];
         const lowerText = candidateText.toLowerCase();
+        if (lowerText.includes('app store') || lowerText.includes('ios') || lowerText.includes('iphone') || lowerText.includes('apple')) {
+          actionLinks.push({ text: 'Apple App Store', url: 'https://apps.apple.com/lk/app/nexaround/id6806252363' });
+        }
+        if (lowerText.includes('google play') || lowerText.includes('play store') || lowerText.includes('android')) {
+          actionLinks.push({ text: 'Google Play Store', url: 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1' });
+        }
         if (lowerText.includes('download') || lowerText.includes('get app') || lowerText.includes('free to download')) {
-          actionLinks.push({ text: 'Download App', url: '/get-app' });
+          actionLinks.push({ text: 'Download Overview', url: '/get-app' });
         }
         if (lowerText.includes('ar') || lowerText.includes('landmark') || lowerText.includes('scanner') || lowerText.includes('camera')) {
           actionLinks.push({ text: 'AR Features', url: '/app#camera' });
@@ -110,13 +116,13 @@ export async function askGemini(prompt, conversationHistory = []) {
 
         return {
           text: candidateText.trim(),
-          actionLinks: actionLinks.slice(0, 2),
+          actionLinks: actionLinks.slice(0, 3),
           isGeminiPowered: true,
           suggestions: [
             'How does the AR camera work?',
             'How does Odyssey plan trips?',
             'Is NexAround free to download?',
-            'Does NexAround work offline?'
+            'Does NexAround require internet?'
           ]
         };
       }

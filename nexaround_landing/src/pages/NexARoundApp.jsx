@@ -555,11 +555,11 @@ export default function NexARoundApp() {
             Experience real-time spatial AR recognition, multi-day Odyssey planning, and 24/7 Neva AI travel assistance on your smartphone.
           </p>
 
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', flexWrap: 'wrap' }}>
-            <NavLink to="/get-app" className="btn-teal" style={{ padding: '16px 36px', fontSize: '1rem', textDecoration: 'none' }}>
-              <Smartphone style={{ width: '18px', height: '18px' }} />
-              <span>Get the NexAround App</span>
-              <ArrowRight style={{ width: '16px', height: '16px' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px' }}>
+            <StoreButtons theme="dark" showRating={false} />
+            <NavLink to="/get-app" style={{ fontSize: '0.92rem', color: 'var(--brand-teal)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
+              <span>Learn more about device requirements &amp; QR codes</span>
+              <ArrowRight style={{ width: '15px', height: '15px' }} />
             </NavLink>
           </div>
         </div>

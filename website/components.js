@@ -71,6 +71,8 @@
           '</nav>' +
           '<div class="mega__sub">' +
             '<a href="/technology">Technology Expertise</a>' +
+            '<a href="https://apps.apple.com/lk/app/nexaround/id6806252363" target="_blank" rel="noopener noreferrer">Download on App Store</a>' +
+            '<a href="https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1" target="_blank" rel="noopener noreferrer">Get on Google Play</a>' +
             '<a href="/about#process">Engagement Process</a>' +
             '<a href="/about#models">Engagement Models</a>' +
           '</div>' +
@@ -102,6 +104,8 @@
           '<div class="footer__col">' +
             '<h4>Products &amp; Solutions</h4>' +
             '<a href="/app">nexARound App</a>' +
+            '<a href="https://apps.apple.com/lk/app/nexaround/id6806252363" target="_blank" rel="noopener noreferrer">App Store (iOS)</a>' +
+            '<a href="https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1" target="_blank" rel="noopener noreferrer">Google Play (Android)</a>' +
             '<a href="/erp">ERP &amp; Business Solutions</a>' +
             '<a href="/ai-data">AI, ML &amp; Data Solutions</a>' +
             '<a href="/blockchain">Blockchain</a>' +

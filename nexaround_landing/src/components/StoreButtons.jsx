@@ -1,10 +1,15 @@
 import React from 'react';
 
+export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.nexaround.app&pli=1';
+export const APP_STORE_URL = 'https://apps.apple.com/lk/app/nexaround/id6806252363';
+
 export default function StoreButtons({ 
   theme = 'dark',        // 'dark' (black pill for light bg), 'light' (white pill), 'glass'/'onDark' (for dark footer/hero)
   direction = 'row',     // 'row' or 'column'
   align = 'center',      // 'center', 'flex-start', 'flex-end'
-  showRating = false 
+  showRating = false,
+  playStoreUrl = PLAY_STORE_URL,
+  appStoreUrl = APP_STORE_URL
 }) {
   const isOnDark = theme === 'onDark' || theme === 'glass';
   const isLight = theme === 'light';
@@ -49,8 +54,11 @@ export default function StoreButtons({
         
         {/* Google Play Button */}
         <a
-          href="/get-app"
+          href={playStoreUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className="store-button-item"
+          aria-label="Get it on Google Play Store"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -104,8 +112,11 @@ export default function StoreButtons({
 
         {/* Apple App Store Button */}
         <a
-          href="/get-app"
+          href={appStoreUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className="store-button-item"
+          aria-label="Download on the Apple App Store"
           style={{
             display: 'inline-flex',
             alignItems: 'center',
