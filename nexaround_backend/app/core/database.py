@@ -22,8 +22,14 @@ from app.core.config import settings
 #
 # 80 of the 97 usable connections (100 less the 3 reserved for superusers),
 # leaving room for psql, alembic and the admin panel.
+#
+# The budget is split between containers by DB_CONNECTION_BUDGET, set in
+# docker-compose.yml: the API gets 70, the background worker 10. The worker
+# runs at most a few jobs at once and each one touches Postgres only at its
+# start and end, so 10 is generous; without the override a second container
+# would build its own 80 and the two together would exceed max_connections.
 _WORKERS = max(1, int(os.getenv("WEB_CONCURRENCY", "1")))
-_CONNECTION_BUDGET = 80
+_CONNECTION_BUDGET = max(10, int(os.getenv("DB_CONNECTION_BUDGET", "80")))
 _per_worker = max(10, _CONNECTION_BUDGET // _WORKERS)
 # Steady pool vs burst headroom. The overflow half absorbs the fan-out spikes;
 # the steady half is what stays connected between them.

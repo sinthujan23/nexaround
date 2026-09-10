@@ -18,6 +18,9 @@ services:
       # background-fill bursts, and /health (which does no work at all) was
       # taking 1.4s behind it.
       - WEB_CONCURRENCY=2
+      # 70 of the 80-connection budget; the worker takes the other 10. See
+      # app/core/database.py.
+      - DB_CONNECTION_BUDGET=70
       - DATABASE_URL=${DATABASE_URL}
       - SECRET_KEY=${SECRET_KEY}
       - ADMIN_USERNAME=${ADMIN_USERNAME}
@@ -51,6 +54,57 @@ services:
     # above the measured 1.03-core peak and will not bind in normal use.
     mem_limit: 1g
     cpus: 1.5
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # Background process, same image as the api. Runs Odyssey generation (pulled
+  # from a Redis queue — see app/core/job_queue.py) and the telemetry
+  # rollup/alert loops, so 35–120 s Gemini chains never share an event loop or
+  # a CPU cap with live requests, survive `compose restart api`, and are capped
+  # at ODYSSEY_MAX_JOBS in flight. Restart it the same way as the api after a
+  # code change: `docker compose restart worker`.
+  worker:
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    command: ["python", "-m", "app.worker"]
+    restart: unless-stopped
+    environment:
+      - DB_CONNECTION_BUDGET=10
+      - ODYSSEY_MAX_JOBS=3
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - REDIS_URL=redis://redis:6379/0
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - EMAILS_FROM_EMAIL=${EMAILS_FROM_EMAIL}
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+    volumes:
+      - ./app:/app/app
+      # The same photo volume as the api, or the two processes keep separate
+      # caches: the worker wrote cover photos into the bind-mounted repo
+      # directory, the api could not see them and bought each one again.
+      - photo_cache:/app/app/static/photo_cache
+      # The "Odyssey ready" push goes through Firebase.
+      - /etc/nexaround/firebase-sa.json:/etc/nexaround/firebase-sa.json:ro
+    depends_on:
+      - db
+      - redis
+    # Three concurrent generations are mostly waiting on the network; CPU is
+    # the JSON parsing of Gemini's replies. 0.5 core keeps a burst here from
+    # contending with the api for the box's two cores.
+    mem_limit: 512m
+    cpus: 0.5
+    # SIGTERM → the worker cancels in-flight jobs and leaves them queued for
+    # its next start. Give it a moment to flush telemetry before SIGKILL.
+    stop_grace_period: 15s
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }

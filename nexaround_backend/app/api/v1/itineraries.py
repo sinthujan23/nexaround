@@ -5,16 +5,16 @@ import uuid
 import json
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.database import get_db, async_session
+from app.core.database import get_db
 from app.api.deps import get_current_user
 from app.models.user import User
 from app.models.itinerary import Itinerary
 from app.repositories.itinerary_repository import ItineraryRepository
 from app.repositories.attraction_repository import AttractionRepository
 from app.services.ai_service import ai_service
-from app.services import odyssey_ai_service
+from app.services import odyssey_ai_service, odyssey_jobs
 from app.services.settings_service import SettingsService
-from app.services import place_cache_service
+from app.services import cover_photo_service
 from app.schemas.itinerary import (
     ItineraryCreate,
     ItineraryUpdate,
@@ -116,8 +116,8 @@ async def generate_odyssey(
     )
     saved = await repo.create(placeholder)
 
-    background_tasks.add_task(
-        _run_odyssey_generation,
+    await odyssey_jobs.dispatch(
+        background_tasks,
         itinerary_id=saved.id,
         user_id=current_user.id,
         destination=data.destination,
@@ -146,152 +146,6 @@ async def generate_odyssey(
         departure_longitude=data.departure_longitude,
     )
     return saved
-
-
-async def _run_odyssey_generation(
-    itinerary_id: uuid.UUID,
-    user_id: uuid.UUID,
-    destination: str,
-    mood: str,
-    budget: float,
-    days: int,
-    currency: str,
-    travelers: int = 1,
-    include_flights: bool = False,
-    departure_city: str = "",
-    departure_country: str = "",
-    nationality: str = "",
-    has_visa: bool = False,
-    flight_start_date: Optional[str] = None,
-    flight_end_date: Optional[str] = None,
-    include_hotels: bool = False,
-    hotel_check_in_date: Optional[str] = None,
-    hotel_check_out_date: Optional[str] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    destination_place_id: str = "",
-    destination_latitude: Optional[float] = None,
-    destination_longitude: Optional[float] = None,
-    destination_address: str = "",
-    departure_latitude: Optional[float] = None,
-    departure_longitude: Optional[float] = None,
-) -> None:
-    """Runs after the response is sent. Uses its own DB session because the
-    request-scoped one is already closed."""
-    async with async_session() as db:
-        repo = ItineraryRepository(db)
-        itin = await repo.get_by_id(itinerary_id, user_id)
-        if itin is None:
-            return
-
-        api_key = await SettingsService(db).get_setting("gemini_api_key")
-        if not api_key:
-            logger.error("Odyssey generation skipped: gemini_api_key not configured")
-            print(f"[ODYSSEY] FAILED {itinerary_id}: gemini_api_key not configured", flush=True)
-            itin.status = "failed"
-            if itin.items and isinstance(itin.items, list) and len(itin.items) > 0:
-                first_item = dict(itin.items[0])
-                first_item["failure_reason"] = "Gemini API key is not configured"
-                itin.items = [first_item] + list(itin.items[1:])
-            await repo.update(itin)
-            return
-
-        unsplash_api_key = await SettingsService(db).get_setting("unsplash_api_key")
-        serpapi_key = await SettingsService(db).get_setting("serpapi_key")
-
-        try:
-            title, items = await odyssey_ai_service.generate_odyssey(
-                destination=destination,
-                mood=mood,
-                budget=budget,
-                days=days,
-                currency=currency,
-                travelers=travelers,
-                api_key=api_key,
-                unsplash_api_key=unsplash_api_key,
-                serpapi_key=serpapi_key or "",
-                include_flights=include_flights,
-                departure_city=departure_city,
-                departure_country=departure_country,
-                nationality=nationality,
-                has_visa=has_visa,
-                flight_start_date=flight_start_date,
-                flight_end_date=flight_end_date,
-                include_hotels=include_hotels,
-                hotel_check_in_date=hotel_check_in_date,
-                hotel_check_out_date=hotel_check_out_date,
-                start_date=start_date or "",
-                end_date=end_date or "",
-                destination_place_id=destination_place_id or "",
-                destination_latitude=destination_latitude,
-                destination_longitude=destination_longitude,
-                destination_address=destination_address or "",
-                departure_latitude=departure_latitude,
-                departure_longitude=departure_longitude,
-            )
-            itin.title = title
-            itin.items = items
-            itin.status = "active"
-            start_dt_str = start_date or flight_start_date or hotel_check_in_date
-            if start_dt_str:
-                try:
-                    from datetime import datetime as dt
-                    itin.trip_date = dt.strptime(start_dt_str, "%Y-%m-%d").date()
-                except Exception:
-                    pass
-            print(f"[ODYSSEY] SUCCESS {itinerary_id}: {title}", flush=True)
-        except Exception as e:
-            import traceback
-            tb = traceback.format_exc()
-            logger.error(f"Odyssey generation failed for {itinerary_id}: {e}")
-            print(f"[ODYSSEY] FAILED {itinerary_id}: {e}\n{tb}", flush=True)
-            itin.status = "failed"
-            if itin.items and isinstance(itin.items, list) and len(itin.items) > 0:
-                first_item = dict(itin.items[0])
-                first_item["failure_reason"] = str(e)
-                itin.items = [first_item] + list(itin.items[1:])
-        await repo.update(itin)
-
-        if itin.status == "active":
-            await _notify_odyssey_ready(db, user_id, itin.title, itinerary_id)
-
-
-async def _notify_odyssey_ready(db, user_id, title, itinerary_id) -> None:
-    """Best-effort push telling the user their Odyssey finished generating.
-    Sends to every device the user is signed in on (Android + iOS) and prunes
-    any tokens FCM reports as dead."""
-    try:
-        from sqlalchemy import select
-        from app.models.user import User
-        from app.services import fcm_service
-
-        result = await db.execute(select(User).where(User.id == user_id))
-        user = result.scalar_one_or_none()
-        if not user:
-            return
-        prefs = user.preferences or {}
-        tokens = list(prefs.get("fcm_tokens") or [])
-        legacy = prefs.get("fcm_token")  # pre-multi-device single token
-        if legacy and legacy not in tokens:
-            tokens.append(legacy)
-        if not tokens:
-            logger.warning(f"Odyssey ready but user {user_id} has no device tokens")
-            return
-
-        invalid = await fcm_service.send_to_tokens(
-            db,
-            tokens,
-            title="Your Odyssey is ready ✨",
-            body=title or "Tap to view your trip plan.",
-            data={"type": "odyssey_ready", "itinerary_id": str(itinerary_id)},
-        )
-        if invalid:
-            new_prefs = {**prefs, "fcm_tokens": [t for t in tokens if t not in invalid]}
-            new_prefs.pop("fcm_token", None)  # drop legacy if it was dead
-            user.preferences = new_prefs
-            await db.commit()
-    except Exception as e:
-        logger.error(f"Odyssey-ready notification failed for {itinerary_id}: {e}")
 
 
 @router.post("/{itinerary_id}/odyssey/swap", response_model=ItineraryResponse)
@@ -473,8 +327,8 @@ async def retry_odyssey_generation(
     itin.items = [meta]
     saved = await repo.update(itin)
 
-    background_tasks.add_task(
-        _run_odyssey_generation,
+    await odyssey_jobs.dispatch(
+        background_tasks,
         itinerary_id=saved.id,
         user_id=current_user.id,
         destination=destination,
@@ -536,54 +390,16 @@ async def generate_ai_itinerary(
     except:
         return {"error": "AI response was not valid JSON", "raw": itinerary_json}
 
-# Cover-photo healing.
-#
-# This path was the single largest source of outbound API traffic on the
-# platform: 325 itineraries produced 8,931 Unsplash calls in nine days — 8.7% of
-# all recorded API operations, at 0% cache hit rate, averaging 240 ms (p95
-# 607 ms) each.
-#
-# Two compounding causes, both fixed below:
-#
-#   1. Nothing recorded a *failed* lookup. When Unsplash returned no match, the
-#      itinerary kept `cover_url` unset, so the very next request tried again —
-#      forever.
-#   2. The odyssey detail screen polls `GET /itineraries/{id}` every 3 seconds
-#      for up to 50 attempts while a plan generates. During generation the plan
-#      has no cover yet, so every one of those polls fired its own Unsplash
-#      request. One generation could cost fifty of them.
-#
-# Both outcomes are now cached by destination, so a repeat lookup — whether it
-# previously succeeded or failed — costs nothing.
-_COVER_CACHE_TTL = 30 * 24 * 3600     # a cover, once found, is stable
-_COVER_NEGATIVE_TTL = 6 * 3600        # "Unsplash had nothing" — worth retrying, but not hourly
-_COVER_MISS = "__none__"              # sentinel; a real value is always a URL
+# Cover lookups go through app/services/cover_photo_service.py — one cached,
+# deterministic Unsplash search per destination, shared with the generation
+# path so the placeholder's cover and the finished plan's cover are the same
+# photo. The history of why it is cached (the detail screen's 3 s poll once
+# cost fifty Unsplash calls per generation) lives there too.
 _COVER_CONCURRENCY = 4                # simultaneous Unsplash lookups per request
 
 
 async def _cover_for_destination(destination: str, api_key: str) -> str:
-    """Resolve a destination to a cover image URL, through a shared cache.
-
-    Caching the miss is the important half — see the note above. Destinations
-    repeat heavily across users, so this cache is shared rather than per-user.
-
-    One deliberate trade-off: two itineraries for the same destination now get
-    the same cover image within the TTL, because the upstream call is Unsplash's
-    `/photos/random`. That is the cost of not re-buying a random photo on every
-    poll, and the URL is persisted per itinerary once assigned.
-    """
-    key = f"cover:unsplash:v1:{destination.strip().lower()}"
-    cached = await place_cache_service.get_raw(key)
-    if cached is not None:
-        return "" if cached == _COVER_MISS else cached
-
-    url = await odyssey_ai_service.fetch_unsplash_cover_photo(destination, api_key)
-    await place_cache_service.set_raw(
-        key,
-        url or _COVER_MISS,
-        ttl=_COVER_CACHE_TTL if url else _COVER_NEGATIVE_TTL,
-    )
-    return url
+    return await cover_photo_service.cover_for_destination(destination, api_key)
 
 
 async def _heal_itinerary_covers(
@@ -616,9 +432,9 @@ async def _heal_itinerary_covers(
     if not pending:
         return
 
-    api_key = await SettingsService(db).get_setting("unsplash_api_key")
-    if not api_key:
-        return
+    # Only the country-level fallback needs this; the primary source is
+    # Google Places, so a missing key does not skip the lookup.
+    api_key = await SettingsService(db).get_setting("unsplash_api_key") or ""
 
     async def _resolve(dest: str) -> tuple:
         try:

@@ -1256,6 +1256,49 @@ def _new_details_to_legacy_result(data: dict) -> dict:
     }
 
 
+async def fetch_place_photo_refs(place_id: str, limit: int = 5) -> list[dict]:
+    """Just the photo references for a place, nothing else.
+
+    Field mask is `photos` alone, which Places API (New) bills at its lowest
+    tier — `fetch_place_details` asks for reviews and hours too and pays the
+    Enterprise + Atmosphere rate for them. Returns [] rather than raising.
+    Each entry is {"name": "places/…/photos/…", "width": int, "height": int}.
+    """
+    pid = (place_id or "").strip()
+    if not pid:
+        return []
+    async with async_session() as db:
+        google_maps_key = await SettingsService(db).get_setting("google_maps_api_key")
+    if not google_maps_key:
+        return []
+    client = await _get_http_client()
+    try:
+        async with _google_call_semaphore:
+            async with telemetry.track(
+                "google_maps", "place_photo_refs", sku="place_details",
+                cache_key=f"photo_refs:{pid}",
+            ) as t:
+                resp = await client.get(
+                    f"https://places.googleapis.com/v1/places/{pid}",
+                    headers={"X-Goog-Api-Key": google_maps_key, "X-Goog-FieldMask": "photos"},
+                )
+                t.upstream(resp)
+        if resp.status_code != 200:
+            return []
+        out = []
+        for ph in (resp.json().get("photos") or [])[:limit]:
+            if ph.get("name"):
+                out.append({
+                    "name": ph["name"],
+                    "width": int(ph.get("widthPx") or 0),
+                    "height": int(ph.get("heightPx") or 0),
+                })
+        return out
+    except Exception as e:
+        print(f"⚠️ place photo refs failed for {pid}: {e}")
+        return []
+
+
 async def fetch_place_details(place_id: str) -> Optional[dict]:
     """Fetch rich place details (reviews, opening_hours, photos) from Places API
     (New), reshaped into the legacy result the parsing below expects.

@@ -23,10 +23,12 @@ Two shapes, because the two problems are different:
                 `create_all` and the settings seeding are.
 
   [elected]     `try_become_leader()` — a lock held for the life of the process.
-                Exactly one worker wins and runs the singleton loops; the losers
+                Exactly one process wins and runs the singleton loops; the losers
                 skip them. If the winner dies, its connection drops, the lock is
-                released, and the worker uvicorn respawns in its place acquires
-                it on startup.
+                released, and whichever process starts next acquires it.
+                Used by the background worker (app/worker.py), not the API:
+                there is normally one worker, and the election only matters if
+                someone scales it to two.
 """
 import logging
 from contextlib import asynccontextmanager

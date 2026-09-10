@@ -62,7 +62,7 @@ async def startup():
     # the *package*, shadowing the FastAPI instance, so `app.state` raises here.
     # Keeping a reference matters regardless — asyncio only holds a weak one and
     # will happily garbage-collect a running task.
-    from app.services import telemetry, telemetry_rollup, telemetry_alerts
+    from app.services import telemetry
 
     # Every worker needs this month's partition to exist before its flusher
     # writes, so it stays on the startup path for all of them — serialised
@@ -72,21 +72,12 @@ async def startup():
 
     # The flusher drains this process's own in-memory event buffer, so it runs
     # in every worker — electing one would strand the others' events.
+    #
+    # The database-wide loops (rollup, partition maintenance, alerts) are not
+    # here any more: they run in the worker process (app/worker.py), which is
+    # the one singleton in the deployment. The advisory-lock election that
+    # used to pick a uvicorn worker for them went with them.
     _background_tasks.append(asyncio.create_task(telemetry.flusher_loop()))
-
-    # The other three are database-wide: rollup aggregates api_events into
-    # hourly buckets, maintenance rolls partitions forward, alerts notify. One
-    # worker runs them for the whole deployment, or they double-count and
-    # double-notify.
-    if await leader.try_become_leader():
-        _background_tasks.extend([
-            asyncio.create_task(telemetry_rollup.rollup_loop()),
-            asyncio.create_task(telemetry_rollup.maintenance_loop()),
-            asyncio.create_task(telemetry_alerts.alert_loop()),
-        ])
-        logging.getLogger(__name__).info(
-            "telemetry singleton loops started (this worker is leader)"
-        )
 
     # Seed default system settings.
     #
@@ -141,12 +132,7 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown():
     from app.services import google_places_client
-    from app.core import leader
     await google_places_client.aclose_http_client()
-    # Hand the singleton loops on promptly. The lock would drop with the
-    # connection anyway, but only once Postgres notices the socket is gone —
-    # long enough that a fast restart can come up with no leader at all.
-    await leader.release_leadership()
 
 # Static files
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
@@ -227,7 +213,7 @@ async def root():
 async def health_check():
     """Detailed health check."""
     from app.services import telemetry, places_service
-    from app.core import leader
+    from app.core import job_queue
     return {
         "status": "healthy",
         "database": "connected",
@@ -236,9 +222,12 @@ async def health_check():
             "attractions": "active",
         },
         "worker": {
-            "leader": leader.is_leader(),
             "pool": engine.pool.status(),
         },
+        # Odyssey generation runs in the worker container. A growing `pending`
+        # with a stale (or null) `worker_seen_seconds_ago` means it is down and
+        # users are watching spinners: `docker compose up -d worker`.
+        "jobs": await job_queue.stats(),
         # A climbing `dropped` means background seeding is being shed because
         # the backlog is full — the pool is being protected, but tiles are
         # warming more slowly than the traffic wants.

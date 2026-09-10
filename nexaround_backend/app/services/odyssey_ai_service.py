@@ -13,7 +13,7 @@ import re
 from dataclasses import dataclass
 import urllib.parse
 import httpx
-from app.services import geo_resolver, telemetry, trip_cost_floor
+from app.services import cover_photo_service, geo_resolver, telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
     format_flight_results_for_gemini,
@@ -267,38 +267,6 @@ def build_meta_item(
         "legs": legs or [],
         "generation_params": generation_params or {},
     }
-
-
-async def fetch_unsplash_cover_photo(destination: str, api_key: str) -> str:
-    """Query Unsplash for a random landscape orientation photo matching `destination`.
-    Returns the regular URL string, or empty string on failure.
-    """
-    if not api_key:
-        return ""
-    try:
-        url = "https://api.unsplash.com/photos/random"
-        params = {
-            "query": destination,
-            "orientation": "landscape",
-            "client_id": api_key,
-        }
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            async with telemetry.track(
-                "unsplash", "cover_photo_search",
-                sku="unsplash_photo", cache_key=f"unsplash:{destination.strip().lower()}",
-            ) as t:
-                response = await client.get(url, params=params)
-                t.upstream(response)
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, dict):
-                    urls = data.get("urls") or {}
-                    return str(urls.get("regular") or "")
-            else:
-                logger.error(f"Unsplash API returned status code {response.status_code}: {response.text}")
-    except Exception as e:
-        logger.error(f"Failed to fetch cover photo from Unsplash: {e}")
-    return ""
 
 
 # SerpApi's google_flights engine rejects free-text places outright —
@@ -2054,15 +2022,24 @@ async def generate_odyssey(
             final_destination,
         )
 
-    # 1. Fetch Unsplash cover photo, flight strategies, and hotel strategies concurrently FIRST
+    # 1. Cover photo, flights and hotels, concurrently. Cover and flights need
+    # only the destination, so they start now and overlap the leg planner's
+    # Gemini call below; hotels are per-leg, so they start once the legs are
+    # known. Same inputs, same prompts, same results as running all three
+    # after the legs — just without the leg planner's 2–7 s on the critical
+    # path twice.
     async def _get_cover():
-        if unsplash_api_key:
-            try:
-                return await fetch_unsplash_cover_photo(final_destination, unsplash_api_key)
-            except Exception as e:
-                logger.error(f"Cover photo fetch failed: {e}")
-                return ""
-        return ""
+        # Through the shared cache, so this is the *same* photo the list
+        # endpoint already put on the placeholder while the plan was being
+        # written — and, since that poll fires first, usually a Redis hit
+        # rather than a second lookup.
+        try:
+            return await cover_photo_service.cover_for_destination(
+                final_destination, unsplash_api_key or ""
+            )
+        except Exception as e:
+            logger.error(f"Cover photo fetch failed: {e}")
+            return ""
 
     async def _get_flights():
         # Coordinates alone are enough: the country recovered from them gives a
@@ -2094,18 +2071,29 @@ async def generate_odyssey(
                 return {}
         return {}
 
+    cover_task = asyncio.create_task(_get_cover())
+    flights_task = asyncio.create_task(_get_flights())
+
     # Which cities the trip sleeps in, decided before anything is bought: the
     # per-leg hotel search needs them, and the itinerary that would otherwise
     # name them is not written until further down.
-    city_legs = await plan_city_legs(
-        destination=final_destination,
-        days=days,
-        mood=mood,
-        travelers=travelers,
-        api_key=api_key,
-        start_date=hotel_check_in_date or start_date or "",
-        geo=geo,
-    )
+    try:
+        city_legs = await plan_city_legs(
+            destination=final_destination,
+            days=days,
+            mood=mood,
+            travelers=travelers,
+            api_key=api_key,
+            start_date=hotel_check_in_date or start_date or "",
+            geo=geo,
+        )
+    except BaseException:
+        # plan_city_legs has its own fallback and should not raise, but if it
+        # does (or this task is cancelled) the two in-flight lookups must not
+        # be left running with nobody to collect them.
+        cover_task.cancel()
+        flights_task.cancel()
+        raise
 
     async def _get_hotels():
         if include_hotels:
@@ -2127,7 +2115,7 @@ async def generate_odyssey(
         return {}
 
     cover_url, flight_strategies, hotel_strategies = await asyncio.gather(
-        _get_cover(), _get_flights(), _get_hotels()
+        cover_task, flights_task, _get_hotels()
     )
 
     # Extract primary recommended hotel entity from confirmed SerpAPI results.

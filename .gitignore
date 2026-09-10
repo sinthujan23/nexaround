@@ -63,3 +63,6 @@ website/*.mp4
 SECURITY_AUDIT*.md
 **/SECURITY_AUDIT*.md
 PERFORMANCE_REPORT.md
+
+# Proxied Google place photos live in the photo_cache Docker volume, never in git
+nexaround_backend/app/static/photo_cache/

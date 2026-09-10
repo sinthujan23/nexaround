@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "NexAround"
     API_V1_STR: str = "/api/v1"
     ENABLE_DOCS: bool = False
+    # Where clients reach this API. Needed only when the server has to hand
+    # out an absolute URL to itself — Odyssey cover photos served from the
+    # place-photo cache, which the app's image loader fetches verbatim.
+    PUBLIC_BASE_URL: str = "https://api.nexaround.com"
     
     # JWT Security Configuration
     SECRET_KEY: str = ""
