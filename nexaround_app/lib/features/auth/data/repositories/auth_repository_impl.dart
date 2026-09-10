@@ -3,6 +3,7 @@ import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nexaround_app/core/error/failures.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/auth/data/datasources/auth_remote_datasource.dart';
 import 'package:nexaround_app/features/auth/domain/entities/user.dart';
@@ -34,7 +35,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -54,7 +55,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -69,7 +70,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -89,7 +90,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -103,7 +104,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -127,7 +128,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -141,7 +142,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -154,7 +155,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -167,7 +168,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -180,7 +181,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -196,7 +197,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -217,7 +218,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -240,7 +241,7 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -269,31 +270,23 @@ class AuthRepositoryImpl implements AuthRepository {
     }
     if (e.response != null) {
       final statusCode = e.response!.statusCode;
-      String? detailStr;
-      if (e.response!.data is Map) {
-        final rawDetail = e.response!.data['detail'];
-        if (rawDetail is String) {
-          detailStr = rawDetail;
-        } else if (rawDetail is List && rawDetail.isNotEmpty) {
-          final firstErr = rawDetail.first;
-          if (firstErr is Map && firstErr.containsKey('msg')) {
-            detailStr = firstErr['msg'].toString();
-          } else {
-            detailStr = rawDetail.toString();
-          }
-        }
-      }
+      // Only the backend's deliberate sentences come through; validator output
+      // and server faults are replaced with a fixed message.
+      final detailStr = safeServerDetail(e.response);
       if (statusCode == 401) {
-        return AuthFailure(detailStr ?? 'Invalid credentials');
+        return AuthFailure(detailStr ?? 'Invalid credentials', statusCode);
       }
       if (statusCode == 409) {
-        return AuthFailure(detailStr ?? 'Email already registered');
+        return AuthFailure(detailStr ?? 'Email already registered', statusCode);
       }
-      if (statusCode == 422) {
-        return AuthFailure(detailStr ?? 'Invalid input data. Please check your details.');
+      if (statusCode == 422 || statusCode == 400) {
+        return AuthFailure(detailStr ?? 'Invalid input data. Please check your details.', statusCode);
       }
-      return ServerFailure(detailStr ?? 'Server error ($statusCode)');
+      if (statusCode == 429) {
+        return AuthFailure(detailStr ?? 'Too many attempts. Please wait a moment and try again.', statusCode);
+      }
+      return ServerFailure(detailStr ?? userMessageFor(e), statusCode);
     }
-    return NetworkFailure('Could not reach server: ${e.message ?? 'No internet connection'}');
+    return NetworkFailure(userMessageFor(e));
   }
 }

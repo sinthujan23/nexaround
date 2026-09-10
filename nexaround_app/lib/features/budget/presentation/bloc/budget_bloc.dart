@@ -3,6 +3,7 @@ import '../../data/repositories/budget_repository_impl.dart';
 import '../../domain/repositories/budget_repository.dart';
 import 'budget_event.dart';
 import 'budget_state.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
   final BudgetRepository _repository;
@@ -39,12 +40,12 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
       final budget = await _repository.getMyBudget();
       emit(BudgetLoaded(budget, isFromCache: false));
     } catch (e) {
-      if (e.toString().contains('404')) {
+      if (statusCodeOf(e) == 404) {
         emit(NoBudgetFound());
       } else {
         // Only emit error if we don't already have cached data showing
         if (state is! BudgetLoaded) {
-          emit(BudgetError(e.toString()));
+          emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
         }
       }
     }
@@ -56,7 +57,7 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
       final budgets = await _repository.getBudgetHistory();
       emit(BudgetHistoryLoaded(budgets));
     } catch (e) {
-      emit(BudgetError(e.toString()));
+      emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
     }
   }
 
@@ -66,7 +67,7 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
       final budget = await _repository.getBudgetById(event.budgetId);
       emit(BudgetDetailLoaded(budget));
     } catch (e) {
-      emit(BudgetError(e.toString()));
+      emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
     }
   }
 
@@ -82,7 +83,7 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
       );
       emit(BudgetLoaded(budget));
     } catch (e) {
-      emit(BudgetError(e.toString()));
+      emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
     }
   }
 
@@ -92,7 +93,7 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
       final closedBudget = await _repository.closeBudget();
       emit(BudgetClosed(closedBudget));
     } catch (e) {
-      emit(BudgetError(e.toString()));
+      emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
     }
   }
 
@@ -107,7 +108,7 @@ class BudgetBloc extends Bloc<BudgetEvent, BudgetState> {
         final updatedBudget = await _repository.getMyBudget();
         emit(BudgetLoaded(updatedBudget));
       } catch (e) {
-        emit(BudgetError(e.toString()));
+        emit(BudgetError(userMessageFor(e), sessionExpired: isSessionExpired(e)));
       }
     }
   }

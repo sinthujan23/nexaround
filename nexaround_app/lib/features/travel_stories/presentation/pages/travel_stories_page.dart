@@ -15,6 +15,7 @@ import '../widgets/stories_comments_dialog.dart';
 import '../widgets/post_story_sheet.dart';
 import '../../../../features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class TravelStoriesPage extends StatefulWidget {
   final List<TravelStory> stories;
@@ -229,7 +230,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to post comment: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'post the comment'))),
         );
       }
     } finally {
@@ -378,7 +379,7 @@ class _TravelStoriesPageState extends State<TravelStoriesPage> {
       if (mounted) {
         setState(() => _isDeletingStory = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to delete story: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'delete the story'))),
         );
       }
     }

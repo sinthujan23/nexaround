@@ -52,10 +52,14 @@ class AuthOTPVerificationRequired extends AuthState {
 class AuthError extends AuthState {
   final String message;
 
-  const AuthError(this.message);
+  /// The backend no longer accepts this session; the listener should send the
+  /// user to login rather than show [message].
+  final bool sessionExpired;
+
+  const AuthError(this.message, {this.sessionExpired = false});
 
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, sessionExpired];
 }
 
 class AuthForgotPasswordOTPRequired extends AuthState {

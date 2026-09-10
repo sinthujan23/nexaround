@@ -14,6 +14,7 @@ import 'package:nexaround_app/core/error/failures.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/services.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class AuthBloc extends Bloc<AuthEvent, AuthState> {
   final AuthRepository _authRepository;
@@ -93,7 +94,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       } else {
         final failure = result.fold((l) => l, (r) => throw Exception());
         debugPrint('[AuthBloc] Backend googleLogin failed: ${failure.message}');
-        emit(AuthError(failure.message));
+        emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired));
       }
     } catch (e, stack) {
       debugPrint('[AuthBloc] Google Sign-In exception: $e\n$stack');
@@ -173,7 +174,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
         ));
       } else {
         final failure = result.fold((l) => l, (r) => throw Exception());
-        emit(AuthError(failure.message));
+        emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired));
       }
     } catch (e) {
       if (e is SignInWithAppleAuthorizationException) {
@@ -195,10 +196,14 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             return;
           }
         }
-        emit(AuthError('Apple sign-in failed. $detail'));
+        // The code is the diagnostic; it stays in debug builds only. A user
+        // sees a sentence, not an AuthenticationServices error string.
+        emit(AuthError(kDebugMode
+            ? 'Apple sign-in failed. $detail'
+            : "Apple sign-in didn't complete. Please try again."));
         return;
       }
-      emit(AuthError('Apple Sign-In failed: ${e.toString()}'));
+      emit(AuthError(userMessageFor(e, action: 'sign in with Apple')));
     }
   }
 
@@ -374,7 +379,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
           message: failure.message,
         ));
       } else {
-        emit(AuthError(failure.message));
+        emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired));
       }
     }
   }
@@ -399,7 +404,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
             message: failure.message,
           ));
         } else {
-          emit(AuthError(failure.message));
+          emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired));
         }
       },
       (registeredEmail) => emit(AuthOTPVerificationRequired(
@@ -427,7 +432,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       ));
     } else {
       final failure = result.fold((l) => l, (r) => throw Exception());
-      emit(AuthError(failure.message));
+      emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired));
     }
   }
 
@@ -437,7 +442,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
   ) async {
     final result = await _authRepository.resendOtp(email: event.email);
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (msg) => emit(AuthOTPVerificationRequired(
         email: event.email,
         message: msg,
@@ -462,7 +467,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     final result = await _authRepository.deleteAccount();
     await CacheService.clearUserData();
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (_) => emit(const AuthAccountDeleted()),
     );
   }
@@ -474,7 +479,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
     emit(const AuthLoading());
     final result = await _authRepository.forgotPassword(email: event.email);
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (msg) => emit(AuthForgotPasswordOTPRequired(
         email: event.email,
         message: msg,
@@ -492,7 +497,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       otp: event.otp,
     );
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (resetToken) => emit(AuthResetOTPVerified(
         email: event.email,
         resetToken: resetToken,
@@ -512,7 +517,7 @@ class AuthBloc extends Bloc<AuthEvent, AuthState> {
       newPassword: event.newPassword,
     );
     result.fold(
-      (failure) => emit(AuthError(failure.message)),
+      (failure) => emit(AuthError(failure.message, sessionExpired: failure.isSessionExpired)),
       (msg) => emit(AuthPasswordResetSuccess(msg)),
     );
   }

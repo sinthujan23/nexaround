@@ -8,6 +8,7 @@ import 'package:nexaround_app/features/attractions/domain/entities/attraction.da
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class MapBloc extends Bloc<MapEvent, MapState> {
   final AttractionRepository _repository;
@@ -760,7 +761,7 @@ class MapBloc extends Bloc<MapEvent, MapState> {
 
         emit(state.copyWith(
           status: MapStatus.failure,
-          errorMessage: e.toString(),
+          errorMessage: userMessageFor(e),
         ));
       }
       return; // Return early so we don't fall through and emit again

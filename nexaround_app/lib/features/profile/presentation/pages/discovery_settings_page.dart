@@ -7,6 +7,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class DiscoverySettingsPage extends StatefulWidget {
   const DiscoverySettingsPage({super.key});
@@ -54,7 +55,7 @@ class _DiscoverySettingsPageState extends State<DiscoverySettingsPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'save your settings'))),
         );
       }
     } finally {

@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/odyssey_detail_page.dart';
 import 'package:nexaround_app/features/mini_tour/data/mini_tour_repository.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 /// Read-back of everything the traveler has finished: completed Odyssey trips
 /// (status == 'completed', pulled from the backend) and completed Mini Tours
@@ -260,7 +261,7 @@ class _HistoryPageState extends State<HistoryPage> {
       _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting odyssey: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'delete the odyssey'))),
         );
       }
     }

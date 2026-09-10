@@ -11,6 +11,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class OdysseyPlannerPage extends StatefulWidget {
   const OdysseyPlannerPage({super.key});
@@ -335,7 +336,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       if (!mounted) return;
       setState(() => _isSubmitting = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not start generation: $e')),
+        SnackBar(content: Text(userMessageFor(e, action: 'start planning'))),
       );
     }
   }

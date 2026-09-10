@@ -5,6 +5,7 @@ import 'package:nexaround_app/features/planning/data/museum_repository.dart';
 import 'package:nexaround_app/features/planning/domain/museum.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 /// Displays a curated, time-filtered itinerary for a single museum.
 ///
@@ -393,7 +394,7 @@ class _MuseumGuidePageState extends State<MuseumGuidePage> {
       if (!mounted) return;
       if (_itinerary == null) {
         setState(() {
-          _error = e.toString();
+          _error = userMessageFor(e, action: 'load the museum guide');
           _loading = false;
         });
       } else {

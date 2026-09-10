@@ -1994,7 +1994,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
     return BlocListener<BudgetBloc, BudgetState>(
       listener: (context, state) {
         if (state is BudgetError) {
-          if (state.message.contains('401') || state.message.contains('token')) {
+          if (state.sessionExpired) {
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (_) => const LoginPage()),
               (route) => false,
@@ -2060,7 +2060,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
           } else if (state is BudgetClosed || state is NoBudgetFound) {
             return _buildNoBudgetUI();
           } else if (state is BudgetError) {
-            return _buildErrorUI(state.message);
+            return _buildErrorUI(state.message, isAuthError: state.sessionExpired);
           }
           return const Center(child: CircularProgressIndicator());
         },
@@ -3216,8 +3216,7 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       ),
     );
   }
-  Widget _buildErrorUI(String message) {
-    bool isAuthError = message.contains('401') || message.contains('token');
+  Widget _buildErrorUI(String message, {bool isAuthError = false}) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [

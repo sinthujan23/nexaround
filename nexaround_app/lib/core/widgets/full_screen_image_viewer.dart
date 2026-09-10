@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class FullScreenImageViewer extends StatefulWidget {
   final List<String> imageUrls;
@@ -110,7 +111,7 @@ class _FullScreenImageViewerState extends State<FullScreenImageViewer> {
         if (mounted) {
           setState(() => _isDeleting = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete: $e'), backgroundColor: AppColors.error),
+            SnackBar(content: Text(userMessageFor(e, action: 'delete the photo')), backgroundColor: AppColors.error),
           );
         }
       }

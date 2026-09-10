@@ -1,3 +1,4 @@
+import logging
 import uuid
 from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +23,13 @@ async def get_current_user_id(authorization: Optional[str] = Header(None), db: A
         if not user:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
         return user.id
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=401, detail=f"Auth error: {str(e)}")
+        # JWT-library wording ("Signature has expired", "Not enough segments")
+        # belongs in the log, not in a response the app puts on screen.
+        logging.getLogger(__name__).warning("budget auth failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 @router.get("/", response_model=Budget)
 async def get_my_budget(

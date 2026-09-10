@@ -53,8 +53,12 @@ class BudgetDetailLoaded extends BudgetState {
 class BudgetError extends BudgetState {
   final String message;
 
-  const BudgetError(this.message);
+  /// The backend rejected the session (401). Decided from the status code,
+  /// not by searching [message] — the text is written for people.
+  final bool sessionExpired;
+
+  const BudgetError(this.message, {this.sessionExpired = false});
 
   @override
-  List<Object?> get props => [message];
+  List<Object?> get props => [message, sessionExpired];
 }

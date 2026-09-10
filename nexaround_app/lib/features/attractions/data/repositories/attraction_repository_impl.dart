@@ -1,6 +1,7 @@
 import 'package:dartz/dartz.dart';
 import 'package:dio/dio.dart';
 import 'package:nexaround_app/core/error/failures.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 import 'package:nexaround_app/features/attractions/data/datasources/attraction_remote_datasource.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:nexaround_app/features/attractions/domain/repositories/attraction_repository.dart';
@@ -36,7 +37,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -48,7 +49,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -60,7 +61,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -72,7 +73,7 @@ class AttractionRepositoryImpl implements AttractionRepository {
     } on DioException catch (e) {
       return Left(_handleDioError(e));
     } catch (e) {
-      return Left(ServerFailure(e.toString()));
+      return Left(ServerFailure(userMessageFor(e)));
     }
   }
 
@@ -82,9 +83,10 @@ class AttractionRepositoryImpl implements AttractionRepository {
       return const NetworkFailure('Connection timed out');
     }
     if (e.response != null) {
-      final statusCode = e.response!.statusCode;
-      final detail = e.response!.data is Map ? e.response!.data['detail'] : null;
-      return ServerFailure(detail ?? 'Server error ($statusCode)');
+      return ServerFailure(
+        safeServerDetail(e.response) ?? userMessageFor(e),
+        e.response!.statusCode,
+      );
     }
     return const NetworkFailure('No internet connection');
   }

@@ -9,6 +9,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:nexaround_app/features/travel_stories/data/datasources/travel_stories_service.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class CreateJournalSheet extends StatefulWidget {
   final Function(TravelStory) onJournalSubmitted;
@@ -131,7 +132,7 @@ class _CreateJournalSheetState extends State<CreateJournalSheet> {
       
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(userMessageFor(e, action: 'save the entry'))));
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);

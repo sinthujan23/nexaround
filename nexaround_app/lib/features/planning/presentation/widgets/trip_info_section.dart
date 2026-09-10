@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 /// Practical Information, Booking Plan, and Sources — the parts of the
 /// generated Odyssey that don't belong on Overview (already dense) or
@@ -269,7 +270,7 @@ class TripInfoSection extends StatelessWidget {
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error opening link: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'open the link'))),
         );
       }
     }

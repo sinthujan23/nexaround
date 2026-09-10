@@ -14,6 +14,7 @@ import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/services/cloud_storage_service.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class TravelJournalPage extends StatefulWidget {
   const TravelJournalPage({Key? key}) : super(key: key);
@@ -440,7 +441,7 @@ class _JournalDetailPageState extends State<JournalDetailPage> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to delete: $e')),
+            SnackBar(content: Text(userMessageFor(e, action: 'delete the entry'))),
           );
         }
       }

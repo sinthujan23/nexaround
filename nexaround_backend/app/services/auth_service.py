@@ -1,5 +1,6 @@
 import uuid
 import asyncio
+import logging
 import httpx
 from typing import Optional, Dict, Any
 from google.oauth2 import id_token
@@ -34,6 +35,8 @@ from app.core.exceptions import (
     BadRequestException,
 )
 from app.core.rate_limiter import get_redis_client, check_account_rate_limit
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -233,9 +236,8 @@ class AuthService:
             # Enforce audience validation — GOOGLE_CLIENT_IDS must be configured
             allowed_ids = settings.GOOGLE_CLIENT_IDS
             if not allowed_ids:
-                raise UnauthorizedException(
-                    detail="Google login is not configured. GOOGLE_CLIENT_IDS must be set."
-                )
+                logger.error("Google login attempted but GOOGLE_CLIENT_IDS is not configured")
+                raise UnauthorizedException(detail="Google sign-in is not available right now")
             aud = id_info.get("aud")
             azp = id_info.get("azp")
             aud_valid = (aud in allowed_ids) or (azp in allowed_ids)
@@ -273,7 +275,11 @@ class AuthService:
         except UnauthorizedException:
             raise
         except Exception as e:
-            raise UnauthorizedException(detail=f"Google authentication failed: {str(e)}")
+            # The cause stays in the server log. Library and verifier wording
+            # ("Token expired", "Wrong number of segments") tells a client
+            # nothing it can act on and tells an attacker which stack this is.
+            logger.warning("Google authentication failed: %s", e)
+            raise UnauthorizedException(detail="Google sign-in failed. Please try again.")
 
     async def apple_login(
         self,
@@ -315,7 +321,8 @@ class AuthService:
         except UnauthorizedException:
             raise
         except Exception as e:
-            raise UnauthorizedException(detail=f"Apple authentication failed: {str(e)}")
+            logger.warning("Apple authentication failed: %s", e)
+            raise UnauthorizedException(detail="Apple sign-in failed. Please try again.")
 
     async def _verify_apple_token(self, apple_id_token: str) -> dict:
         """Fetch Apple's JWKS public keys and cryptographically verify the JWT signature."""
@@ -337,9 +344,8 @@ class AuthService:
 
         allowed_auds = [a for a in settings.APPLE_CLIENT_IDS if a]
         if not allowed_auds:
-            raise UnauthorizedException(
-                detail="Apple login is not configured. APPLE_CLIENT_IDS must be set."
-            )
+            logger.error("Apple login attempted but APPLE_CLIENT_IDS is not configured")
+            raise UnauthorizedException(detail="Apple sign-in is not available right now")
         try:
             payload = jwt.decode(
                 apple_id_token,
@@ -352,21 +358,20 @@ class AuthService:
             # Manually validate audience against allowed Apple Client IDs
             token_aud = payload.get("aud")
             if isinstance(token_aud, list):
-                if not any(aud in allowed_auds for aud in token_aud):
-                    raise UnauthorizedException(
-                        detail=f"Invalid Apple token: audience {token_aud} not in allowed client IDs"
-                    )
+                aud_ok = any(aud in allowed_auds for aud in token_aud)
             else:
-                if token_aud not in allowed_auds:
-                    raise UnauthorizedException(
-                        detail=f"Invalid Apple token: audience '{token_aud}' not in allowed client IDs"
-                    )
+                aud_ok = token_aud in allowed_auds
+            if not aud_ok:
+                # Logged, not returned: the audience names our own client IDs.
+                logger.warning("Apple token audience %r not in allowed client IDs", token_aud)
+                raise UnauthorizedException(detail="Invalid Apple token: audience not allowed for this app")
 
             return payload
         except UnauthorizedException:
             raise
         except Exception as err:
-            raise UnauthorizedException(detail=f"Apple token signature verification failed: {err}")
+            logger.warning("Apple token signature verification failed: %s", err)
+            raise UnauthorizedException(detail="Invalid Apple token")
 
     @staticmethod
     async def _fetch_apple_jwks(force_refresh: bool = False) -> list:

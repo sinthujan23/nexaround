@@ -9,6 +9,7 @@ import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class LocationSearchModal extends StatefulWidget {
   final double? currentLatitude;
@@ -276,7 +277,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not obtain current location: $e'),
+            content: Text(userMessageFor(e, action: 'get your current location')),
             backgroundColor: const Color(0xFFE65100),
           ),
         );

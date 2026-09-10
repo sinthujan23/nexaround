@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:nexaround_app/features/attractions/data/repositories/review_repository_impl.dart';
 import 'package:nexaround_app/features/attractions/domain/entities/review.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 // Events
 abstract class ReviewEvent extends Equatable {
@@ -65,7 +66,7 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       final reviews = await _repository.getReviews(event.attractionId);
       emit(state.copyWith(isLoading: false, reviews: reviews));
     } catch (e) {
-      emit(state.copyWith(isLoading: false, errorMessage: e.toString()));
+      emit(state.copyWith(isLoading: false, errorMessage: userMessageFor(e)));
     }
   }
 
@@ -78,7 +79,7 @@ class ReviewBloc extends Bloc<ReviewEvent, ReviewState> {
       );
       add(FetchReviews(event.attractionId));
     } catch (e) {
-      emit(state.copyWith(errorMessage: e.toString()));
+      emit(state.copyWith(errorMessage: userMessageFor(e)));
     }
   }
 }

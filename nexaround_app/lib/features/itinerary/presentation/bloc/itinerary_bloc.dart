@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:nexaround_app/features/itinerary/data/repositories/itinerary_repository.dart';
 import 'package:nexaround_app/features/itinerary/domain/entities/itinerary.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 // Events
 abstract class ItineraryEvent extends Equatable {
@@ -69,7 +70,7 @@ class ItineraryBloc extends Bloc<ItineraryEvent, ItineraryState> {
       final results = await _repository.getMyItineraries();
       emit(state.copyWith(isLoading: false, itineraries: results));
     } catch (e) {
-      emit(state.copyWith(isLoading: false, errorMessage: e.toString()));
+      emit(state.copyWith(isLoading: false, errorMessage: userMessageFor(e)));
     }
   }
 
@@ -78,7 +79,7 @@ class ItineraryBloc extends Bloc<ItineraryEvent, ItineraryState> {
       await _repository.createItinerary(event.title, date: event.date);
       add(FetchItineraries());
     } catch (e) {
-      emit(state.copyWith(errorMessage: e.toString()));
+      emit(state.copyWith(errorMessage: userMessageFor(e)));
     }
   }
 
@@ -87,7 +88,7 @@ class ItineraryBloc extends Bloc<ItineraryEvent, ItineraryState> {
       await _repository.addItemToItinerary(event.itineraryId, event.item, event.currentItems);
       add(FetchItineraries());
     } catch (e) {
-      emit(state.copyWith(errorMessage: e.toString()));
+      emit(state.copyWith(errorMessage: userMessageFor(e)));
     }
   }
 }

@@ -10,6 +10,7 @@ import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -3541,7 +3542,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             } catch (e) {
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Error launching link: $e')),
+                  SnackBar(content: Text(userMessageFor(e, action: 'open the link'))),
                 );
               }
             }

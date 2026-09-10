@@ -6,6 +6,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/museum_guide_
 import 'package:nexaround_app/core/constants/api_constants.dart';
 import 'package:video_player/video_player.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 /// Lists all 63 top world museums as premium cards. Tapping one opens the
 /// curated guide page where the user picks their available time.
@@ -100,7 +101,7 @@ class _MuseumsListPageState extends State<MuseumsListPage> {
       if (!mounted) return;
       if (_museums == null || _museums!.isEmpty) {
         setState(() {
-          _error = e.toString();
+          _error = userMessageFor(e, action: 'load museums');
           _loading = false;
         });
       } else {

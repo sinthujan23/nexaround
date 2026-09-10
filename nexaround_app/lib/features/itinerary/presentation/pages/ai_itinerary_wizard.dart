@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class AiItineraryWizard extends StatefulWidget {
   final String location;
@@ -35,7 +36,7 @@ class _AiItineraryWizardState extends State<AiItineraryWizard> {
       });
     } catch (e) {
       setState(() {
-        _error = e.toString();
+        _error = userMessageFor(e, action: 'build the itinerary');
         _isLoading = false;
       });
     }

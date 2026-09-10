@@ -385,7 +385,7 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
         resizeToAvoidBottomInset: false,
         body: BlocListener<AuthBloc, AuthState>(
           listener: (context, state) {
-            if (state is AuthError && (state.message.contains('401') || state.message.contains('token'))) {
+            if (state is AuthError && state.sessionExpired) {
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute(builder: (_) => const AnimatedSplashScreen()),
                 (route) => false,

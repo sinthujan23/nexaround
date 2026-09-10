@@ -4,6 +4,7 @@ import 'package:nexaround_app/features/chat/domain/entities/chat_message.dart';
 import 'package:nexaround_app/features/chat/presentation/bloc/chat_event.dart';
 import 'package:nexaround_app/features/chat/presentation/bloc/chat_state.dart';
 import 'package:uuid/uuid.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatRepository _repository;
@@ -51,7 +52,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (e) {
       emit(state.copyWith(
         status: ChatStatus.failure,
-        errorMessage: e.toString(),
+        errorMessage: userMessageFor(e),
       ));
     }
   }

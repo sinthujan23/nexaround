@@ -7,6 +7,7 @@ import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 import 'package:nexaround_app/features/planning/domain/odyssey.dart';
 import 'package:nexaround_app/features/planning/presentation/widgets/odyssey_plan_view.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/history_page.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 /// Read-only view of a saved Odyssey, with the option to delete it.
 class OdysseyDetailPage extends StatefulWidget {
@@ -143,7 +144,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
       if (!mounted) return;
       setState(() => _retrying = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Retry failed: $e')),
+        SnackBar(content: Text(userMessageFor(e, action: 'retry'))),
       );
     }
   }
@@ -223,7 +224,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
       if (!mounted) return;
       setState(() => _swappingPartnerName = null);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not swap partner: $e')),
+        SnackBar(content: Text(userMessageFor(e, action: 'swap the partner'))),
       );
     }
   }
@@ -660,7 +661,7 @@ class _OdysseyDetailPageState extends State<OdysseyDetailPage> {
       if (mounted) {
         setState(() => _deleting = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not delete: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'delete the odyssey'))),
         );
       }
     }

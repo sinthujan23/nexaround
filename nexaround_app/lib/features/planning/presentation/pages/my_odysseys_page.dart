@@ -12,6 +12,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/history_page.
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
+import 'package:nexaround_app/core/error/user_message.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -664,7 +665,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting blueprint: $e')),
+          SnackBar(content: Text(userMessageFor(e, action: 'delete the blueprint'))),
         );
       }
     }
