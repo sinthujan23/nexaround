@@ -4,12 +4,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/services.dart';
+import 'package:sensors_plus/sensors_plus.dart';
 import 'package:nexaround_app/core/services/google_directions_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:camera/camera.dart';
-import 'package:nexaround_app/features/ar_mode/domain/ar_orientation_tracker.dart';
-import 'package:nexaround_app/features/ar_mode/domain/ar_projection.dart';
+import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
@@ -146,20 +146,15 @@ class _ArCameraPageState extends State<ArCameraPage>
     return '${landmark.name}|$lat,$lng';
   }
 
+  StreamSubscription<CompassEvent>? _compassSubscription;
   StreamSubscription<geo.Position>? _positionSubscription;
-  /// Gyro + accelerometer + compass fusion. Its [ArOrientationTracker.pose]
-  /// notifier drives the AR marker layer directly at sensor rate; everything
-  /// else on the page reads the mirrored [_heading]/[_pitch] fields and is
-  /// rebuilt by the throttled listener in [_onPoseChanged].
-  late final ArOrientationTracker _orientation;
+  StreamSubscription<AccelerometerEvent>? _accelerometerSubscription;
+  bool _isPhonePointingDown = false;
+  double _pitchAngle = 90.0;
   double _heading = 0.0;
-  /// Camera elevation above the horizon in degrees (+ = up), from the tracker.
-  double _pitch = 0.0;
-  double? _compassAccuracy; // 0..360°, lower = more reliable
+  double? _rawHeading; // last raw reading from sensor (pre-smoothing)
   double _lastRenderedHeading = 0.0; // last heading used to trigger a rebuild
-  double _lastRenderedPitch = 0.0;
-  int _lastRenderedPoseMs = 0;
-  Timer? _coarseRebuildTimer; // trailing-edge flush for the throttle
+  double? _compassAccuracy; // 0..360°, lower = more reliable
   List<_ArLandmark> _landmarks = [];
   /// Master list of ALL fetched places — never overwritten by category switching.
   /// Chip counts always read from this so they stay stable.
@@ -187,23 +182,31 @@ class _ArCameraPageState extends State<ArCameraPage>
   String? _userPickedLocationName;
 
   // === AR camera geometry ===
-  // Camera field of view lives in ar_projection.dart (kCameraFovDegrees).
+  // Typical mobile back-camera horizontal FOV. Phones vary 60–75°; 65° is a
+  // safe default that keeps the cone honest without missing nearby items.
+  static const double _cameraFovDegrees = 65.0;
   // Hard cone used to decide whether a landmark is "in front of the camera".
-  // Includes a small buffer so hints don't flip at the FOV edge.
-  static const double _viewConeHalfDegrees = (kCameraFovDegrees / 2) + 5;
-  // Half-angle of the cone in which a place is considered to have a card in
-  // front of the lens. Used to gate the turn/direction guide so it only appears
-  // when nothing is visible in the camera frame.
+  // Includes a small buffer so cards don't pop in/out at the FOV edge.
+  static const double _viewConeHalfDegrees = (_cameraFovDegrees / 2) + 5;
+  // Half-angle of the cone in which place cards are actually drawn. Matches the
+  // camera field of view plus the same 8° edge buffer the projection uses, so
+  // "a place has a visible card" and "a place is in front of the lens" mean the
+  // same thing. Used to gate the turn/direction guide so it only appears when
+  // nothing is visible in the camera frame.
   static const double _cardConeHalfDegrees = _viewConeHalfDegrees + 8;
-  // The AR marker layer follows the fused pose at sensor rate through a
-  // ValueListenableBuilder. The REST of the page (radar, direction guide,
-  // pointed-place panel, nav chevrons) only needs a coarse refresh, so it is
-  // rebuilt when the pose moved at least this much, at most every 100 ms.
-  static const double _coarseHeadingRebuildDegrees = 1.0;
-  static const double _coarsePitchRebuildDegrees = 2.0;
-  static const int _coarseRebuildMinIntervalMs = 100;
-  // If the OS reports compass accuracy worse than this, the compass reading is
-  // not used to correct the fused heading.
+  // The raw sensor reading is jittery; we low-pass filter it so cards don't
+  // dance when the phone is "still". Higher = more responsive, lower = more
+  // stable. 0.05 was far too low — it made the heading lag reality by several
+  // seconds (places pointed the wrong way until it slowly caught up). 0.2 keeps
+  // jitter down while tracking turns in a fraction of a second. The very first
+  // reading is snapped directly (see compass listener) so AR opens aligned.
+  static const double _headingSmoothing = 0.2;
+  // The compass fires 20-50x/sec and jitters even when the phone is still.
+  // Rebuilding the whole AR tree on every tick is wasteful, so we only rebuild
+  // when the smoothed heading actually moved at least this many degrees (plus
+  // the first reading / accuracy changes). Below this, the move is invisible.
+  static const double _headingRebuildThresholdDegrees = 0.4;
+  // If the OS reports compass accuracy worse than this, ignore the update.
   static const double _maxAcceptableAccuracyDegrees = 35.0;
   bool _minimalHud = false;
   bool _isCapturing = false;
@@ -1047,66 +1050,7 @@ class _ArCameraPageState extends State<ArCameraPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _orientation = ArOrientationTracker(
-      maxUsableCompassAccuracy: _maxAcceptableAccuracyDegrees,
-    );
-    _orientation.pose.addListener(_onPoseChanged);
     _checkAndInit();
-  }
-
-  /// Mirrors the fused pose into the page's fields on every sensor tick, and
-  /// triggers a coarse full rebuild only when it moved enough for the
-  /// non-marker widgets (radar, direction guide, nav chevrons, pointed-place
-  /// panel) to look different. The marker layer itself is rebuilt by the
-  /// ValueListenableBuilder in [build] and never waits on this.
-  void _onPoseChanged() {
-    if (!mounted || !widget.isActive) return;
-    final ArPose pose = _orientation.pose.value;
-    final double? prevAccuracy = _compassAccuracy;
-    _heading = pose.heading;
-    _pitch = pose.pitch;
-    _compassAccuracy = pose.compassAccuracy;
-
-    final bool accuracyChanged =
-        (prevAccuracy ?? -1) != (_compassAccuracy ?? -1);
-    final double headingDelta =
-        signedAngleDelta(_lastRenderedHeading, _heading).abs();
-    final double pitchDelta = (_pitch - _lastRenderedPitch).abs();
-    final bool movedEnough = headingDelta >= _coarseHeadingRebuildDegrees ||
-        pitchDelta >= _coarsePitchRebuildDegrees;
-    if (!accuracyChanged && !movedEnough) {
-      return; // fields already updated; the move is invisible elsewhere
-    }
-
-    final int nowMs = DateTime.now().millisecondsSinceEpoch;
-    final int sinceLastMs = nowMs - _lastRenderedPoseMs;
-    if (!accuracyChanged && sinceLastMs < _coarseRebuildMinIntervalMs) {
-      // Throttled. The tracker stops publishing once the phone is still, so
-      // flush on the trailing edge or a fast turn could leave the radar /
-      // direction guide stale until the next move.
-      _coarseRebuildTimer ??= Timer(
-        Duration(milliseconds: _coarseRebuildMinIntervalMs - sinceLastMs),
-        () {
-          _coarseRebuildTimer = null;
-          _coarseRebuild();
-        },
-      );
-      return;
-    }
-    _coarseRebuild();
-  }
-
-  void _coarseRebuild() {
-    if (!mounted || !widget.isActive) return;
-    _lastRenderedHeading = _heading;
-    _lastRenderedPitch = _pitch;
-    _lastRenderedPoseMs = DateTime.now().millisecondsSinceEpoch;
-
-    // Skip full-screen rebuilds while the user is actively typing or searching
-    // to ensure silky smooth keyboard performance.
-    if (_isSearching || _searchFocusNode.hasFocus) return;
-
-    setState(() {});
   }
 
   /// Stop feeding camera frames while the app itself is in the background.
@@ -1119,17 +1063,6 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// before the first visible frame after returning.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Sensors: stop integrating while backgrounded (no point, and the gyro
-    // would drift), re-snap to the compass on return.
-    if (state == AppLifecycleState.resumed) {
-      if (widget.isActive) {
-        _orientation.reset();
-        _orientation.start();
-      }
-    } else {
-      _orientation.stop();
-    }
-
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
 
@@ -1174,6 +1107,56 @@ class _ArCameraPageState extends State<ArCameraPage>
     _loadCachedPlaces();
     if (widget.isActive) _startArCapture();
 
+    _accelerometerSubscription = accelerometerEventStream().listen((event) {
+      if (!mounted || !widget.isActive) return;
+
+      final double y = event.y;
+      final double z = event.z;
+
+      final double rawPitch = (atan2(y, z.abs()) * (180 / pi)).abs();
+      _pitchAngle = _pitchAngle * 0.7 + rawPitch * 0.3;
+    });
+
+    _compassSubscription = FlutterCompass.events?.listen((event) {
+      if (!mounted || !widget.isActive) return;
+      final raw = event.heading;
+      if (raw == null || raw.isNaN) return;
+
+      final bool firstReading = _rawHeading == null;
+      // First valid reading: snap straight to it so the AR view opens aligned
+      // with reality instead of slewing all the way from north (0°) over
+      // several seconds, which made every place point the wrong way at first.
+      final double newHeading = firstReading
+          ? raw
+          : _smoothHeading(_heading, raw, _headingSmoothing);
+
+      _rawHeading = raw;
+      _heading = newHeading; // ALWAYS update the smoothed heading state
+      final double? prevAccuracy = _compassAccuracy;
+      _compassAccuracy = event.accuracy;
+
+      // Throttle: skip the (expensive) full rebuild when the heading barely
+      // moved since the last render checkpoint. The compass jitters constantly
+      // while stationary, so without this the whole AR tree redraws 20-50x/sec.
+      double delta = (newHeading - _lastRenderedHeading).abs();
+      if (delta > 180) delta = 360 - delta; // shortest angle across 0°/360°
+      final bool accuracyChanged =
+          (prevAccuracy ?? -1) != (_compassAccuracy ?? -1);
+      if (!firstReading &&
+          delta < _headingRebuildThresholdDegrees &&
+          !accuracyChanged) {
+        return; // value already updated; skip triggering a rebuild
+      }
+
+      _lastRenderedHeading = newHeading;
+
+      // Skip full-screen rebuilds while the user is actively typing or searching to ensure silky smooth keyboard performance
+      if (_isSearching || _searchFocusNode.hasFocus) {
+        return;
+      }
+
+      setState(() {});
+    });
 
     _positionSubscription =
         geo.Geolocator.getPositionStream(
@@ -1384,10 +1367,6 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// places. The compass/GPS callbacks gate on [widget.isActive] themselves, so
   /// they resume doing work automatically.
   void _startArCapture() {
-    // The phone may have been turned any amount while the tab was hidden, so
-    // forget the old compass fix and let the first reading re-snap.
-    _orientation.reset();
-    _orientation.start();
     if (_controller == null) {
       _initializeCamera();
     } else {
@@ -1403,10 +1382,10 @@ class _ArCameraPageState extends State<ArCameraPage>
   }
 
   /// Called when the AR tab is hidden: freeze the camera preview and clear the
-  /// sensors so nothing rebuilds in the background; the heading re-snaps on
-  /// return. The GPS callback early-returns while hidden.
+  /// heading so it re-snaps on return. The compass/GPS callbacks early-return
+  /// while hidden, so the heavy AR tree stops rebuilding in the background.
   void _stopArCapture() {
-    _orientation.stop();
+    _rawHeading = null;
     try {
       _controller?.pausePreview();
     } catch (_) {}
@@ -1435,9 +1414,8 @@ class _ArCameraPageState extends State<ArCameraPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _orientation.pose.removeListener(_onPoseChanged);
-    _orientation.dispose();
-    _coarseRebuildTimer?.cancel();
+    _accelerometerSubscription?.cancel();
+    _compassSubscription?.cancel();
     _positionSubscription?.cancel();
     _rangeHintTimer?.cancel();
     _maxPlacesLimitNoticeTimer?.cancel();
@@ -1792,8 +1770,41 @@ class _ArCameraPageState extends State<ArCameraPage>
   /// Signed angular distance from [heading] to [bearing] in degrees,
   /// normalised to (-180, 180]. Positive = target is clockwise (right) of
   /// where the camera is pointing.
-  static double _signedAngleDelta(double heading, double bearing) =>
-      signedAngleDelta(heading, bearing);
+  static double _signedAngleDelta(double heading, double bearing) {
+    double d = (bearing - heading) % 360;
+    if (d > 180) d -= 360;
+    if (d <= -180) d += 360;
+    return d;
+  }
+
+  /// Low-pass filter for the compass heading. Handles the wrap-around between
+  /// 359° and 0° so a tiny rotation across north doesn't snap the smoothed
+  /// value all the way back around the circle.
+  static double _smoothHeading(double previous, double next, double alpha) {
+    double delta = _signedAngleDelta(previous, next);
+    double updated = previous + delta * alpha;
+    if (updated < 0) updated += 360;
+    if (updated >= 360) updated -= 360;
+    return updated;
+  }
+
+  /// Returns the on-screen horizontal position (0..1) for a landmark whose
+  /// bearing is [angle] degrees off camera centre, using a perspective
+  /// projection so items track real-world position instead of stretching
+  /// linearly. Returns null when the landmark is outside the view cone.
+  static double? _projectAngleToScreenX(
+    double angle, {
+    double bufferDegrees = 8,
+  }) {
+    final half = _viewConeHalfDegrees + bufferDegrees;
+    if (angle.abs() > half) return null;
+    final halfFovRad = (_cameraFovDegrees / 2) * pi / 180;
+    final angleRad = angle * pi / 180;
+    // tan(angle)/tan(halfFov) maps angle linearly across the screen *in
+    // perspective space*, which matches what the camera lens actually shows.
+    final t = tan(angleRad) / tan(halfFovRad);
+    return (0.5 + t * 0.5).clamp(-0.15, 1.15);
+  }
 
   Future<void> _initializeCamera() async {
     // On iOS, camera permission MUST be granted before accessing the camera.
@@ -1939,15 +1950,10 @@ class _ArCameraPageState extends State<ArCameraPage>
   // count grows with range; only what fits the screen is drawn at once (the rest
   // sit on the radar / appear as you pan).
   static const int _maxVisibleMarkers = 100;
-  // How many place cards are drawn on screen at once. Cards are pinned to
-  // where their place sits in the camera image (see [_layoutArCards]); the
-  // nearest places win the slots so the visible set doesn't churn as you pan.
-  static const int _maxVisibleOnScreen = 8;
-  // Explore-mode marker footprint: name pill + dark card (collision box) and
-  // the dotted drop line + dot below it that ends on the anchor point.
-  static const double _exploreCardW = 120.0;
-  static const double _exploreCardH = 76.0;
-  static const double _exploreFooterH = 18.0;
+  // How many place cards are drawn on screen at once. Kept low so the vertically
+  // stacked cards (see [_buildLandmarkMarker]) never overlap each other — the
+  // most-centred places win the visible slots.
+  static const int _maxVisibleOnScreen = 5;
 
   void _loadCachedPlaces({geo.Position? position}) {
     try {
@@ -4883,18 +4889,13 @@ class _ArCameraPageState extends State<ArCameraPage>
             child: _buildCameraBackground(),
           ),
 
-          // EXPLORE MODE: Floating AR markers pinned to the camera image.
-          // Only this layer follows the fused pose at sensor rate.
+          // EXPLORE MODE: Floating AR markers (compass-driven).
           if (!_isIdentifying &&
               !_isSearching &&
               !_showInfoCard &&
               !_isNavigating)
-            Positioned.fill(
-              child: ValueListenableBuilder<ArPose>(
-                valueListenable: _orientation.pose,
-                builder: (_, pose, __) =>
-                    _buildExploreMarkerLayer(pose, screenW, screenH),
-              ),
+            ..._landmarksInView.asMap().entries.map(
+              (e) => _buildLandmarkMarker(e.key, e.value),
             ),
 
           // EXPLORE MODE: If we have places nearby but none in the view cone,
@@ -4954,21 +4955,7 @@ class _ArCameraPageState extends State<ArCameraPage>
               _selectedLandmark >= 0 &&
               _selectedLandmark < _landmarks.length &&
               !_isNavigating)
-            Positioned.fill(
-              child: ValueListenableBuilder<ArPose>(
-                valueListenable: _orientation.pose,
-                builder: (_, pose, __) => Stack(
-                  children: [
-                    _buildSelectedPlaceGuidanceOverlay(
-                      screenW,
-                      screenH,
-                      heading: pose.heading,
-                      pitch: pose.pitch,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+            _buildSelectedPlaceGuidanceOverlay(screenW, screenH),
 
           // Tap-triggered place detail card (compact bottom card)
           if (!_isSearching) ...[
@@ -5295,6 +5282,9 @@ class _ArCameraPageState extends State<ArCameraPage>
     );
   }
 
+  // Tracks how many markers are currently visible on screen
+  int _visibleCount = 0;
+
   /// Shown when there ARE nearby landmarks but none fall inside the camera's
   /// view cone — instead of leaving the screen empty (which looked broken),
   /// we tell the user which way to turn.
@@ -5448,184 +5438,47 @@ class _ArCameraPageState extends State<ArCameraPage>
     );
   }
 
-  /// Resolves the bearing from the user's live position when we have one;
-  /// falls back to the bearing computed at fetch time.
-  double _liveBearingFor(_ArLandmark lm) {
-    if (_currentPosition != null && lm.lat != null && lm.lng != null) {
-      return _calculateBearing(
-        _currentPosition!.latitude,
-        _currentPosition!.longitude,
-        lm.lat!,
-        lm.lng!,
-      );
-    }
-    return lm.bearing;
-  }
+  Widget _buildLandmarkMarker(int index, _ArLandmark landmark) {
+    // Reset visible counter at the start of each build cycle
+    if (index == 0) _visibleCount = 0;
 
-  /// Pins one card per landmark to where that place sits in the live camera
-  /// image: X from its bearing relative to [heading], Y from the horizon (which
-  /// moves with [pitch]) plus a distance lift so far places float higher.
-  ///
-  /// Nothing is clamped to the screen. A card whose place has left the lens's
-  /// view is culled, so cards glide off the edge exactly like the image does
-  /// (the old edge-clamp made them stick, then pop). Overlapping cards are
-  /// stacked upward — away from the horizon, consistent with far = higher — by
-  /// a greedy bumper that gives the nearest place its preferred spot.
-  ///
-  /// [cardH] is the collision box (the label itself); [footerH] is the drop
-  /// line + dot drawn beneath it, which ends on the anchor and may overlap.
-  _ArCardLayout _layoutArCards({
-    required double heading,
-    required double pitch,
-    required double screenW,
-    required double screenH,
-    required double cardW,
-    required double cardH,
-    double footerH = 0,
-    double gap = 6,
-    int maxCards = _maxVisibleOnScreen,
-    _ArLandmark? overridePointed,
-  }) {
-    final visible = _filteredLandmarks;
-    if (visible.isEmpty) return const _ArCardLayout([], null);
+    final screenW = MediaQuery.of(context).size.width;
+    final screenH = MediaQuery.of(context).size.height;
 
-    double maxDist = 0;
-    for (final l in visible) {
-      if (l.distanceM > maxDist) maxDist = l.distanceM;
+    final angle = _signedAngleDelta(_heading, landmark.bearing);
+    final dx = _projectAngleToScreenX(angle);
+    if (dx == null) return const SizedBox.shrink();
+
+    if (_visibleCount >= _maxVisibleOnScreen) return const SizedBox.shrink();
+
+    int currentSlot = _visibleCount;
+    _visibleCount++;
+
+    // === COMPACT LAYOUT ===
+    // Cards are stacked one per row. rowHeight MUST stay >= the rendered card
+    // height (name pill + thumbnail card + tether ≈ 97 px) or consecutive cards
+    // overlap. 104 leaves a small gap. Combined with [_maxVisibleOnScreen] this
+    // keeps every visible label clear of its neighbours.
+    // Notch-relative: must clear the top HUD row (~48px), the filter chip bar,
+    // the XP badge AND the "popular places" notice banner below them, with a
+    // comfortable gap — otherwise the first cards render behind the banner
+    // (client report). Starting at +184 keeps every label fully visible below it.
+    final double topStart = MediaQuery.of(context).padding.top + 184;
+    const double rowHeight = 104.0;
+    const double cardW = 120.0;
+
+    double topPos = topStart + (currentSlot * rowHeight);
+    double leftPos = (screenW * dx) - (cardW / 2);
+    leftPos = leftPos.clamp(8.0, screenW - cardW - 8.0);
+
+    // Stagger alternating markers horizontally
+    if (currentSlot % 2 == 1) {
+      leftPos = (leftPos + 30).clamp(8.0, screenW - cardW - 8.0);
     }
 
-    final double columnH = cardH + footerH;
-    final candidates = <_ArLabelPlacement>[];
-    for (final lm in visible) {
-      final double liveBearing = _liveBearingFor(lm);
-      final double diff = _signedAngleDelta(heading, liveBearing);
-      final double? anchorX = screenXForAngle(diff, screenW);
-      if (anchorX == null) continue;
-      final double lift = liftDegreesForDistance(lm.distanceM, maxDist);
-      final double? anchorY =
-          screenYForElevation(lift, pitch, screenW, screenH);
-      if (anchorY == null) continue;
-
-      final double left = anchorX - cardW / 2;
-      final double top = anchorY - columnH;
-      // Cull, don't clamp: only skip once the whole marker is off-screen.
-      if (left + cardW <= 0 ||
-          left >= screenW ||
-          top + columnH <= 0 ||
-          top >= screenH) {
-        continue;
-      }
-      candidates.add(
-        _ArLabelPlacement(
-          landmark: lm,
-          bearing: liveBearing,
-          angleDiff: diff.abs(),
-          anchorX: anchorX,
-          anchorY: anchorY,
-          preferredX: left,
-          preferredY: top,
-        ),
-      );
-    }
-
-    // Nearest first: they get their preferred slot, and the visible set stays
-    // stable as the user pans (a centred-first cap would swap cards in and out
-    // at the middle of the screen).
-    candidates.sort(
-      (a, b) => a.landmark.distanceM.compareTo(b.landmark.distanceM),
-    );
-
-    final placedRects = <Rect>[];
-    final placed = <_ArLabelPlacement>[];
-    for (final p in candidates) {
-      if (placed.length >= maxCards) break;
-      double y = p.preferredY;
-      Rect box = Rect.fromLTWH(p.preferredX, y, cardW, cardH);
-      bool fits = false;
-      for (int attempt = 0; attempt < 6; attempt++) {
-        final overlap = placedRects.any(
-          (r) => r.inflate(gap / 2).overlaps(box.inflate(gap / 2)),
-        );
-        if (!overlap) {
-          fits = true;
-          break;
-        }
-        y -= cardH + gap; // bump up, away from the horizon
-        box = Rect.fromLTWH(p.preferredX, y, cardW, cardH);
-      }
-      if (!fits || box.bottom <= 0) continue; // crowded out / bumped off top
-      placedRects.add(box);
-      p.finalX = box.left;
-      p.finalY = box.top;
-      placed.add(p);
-    }
-
-    // Active landmark: the override (a frozen/locked place) wins, otherwise
-    // whichever placed card is closest to the camera's centre line.
-    _ArLandmark? active = overridePointed;
-    if (active == null && placed.isNotEmpty) {
-      _ArLabelPlacement best = placed.first;
-      for (final p in placed) {
-        if (p.angleDiff < best.angleDiff) best = p;
-      }
-      active = best.landmark;
-    }
-    return _ArCardLayout(placed, active);
-  }
-
-  /// Explore-mode place cards. Rebuilt at sensor rate by the
-  /// ValueListenableBuilder in [build] — only this subtree follows the pose
-  /// every tick; the rest of the page refreshes via [_onPoseChanged].
-  Widget _buildExploreMarkerLayer(ArPose pose, double screenW, double screenH) {
-    final layout = _layoutArCards(
-      heading: pose.heading,
-      pitch: pose.pitch,
-      screenW: screenW,
-      screenH: screenH,
-      cardW: _exploreCardW,
-      cardH: _exploreCardH,
-      footerH: _exploreFooterH,
-    );
-    return Stack(
-      children: [
-        for (final p in layout.placements) _buildLandmarkMarker(p),
-        if (kDebugMode) _buildPoseDebugReadout(pose),
-      ],
-    );
-  }
-
-  /// Debug-only readout for verifying sensor sign conventions on a device:
-  /// turning right must raise H and slide cards left; tilting the camera up
-  /// must raise P and slide cards down.
-  Widget _buildPoseDebugReadout(ArPose pose) {
-    return Positioned(
-      left: 8,
-      top: MediaQuery.of(context).padding.top + 240,
-      child: IgnorePointer(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-          color: Colors.black54,
-          child: Text(
-            'H ${pose.heading.toStringAsFixed(1)}  '
-            'P ${pose.pitch.toStringAsFixed(1)}  '
-            'gyro:${pose.hasGyro ? 'on' : 'off'}  '
-            'acc:${pose.compassAccuracy?.toStringAsFixed(0) ?? '?'}'
-            '${pose.hasCompassFix ? '' : '  (no fix)'}',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 10,
-              fontFamily: 'monospace',
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLandmarkMarker(_ArLabelPlacement placement) {
-    final _ArLandmark landmark = placement.landmark;
-    final double leftPos = placement.finalX!;
-    final double topPos = placement.finalY!;
+    // Direction badge
+    final cardinal = _cardinalFromHeading(landmark.bearing);
+    final arrowIcon = _arrowIconForCardinal(cardinal);
 
     return Positioned(
           left: leftPos,
@@ -5707,72 +5560,75 @@ class _ArCameraPageState extends State<ArCameraPage>
                   final pointed = _frozenLandmark ?? _getPointedLandmark();
                   final bool isAligned = (pointed != null && landmark.name == pointed.name) ||
                       (_showInfoCard && _selectedLandmark != null && _selectedLandmark! >= 0 && _selectedLandmark! < _landmarks.length && _landmarks[_selectedLandmark!].name == landmark.name);
-                  // No BackdropFilter here: a blur per card per sensor tick
-                  // is the one thing that would jank the marker layer, and the
-                  // 75% black fill reads the same.
-                  return Container(
-                    width: _exploreCardW,
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.75),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: isAligned
-                            ? const Color(0xFF00E676)
-                            : Colors.white.withOpacity(0.12),
-                        width: isAligned ? 1.8 : 0.8,
-                      ),
-                      boxShadow: isAligned
-                          ? [
-                              BoxShadow(
-                                color: const Color(0xFF00E676).withOpacity(0.5),
-                                blurRadius: 12,
-                                spreadRadius: 1,
-                              ),
-                            ]
-                          : null,
-                    ),
-                    child: Row(
-                      children: [
-                        // Rating + Distance
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.star_rounded,
-                                    color: Colors.amber,
-                                    size: 13,
-                                  ),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '${landmark.rating}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                landmark.distance,
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.7),
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
+                  return ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        width: cardW,
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.75),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isAligned
+                                ? const Color(0xFF00E676)
+                                : Colors.white.withOpacity(0.12),
+                            width: isAligned ? 1.8 : 0.8,
                           ),
+                          boxShadow: isAligned
+                              ? [
+                                  BoxShadow(
+                                    color: const Color(0xFF00E676).withOpacity(0.5),
+                                    blurRadius: 12,
+                                    spreadRadius: 1,
+                                  ),
+                                ]
+                              : null,
                         ),
-                      ],
+                        child: Row(
+                        children: [
+                          // Rating + Distance
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.star_rounded,
+                                      color: Colors.amber,
+                                      size: 13,
+                                    ),
+                                    const SizedBox(width: 3),
+                                    Text(
+                                      '${landmark.rating}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  landmark.distance,
+                                  style: TextStyle(
+                                    color: Colors.white.withOpacity(0.7),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  );
+                  ),
+                );
                 }),
 
                 // ── DOTTED LINE TO GROUND ──
@@ -5806,9 +5662,7 @@ class _ArCameraPageState extends State<ArCameraPage>
             ),
           ),
         )
-        // Keyed by place so the entrance plays once when a card appears, not
-        // every time the set of visible cards shifts under it.
-        .animate(key: ValueKey('ar-marker-${landmark.name}'))
+        .animate()
         .fade(duration: 350.ms)
         .moveX(begin: -20, end: 0, curve: Curves.easeOutBack);
   }
@@ -5838,29 +5692,13 @@ class _ArCameraPageState extends State<ArCameraPage>
     final screenW = MediaQuery.of(context).size.width;
     final screenH = MediaQuery.of(context).size.height;
 
-    // Coarse pass (this build) decides which place the bottom panel talks
-    // about; the per-frame pass inside the ValueListenableBuilder below
-    // draws the cards at sensor rate so they stay glued to the camera image.
     final dotsResult = _buildOtherPlaceDots(screenW, screenH, _frozenLandmark);
     final pointedLandmark = dotsResult.activeLandmark ?? _getPointedLandmark();
 
     return Stack(
       children: [
         // ── PLACE DOTS (highlighted when locked/pointed) ─
-        Positioned.fill(
-          child: ValueListenableBuilder<ArPose>(
-            valueListenable: _orientation.pose,
-            builder: (_, pose, __) => Stack(
-              children: _buildOtherPlaceDots(
-                screenW,
-                screenH,
-                _frozenLandmark,
-                heading: pose.heading,
-                pitch: pose.pitch,
-              ).markers,
-            ),
-          ),
-        ),
+        ...dotsResult.markers,
 
         // ── PLACE INFO PANEL (when pointing at a place) ─
         // ── PLACE INFO PANEL (always show) ─
@@ -6459,37 +6297,124 @@ class _ArCameraPageState extends State<ArCameraPage>
     );
   }
 
-  /// Build a label card per visible landmark, pinned to where the place sits
-  /// in the camera image (see [_layoutArCards]), with a direction badge
-  /// (NE/N/etc) + dotted line dropping to its anchor. Highlights the one the
-  /// camera is currently pointed at. Cards leave the screen with the image.
+  /// Build a label card per visible landmark, spread by bearing, with a
+  /// direction badge (NE/N/etc) + dotted line dropping toward its ground
+  /// position. Highlights the one the camera is currently pointed at.
+  /// Cards are placed with greedy collision avoidance so they don't stack.
   _ArPlaceDotsResult _buildOtherPlaceDots(
     double screenW,
     double screenH,
-    _ArLandmark? overridePointed, {
-    double? heading,
-    double? pitch,
-  }) {
+    _ArLandmark? overridePointed,
+  ) {
     final List<Widget> markers = [];
+    final visible = _filteredLandmarks;
+
+    if (visible.isEmpty) return _ArPlaceDotsResult(markers, null);
+
+    final double maxDist = visible
+        .map((l) => l.distanceM)
+        .reduce((a, b) => a > b ? a : b);
+    if (maxDist <= 1.0) return _ArPlaceDotsResult(markers, null);
+
+    // Notch-relative top boundary so the farthest cards clear the filter
+    // chips. The filter chips bottom is at topPadding + 56.
+    final topPadding = MediaQuery.of(context).padding.top;
+    final double topY = topPadding + 70.0;
+
+    // Bottom banner and navigation buttons sit roughly 250-280px from the bottom.
+    final double safeBottomY = screenH - 280;
+    final double bottomY = safeBottomY - 40;
     const double cardW = 148;
     const double cardH = 54;
-    // Realistic short pointers (fixed 40px length) instead of floor cables,
-    // plus the 8px anchor dot.
-    const double lineHeight = 40.0;
-    const double footerH = lineHeight + 8;
+    const double gap = 6;
 
-    final layout = _layoutArCards(
-      heading: heading ?? _heading,
-      pitch: pitch ?? _pitch,
-      screenW: screenW,
-      screenH: screenH,
-      cardW: cardW,
-      cardH: cardH,
-      footerH: footerH,
-      overridePointed: overridePointed,
+    // Pre-compute candidate placements, sorted by distance ascending so
+    // closer places get their preferred slot first.
+    final placements = <_ArLabelPlacement>[];
+    for (final lm in visible) {
+      final double liveBearing =
+          (_currentPosition != null && lm.lat != null && lm.lng != null)
+          ? _calculateBearing(
+              _currentPosition!.latitude,
+              _currentPosition!.longitude,
+              lm.lat!,
+              lm.lng!,
+            )
+          : lm.bearing;
+
+      double diff = liveBearing - _heading;
+      if (diff > 180) diff -= 360;
+      if (diff < -180) diff += 360;
+
+      // Position the card with the SAME perspective projection the camera lens
+      // uses (tan(angle)/tan(halfFov)), so a card sits exactly where its place
+      // appears in the live image — instead of being spread linearly across a
+      // cone far wider than the real field of view. Returns null when the place
+      // is outside the lens's view, so cards only show for things actually in
+      // front of the camera (this is what fixes the "wrong direction" mismatch).
+      final double? dx = _projectAngleToScreenX(diff);
+      if (dx == null) continue;
+      final double centerX = (screenW * dx).clamp(
+        cardW / 2 + 8,
+        screenW - cardW / 2 - 8,
+      );
+
+      final double logNorm = (log(lm.distanceM + 1) / log(maxDist + 1)).clamp(
+        0.05,
+        1.0,
+      );
+      final double preferredY = bottomY - logNorm * (bottomY - topY);
+
+      placements.add(
+        _ArLabelPlacement(
+          landmark: lm,
+          bearing: liveBearing,
+          angleDiff: diff.abs(),
+          preferredX: centerX,
+          preferredY: preferredY,
+        ),
+      );
+    }
+
+    placements.sort(
+      (a, b) => a.landmark.distanceM.compareTo(b.landmark.distanceM),
     );
-    final placements = layout.placements;
-    final _ArLandmark? activeLandmark = layout.activeLandmark;
+
+    // Greedy collision avoidance: bump down if a placed card overlaps.
+    final placedRects = <Rect>[];
+    final placedPlacements = <_ArLabelPlacement>[];
+    for (final p in placements) {
+      double x = p.preferredX - cardW / 2;
+      double y = p.preferredY;
+      Rect candidate = Rect.fromLTWH(x, y, cardW, cardH);
+
+      int attempts = 0;
+      while (attempts < 12) {
+        final overlap = placedRects.any(
+          (r) => r.inflate(gap / 2).overlaps(candidate.inflate(gap / 2)),
+        );
+        if (!overlap) break;
+        y += cardH + gap;
+        candidate = Rect.fromLTWH(x, y, cardW, cardH);
+        attempts++;
+      }
+
+      // Don't render beyond the visible AR band — skip if it overlaps the bottom banner.
+      if (candidate.bottom > safeBottomY) continue;
+
+      placedRects.add(candidate);
+      p.finalX = candidate.left;
+      p.finalY = candidate.top;
+      placedPlacements.add(p);
+    }
+
+    // Determine active landmark:
+    // Use overridePointed if set, otherwise pick the card closest to camera center angle among RENDERED cards.
+    _ArLandmark? activeLandmark = overridePointed;
+    if (activeLandmark == null && placedPlacements.isNotEmpty) {
+      placedPlacements.sort((a, b) => a.angleDiff.compareTo(b.angleDiff));
+      activeLandmark = placedPlacements.first.landmark;
+    }
 
     for (final p in placements) {
       if (p.finalY == null) continue;
@@ -6505,9 +6430,11 @@ class _ArCameraPageState extends State<ArCameraPage>
           ? const Color(0xFF00E676)
           : Colors.white.withOpacity(0.08);
 
+      // Realistic short pointers (fixed 40px length) instead of floor cables
+      const double lineHeight = 40.0;
+
       markers.add(
         Positioned(
-          key: ValueKey('ar-dot-${lm.name}'),
           left: p.finalX!,
           top: p.finalY!,
           child: GestureDetector(
@@ -9963,42 +9890,25 @@ HOW TO FORMAT EVERY REPLY:
           if (_hasArrivedAtDestination)
             Positioned.fill(child: _buildArrivalCelebration()),
 
-          // FLOATING AR MARKER ON TARGET (when in view) — pinned to the
-          // destination's spot in the camera image at sensor rate.
+          // FLOATING AR MARKER ON TARGET (when in view)
           if (isTargetInView && !_hasArrivedAtDestination)
-            Positioned.fill(
-              child: ValueListenableBuilder<ArPose>(
-                valueListenable: _orientation.pose,
-                builder: (_, pose, __) {
-                  final target = _navigationTarget;
-                  if (target == null) return const SizedBox.shrink();
-                  final screenW = MediaQuery.of(context).size.width;
-                  final screenH = MediaQuery.of(context).size.height;
-                  final angle = _signedAngleDelta(pose.heading, target.bearing);
-                  final double? anchorX = screenXForAngle(angle, screenW);
-                  final double? anchorY = screenYForElevation(
-                    kLiftNearDegrees,
-                    pose.pitch,
-                    screenW,
-                    screenH,
-                  );
-                  if (anchorX == null || anchorY == null) {
-                    return const SizedBox.shrink();
-                  }
-                  return Stack(
-                    children: [
-                      Positioned(
-                        left: anchorX - 80,
-                        // Bubble (~80px) + its 100px drop line end on the
-                        // anchor point.
-                        top: anchorY - 180,
-                        child: _buildNavigationBubble(target),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ),
+            () {
+              final angle = _signedAngleDelta(
+                _heading,
+                _navigationTarget!.bearing,
+              );
+              final dx = _projectAngleToScreenX(angle);
+              if (dx != null) {
+                final screenW = MediaQuery.of(context).size.width;
+                final screenH = MediaQuery.of(context).size.height;
+                return Positioned(
+                  left: (screenW * dx) - 80,
+                  top: screenH * 0.35,
+                  child: _buildNavigationBubble(_navigationTarget!),
+                );
+              }
+              return const SizedBox.shrink();
+            }(),
 
           // DISTANCE HUD (Elevated to fit perfectly above the bottom merged card)
           if (!_hasArrivedAtDestination)
@@ -10836,23 +10746,10 @@ class _ArPlaceDotsResult {
   _ArPlaceDotsResult(this.markers, this.activeLandmark);
 }
 
-/// Output of [_layoutArCards]: the cards that survived culling and collision
-/// resolution (with finalX/finalY set) plus the landmark the camera is most
-/// directly pointed at among them.
-class _ArCardLayout {
-  final List<_ArLabelPlacement> placements;
-  final _ArLandmark? activeLandmark;
-  const _ArCardLayout(this.placements, this.activeLandmark);
-}
-
 class _ArLabelPlacement {
   final _ArLandmark landmark;
   final double bearing;
   final double angleDiff;
-  /// Screen point the place itself projects to; the marker's drop line ends
-  /// here so the card reads as pinned to that spot in the camera image.
-  final double anchorX;
-  final double anchorY;
   final double preferredX;
   final double preferredY;
   double? finalX;
@@ -10862,8 +10759,6 @@ class _ArLabelPlacement {
     required this.landmark,
     required this.bearing,
     required this.angleDiff,
-    required this.anchorX,
-    required this.anchorY,
     required this.preferredX,
     required this.preferredY,
   });
@@ -11310,54 +11205,46 @@ class _CornerBracketPainter extends CustomPainter {
 }
 
 extension _ArCameraNavigation on _ArCameraPageState {
-  Widget _buildSelectedPlaceGuidanceOverlay(
-    double screenW,
-    double screenH, {
-    double? heading,
-    double? pitch,
-  }) {
+  Widget _buildSelectedPlaceGuidanceOverlay(double screenW, double screenH) {
     const double localPi = 3.1415926535897932;
     if (_selectedLandmark < 0 || _selectedLandmark >= _landmarks.length) {
       return const SizedBox.shrink();
     }
 
     final lm = _landmarks[_selectedLandmark];
-    final double camHeading = heading ?? _heading;
-    final double camPitch = pitch ?? _pitch;
 
-    final double liveBearing = _liveBearingFor(lm);
-    final double diff = signedAngleDelta(camHeading, liveBearing);
+    final double liveBearing =
+        (_currentPosition != null && lm.lat != null && lm.lng != null)
+            ? _calculateBearing(
+                _currentPosition!.latitude,
+                _currentPosition!.longitude,
+                lm.lat!,
+                lm.lng!,
+              )
+            : lm.bearing;
 
-    // Pin the card to the place's spot in the camera image, same projection
-    // as the explore/discover cards. "In view" means some part of the card
-    // is still on screen — it slides out with the image, no edge clamping.
-    const double cardW = 172;
-    const double cardH = 68;
-    const double footerH = 40.0 + 8; // drop line + anchor dot
-    const double columnH = cardH + footerH;
+    double diff = liveBearing - _heading;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
 
-    double maxDist = lm.distanceM;
-    for (final l in _filteredLandmarks) {
-      if (l.distanceM > maxDist) maxDist = l.distanceM;
-    }
-    final double? anchorX = screenXForAngle(diff, screenW);
-    final double? anchorY = screenYForElevation(
-      liftDegreesForDistance(lm.distanceM, maxDist),
-      camPitch,
-      screenW,
-      screenH,
-    );
-    final double? leftPos = anchorX == null ? null : anchorX - cardW / 2;
-    final double? topPos = anchorY == null ? null : anchorY - columnH;
-    final bool isInView = leftPos != null &&
-        topPos != null &&
-        leftPos + cardW > 0 &&
-        leftPos < screenW &&
-        topPos + columnH > 0 &&
-        topPos < screenH;
+    final double? dx = _ArCameraPageState._projectAngleToScreenX(diff);
+    final bool isInView = dx != null;
 
     if (isInView) {
       // selected place is in camera view -> render its card floating
+      const double cardW = 172;
+      const double cardH = 68;
+      final double centerX = (screenW * dx).clamp(
+        cardW / 2 + 8,
+        screenW - cardW / 2 - 8,
+      );
+
+      final double safeBottomY = screenH - 280;
+      final double topY = MediaQuery.of(context).padding.top + 70.0;
+      final double bottomY = safeBottomY - 40;
+      // Float it in the middle of safe vertical band
+      final double topPos = (topY + bottomY) / 2;
+
       final cardinal = _cardinalFromHeading(liveBearing);
       final bool isAligned = diff.abs() <= 5.0; // meets exact direction of location
 
@@ -11368,8 +11255,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
       final double badgeBorderWidth = isAligned ? 2.5 : 1.0;
 
       return Positioned(
-        key: ValueKey('ar-selected-${lm.name}'),
-        left: leftPos,
+        left: centerX - cardW / 2,
         top: topPos,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
