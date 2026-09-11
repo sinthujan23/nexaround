@@ -94,7 +94,7 @@ export default function Footer() {
               </li>
               <li>
                 <a href="/app#museum" onClick={handleNavClick('/app', '#museum')} className="footer-link">
-                  Curated Museum Guides
+                  Curated Heritage Guides
                 </a>
               </li>
               <li>

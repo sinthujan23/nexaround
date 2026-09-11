@@ -38,13 +38,13 @@ export default function Solutions() {
       tag: 'For Global Travelers & Explorers',
       title: 'Intelligent Spatial Travel in Your Pocket',
       subtitle: 'From itinerary planning to real-world AR exploration and memory journaling',
-      desc: 'NexAround transforms the traveler journey from overwhelming research into seamless discovery. Point your camera at any monument, ask Neva anything in your native language, and let Odyssey curate the perfect day.',
+      desc: 'NexAround transforms the traveler journey from overwhelming research into seamless discovery. Point your camera at any monument, ask Neva anything about the area, and let Odyssey curate the perfect day.',
       icon: <Compass style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
       image: '/app_scan_landmark_v4.png',
       features: [
         'Sub-second real-time camera AR landmark scanning',
         'Odyssey AI smart multi-day itinerary generation',
-        'Neva 24/7 multilingual conversational travel assistant',
+        'Neva 24/7 conversational travel assistant',
         'Living radar map for authentic food, viewpoints & cafes',
         'Automatic GPS landmark passport stamps & photo journal'
       ]
@@ -68,19 +68,19 @@ export default function Solutions() {
     },
     {
       id: 'museums',
-      badge: 'Museums & Galleries',
-      tag: 'For Cultural Institutions & Ruins',
-      title: 'Next-Gen Interactive Museum & Exhibit Guides',
-      subtitle: 'Expert exhibit walkthroughs & computer vision art recognition',
-      desc: 'Replace static paper brochures and outdated wands with rich, interactive smartphone guides. Visitors point their camera at paintings, statues, or ancient ruins to discover spatial storytelling, artist biographies, and exhibit floorplans.',
+      badge: 'Cultural Sites & Heritage',
+      tag: 'For Cultural Institutions & Historic Ruins',
+      title: 'Next-Gen Interactive Cultural & Heritage Site Guides',
+      subtitle: 'Curated spatial guides & outdoor architectural landmark recognition',
+      desc: 'Replace static paper brochures with rich, interactive smartphone guides. Visitors point their camera at historic monuments, ancient structures, and heritage sites to discover contextual storytelling, architectural facts, and spatial navigation.',
       icon: <BookOpen style={{ width: '26px', height: '26px', color: 'var(--brand-teal)' }} />,
       image: '/app_cap_02_v4.png',
       features: [
-        'Camera vision painting & artifact recognition',
-        'Interactive exhibit descriptions with curated historian notes',
-        'Interactive room-by-room gallery floorplan navigation',
-        'Rich exhibit descriptions with verified historian insights',
-        'Curated expert commentary from historians and curators'
+        'Camera vision architectural landmark & monument recognition',
+        'Interactive historical facts with curated historian notes',
+        'Spatial orientation and site navigation',
+        'Rich destination details with verified cultural insights',
+        'Integrated admission ticketing and skip-the-line access'
       ]
     },
     {

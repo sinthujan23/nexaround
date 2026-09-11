@@ -46,12 +46,12 @@ export default function Home() {
       step: '02',
       title: 'Scan Landmarks with Spatial AR',
       subtitle: 'Real-Time Camera Vision Recognition',
-      desc: 'Point your smartphone camera at ancient monuments, heritage temples, or museum paintings. Instant computer vision identifies the landmark and displays interactive 3D historical overlays.',
+      desc: 'Point your smartphone camera at ancient monuments, heritage temples, or historic architecture. Instant computer vision identifies the landmark and displays interactive historical facts, stories, and spatial context.',
       badge: 'Spatial AR Camera',
       image: '/app_scan_landmark_v4.png',
       features: [
         'Sub-second real-time camera landmark detection',
-        'Interactive 3D historical context overlays',
+        'Interactive historical facts and spatial context overlays',
         'Spatial contextual storytelling tailored to your vantage point'
       ]
     },
@@ -59,7 +59,7 @@ export default function Home() {
       step: '03',
       title: 'Chat with Neva AI Concierge',
       subtitle: '24/7 Intelligent Local Travel Companion',
-      desc: 'Meet Neva, your personal travel assistant. Ask about hidden local spots, translate foreign signs, check opening hours, or ask for dietary-safe local cuisine recommendations.',
+      desc: 'Meet Neva, your personal travel assistant. Ask about hidden local spots, check opening hours, get cultural insights, or ask for dietary-safe local cuisine recommendations.',
       badge: 'Neva 24/7 AI',
       image: '/meet_neva_v4.png',
       features: [
@@ -135,9 +135,9 @@ export default function Home() {
     },
     {
       num: '06',
-      title: 'Curated Museum Guides',
-      tag: 'Museum Guides',
-      desc: 'Expert-curated exhibit walkthroughs, must-see masterworks, and museum gallery layouts for top cultural institutions worldwide.',
+      title: 'Curated Cultural Guides',
+      tag: 'Cultural Guides',
+      desc: 'Curated cultural landmark guides, visiting details, and admission ticketing for top institutions and heritage sites worldwide.',
       image: '/app_cap_02_v4.png'
     },
     {
@@ -156,10 +156,10 @@ export default function Home() {
     },
     {
       num: '09',
-      title: 'Hotel & Taxi Bookings',
-      tag: 'Integrated Bookings',
-      desc: 'Confirm stays and transit without leaving the app. Seamlessly integrated with Viator, GetYourGuide, Headout, and local transit networks.',
-      image: '/app_download_v4.png'
+      title: 'Odyssey Plans & Bookings',
+      tag: 'Budget & Bookings',
+      desc: 'View complete budget allocations, compare flight options, and confirm verified stays and activities with integrated partners like Booking.com, Viator, and Skyscanner.',
+      image: '/app_odyssey_plans_v4.png'
     },
     {
       num: '10',
@@ -178,7 +178,7 @@ export default function Home() {
       image: '/bg_sigiriya.png',
       badge: 'UNESCO Heritage',
       tag: 'Ancient Citadel',
-      desc: 'Explore the 5th-century palace in the sky with interactive AR fresco recognition and architectural 3D reconstruction.',
+      desc: 'Explore the 5th-century palace in the sky with interactive AR fresco recognition, historical facts, and cultural storytelling.',
       arEnabled: true
     },
     {
@@ -196,7 +196,7 @@ export default function Home() {
       image: '/bg_colosseum_rome.png',
       badge: 'Ancient Roman',
       tag: 'Gladiator Arena',
-      desc: 'Point your camera at the arena floor to see 3D reconstructions of ancient gladiatorial events and hypogeum chambers.',
+      desc: 'Point your camera at the arena to discover detailed histories of ancient gladiatorial events and hypogeum chambers.',
       arEnabled: true
     },
     {
@@ -881,8 +881,8 @@ export default function Home() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '32px' }}>
                   {[
                     '“Find me the best authentic seafood street spot within 10 mins walk”',
-                    '“Translate this museum inscription and explain the dynasty background”',
-                    '“It started raining. Re-route my afternoon for indoor galleries”',
+                    '“Explain the architectural background and history of this landmark”',
+                    '“It started raining. Re-route my afternoon for indoor attractions”',
                   ].map((prompt, idx) => (
                     <div key={idx} style={{ 
                       background: '#ffffff', 

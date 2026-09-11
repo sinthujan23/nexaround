@@ -40,12 +40,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       glowColor: AppColors.ratingGold,
     ),
     _OnboardingData(
-      imagePath: 'assets/images/hero_luxury.png',
-      icon: Icons.public_rounded,
-      title: '3D Living Map',
-      subtitle: 'NAVIGATE YOUR ADVENTURE',
+      imagePath: 'assets/images/odyssey_planner.png',
+      icon: Icons.alt_route_rounded,
+      title: 'Odyssey AI Planner',
+      subtitle: 'EFFORTLESS ITINERARIES IN SECONDS',
       description:
-          'An intelligent map that breathes — showing trending spots, hidden gems, and real-time activity around you.',
+          'Generate tailored multi-day travel plans, budget estimates, and optimized routes crafted around your personal travel style.',
       gradient: AppColors.primaryGradient,
       glowColor: AppColors.secondary,
     ),

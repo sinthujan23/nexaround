@@ -34,10 +34,10 @@ export default function Services() {
       num: '01',
       icon: <Camera style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
       title: 'Spatial AR Camera Landmark Vision',
-      desc: 'Edge-accelerated computer vision that identifies ancient temples, heritage ruins, city landmarks, and museum artwork in sub-500ms.',
+      desc: 'Edge-accelerated computer vision that identifies ancient temples, heritage ruins, architectural structures, and city landmarks in sub-500ms.',
       highlights: [
         'Real-time camera landmark recognition',
-        'Interactive 3D historical & structural overlays',
+        'Interactive historical facts & spatial orientation overlays',
         'Spatial vantage point contextual storytelling'
       ]
     },
@@ -56,7 +56,7 @@ export default function Services() {
       num: '03',
       icon: <MessageSquare style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
       title: 'Neva 24/7 AI Smart Concierge',
-      desc: 'Context-aware conversational companion delivering instant local recommendations, phrasebook guidance, and emergency safety support.',
+      desc: 'Context-aware conversational companion delivering instant local recommendations, cultural context, and emergency safety support.',
       highlights: [
         'Natural conversational voice & text intelligence',
         'Hyper-local dining & dietary preference filters',
@@ -77,12 +77,12 @@ export default function Services() {
     {
       num: '05',
       icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Curated Museum & Heritage Guides',
-      desc: 'Interactive exhibit walkthroughs crafted by historians and cultural experts with room-by-room indoor floorplan navigation.',
+      title: 'Curated Heritage & Cultural Guides',
+      desc: 'Interactive destination guides crafted by historians and cultural experts with detailed cultural context and visiting logistics.',
       highlights: [
         'Deep historical storytelling for world wonders',
-        'Room-by-room gallery & exhibit walkthroughs',
-        'Must-see masterworks & verified schedules'
+        'Landmark visiting logistics & ticketing guides',
+        'Must-see cultural highlights & verified schedules'
       ]
     },
     {
@@ -101,9 +101,9 @@ export default function Services() {
   const enterpriseServices = [
     {
       icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Heritage & Landmark 3D Digitization',
+      title: 'Heritage & Landmark Spatial Digitization',
       tag: 'For Cultural Ministries & DMOs',
-      desc: 'We create photogrammetric 3D spatial models and historical reconstruction overlays for national heritage sites.'
+      desc: 'We create interactive digital landmark guides, spatial mapping, and rich historical storytelling for national heritage sites.'
     },
     {
       icon: <Globe style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
@@ -113,9 +113,9 @@ export default function Services() {
     },
     {
       icon: <Landmark style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,
-      title: 'Curated Museum Exhibit Guide Production',
-      tag: 'For Museums & Heritage Sites',
-      desc: 'End-to-end research, multilingual exhibit descriptions, and gallery curation for permanent exhibitions and galleries.'
+      title: 'Curated Cultural Landmark Guide Production',
+      tag: 'For Cultural Sites & Destinations',
+      desc: 'End-to-end research, curated cultural descriptions, and spatial guides for permanent heritage landmarks and destinations.'
     },
     {
       icon: <HeartHandshake style={{ width: '24px', height: '24px', color: 'var(--brand-teal)' }} />,

@@ -39,7 +39,7 @@ export default function NexARoundApp() {
       num: '01',
       badge: 'Spatial Augmented Reality',
       title: 'AR Location & Landmark Discovery',
-      subtitle: 'Real-Time Camera Recognition for Landmarks & Art',
+      subtitle: 'Real-Time Camera Recognition for Landmarks & Architecture',
       desc: 'Simply raise your phone and spin it around. NexAround overlays nearby attractions, restaurants, historic monuments, and transport hubs directly onto your real-world camera view with instant orientation.',
       icon: <Camera style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
       image: '/app_scan_landmark_v4.png',
@@ -47,7 +47,7 @@ export default function NexARoundApp() {
         'Sub-500ms visual landmark identification',
         'Interactive spatial landmark information overlays',
         'Spatial vantage point landmark storytelling',
-        'Works with monuments, ruins & museum paintings'
+        'Works with monuments, ruins & heritage landmarks'
       ]
     },
     {
@@ -116,16 +116,16 @@ export default function NexARoundApp() {
       id: 'museum',
       num: '06',
       badge: 'Cultural Heritage',
-      title: 'Curated Museum & Heritage Guides',
-      subtitle: 'Expert Exhibit Walkthroughs & Gallery Floorplans',
-      desc: 'Transform complex museum layouts and ancient ruins into intuitive personal tours. Access step-by-step exhibit walkthroughs, must-see masterworks, and integrated ticket booking.',
+      title: 'Curated Heritage & Culture Guides',
+      subtitle: 'Cultural Highlights & Admission Details',
+      desc: 'Transform ancient ruins, historic monuments, and cultural landmarks into intuitive personal tours. Access visiting highlights, historical backgrounds, and integrated ticket booking.',
       icon: <Landmark style={{ width: '26px', height: '26px', color: '#007A7C' }} />,
       image: '/app_cap_02_v4.png',
       highlights: [
         'Deep historical storytelling for global heritage sites',
-        'Room-by-room & exhibit floorplan navigation',
-        'Must-see artworks & opening hours schedule',
-        'Curated expert tours for top world museums'
+        'Landmark visiting logistics & admission guides',
+        'Must-see cultural highlights & opening schedules',
+        'Curated expert information for top heritage destinations'
       ]
     },
     {

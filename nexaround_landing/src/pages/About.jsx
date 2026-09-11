@@ -33,11 +33,11 @@ export default function About() {
     { title: 'Privacy & Security First', desc: 'Zero data brokering, enterprise-grade encryption, and strict GDPR/CCPA compliance.' },
     { title: 'Sub-Second Performance', desc: 'Edge computer vision and low-latency APIs engineered for seamless real-time exploration.' },
     { title: 'Cultural Integrity', desc: 'Collaborating with local historians and heritage authorities for authentic storytelling.' },
-    { title: 'Global Accessibility', desc: 'Multi-lingual translation and intuitive UX designed for travelers of all ages and backgrounds.' }
+    { title: 'Global Accessibility', desc: 'Intuitive spatial UX and inclusive design crafted for travelers of all ages and backgrounds.' }
   ];
 
   const expertises = [
-    { name: 'Spatial AR & Computer Vision', desc: 'Real-time camera landmark recognition and 3D architectural overlays.' },
+    { name: 'Spatial AR & Computer Vision', desc: 'Real-time camera landmark recognition, spatial orientation, and rich contextual storytelling.' },
     { name: 'Conversational Travel AI', desc: 'Multi-modal LLMs customized for destination context and travel assistance.' },
     { name: 'Geo-Spatial Systems', desc: 'PostGIS spatial indexing and real-time proximity telemetry routing.' },
     { name: 'High-Concurrency Cloud', desc: 'Microservices architecture with Redis caching and Docker orchestration.' },

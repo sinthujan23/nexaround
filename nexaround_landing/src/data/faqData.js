@@ -72,8 +72,8 @@ export const FAQ_ITEMS = [
     id: 'how-ar-works',
     category: 'ar',
     question: 'How does the Spatial AR Landmark Scanner work?',
-    shortAnswer: 'Raise your camera toward any monument, ruin, or artwork to get sub-second landmark identification and 3D historical overlays.',
-    answer: `Simply open the NexAround camera scanner and point your phone at any monument, historic building, cathedral, statue, or museum painting. Our sub-500ms computer vision neural engine matches visual features against global spatial datasets to overlay historical facts, architectural stories, audio narrations, and hidden details directly onto your camera screen.`,
+    shortAnswer: 'Raise your camera toward any monument, historic building, or outdoor landmark to get sub-second identification and spatial context.',
+    answer: `Simply open the NexAround camera scanner and point your phone at any monument, historic building, cathedral, temple, or outdoor statue. Our sub-500ms computer vision neural engine matches visual features against global spatial datasets to overlay historical facts, architectural stories, and spatial details directly onto your camera screen.`,
     keywords: ['ar', 'camera', 'scan', 'landmark', 'augmented reality', 'vision', 'monuments', 'statue', 'temple', 'recognition', 'scanner'],
     actionLinks: [
       { text: 'View AR Technology', url: '/app#camera' }
@@ -83,10 +83,10 @@ export const FAQ_ITEMS = [
   {
     id: 'museum-artwork',
     category: 'ar',
-    question: 'Does the AR scanner work inside museums and art galleries?',
-    shortAnswer: 'Yes! NexAround includes curated museum guides and visual recognition for paintings, sculptures, and gallery exhibits.',
-    answer: `Yes! NexAround features specialized Museum & Heritage site recognition. Point your camera at paintings and sculptures in top global museums (such as Musée d’Orsay, the Louvre, Uffizi, or Vatican Museums) to view artist biographies, context, audio guide walkthroughs, and step-by-step gallery floorplans.`,
-    keywords: ['museum', 'art', 'gallery', 'painting', 'exhibit', 'louvre', 'sculpture', 'audio guide', 'exhibits'],
+    question: 'Does NexAround include museum information and landmark guides?',
+    shortAnswer: 'Yes! NexAround includes curated landmark guides, visiting details, and ticket bookings for top cultural institutions.',
+    answer: `Yes! NexAround features curated destination information and skip-the-line ticket bookings for top global museums and heritage sites (such as Musée d’Orsay, the Louvre, Uffizi, or Vatican Museums). Please note that the AR camera visual scanner is designed for outdoor monuments, historic buildings, and architectural structures rather than individual indoor paintings or museum gallery exhibits.`,
+    keywords: ['museum', 'landmark', 'monument', 'heritage', 'tickets', 'louvre', 'exhibits', 'guides'],
     actionLinks: [
       { text: 'Museum Guides', url: '/app#museum' }
     ],
@@ -98,13 +98,13 @@ export const FAQ_ITEMS = [
     question: 'What is Neva AI and what can she help me with?',
     shortAnswer: 'Neva is your 24/7 personal AI travel concierge with voice and text capabilities.',
     answer: `Neva is your 24/7 intelligent travel companion built into the app. She can:
-• Answer questions about what you are seeing in real-time.
+• Answer questions about what you are seeing around you.
 • Recommend authentic local food, cafes, and hidden scenic spots.
 • Filter recommendations by your dietary preferences (vegan, halal, gluten-free, allergies).
-• Translate foreign signs, menu items, and local phrases.
+• Provide local cultural context and destination information.
 • Provide emergency assistance, embassy contacts, and safety tips.
 • Dynamically adjust your Odyssey itinerary when your plans change.`,
-    keywords: ['neva', 'ai', 'concierge', 'assistant', 'chat', 'voice', 'food recommendations', 'safety', 'translate', 'features', 'help'],
+    keywords: ['neva', 'ai', 'concierge', 'assistant', 'chat', 'voice', 'food recommendations', 'safety', 'features', 'help'],
     actionLinks: [
       { text: 'Meet Neva AI', url: '/app#neva' }
     ],
@@ -113,10 +113,10 @@ export const FAQ_ITEMS = [
   {
     id: 'neva-languages',
     category: 'neva',
-    question: 'What languages does Neva AI support?',
-    shortAnswer: 'Neva speaks and understands over 35 global languages including English, Spanish, French, German, Japanese, and Mandarin.',
-    answer: `Neva supports multi-lingual conversation across 35+ languages. You can speak or text with her in your native language, and she can help translate local signs, street menus, and conversations seamlessly on the go.`,
-    keywords: ['languages', 'translation', 'multilingual', 'spanish', 'french', 'japanese', 'chinese', 'german', 'translate'],
+    question: 'What languages does NexAround support?',
+    shortAnswer: 'NexAround is currently available in English, with multi-language support actively on our future product roadmap.',
+    answer: `NexAround currently operates in English. Multi-language support and live translation across global languages are part of our upcoming product roadmap to make travel even more accessible worldwide.`,
+    keywords: ['languages', 'translation', 'multilingual', 'english', 'roadmap', 'language support'],
     actionLinks: [
       { text: 'Learn About Neva', url: '/app#neva' }
     ],
@@ -302,7 +302,7 @@ export function generateNevaResponse(userMessage) {
   const identityQueries = ['who are you', 'what is your name', 'what can you do', 'what do you do', 'who made you', 'who created you', 'tell me about yourself'];
   if (identityQueries.some(q => query.includes(q))) {
     return {
-      text: `I'm **Neva**, the 24/7 AI travel concierge built right into the **NexAround** mobile app! 🌟\n\nI help travelers around the globe by:\n• Identifying landmarks through your camera using Spatial AR\n• Crafting custom multi-day travel itineraries with Odyssey\n• Recommending authentic local restaurants and secret viewpoints\n• Translating foreign languages and menu items on the spot\n• Providing 24/7 safety and navigation assistance.`,
+      text: `I'm **Neva**, the 24/7 AI travel concierge built right into the **NexAround** mobile app! 🌟\n\nI help travelers around the globe by:\n• Identifying landmarks through your camera using Spatial AR\n• Crafting custom multi-day travel itineraries with Odyssey\n• Recommending authentic local restaurants and secret viewpoints\n• Discovering local culture and neighborhood insights\n• Providing 24/7 safety and navigation assistance.`,
       actionLinks: [
         { text: 'Meet Neva AI on App Page', url: '/app#neva' },
         { text: 'Download App', url: '/get-app' }
@@ -361,7 +361,7 @@ export function generateNevaResponse(userMessage) {
 
   // 6. Intelligent conversational fallback
   return {
-    text: `That's an interesting question! While I might not have a specific preset article for that exact phrase, here is what **NexAround** offers:\n\n• **Spatial AR Landmark Scanner**: Point your camera at any monument or artwork for instant history.\n• **Odyssey AI Trip Engine**: Automatically generates time-optimized travel schedules based on your budget & mood.\n• **Neva 24/7 Concierge**: Real-time voice/text assistance anywhere you travel.\n\nWould you like to explore any of these topics, or contact our support team?`,
+    text: `That's an interesting question! While I might not have a specific preset article for that exact phrase, here is what **NexAround** offers:\n\n• **Spatial AR Landmark Scanner**: Point your camera at any monument or historic building for instant history.\n• **Odyssey AI Trip Engine**: Automatically generates time-optimized travel schedules based on your budget & mood.\n• **Neva 24/7 Concierge**: Real-time voice/text assistance anywhere you travel.\n\nWould you like to explore any of these topics, or contact our support team?`,
     actionLinks: [
       { text: 'View App Features', url: '/app' },
       { text: 'Contact Support', url: '/contact' }
