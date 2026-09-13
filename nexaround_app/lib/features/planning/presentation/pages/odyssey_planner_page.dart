@@ -21,6 +21,12 @@ class OdysseyPlannerPage extends StatefulWidget {
 }
 
 class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
+  // The backend generates the whole Odyssey (every day's activities) in one
+  // Gemini call capped at 8192 output tokens. Beyond ~14 days that routinely
+  // truncates mid-JSON and the Odyssey comes back as "failed", so trip length
+  // is capped here to match the server-side limit in OdysseyGenerateRequest.
+  static const int _maxTripDays = 14;
+
   String _currency = 'USD';
 
   final OdysseyRepository _repository = OdysseyRepository();
@@ -955,7 +961,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       initialDateRange: initialRange,
       firstDate: today,
       lastDate: today.add(const Duration(days: 365)),
-      helpText: 'SELECT TRIP DATES (Tap same date twice for 1-day trip)',
+      helpText: 'SELECT TRIP DATES (max $_maxTripDays days)',
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -971,19 +977,33 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       },
     );
     if (picked != null) {
+      final rawDays = picked.end.difference(picked.start).inDays + 1;
+      final wasCapped = rawDays > _maxTripDays;
+      final end = wasCapped
+          ? picked.start.add(Duration(days: _maxTripDays - 1))
+          : picked.end;
       setState(() {
         _startDate = picked.start;
-        _endDate = picked.end;
-        final computedDays = picked.end.difference(picked.start).inDays + 1;
+        _endDate = end;
+        final computedDays = end.difference(picked.start).inDays + 1;
         if (computedDays > 0) {
           _days = computedDays;
           _daysController.text = computedDays.toString();
         }
         _flightStartDate ??= picked.start;
-        _flightEndDate ??= picked.end;
+        _flightEndDate ??= end;
         _hotelCheckInDate ??= picked.start;
-        _hotelCheckOutDate ??= picked.end;
+        _hotelCheckOutDate ??= end;
       });
+      if (wasCapped && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Trips are capped at $_maxTripDays days so the AI planner can reliably generate every day — end date adjusted.',
+            ),
+          ),
+        );
+      }
     }
   }
 

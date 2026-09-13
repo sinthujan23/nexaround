@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime, date
@@ -36,7 +36,13 @@ class OdysseyGenerateRequest(BaseModel):
     destination: str
     mood: str = "Adventurous"
     budget: float = 50000
-    days: int = 3
+    # Capped at 14: the single-shot Gemini generation call is capped at
+    # max_tokens=8192 and produces the whole plan (header + every day) in one
+    # response. Beyond ~14 days the day-by-day JSON routinely blows past that
+    # budget, truncates mid-object, and fails to parse — surfacing as a
+    # "failed" Odyssey status. The app's date picker enforces this too; this
+    # is the server-side backstop.
+    days: int = Field(default=3, ge=1, le=14)
     currency: str = "USD"
     travelers: int = 1
     include_flights: bool = False
