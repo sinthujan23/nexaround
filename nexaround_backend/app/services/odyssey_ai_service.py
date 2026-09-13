@@ -17,6 +17,8 @@ import httpx
 from app.services import cover_photo_service, geo_resolver, place_cache_service, telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
+    _MIN_GOOGLE_HOTEL_CLASS,
+    property_hotel_class as serpapi_property_hotel_class,
     attach_return_leg,
     format_flight_results_for_gemini,
     format_hotel_results_for_gemini,
@@ -127,6 +129,14 @@ _MODELS = [
 ]
 _MODEL = _MODELS[0]  # kept for any external reference / logging
 
+# The cheap chain, for calls whose output is short, structured or purely
+# cosmetic: an IATA code, a card's marketing copy, an estimate that is already
+# labelled an estimate. Flash-lite is roughly a quarter of Flash's token price
+# and answers these identically; Flash stays behind it so a bad minute on
+# lite still produces an Odyssey. The itinerary itself, the route plan and the
+# user-facing activity swap stay on the full chain.
+_LITE_MODELS = ("gemini-2.5-flash-lite", "gemini-2.5-flash")
+
 # Budget-scenario multipliers applied through the same waterfall allocation
 # used for the "recommended" (as-submitted) budget — gives Minimum/Comfortable
 # scenarios without an extra Gemini call.
@@ -152,10 +162,18 @@ _BASE_HOTEL_CLASS = 3
 # search, never who gets a worse one.
 _FOUR_STAR_NIGHTLY_USD = 80.0
 
-# Class floors to try in order when a search comes back empty. The traveller
-# sees an unclassed property (0 = no class filter) only after 3-star and 2-star
-# have both returned nothing for their destination and dates.
-_HOTEL_CLASS_FALLBACKS = [3, 2, 0]
+# Class floors to try when a search comes back empty: the trip's own floor,
+# then no filter at all. The intermediate 2-star rung used to sit between
+# them, and on a small town where Google classifies nothing it bought a third
+# search per city to return the same empty list — up to 20 searches on one
+# five-city Odyssey. The unfiltered rung now does that rung's job, preferring
+# classed properties among what it gets back (see _prefer_classed).
+_HOTEL_CLASS_FALLBACKS = [0]
+
+# How many classed (2-star+) properties the unfiltered rung must find before
+# it drops the unclassed ones. Below this the traveller is better served by
+# four real guesthouses than by one hotel.
+_MIN_CLASSED_RESULTS = 3
 
 
 def _model_url(model: str) -> str:
@@ -165,7 +183,13 @@ _SYSTEM = (
     "You are NexAround's expert local travel designer. "
     "You craft realistic, budget-aware, day-by-day trip blueprints. You always "
     "reply with a single JSON object that matches the requested schema exactly - "
-    "no markdown, no commentary, no code fences. "
+    "no markdown, no commentary, no code fences. Your JSON is MINIFIED: one "
+    "line, no indentation, no line breaks between keys. A machine parses it, "
+    # Said here as well as in the prompt because a grounded call ignores
+    # responseMimeType and largely ignores a formatting rule buried under
+    # forty lines of trip constraints. Pretty-printing a 6,000-token
+    # itinerary is billed like any other output.
+    "and every space is billed. "
     # A destination whose name resembles somewhere else is the one case where
     # recalling harder makes the answer worse: a trip to Sri Vijaya Puram (the
     # Andamans, India) came back touring Kandy. When the prompt states a
@@ -580,7 +604,9 @@ async def _resolve_airport_code(
         f"code such as LON or NYC. No other text."
     )
     try:
-        text, _ = await _call_gemini(prompt, api_key, max_tokens=32, thinking_budget=0)
+        text, _ = await _call_gemini(
+            prompt, api_key, max_tokens=32, thinking_budget=0, models=_LITE_MODELS,
+        )
         codes = re.findall(r"\b([A-Z]{3})\b", (text or "").upper())
         # Metro codes are silently rejected by Google Flights — drop any that
         # slipped through rather than shipping a search that returns nothing.
@@ -807,7 +833,9 @@ Return ONLY JSON:
 {{"copy": [{{"tier": "minimum", "title": "...", "description": "...", "tip": "..."}}]}}"""
 
     try:
-        text, _ = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
+        text, _ = await _call_gemini(
+            prompt, api_key, max_tokens=1024, thinking_budget=0, models=_LITE_MODELS,
+        )
         parsed = _parse_json(text)
         by_tier = {
             str(c.get("tier")): c
@@ -1398,7 +1426,9 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
 }}
 """
     try:
-        text, _ = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        text, _ = await _call_gemini(
+            prompt, api_key, max_tokens=4096, thinking_budget=0, models=_LITE_MODELS,
+        )
         data = _parse_json(text)
         data = _structure_ai_flight_strategies(
             data,
@@ -1433,6 +1463,31 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
     except Exception as e:
         logger.error(f"Failed to generate flight strategies: {e}")
         return {}
+
+
+def _prefer_classed(serp_result: dict, destination: str) -> dict:
+    """On the unfiltered rung, keep the classed hotels when there are enough.
+
+    This is what the old 2-star rung bought a whole extra search for: Google
+    ranks unclassed guesthouses alongside hotels once `hotel_class` is gone,
+    and a trip that could afford 3-star should not be shown four hostels. But
+    in a town where almost nothing is classified, dropping the unclassed ones
+    would leave one lonely card — so the filter only applies when at least
+    `_MIN_CLASSED_RESULTS` classed properties came back.
+    """
+    properties = serp_result.get("properties") or []
+    classed = [
+        p for p in properties
+        if isinstance(p, dict) and serpapi_property_hotel_class(p) >= _MIN_GOOGLE_HOTEL_CLASS
+    ]
+    if len(classed) < _MIN_CLASSED_RESULTS:
+        return serp_result
+    if len(classed) < len(properties):
+        logger.info(
+            "Unfiltered search for %s: keeping %d classed of %d properties",
+            destination, len(classed), len(properties),
+        )
+    return {**serp_result, "properties": classed}
 
 
 async def generate_hotel_strategies(
@@ -1513,9 +1568,8 @@ async def generate_hotel_strategies(
             # town where Google lists no classed hotel at all, that is every
             # time. Trying 2-star and then unfiltered keeps real Google prices
             # in the plan for those destinations.
-            attempts = [c for c in _HOTEL_CLASS_FALLBACKS if c <= min_hotel_class]
-            if min_hotel_class not in attempts:
-                attempts.insert(0, min_hotel_class)
+            attempts = [c for c in _HOTEL_CLASS_FALLBACKS if c < min_hotel_class]
+            attempts.insert(0, min_hotel_class)
 
             for attempt, class_floor in enumerate(attempts):
                 label = f"{class_floor}-star+" if class_floor else "any class"
@@ -1545,9 +1599,13 @@ async def generate_hotel_strategies(
                     logger.warning(
                         "SerpAPI returned 0 hotels at %s for %s%s",
                         label, destination,
-                        "; widening the class filter" if attempt + 1 < len(attempts) else "",
+                        "; dropping the class filter" if attempt + 1 < len(attempts) else "",
                     )
                     continue
+
+                if not class_floor:
+                    serp_result = _prefer_classed(serp_result, destination)
+                    properties = serp_result.get("properties") or []
 
                 logger.info(
                     "SerpAPI returned %d hotels (%s) for %s",
@@ -1646,7 +1704,9 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
 }}
 """
     try:
-        text, _ = await _call_gemini(prompt, api_key, max_tokens=4096, thinking_budget=0)
+        text, _ = await _call_gemini(
+            prompt, api_key, max_tokens=4096, thinking_budget=0, models=_LITE_MODELS,
+        )
         data = _parse_json(text)
         strategies = data.get("strategies")
         if isinstance(strategies, list):
@@ -2145,17 +2205,42 @@ async def detect_geo_drift(
     # ── Tier 1: free name scan ──
     hits: dict[str, str] = {}
     reasons: list[str] = []
+    strong_hits: list[tuple[str, str, str, str]] = []   # (where, text, name, code)
     for where, text in _drift_scan_texts(plan):
         found = geo_resolver.foreign_place_hits(text, home, allow)
         if not found:
             continue
         # A single passing mention in a tip is weak evidence; a foreign name in
         # an activity name or a day theme is the itinerary itself relocating.
-        strong = where in {"activity", "day theme", "restaurant name"}
+        # Restaurant names are weak too: "The Asian Kitchen by Tokyo Bay" is a
+        # real Kochi restaurant, and treating it as strong bought a second
+        # full itinerary for nothing.
+        strong = where in {"activity", "day theme"}
         for name, code in found.items():
             hits[name] = code
-            if strong and name not in [r.split('"')[1] for r in reasons if '"' in r]:
-                reasons.append(f'The {where} "{text}" names "{name}", which is in {code}, not {country}.')
+            if strong and name not in {h[2] for h in strong_hits}:
+                strong_hits.append((where, text, name, code))
+
+    # One strong hit is worth one Places lookup before it is worth a whole
+    # regeneration: the regex matches names, and names travel ("Goa Gajah"
+    # is in Bali, "Kandy" is also a surname). Google saying the place is in
+    # the home country clears it; anything unverifiable keeps its weight.
+    if len(strong_hits) == 1:
+        where, text, name, code = strong_hits[0]
+        try:
+            check = await geo_resolver.verify_place(text, near=geo, max_km=None, budget=budget)
+        except Exception as e:
+            logger.debug("drift verification of %r failed: %s", text, e)
+            check = None
+        if check is not None and check.checked and check.country_code and check.country_code == home:
+            logger.info(
+                'Drift verification cleared "%s": Google places the %s "%s" in %s.',
+                name, where, text, home,
+            )
+            strong_hits = []
+
+    for where, text, name, code in strong_hits:
+        reasons.append(f'The {where} "{text}" names "{name}", which is in {code}, not {country}.')
 
     if reasons or len(hits) >= 2:
         if not reasons:
@@ -2743,6 +2828,26 @@ async def plan_city_legs(
     return plan.legs
 
 
+# Output budget for the day-by-day plan, scaled to the trip. A fixed 8192 cap
+# was enough for a week and silently truncated a fortnight: a 14-day, five-city
+# plan with priced, sourced activities runs to ~16k tokens, and the response
+# came back cut off mid-object and failed to parse — reported as a "failed"
+# Odyssey. Gemini 2.5 Flash allows far more; output is billed per token used,
+# so a larger ceiling costs nothing on the trips that never reach it.
+_ITINERARY_TOKENS_BASE = 6144
+_ITINERARY_TOKENS_PER_DAY = 1200
+_ITINERARY_TOKENS_MAX = 32768
+
+
+def _itinerary_token_budget(days: int) -> int:
+    return min(_ITINERARY_TOKENS_MAX, _ITINERARY_TOKENS_BASE + _ITINERARY_TOKENS_PER_DAY * max(int(days or 1), 1))
+
+
+def _itinerary_timeout_s(days: int) -> float:
+    """Long plans stream for longer; ~12 s per day with a floor of 90 s."""
+    return max(90.0, 12.0 * max(int(days or 1), 1))
+
+
 async def generate_odyssey(
     *,
     destination: str,
@@ -2971,9 +3076,12 @@ async def generate_odyssey(
         geo=geo,
         route_plan=route,
     )
+    plan_tokens = _itinerary_token_budget(days)
+    plan_timeout = _itinerary_timeout_s(days)
     try:
         text, grounding_chunks = await _call_gemini(
-            prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=True,
+            prompt, api_key, max_tokens=plan_tokens, thinking_budget=0, use_grounding=True,
+            timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
     except Exception as e:
@@ -2982,9 +3090,11 @@ async def generate_odyssey(
             e,
         )
         text, grounding_chunks = await _call_gemini(
-            prompt, api_key, max_tokens=8192, thinking_budget=0, use_grounding=False,
+            prompt, api_key, max_tokens=plan_tokens, thinking_budget=0, use_grounding=False,
+            timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
+    _warn_if_plan_is_short(plan, days)
 
     # ── Geographic drift backstop ──────────────────────────────────────────
     # The grounding above is what keeps the itinerary honest; this catches the
@@ -3026,10 +3136,11 @@ async def generate_odyssey(
                         correction="\n".join(drift.reasons),
                     )
                     retry_text, retry_chunks = await _call_gemini(
-                        retry_prompt, api_key, max_tokens=8192,
-                        thinking_budget=0, use_grounding=True,
+                        retry_prompt, api_key, max_tokens=plan_tokens,
+                        thinking_budget=0, use_grounding=True, timeout_s=plan_timeout,
                     )
                     retry_plan = _parse_json(retry_text)
+                    _warn_if_plan_is_short(retry_plan, days)
                     retry_drift = await detect_geo_drift(
                         retry_plan, geo, allow_codes=allow, budget=geo_budget,
                     )
@@ -3999,11 +4110,11 @@ Return ONLY a JSON object with EXACTLY this shape:
         {{
           "time": "09:00",
           "name": "Place or activity name",
-          "tip": "Short practical tip",
-          "hours": "Real opening hours if attraction/dining/accommodation and confirmed via search, else ''",
+          "tip": "Short practical tip, under 12 words",
+          "hours": "Real opening hours if attraction/dining/accommodation and confirmed via search; OMIT this key when not confirmed",
           "cost": "{currency} amount or 'Free'",
-          "price_source": "Named source actually found via search (site/publisher/official page)",
-          "price_basis": "1-sentence statement of the actual anchor rate/figure found and any conversion applied",
+          "price_source": "Short source name actually found via search (site, publisher or official page) — a name, not a sentence",
+          "price_basis": "Under 15 words: the anchor rate/figure found and any conversion applied",
           "price_confidence": "Fixed | Typical | Estimated",
           "type": "transport|attraction|dining|exploration|accommodation|other",
           "restaurants": [
@@ -4012,7 +4123,7 @@ Return ONLY a JSON object with EXACTLY this shape:
               "cuisine": "Cuisine type (e.g. Seafood, Italian, Local)",
               "price_range": "{currency} 25 - 45 or $$",
               "rating": "4.6 ★",
-              "tip": "Short booking tip or signature dish"
+              "tip": "Signature dish or booking tip, under 8 words"
             }}
           ]
         }}
@@ -4024,7 +4135,7 @@ Return ONLY a JSON object with EXACTLY this shape:
 Rules for "type" field in each activity:
 - "transport": Travel/transit between locations. Cost = estimated fare.
 - "attraction": Ticketed landmarks, museums, temples, parks. Cost = ticket price.
-- "dining": Meals (Breakfast, Lunch, Dinner). Cost = estimated meal cost. MUST include "restaurants" array with 2-4 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
+- "dining": Meals (Breakfast, Lunch, Dinner). Cost = estimated meal cost. MUST include "restaurants" array with up to 2 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
 - "exploration": Free self-guided walking, public markets, viewpoints. Cost = "Free".
 - "accommodation": Hotel check-in/check-out. Cost = "Free" (room cost lives in budget_breakdown).
 - "other": Any other activity.
@@ -4033,7 +4144,8 @@ General rules:
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
 - Keep the SUM of all activity costs within the "activities" and "food" budget portion of {int(budget)} {currency}.
 - Use real, recognisable places in and around {dest_anchor}.
-- Be concise; tips under ~12 words.
+- Be concise; tips under ~12 words, "price_basis" under 15 words. Every string is plain text — no markdown.
+- Output MINIFIED JSON on a single line: no indentation, no line breaks between keys, no code fences, no commentary. The response is parsed by a machine; whitespace only costs.
 """
 
 
@@ -4045,6 +4157,8 @@ async def _call_gemini(
     use_grounding: bool = False,
     response_schema: dict | None = None,
     operation: str = "odyssey_generate",
+    timeout_s: float | None = None,
+    models: tuple[str, ...] | None = None,
 ) -> tuple[str, list[dict]]:
     """Call Gemini with optional Google Search grounding.
 
@@ -4057,6 +4171,8 @@ async def _call_gemini(
     honoured when grounding is off — the same restriction as responseMimeType.
     `operation` names the call in telemetry (`{operation}:{model}`), so the
     route planner's small call is not counted as an itinerary generation.
+    `models` overrides the model chain — pass `_LITE_MODELS` for work that does
+    not need Flash.
     """
     api_key = (api_key or "").strip().strip('"').strip("'")
     base_generation_config = {
@@ -4074,9 +4190,10 @@ async def _call_gemini(
     # between passes) so a model that's overloaded right now is bypassed for
     # one that's currently healthy.
     data = None
-    attempts = _MODELS * 2
-    # Grounded calls may take longer due to live search; use extended timeout
-    timeout = 90.0 if use_grounding else 45.0
+    attempts = list(models or _MODELS) * 2
+    # Grounded calls may take longer due to live search; use extended timeout.
+    # A caller producing a long answer (the day-by-day plan) passes its own.
+    timeout = timeout_s if timeout_s else (90.0 if use_grounding else 45.0)
     async with httpx.AsyncClient(timeout=timeout) as client:
         for i, model in enumerate(attempts):
             generation_config = dict(base_generation_config)
@@ -4097,7 +4214,10 @@ async def _call_gemini(
                 body["tools"] = [{"google_search": {}}]
 
             try:
-                sku = "gemini_flash_grounded" if use_grounding else "gemini_flash_generate"
+                # Model-aware, so the cheap chain and the pro fallback are not
+                # billed at Flash's rate in the telemetry roll-up.
+                family = "flash_lite" if "lite" in model else ("pro" if "pro" in model else "flash")
+                sku = f"gemini_{family}_{'grounded' if use_grounding else 'generate'}"
                 async with telemetry.track(
                     "gemini", f"{operation}:{model}",
                     sku=sku,
@@ -4193,15 +4313,71 @@ def _parse_json(raw: str) -> dict:
             pass
     # Attempt repair for truncated JSON cut off near token limits
     if start != -1:
-        candidate = raw[start:]
-        for suffix in ["}", "\n}", "\n]}", "\n]}}", "\n}]}}"]:
-            try:
-                parsed = json.loads(candidate + suffix)
-                if isinstance(parsed, dict):
-                    return parsed
-            except Exception:
-                pass
+        repaired = _close_truncated_json(raw[start:])
+        if repaired is not None:
+            return repaired
     raise ValueError("Gemini did not return a JSON object")
+
+
+def _close_truncated_json(candidate: str) -> dict | None:
+    """Recover the complete prefix of a response cut off mid-value.
+
+    Walks the text once, tracking string state (escapes included) and the
+    stack of open containers, and records every point outside a string where
+    a complete value has just ended — a closing bracket, or the comma after a
+    member — together with what was still open there. Cutting the text at
+    such a point leaves a prefix made only of complete values, so appending
+    the matching closers yields valid JSON. The latest cut that parses wins:
+    the most of the plan that survived. The old approach of appending a
+    handful of fixed suffixes only worked when the cut happened to land
+    between two top-level values, which a plan truncated inside a day's
+    restaurant list never does.
+    """
+    stack: list[str] = []
+    cuts: list[tuple[int, str]] = []          # (prefix length, closers)
+    in_str = esc = False
+    for i, ch in enumerate(candidate):
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            stack.append("}")
+        elif ch == "[":
+            stack.append("]")
+        elif ch in "}]":
+            if stack and stack[-1] == ch:
+                stack.pop()
+            cuts.append((i + 1, "".join(reversed(stack))))
+        elif ch == ",":
+            cuts.append((i, "".join(reversed(stack))))
+
+    # Only the tail is worth trying: a cut further back than a few hundred
+    # values discards most of the plan anyway.
+    for length, closers in reversed(cuts[-600:]):
+        try:
+            parsed = json.loads(candidate[:length] + closers)
+        except Exception:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _warn_if_plan_is_short(plan: dict, days: int) -> None:
+    """A repaired, truncated response has fewer days than asked; say so."""
+    got = plan.get("day_plans") if isinstance(plan, dict) else None
+    if isinstance(got, list) and days and len(got) < days:
+        logger.warning(
+            "Plan came back with %d of %d days — the response was probably truncated.",
+            len(got), days,
+        )
 
 
 def _logistics_text(raw) -> str:
@@ -4392,7 +4568,9 @@ Suggest exactly ONE other real, popular travel website, booking platform, or loc
 Return ONLY a JSON object with this exact shape:
 {{ "name": "Platform Name", "type": "{partner_type}", "url": "Search or landing URL for this platform in {destination}" }}
 """
-    text, _ = await _call_gemini(prompt, api_key, max_tokens=1024, thinking_budget=0)
+    text, _ = await _call_gemini(
+        prompt, api_key, max_tokens=1024, thinking_budget=0, models=_LITE_MODELS,
+    )
     data = _parse_json(text)
     return {
         "name": str(data.get("name") or "").strip(),

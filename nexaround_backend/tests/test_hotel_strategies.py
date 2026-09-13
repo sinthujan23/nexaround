@@ -359,27 +359,70 @@ def test_a_generous_budget_narrows_to_four_star(monkeypatch):
 
 
 def test_ladder_widens_only_when_a_search_comes_back_empty(monkeypatch):
-    """3 -> 2 -> unfiltered, and live Google prices are kept to the last rung.
+    """The trip's floor, then no filter — and live Google prices to the last rung.
 
     The version this replaces retried once and then handed the whole stay to an
     LLM guess — which, for a town Google lists no classed hotel in, was every
-    time.
+    time. The 2-star rung that used to sit in the middle is gone: on exactly
+    those towns it bought a third search to return the same empty list, and the
+    unfiltered rung below now prefers classed properties itself.
     """
     tried, strategies = _run_hotel_search(
         monkeypatch, budget=50_000, currency="LKR", travelers=1,
         results_by_class={0: UNCLASSED},
     )
-    assert tried == [3, 2, 0]
+    assert tried == [3, 0]
     assert strategies[0]["name"] == "Backpacker Rest"
 
 
 def test_ladder_stops_at_the_first_rung_that_has_hotels(monkeypatch):
     tried, strategies = _run_hotel_search(
-        monkeypatch, budget=50_000, currency="LKR", travelers=1,
-        results_by_class={2: [_prop("Villa Two Star", nightly=20, hotel_class=2)]},
+        monkeypatch, budget=20_000, travelers=1,
+        results_by_class={4: [_prop("Grand", nightly=300, hotel_class=4)]},
     )
-    assert tried == [3, 2]
+    assert tried == [4]
+    assert strategies[0]["hotel_class"] == 4
+
+
+def test_a_two_star_town_is_reached_without_its_own_search(monkeypatch):
+    """What the removed 2-star rung used to deliver, one search cheaper."""
+    tried, strategies = _run_hotel_search(
+        monkeypatch, budget=50_000, currency="LKR", travelers=1,
+        results_by_class={0: [_prop("Villa Two Star", nightly=20, hotel_class=2)]},
+    )
+    assert tried == [3, 0]
     assert strategies[0]["hotel_class"] == 2
+
+
+def test_the_unfiltered_rung_drops_unclassed_hotels_when_enough_are_classed(monkeypatch):
+    """A trip that could afford 3-star is not shown hostels beside hotels."""
+    tried, strategies = _run_hotel_search(
+        monkeypatch, budget=50_000, currency="LKR", travelers=1,
+        results_by_class={0: [
+            _prop("Villa Two Star", nightly=20, hotel_class=2),
+            _prop("Hotel Three", nightly=30, hotel_class=3),
+            _prop("Hotel Four", nightly=45, hotel_class=4),
+            _prop("Backpacker Rest", nightly=12),
+        ]},
+    )
+    assert tried == [3, 0]
+    names = [s["name"] for s in strategies]
+    assert "Backpacker Rest" not in names
+    assert "Villa Two Star" in names
+
+
+def test_the_unfiltered_rung_keeps_everything_in_a_town_with_few_classed_hotels(monkeypatch):
+    """One lonely hotel card is worse than four real guesthouses."""
+    tried, strategies = _run_hotel_search(
+        monkeypatch, budget=50_000, currency="LKR", travelers=1,
+        results_by_class={0: [
+            _prop("Hotel Three", nightly=30, hotel_class=3),
+            _prop("Backpacker Rest", nightly=12),
+            _prop("Village Homestay", nightly=15),
+        ]},
+    )
+    assert tried == [3, 0]
+    assert "Backpacker Rest" in [s["name"] for s in strategies]
 
 
 def test_party_size_reaches_the_stay_total_end_to_end(monkeypatch):

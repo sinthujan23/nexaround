@@ -10,6 +10,7 @@ import json
 import logging
 import math
 import re
+import time
 import urllib.parse
 from datetime import datetime
 
@@ -29,6 +30,57 @@ SERPAPI_BASE = "https://serpapi.com/search.json"
 _CACHE_ENABLED = True
 FLIGHTS_CACHE_TTL_S = 6 * 60 * 60
 HOTELS_CACHE_TTL_S = 6 * 60 * 60
+
+# A hotel search that legitimately found nothing is worth remembering for an
+# hour. Google does not grow new hotels in a small town between a generation
+# and its retry, and the unfiltered rung of the class ladder used to be
+# re-bought on every regeneration. Shorter than a real result's TTL because an
+# empty answer is the one more likely to be wrong.
+HOTELS_EMPTY_TTL_S = 60 * 60
+
+# Once SerpApi says the plan is out of searches, every further call is a
+# round trip that can only fail — 45% of one month's calls were exactly that.
+# The guard is shared through Redis so all workers stop together, and expires
+# on its own so a topped-up plan resumes without a deploy.
+_QUOTA_GUARD_ENABLED = True
+QUOTA_GUARD_TTL_S = 30 * 60
+_QUOTA_GUARD_KEY = "serpapi:quota_exhausted"
+
+# Set when this process last saw (or read) the guard, so a worker mid-Odyssey
+# stops calling even if Redis is unavailable.
+_quota_blocked_until: float = 0.0
+
+
+async def _quota_exhausted() -> bool:
+    """True while the account is known to be out of searches."""
+    global _quota_blocked_until
+    if not _QUOTA_GUARD_ENABLED:
+        return False
+    if time.time() < _quota_blocked_until:
+        return True
+    try:
+        if await place_cache_service.get_raw(_QUOTA_GUARD_KEY):
+            _quota_blocked_until = time.time() + QUOTA_GUARD_TTL_S
+            return True
+    except Exception:
+        pass
+    return False
+
+
+async def _mark_quota_exhausted() -> None:
+    global _quota_blocked_until
+    if not _QUOTA_GUARD_ENABLED:
+        return
+    _quota_blocked_until = time.time() + QUOTA_GUARD_TTL_S
+    logger.warning(
+        "[SerpApi] Account is out of searches — pausing all SerpApi calls for %d minutes. "
+        "Live flight and hotel prices fall back to AI estimates until the plan renews.",
+        QUOTA_GUARD_TTL_S // 60,
+    )
+    try:
+        await place_cache_service.set_raw(_QUOTA_GUARD_KEY, "1", ttl=QUOTA_GUARD_TTL_S)
+    except Exception as e:
+        logger.debug("[SerpApi] could not publish the quota guard: %s", e)
 
 
 def _cache_key(params: Dict[str, Any]) -> str:
@@ -350,17 +402,24 @@ class SerpApiService:
 
         key = _cache_key(params)
         try:
+            # Cache first, quota guard second: a hit costs nothing and stays
+            # useful while the account is empty.
+            cached = await _cache_get(key)
+            if cached is None and await _quota_exhausted():
+                return {}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 async with telemetry.track(
                     "serpapi", _operation,
                     sku="serpapi_search", params=params, cache_key=key,
                 ) as t:
-                    cached = await _cache_get(key)
                     if cached is not None:
                         t.hit("redis")
                         return cached
                     resp = await client.get(SERPAPI_BASE, params=params)
                     t.upstream(resp)
+                if resp.status_code == 429:
+                    await _mark_quota_exhausted()
+                    return {}
                 if resp.status_code != 200:
                     logger.warning(f"[SerpApi] Flights search returned {resp.status_code}: {resp.text[:200]}")
                     return {}
@@ -483,12 +542,14 @@ class SerpApiService:
 
         key = _cache_key(params)
         try:
+            cached = await _cache_get(key)
+            if cached is None and await _quota_exhausted():
+                return {}
             async with httpx.AsyncClient(timeout=10.0) as client:
                 async with telemetry.track(
                     "serpapi", "search_hotels",
                     sku="serpapi_search", params=params, cache_key=key,
                 ) as t:
-                    cached = await _cache_get(key)
                     if cached is not None:
                         t.hit("redis")
                         data = cached
@@ -497,6 +558,9 @@ class SerpApiService:
                         resp = await client.get(SERPAPI_BASE, params=params)
                         t.upstream(resp)
                 if resp is not None:
+                    if resp.status_code == 429:
+                        await _mark_quota_exhausted()
+                        return {}
                     if resp.status_code != 200:
                         logger.warning(f"[SerpApi] Hotels search returned {resp.status_code}: {resp.text[:200]}")
                         return {}
@@ -508,8 +572,13 @@ class SerpApiService:
 
                     # Cached before the rating/class post-filters below, which
                     # are cheap and depend on arguments that are not in the key.
+                    # An empty answer is cached too, for less time: a town with
+                    # no classed hotel has none on the retry either, and the
+                    # class ladder used to re-buy that emptiness every run.
                     if data.get("properties"):
                         await _cache_set(key, data, self._ttl(HOTELS_CACHE_TTL_S))
+                    else:
+                        await _cache_set(key, {"properties": []}, self._ttl(HOTELS_EMPTY_TTL_S))
 
                 # Apply min_rating filter
                 if min_rating > 0 and "properties" in data:

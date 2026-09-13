@@ -751,3 +751,52 @@ def test_cache_errors_are_swallowed(monkeypatch):
 
     result = asyncio.run(serpapi_service.SerpApiService("k").search_flights(departure_city="CMB", destination="DEL"))
     assert result == ROUND_TRIP
+
+
+# ── Truncated responses ─────────────────────────────────────────────────────
+
+def _long_plan(days):
+    return {
+        "title": "Rajasthan", "days": days,
+        "day_plans": [
+            {"day": d, "theme": f"Day {d}", "activities": [
+                {"time": "09:00", "name": f"Fort {d}", "cost": "INR 500", "type": "attraction",
+                 "tip": 'Say "hello" \\ and mind the {braces} [inside] strings',
+                 "restaurants": [{"name": "Dhaba", "cuisine": "Rajasthani", "price_range": "INR 300"}]},
+                {"time": "13:00", "name": f"Lunch {d}", "cost": "INR 400", "type": "dining"},
+            ]} for d in range(1, days + 1)
+        ],
+    }
+
+
+def test_a_response_cut_off_inside_a_restaurant_list_is_recovered():
+    full = json.dumps(_long_plan(14))
+    cut = full[: int(len(full) * 0.55)]                 # mid-object, deep inside a day
+    plan = svc._parse_json(cut)
+    assert plan["title"] == "Rajasthan"
+    assert 5 <= len(plan["day_plans"]) < 14
+    assert all(a["name"] for d in plan["day_plans"] for a in d["activities"])
+
+
+def test_a_response_cut_off_inside_a_string_is_recovered():
+    full = json.dumps(_long_plan(3))
+    idx = full.index('mind the {braces}') + 8          # inside the tip string of day 1
+    plan = svc._parse_json(full[:idx])
+    assert plan["title"] == "Rajasthan"
+
+
+def test_a_complete_response_is_untouched():
+    full = json.dumps(_long_plan(4))
+    assert svc._parse_json(full) == _long_plan(4)
+
+
+def test_garbage_still_raises():
+    with pytest.raises(ValueError):
+        svc._parse_json("Sorry, I cannot help with that.")
+
+
+def test_output_budget_scales_with_the_trip():
+    assert svc._itinerary_token_budget(3) > 8192
+    assert svc._itinerary_token_budget(14) >= 20000
+    assert svc._itinerary_token_budget(14) <= svc._ITINERARY_TOKENS_MAX
+    assert svc._itinerary_timeout_s(14) > svc._itinerary_timeout_s(3) >= 90
