@@ -3084,6 +3084,11 @@ async def generate_odyssey(
             timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
+        # A response that parses but carries no days is as useless as one that
+        # does not parse, and it used to travel another 500 lines before dying
+        # as "Generated plan had no days" — past the one retry that could have
+        # saved it. Raising here puts it on the same footing as a parse error.
+        _require_days(plan, text)
     except Exception as e:
         logger.warning(
             "Grounded Gemini generation/parsing failed (%s) — falling back to standard ungrounded generation",
@@ -4370,13 +4375,44 @@ def _close_truncated_json(candidate: str) -> dict | None:
     return None
 
 
+def _plan_day_count(plan: dict) -> int:
+    """How many usable days a parsed plan actually carries."""
+    day_plans = plan.get("day_plans") if isinstance(plan, dict) else None
+    if not isinstance(day_plans, list):
+        return 0
+    return sum(
+        1 for d in day_plans
+        if isinstance(d, dict) and (d.get("activities") or d.get("theme"))
+    )
+
+
+def _require_days(plan: dict, raw: str) -> None:
+    """Reject a plan with no days, loudly enough to diagnose the next one.
+
+    The raw response is logged in two short slices because this is the one
+    failure we cannot reproduce after the fact: the model is non-deterministic
+    and the text is not stored anywhere.
+    """
+    if _plan_day_count(plan) > 0:
+        return
+    body = (raw or "").strip()
+    logger.warning(
+        "Response parsed but contains no day_plans (%d chars, keys=%s). Head: %s ... Tail: %s",
+        len(body),
+        sorted(plan.keys())[:12] if isinstance(plan, dict) else type(plan).__name__,
+        body[:300].replace("\n", " "),
+        body[-300:].replace("\n", " "),
+    )
+    raise ValueError("response contained no day_plans")
+
+
 def _warn_if_plan_is_short(plan: dict, days: int) -> None:
     """A repaired, truncated response has fewer days than asked; say so."""
-    got = plan.get("day_plans") if isinstance(plan, dict) else None
-    if isinstance(got, list) and days and len(got) < days:
+    got = _plan_day_count(plan)
+    if got and days and got < days:
         logger.warning(
             "Plan came back with %d of %d days — the response was probably truncated.",
-            len(got), days,
+            got, days,
         )
 
 

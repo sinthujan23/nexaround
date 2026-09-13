@@ -319,3 +319,61 @@ def test_an_empty_flight_search_is_still_retried(guard_on, monkeypatch):
     for _ in range(2):
         asyncio.run(serp.search_flights(departure_city="CMB", destination="COK"))
     assert len(rec.calls) == 2
+
+
+# ── A response with no days must not waste the retry ────────────────────────
+
+def test_a_plan_with_days_passes_the_gate():
+    plan = {"title": "x", "day_plans": [{"day": 1, "theme": "Arrival", "activities": [{"name": "a"}]}]}
+    svc._require_days(plan, "{...}")          # does not raise
+    assert svc._plan_day_count(plan) == 1
+
+
+@pytest.mark.parametrize("plan", [
+    {"title": "x"},                                   # key missing entirely
+    {"title": "x", "day_plans": []},                  # present but empty
+    {"title": "x", "day_plans": [{}, {}]},            # days with no content
+    {"title": "x", "day_plans": "not a list"},
+])
+def test_a_plan_without_days_is_rejected(plan):
+    """It used to travel 500 lines further and die past the one retry."""
+    assert svc._plan_day_count(plan) == 0
+    with pytest.raises(ValueError, match="no day_plans"):
+        svc._require_days(plan, '{"title": "x"}')
+
+
+def test_a_dayless_grounded_response_falls_back_to_ungrounded(monkeypatch):
+    """The real 3-day Canada failure: parsed fine, no days, no second chance."""
+    calls = []
+
+    async def _fake(prompt, api_key, **kw):
+        calls.append(kw.get("use_grounding", False))
+        if kw.get("use_grounding"):
+            return '{"title": "Canada", "days": 3, "day_plans": []}', []
+        return ('{"title": "Canada", "days": 3, "day_plans": ['
+                '{"day": 1, "theme": "Arrival", "activities": [{"name": "Walk", "cost": "Free"}]}]}'), []
+
+    monkeypatch.setattr(svc, "_call_gemini", _fake)
+
+    async def _run():
+        text, chunks = await svc._call_gemini("p", "k", use_grounding=True)
+        plan = svc._parse_json(text)
+        try:
+            svc._require_days(plan, text)
+        except ValueError:
+            text, chunks = await svc._call_gemini("p", "k", use_grounding=False)
+            plan = svc._parse_json(text)
+        return plan
+
+    plan = asyncio.run(_run())
+    assert calls == [True, False]                    # grounded, then the rescue
+    assert svc._plan_day_count(plan) == 1
+
+
+def test_a_short_plan_is_kept_not_thrown_away():
+    """Two of three days beats no plan at all — warn, don't fail."""
+    plan = {"day_plans": [{"day": 1, "theme": "A", "activities": [{"name": "x"}]},
+                          {"day": 2, "theme": "B", "activities": [{"name": "y"}]}]}
+    svc._require_days(plan, "{...}")
+    svc._warn_if_plan_is_short(plan, 3)
+    assert svc._plan_day_count(plan) == 2
