@@ -104,6 +104,27 @@ class FlightStrategiesSection extends StatelessWidget {
             ),
           ],
         ),
+        if (_gatewayLine().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Row(
+              children: [
+                const Icon(Icons.alt_route_rounded, size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _gatewayLine(),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         if (tierUnavailable)
           Padding(
             padding: const EdgeInsets.only(top: 8),
@@ -141,6 +162,149 @@ class FlightStrategiesSection extends StatelessWidget {
     ).animate().fade().slideY(begin: 0.05, end: 0);
   }
 
+  /// "Land at Nagpur (NAG) · Fly home from Jabalpur (JLR)" — the shape of the
+  /// journey the route planner chose, so a trip that ends far from where it
+  /// began is never read as a mistake in the return flight.
+  String _gatewayLine() {
+    final arrive = odyssey.flightArrivalAirport;
+    final depart = odyssey.flightDepartureAirport;
+    if (arrive == null) return '';
+    if (odyssey.flightTripType == 'open_jaw' && depart != null && depart.iata != arrive.iata) {
+      return 'Land at ${arrive.label} · Fly home from ${depart.label}';
+    }
+    if (odyssey.flightTripType == 'one_way') return 'One way into ${arrive.label}';
+    return 'Round trip via ${arrive.label}';
+  }
+
+  /// The outbound and return legs of one option, each on its own line.
+  ///
+  /// A round-trip tier whose return Google has not been asked for yet says
+  /// so plainly instead of hiding the leg: the fare already covers it, the
+  /// exact flight is chosen at booking.
+  Widget _buildLegRows(BuildContext context, FlightStrategy fs) {
+    final out = fs.outbound;
+    final ret = fs.returnLeg;
+    if (out == null && ret == null) return const SizedBox.shrink();
+
+    final currency = fs.currency ?? odyssey.currency;
+    final rows = <Widget>[];
+    if (out != null) {
+      rows.add(_legRow(
+        context,
+        icon: Icons.flight_takeoff_rounded,
+        label: 'OUTBOUND',
+        leg: out,
+        currency: currency,
+        showPrice: fs.isOpenJaw,
+        bookable: fs.isOpenJaw && out.bookingUrl.isNotEmpty,
+      ));
+    }
+    if (ret != null) {
+      rows.add(const SizedBox(height: 8));
+      rows.add(_legRow(
+        context,
+        icon: Icons.flight_land_rounded,
+        label: 'RETURN',
+        leg: ret,
+        currency: currency,
+        showPrice: fs.isOpenJaw,
+        bookable: fs.isOpenJaw && ret.bookingUrl.isNotEmpty,
+      ));
+    } else if (fs.coversBothLegs) {
+      final from = odyssey.flightDepartureAirport?.label ??
+          (out != null && out.destination.isNotEmpty ? out.destination : 'the arrival airport');
+      final date = _legDate(fs, isReturn: true);
+      rows.add(const SizedBox(height: 8));
+      rows.add(Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.flight_land_rounded, size: 16, color: Colors.black45),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'RETURN${date.isNotEmpty ? ' · $date' : ''}: from $from — the fare includes it; pick the exact flight on Google Flights after this outbound.',
+              style: const TextStyle(fontSize: 11.5, height: 1.4, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+    );
+  }
+
+  String _legDate(FlightStrategy fs, {required bool isReturn}) {
+    final leg = isReturn ? fs.returnLeg : fs.outbound;
+    if (leg != null && leg.date.isNotEmpty) return leg.date;
+    return (isReturn ? odyssey.endDate : odyssey.startDate) ?? '';
+  }
+
+  Widget _legRow(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required FlightLeg leg,
+    required String currency,
+    required bool showPrice,
+    required bool bookable,
+  }) {
+    final dep = FlightLeg.clock(leg.departureTime);
+    final arr = FlightLeg.clock(leg.arrivalTime);
+    final airlines = leg.airlines.take(2).join(', ');
+    final facts = <String>[
+      if (dep.isNotEmpty && arr.isNotEmpty) '$dep → $arr',
+      if (airlines.isNotEmpty) airlines,
+      leg.stops == 0 ? 'Non-stop' : '${leg.stops} stop${leg.stops > 1 ? 's' : ''}',
+      if (leg.duration.isNotEmpty) leg.duration,
+    ];
+    final price = leg.pricePerTraveler;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 16, color: Colors.black45),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                [label, if (leg.date.isNotEmpty) leg.date, if (leg.route.isNotEmpty) leg.route].join(' · '),
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                facts.join(' · '),
+                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.35),
+              ),
+            ],
+          ),
+        ),
+        if (showPrice && price != null && price > 0) ...[
+          const SizedBox(width: 8),
+          Text(
+            '$currency ${formatAmount(price)}',
+            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700),
+          ),
+        ],
+        if (bookable) ...[
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _launchUrl(context, leg.bookingUrl),
+            borderRadius: BorderRadius.circular(8),
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              child: Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.actionTeal),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   /// Every other real fare on the route, plainly listed.
   ///
   /// Not cards and not tiers: these are deliberately unranked. The tiers above
@@ -157,6 +321,74 @@ class FlightStrategiesSection extends StatelessWidget {
       return parts.length > 1 ? parts.last : t;
     }
 
+    // An open-jaw trip lists the two directions separately: a return fare
+    // from a different city cannot be compared against an outbound one.
+    final outboundOptions = odyssey.flightMoreOptions
+        .where((o) => (o['leg'] ?? 'outbound').toString() != 'return')
+        .toList();
+    final returnOptions = odyssey.flightMoreOptions
+        .where((o) => (o['leg'] ?? '').toString() == 'return')
+        .toList();
+
+    Widget subheader(String text) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
+          child: Text(
+            text,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        );
+
+    Widget optionRow(Map<String, dynamic> o) {
+      final airlines = ((o['airlines'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .join(', ');
+      final dep = hhmm(o['departure_time']);
+      final arr = hhmm(o['arrival_time']);
+      final stops = (o['stops'] as num?)?.toInt() ?? 0;
+      final price = (o['price_per_traveler'] as num?)?.toDouble() ?? 0;
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    airlines.isEmpty ? 'Airline unavailable' : airlines,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    [
+                      if (dep.isNotEmpty && arr.isNotEmpty) '$dep → $arr',
+                      (o['total_duration'] ?? '').toString(),
+                      stops == 0 ? 'Non-stop' : '$stops stop${stops > 1 ? 's' : ''}',
+                    ].where((e) => e.isNotEmpty).join(' · '),
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '${(o['currency'] ?? '').toString()} ${formatAmount(price.round())}',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w700),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 16),
       decoration: BoxDecoration(
@@ -170,7 +402,9 @@ class FlightStrategiesSection extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text(
-              'ALL ${odyssey.flightMoreOptions.length + 1 + 1} FARES ON THIS ROUTE',
+              returnOptions.isEmpty
+                  ? 'ALL ${odyssey.flightMoreOptions.length + 1 + 1} FARES ON THIS ROUTE'
+                  : 'MORE FARES ON THESE ROUTES',
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,
@@ -186,51 +420,13 @@ class FlightStrategiesSection extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
             ),
           ),
-          ...odyssey.flightMoreOptions.map((o) {
-            final airlines = ((o['airlines'] as List?) ?? const [])
-                .map((e) => e.toString())
-                .join(', ');
-            final dep = hhmm(o['departure_time']);
-            final arr = hhmm(o['arrival_time']);
-            final stops = (o['stops'] as num?)?.toInt() ?? 0;
-            final price = (o['price_per_traveler'] as num?)?.toDouble() ?? 0;
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          airlines.isEmpty ? 'Airline unavailable' : airlines,
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          [
-                            if (dep.isNotEmpty && arr.isNotEmpty) '$dep → $arr',
-                            (o['total_duration'] ?? '').toString(),
-                            stops == 0 ? 'Non-stop' : '$stops stop${stops > 1 ? 's' : ''}',
-                          ].where((e) => e.isNotEmpty).join(' · '),
-                          style: const TextStyle(
-                              fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    '${(o['currency'] ?? '').toString()} ${formatAmount(price.round())}',
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
-            );
-          }),
+          if (returnOptions.isNotEmpty && outboundOptions.isNotEmpty)
+            subheader('OUTBOUND${odyssey.flightArrivalAirport != null ? ' · into ${odyssey.flightArrivalAirport!.iata}' : ''}'),
+          ...outboundOptions.map(optionRow),
+          if (returnOptions.isNotEmpty) ...[
+            subheader('RETURN${odyssey.flightDepartureAirport != null ? ' · from ${odyssey.flightDepartureAirport!.iata}' : ''}'),
+            ...returnOptions.map(optionRow),
+          ],
           const SizedBox(height: 8),
         ],
       ),
@@ -302,14 +498,19 @@ class FlightStrategiesSection extends StatelessWidget {
     final perTraveler = fs.pricePerTraveler!;
     final total = fs.priceTotal ?? perTraveler * travelers;
 
-    // Google prices the return leg only once an outbound is picked, so the
-    // duration we hold is the outbound itinerary's — say so rather than let it
-    // read as the whole round trip.
+    // When both legs are known, say both durations. Otherwise the duration
+    // we hold is the outbound itinerary's (Google prices the return only once
+    // an outbound is picked) — say so rather than let it read as the whole
+    // round trip.
+    final out = fs.outbound;
+    final ret = fs.returnLeg;
     final facts = <String>[
-      fs.isRoundTrip ? 'Round trip' : 'One way',
+      fs.isOpenJaw ? 'Fly in + fly home' : (fs.isRoundTrip ? 'Round trip' : 'One way'),
       if (fs.stops == 0) 'Non-stop' else if (fs.stops == 1) '1 stop' else '${fs.stops} stops',
-      if (fs.duration.isNotEmpty)
-        fs.isRoundTrip ? '${fs.duration} outbound' : fs.duration,
+      if (out != null && ret != null && out.duration.isNotEmpty && ret.duration.isNotEmpty)
+        '${out.duration} out · ${ret.duration} back'
+      else if (fs.duration.isNotEmpty)
+        fs.coversBothLegs ? '${fs.duration} outbound' : fs.duration,
     ];
 
     return Column(
@@ -517,7 +718,9 @@ class FlightStrategiesSection extends StatelessWidget {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          fs.route,
+                          fs.returnRoute.isNotEmpty && fs.isOpenJaw
+                              ? '${fs.route}  ·  ${fs.returnRoute}'
+                              : fs.route,
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w800,
@@ -528,6 +731,7 @@ class FlightStrategiesSection extends StatelessWidget {
                     ],
                   ),
                   _buildPriceBlock(fs),
+                  _buildLegRows(context, fs),
                 ],
               ),
             ),
@@ -715,7 +919,7 @@ class FlightStrategiesSection extends StatelessWidget {
                           ],
                           Flexible(
                             child: Text(
-                              'Book Flight on $provider',
+                              fs.isOpenJaw ? 'Book Outbound on $provider' : 'Book Flight on $provider',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
@@ -730,6 +934,29 @@ class FlightStrategiesSection extends StatelessWidget {
                   );
                 },
               ),
+              // An open-jaw trip is two tickets, so the way home gets its own
+              // button rather than being lost inside the outbound's link.
+              if (fs.isOpenJaw && (fs.returnLeg?.bookingUrl.isNotEmpty ?? false)) ...[
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _launchUrl(context, fs.returnLeg!.bookingUrl),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.black,
+                      side: const BorderSide(color: Colors.black26),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    icon: const Icon(Icons.flight_land_rounded, size: 16),
+                    label: Text(
+                      'Book Return${fs.returnRoute.isNotEmpty ? ' (${fs.returnRoute})' : ''}',
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ],
         ),

@@ -9,17 +9,20 @@ Flutter app's `Odyssey.fromItinerary` expects: the itinerary `items` list is
 import asyncio
 import json
 import logging
+import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import urllib.parse
 import httpx
-from app.services import cover_photo_service, geo_resolver, telemetry, trip_cost_floor
+from app.services import cover_photo_service, geo_resolver, place_cache_service, telemetry, trip_cost_floor
 from app.services.serpapi_service import (
     SerpApiService,
+    attach_return_leg,
     format_flight_results_for_gemini,
     format_hotel_results_for_gemini,
     extract_hotel_strategies_from_serpapi,
     extract_flight_strategies_from_serpapi,
+    extract_open_jaw_strategies_from_serpapi,
     rooms_for as serpapi_rooms_for,
 )
 
@@ -55,6 +58,7 @@ def _build_deep_booking_url(
     is_flight: bool = False,
     origin_city: str = "",
     airlines: list[str] = None,
+    one_way: bool = False,
 ) -> str:
     prov_lower = (provider or "").lower()
     dest = _clean_destination(destination)
@@ -85,10 +89,11 @@ def _build_deep_booking_url(
             origin = ""
 
         # Build clean Google Flights query URL
-        search_q = f"flights from {origin} to {dest}" if origin else f"flights to {dest}"
+        kind = "one way flights" if one_way else "flights"
+        search_q = f"{kind} from {origin} to {dest}" if origin else f"{kind} to {dest}"
         if airlines and len(airlines) > 0:
             search_q += f" with {', '.join(airlines[:2])}"
-        if start_date and end_date:
+        if start_date and end_date and not one_way:
             search_q += f" on {start_date} through {end_date}"
         elif start_date:
             search_q += f" on {start_date}"
@@ -628,7 +633,9 @@ def _derive_return_date(start_date: str, days: int) -> str:
         return ""
 
 
-def _enforce_route_destination(data: dict, dest_code: str, origin_code: str = "") -> dict:
+def _enforce_route_destination(
+    data: dict, dest_code: str, origin_code: str = "", return_code: str = "",
+) -> dict:
     """Rewrite each strategy's `route` to the airports we actually resolved.
 
     Only touches the AI-estimate path: on the live SerpApi path the route is
@@ -636,6 +643,9 @@ def _enforce_route_destination(data: dict, dest_code: str, origin_code: str = ""
     model, by contrast, invents this string, and it is the string the booking
     link and the Flights card are both read from — so a wrong arrival airport
     there is visible and clickable. Codes we resolved beat codes it imagined.
+
+    `return_code` is the airport the trip flies home from; when given, the
+    return route is pinned the same way (home from there, back to the origin).
     """
     strategies = data.get("strategies")
     if not isinstance(strategies, list) or not dest_code:
@@ -643,6 +653,7 @@ def _enforce_route_destination(data: dict, dest_code: str, origin_code: str = ""
 
     dest_first = dest_code.split(",")[0].strip().upper()
     origin_first = (origin_code or "").split(",")[0].strip().upper()
+    return_first = (return_code or dest_code).split(",")[0].strip().upper()
     for strat in strategies:
         if not isinstance(strat, dict):
             continue
@@ -652,6 +663,8 @@ def _enforce_route_destination(data: dict, dest_code: str, origin_code: str = ""
         if not left:
             continue
         strat["route"] = f"{left} → {dest_first}"
+        if strat.get("trip_type") != "one_way":
+            strat["return_route"] = f"{return_first} → {left}"
     return data
 
 
@@ -700,6 +713,7 @@ def _apply_flight_booking_urls(
                 route_dest = r_parts[-1].upper()
 
         strat["provider_name"] = "Google Flights"
+        open_jaw = strat.get("trip_type") == "open_jaw"
         strat["booking_url"] = _build_deep_booking_url(
             provider="Google Flights",
             item_name=strat.get("title") or destination,
@@ -709,7 +723,31 @@ def _apply_flight_booking_urls(
             travelers=travelers,
             is_flight=True,
             origin_city=route_origin,
+            # An open-jaw trip is two tickets: the card's main link books the
+            # outbound; the return leg gets its own below.
+            one_way=open_jaw,
         )
+        outbound = strat.get("outbound")
+        if isinstance(outbound, dict):
+            outbound["booking_url"] = strat["booking_url"]
+        ret = strat.get("return")
+        if isinstance(ret, dict):
+            ret_str = str(strat.get("return_route") or "")
+            r_parts = [p.strip() for p in ret_str.replace("->", "→").split("→") if p.strip()]
+            ret_origin = r_parts[0].upper() if r_parts and _AIRPORT_CODE_RE.match(r_parts[0].upper()) else route_dest
+            ret_dest = r_parts[-1].upper() if len(r_parts) > 1 and _AIRPORT_CODE_RE.match(r_parts[-1].upper()) else route_origin
+            # On a round trip the one link above already covers both legs.
+            ret["booking_url"] = _build_deep_booking_url(
+                provider="Google Flights",
+                item_name=strat.get("title") or destination,
+                destination=ret_dest,
+                start_date=flight_end_date,
+                end_date="",
+                travelers=travelers,
+                is_flight=True,
+                origin_city=ret_origin,
+                one_way=True,
+            ) if open_jaw else ""
     return data
 
 
@@ -733,13 +771,28 @@ async def _add_flight_prose(
 
     facts = []
     for s in strategies:
-        facts.append(
+        line = (
             f'- tier "{s.get("tier")}": {s.get("route")}, {", ".join(s.get("airlines") or []) or "multiple carriers"}, '
             f'{s.get("stops")} stop(s), {s.get("total_duration") or "duration n/a"} outbound'
         )
+        ret = s.get("return")
+        if isinstance(ret, dict) and ret.get("origin"):
+            line += (
+                f'; return {s.get("return_route") or ""}, '
+                f'{", ".join(ret.get("airlines") or []) or "multiple carriers"}, '
+                f'{ret.get("stops", 0)} stop(s), {ret.get("duration") or "duration n/a"}'
+            )
+        facts.append(line)
+
+    shape = ""
+    if any(s.get("trip_type") == "open_jaw" for s in strategies):
+        shape = (
+            "\nThis is an open-jaw trip: the traveller flies into one city and home "
+            "from another, so each option is two tickets.\n"
+        )
 
     prompt = f"""Write short marketing copy for {len(strategies)} flight options from "{departure_city}" to "{destination}".
-
+{shape}
 The options (already priced and verified from live Google Flights data):
 {chr(10).join(facts)}
 
@@ -782,6 +835,7 @@ def _structure_ai_flight_strategies(
     travelers: int,
     outbound_date: str,
     return_date: str,
+    open_jaw: bool = False,
 ) -> dict:
     """Attach the structured price contract to Gemini-estimated strategies.
 
@@ -795,6 +849,28 @@ def _structure_ai_flight_strategies(
 
     party = max(int(travelers or 1), 1)
     trip_type = "round_trip" if return_date else "one_way"
+    if open_jaw and return_date:
+        trip_type = "open_jaw"
+
+    def _leg(route_str: str, date: str, airlines, stops, duration: str) -> dict | None:
+        parts = [p.strip().upper() for p in str(route_str or "").replace("->", "→").split("→") if p.strip()]
+        if len(parts) < 2:
+            return None
+        return {
+            "origin": parts[0],
+            "destination": parts[-1],
+            "date": date or "",
+            "departure_time": "",
+            "arrival_time": "",
+            "airlines": [str(a) for a in airlines] if isinstance(airlines, list) else [],
+            "flight_numbers": [],
+            "stops": _as_int(stops, 0),
+            "duration_minutes": 0,
+            "duration": str(duration or ""),
+            "price_per_traveler": None,
+            "segments": [],
+            "booking_url": "",
+        }
 
     priced = []
     for s in strategies:
@@ -815,6 +891,19 @@ def _structure_ai_flight_strategies(
         s["is_live_price"] = False
         s["price_source"] = "ai_estimate"
         s["travelers"] = party
+        s["outbound"] = _leg(
+            s.get("route"), outbound_date, s.get("airlines"), s.get("stops"), s.get("total_duration"),
+        )
+        s["return"] = (
+            _leg(
+                s.get("return_route"), return_date, s.get("return_airlines") or s.get("airlines"),
+                s.get("return_stops", s.get("stops")), s.get("return_duration"),
+            )
+            if trip_type != "one_way" else None
+        )
+        s.pop("return_airlines", None)
+        s.pop("return_stops", None)
+        s.pop("return_duration", None)
         priced.append(s)
 
     # Tier by price rank — distinct strategies, cheapest to dearest.
@@ -840,6 +929,26 @@ def _structure_ai_flight_strategies(
     return data
 
 
+# Which round-trip tiers get their return leg priced with a departure_token
+# follow-up. One search per tier; the Recommended card is the one the
+# itinerary is planned around, so it is the one that must show both legs.
+_RETURN_LEG_TIERS = ("recommended", "minimum", "comfortable")
+_RETURN_LEG_SEARCHES = 1
+
+
+def _pick_return_tiers(strategies: list[dict], tokens: dict) -> list[dict]:
+    """The strategies whose return leg is worth a follow-up search, in priority order."""
+    by_tier = {s.get("tier"): s for s in strategies if isinstance(s, dict)}
+    picked = []
+    for tier in _RETURN_LEG_TIERS:
+        strat = by_tier.get(tier)
+        if strat is not None and tokens.get(tier):
+            picked.append(strat)
+        if len(picked) >= _RETURN_LEG_SEARCHES:
+            break
+    return picked
+
+
 async def generate_flight_strategies(
     *,
     departure_city: str,
@@ -857,6 +966,7 @@ async def generate_flight_strategies(
     geo_budget=None,
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
+    route_plan: "RoutePlan | None" = None,
 ) -> dict:
     """Generates tiered flight strategies from live SerpApi Google Flights data.
 
@@ -866,9 +976,18 @@ async def generate_flight_strategies(
     Gemini is then handed the already-priced itineraries and asked for prose
     only.
 
-    Every price returned by either path is **per traveller, round trip when a
-    return date is known, in `currency`** — the convention documented in
-    trip_cost_floor.py. `price_total` is always derived from it.
+    Every price returned by either path is **per traveller, for the whole
+    journey (both legs when a return date is known), in `currency`** — the
+    convention documented in trip_cost_floor.py. `price_total` is always
+    derived from it.
+
+    Where the trip is entered and left comes from `route_plan` when the route
+    planner decided it: fly into the gateway nearest the first leg, home from
+    the one nearest the last. Different gateways make an open-jaw trip, priced
+    as two one-way searches run together; the same gateway is a round trip,
+    searched as before plus one follow-up for the return leg Google only
+    reveals per outbound. Without a route plan the destination is resolved to
+    an airport the way it always was.
 
     Falls back to Gemini-estimated pricing only when SerpApi is unavailable or
     returns nothing usable.
@@ -910,29 +1029,46 @@ async def generate_flight_strategies(
                     departure_city, dep_country,
                 )
 
-    # The destination used to be resolved with country="" while the origin got
-    # its country — the asymmetry that let an Andaman trip resolve to Colombo.
-    # Anything we know about the destination goes in on the same footing.
     _dgeo = destination_geo
-    origin_code, dest_code = await asyncio.gather(
-        _resolve_airport_code(
+    arrival_code = (route_plan.arrival_code if route_plan is not None else "") or ""
+    departure_code = (route_plan.departure_code if route_plan is not None else "") or ""
+    if arrival_code:
+        origin_code = await _resolve_airport_code(
             departure_city, dep_country, api_key,
             latitude=departure_latitude, longitude=departure_longitude,
-        ),
-        _resolve_airport_code(
-            destination,
-            (_dgeo.country if _dgeo is not None and _dgeo.resolved else ""),
-            api_key,
-            latitude=(_dgeo.latitude if _dgeo is not None else None),
-            longitude=(_dgeo.longitude if _dgeo is not None else None),
-            country_code=(_dgeo.country_code if _dgeo is not None else ""),
-            is_country=(_dgeo.is_country if _dgeo is not None else False),
-            budget=geo_budget,
-        ),
-    )
-    if origin_code and dest_code and set(origin_code.split(",")) & set(dest_code.split(",")):
+        )
+    else:
+        # No planner gateway: the destination itself is resolved, on the same
+        # footing as the origin. (Resolving it with country="" while the origin
+        # got its country is the asymmetry that let an Andaman trip resolve to
+        # Colombo.)
+        origin_code, arrival_code = await asyncio.gather(
+            _resolve_airport_code(
+                departure_city, dep_country, api_key,
+                latitude=departure_latitude, longitude=departure_longitude,
+            ),
+            _resolve_airport_code(
+                destination,
+                (_dgeo.country if _dgeo is not None and _dgeo.resolved else ""),
+                api_key,
+                latitude=(_dgeo.latitude if _dgeo is not None else None),
+                longitude=(_dgeo.longitude if _dgeo is not None else None),
+                country_code=(_dgeo.country_code if _dgeo is not None else ""),
+                is_country=(_dgeo.is_country if _dgeo is not None else False),
+                budget=geo_budget,
+            ),
+        )
+    if not departure_code:
+        departure_code = arrival_code
+    dest_code = arrival_code
+
+    origin_set = set(origin_code.split(",")) if origin_code else set()
+    if origin_set and (
+        (arrival_code and origin_set & set(arrival_code.split(",")))
+        or (departure_code and origin_set & set(departure_code.split(",")))
+    ):
         logger.info(
-            "No distinct flight route: '%s' and '%s' both resolve to %s — "
+            "No distinct flight route: '%s' and '%s' share airport(s) %s — "
             "skipping flight generation.",
             departure_city, destination, origin_code,
         )
@@ -952,59 +1088,168 @@ async def generate_flight_strategies(
         )
         return {}
 
+    is_open_jaw = set(arrival_code.split(",")) != set(departure_code.split(","))
+    arrival_city = ((route_plan.arrival or {}).get("city") if route_plan is not None else "") or ""
+    departure_gateway_city = ((route_plan.departure or {}).get("city") if route_plan is not None else "") or ""
+
+    def _with_airports(data: dict, *, trip_type: str, home_code: str) -> dict:
+        """Stamp the gateways the search actually used onto the result."""
+        if not data:
+            return data
+        arrival = dict(route_plan.arrival) if route_plan is not None and route_plan.arrival else {}
+        departure = dict(route_plan.departure) if route_plan is not None and route_plan.departure else {}
+        if not arrival:
+            arrival = {"iata": arrival_code.split(",")[0], "city": "", "name": ""}
+        if not departure or home_code == arrival_code:
+            departure = dict(arrival) if home_code == arrival_code else {
+                "iata": home_code.split(",")[0], "city": "", "name": "",
+            }
+        data["arrival_airport"] = _public_airport(arrival)
+        data["departure_airport"] = _public_airport(departure)
+        data["origin_airport"] = origin_code
+        data["trip_type"] = trip_type
+        data.pop("_departure_tokens", None)
+        return data
+
+    async def _finish(direct: dict, *, trip_type: str, home_code: str) -> dict:
+        direct = await _add_flight_prose(
+            direct,
+            departure_city=departure_city,
+            destination=arrival_city or destination,
+            api_key=api_key,
+        )
+        direct = _apply_flight_booking_urls(
+            direct,
+            departure_city=departure_city,
+            destination=destination,
+            flight_start_date=outbound_date,
+            flight_end_date=return_date,
+            travelers=travelers,
+        )
+        return _with_airports(direct, trip_type=trip_type, home_code=home_code)
+
     # ── Primary path: SerpApi direct extraction ──────────────────────────────
     if serpapi_key and origin_code and dest_code:
         try:
-            logger.info(
-                "Fetching live flight data via SerpApi (Google Flights) %s → %s...",
-                origin_code, dest_code,
-            )
             serp = SerpApiService(serpapi_key)
-            serp_result = await serp.search_flights(
-                departure_city=origin_code,
-                destination=dest_code,
-                outbound_date=outbound_date,
-                return_date=return_date,
-                # One adult: keeps the returned fare unambiguously per-traveller.
-                # The group total is derived, never read back from Google.
-                adults=1,
-                currency=currency,
-            )
+            serp_result: dict = {}
 
-            direct = extract_flight_strategies_from_serpapi(
-                serp_result,
-                departure_city=departure_city,
-                destination=destination,
-                currency=currency,
-                outbound_date=outbound_date,
-                return_date=return_date,
-                travelers=travelers,
-            )
-
-            if direct.get("strategies"):
+            if is_open_jaw and return_date:
                 logger.info(
-                    "SerpAPI produced %d live flight tiers for %s → %s",
-                    len(direct["strategies"]), departure_city, destination,
+                    "Fetching live open-jaw flight data via SerpApi: %s → %s out, %s → %s home...",
+                    origin_code, arrival_code, departure_code, origin_code,
                 )
-                direct = await _add_flight_prose(
-                    direct,
+                out_result, ret_result = await asyncio.gather(
+                    serp.search_flights(
+                        departure_city=origin_code, destination=arrival_code,
+                        outbound_date=outbound_date, one_way=True,
+                        adults=1, currency=currency,
+                    ),
+                    serp.search_flights(
+                        departure_city=departure_code, destination=origin_code,
+                        outbound_date=return_date, one_way=True,
+                        adults=1, currency=currency,
+                    ),
+                )
+                serp_result = out_result
+                direct = extract_open_jaw_strategies_from_serpapi(
+                    out_result, ret_result,
                     departure_city=departure_city,
                     destination=destination,
-                    api_key=api_key,
+                    currency=currency,
+                    outbound_date=outbound_date,
+                    return_date=return_date,
+                    travelers=travelers,
+                    arrival_city=arrival_city,
+                    departure_gateway_city=departure_gateway_city,
                 )
-                return _apply_flight_booking_urls(
-                    direct,
+                if direct.get("strategies"):
+                    logger.info(
+                        "SerpAPI produced %d live open-jaw flight tiers for %s → %s / %s → %s",
+                        len(direct["strategies"]), origin_code, arrival_code, departure_code, origin_code,
+                    )
+                    return await _finish(direct, trip_type="open_jaw", home_code=departure_code)
+
+                # One direction came back empty. A round trip into the arrival
+                # gateway is still a real, bookable answer; the itinerary is
+                # told the trip must end back there.
+                logger.warning(
+                    "Open-jaw search had no usable pairing (%s → %s: %d options, %s → %s: %d); "
+                    "falling back to a round trip via %s.",
+                    origin_code, arrival_code,
+                    len((out_result or {}).get("best_flights") or []) + len((out_result or {}).get("other_flights") or []),
+                    departure_code, origin_code,
+                    len((ret_result or {}).get("best_flights") or []) + len((ret_result or {}).get("other_flights") or []),
+                    arrival_code,
+                )
+                is_open_jaw = False
+                departure_code = arrival_code
+                # The prompt's departure logistics read the route plan, so it
+                # has to describe the flights actually found.
+                if route_plan is not None:
+                    route_plan.departure = dict(route_plan.arrival) if route_plan.arrival else None
+                    route_plan.departure_code = arrival_code
+
+            if not is_open_jaw:
+                logger.info(
+                    "Fetching live flight data via SerpApi (Google Flights) %s → %s...",
+                    origin_code, dest_code,
+                )
+                serp_result = await serp.search_flights(
+                    departure_city=origin_code,
+                    destination=dest_code,
+                    outbound_date=outbound_date,
+                    return_date=return_date,
+                    # One adult: keeps the returned fare unambiguously per-traveller.
+                    # The group total is derived, never read back from Google.
+                    adults=1,
+                    currency=currency,
+                )
+
+                direct = extract_flight_strategies_from_serpapi(
+                    serp_result,
                     departure_city=departure_city,
                     destination=destination,
-                    flight_start_date=outbound_date,
-                    flight_end_date=return_date,
+                    currency=currency,
+                    outbound_date=outbound_date,
+                    return_date=return_date,
                     travelers=travelers,
                 )
 
-            logger.warning(
-                "SerpAPI returned no usable flight options for %s → %s; "
-                "falling back to Gemini estimation.", departure_city, destination,
-            )
+                if direct.get("strategies"):
+                    logger.info(
+                        "SerpAPI produced %d live flight tiers for %s → %s",
+                        len(direct["strategies"]), departure_city, destination,
+                    )
+                    # The return leg Google only shows per outbound: one
+                    # follow-up for the tier the plan is built around.
+                    tokens = direct.get("_departure_tokens") or {}
+                    for strat in _pick_return_tiers(direct["strategies"], tokens):
+                        try:
+                            ret_result = await serp.search_flights_return(
+                                departure_city=origin_code,
+                                destination=dest_code,
+                                outbound_date=outbound_date,
+                                return_date=return_date,
+                                departure_token=tokens[strat["tier"]],
+                                adults=1,
+                                currency=currency,
+                            )
+                            if not attach_return_leg(
+                                strat, ret_result, currency=currency, return_date=return_date,
+                            ):
+                                logger.info(
+                                    "No return itineraries came back for the %s tier.", strat["tier"],
+                                )
+                        except Exception as e:
+                            logger.warning("Return-leg lookup failed for %s tier: %s", strat.get("tier"), e)
+                    trip_type = "round_trip" if return_date else "one_way"
+                    return await _finish(direct, trip_type=trip_type, home_code=dest_code)
+
+                logger.warning(
+                    "SerpAPI returned no usable flight options for %s → %s; "
+                    "falling back to Gemini estimation.", departure_city, destination,
+                )
             real_data_context = format_flight_results_for_gemini(
                 serp_result, departure_city, destination, currency
             )
@@ -1026,6 +1271,8 @@ INSTRUCTION: Base your strategies on the real Google Flights data above. Extract
 """
 
     trip_basis = "round trip (outbound AND return)" if return_date else "one way"
+    if is_open_jaw and return_date:
+        trip_basis = "open-jaw journey (outbound into one airport AND return home from another)"
 
     # Every worked example below used to be hard-coded "CMB → KUL". Five
     # Colombo literals in one prompt is a standing nudge toward Sri Lanka, and
@@ -1034,7 +1281,16 @@ INSTRUCTION: Base your strategies on the real Google Flights data above. Extract
     # placeholders rather than any real airport when nothing resolved.
     ex_o = (origin_code.split(",")[0].strip().upper() if origin_code else "AAA")
     ex_d = (dest_code.split(",")[0].strip().upper() if dest_code else "BBB")
+    ex_r = (departure_code.split(",")[0].strip().upper() if departure_code else ex_d)
     ex_route = f"{ex_o} → {ex_d}"
+    ex_return = f"{ex_r} → {ex_o}"
+    return_rule = ""
+    if return_date:
+        return_rule = (
+            f'- The return leg flies home from {ex_r}: "return_route" MUST be "{ex_return}". '
+            f'Give its airlines, stop count and duration in "return_airlines", "return_stops" '
+            f'and "return_duration".\n'
+        )
 
     prompt = f"""Analyze flight options for a trip from "{departure_city}" ({departure_country}) to "{destination}".
 The travelers want to find the cheapest flight options.
@@ -1059,7 +1315,7 @@ These can be:
 IMPORTANT RULES:
 - In the "route" field, always use real IATA airport codes. The route MUST be "{ex_route}" — {ex_o} is the airport for "{departure_city}" and {ex_d} is the airport for "{destination}". If a city has no airport of its own, its nearest major airport is already reflected in those codes.
 - The arrival airport MUST be {ex_d}. Never route to an airport in a different country from "{destination}", however similar the names look.
-- provider_name MUST be "Google Flights" for all strategies.
+{return_rule}- provider_name MUST be "Google Flights" for all strategies.
 - PRICE BASIS (critical): every "estimated_price_range" is the fare for ONE traveller for the
   ENTIRE {trip_basis} journey, in {currency}, taxes and fees included. Never quote a group
   total. Never quote a single leg of a return trip.
@@ -1071,6 +1327,8 @@ Field Rules:
 - "estimated_savings": Very short tag under 4 words (e.g., "Save ~20%").
 - "estimated_price_range": Short price string only (e.g., "USD 180 - 300"). REQUIRED on every strategy.
 - "route": Short IATA airport code route — use exactly "{ex_route}".
+- "return_route": Short IATA airport code route for the way home — use exactly "{ex_return}" (omit for a one-way trip).
+- "return_airlines", "return_stops", "return_duration": the return leg's carriers, stop count and duration (omit for a one-way trip).
 - "convenience": Star rating string ONLY (e.g., "★★★☆☆").
 - "tip": Short booking tip.
 - "booking_url": Leave empty, will be generated server-side.
@@ -1092,6 +1350,10 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
       "route": "{ex_route}",
       "stops": 0,
       "total_duration": "4h 30m",
+      "return_route": "{ex_return}",
+      "return_airlines": ["Airline A"],
+      "return_stops": 0,
+      "return_duration": "4h 40m",
       "convenience": "★★★★★",
       "tip": "Short booking tip.",
       "booking_url": ""
@@ -1144,12 +1406,21 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
             travelers=travelers,
             outbound_date=outbound_date,
             return_date=return_date,
+            open_jaw=is_open_jaw,
         )
         # The model wrote these routes freehand. Where we resolved real codes,
         # they win — this is the last point before the route reaches the card
         # and the booking link.
-        data = _enforce_route_destination(data, dest_code, origin_code)
-        return _apply_flight_booking_urls(
+        data = _enforce_route_destination(data, dest_code, origin_code, departure_code)
+        for strat in data.get("strategies") or []:
+            if not isinstance(strat, dict):
+                continue
+            for key, route_key in (("outbound", "route"), ("return", "return_route")):
+                leg = strat.get(key)
+                parts = [p.strip() for p in str(strat.get(route_key) or "").replace("->", "→").split("→") if p.strip()]
+                if isinstance(leg, dict) and len(parts) >= 2:
+                    leg["origin"], leg["destination"] = parts[0], parts[-1]
+        data = _apply_flight_booking_urls(
             data,
             departure_city=departure_city,
             destination=destination,
@@ -1157,6 +1428,8 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
             flight_end_date=return_date,
             travelers=travelers,
         )
+        trip_type = "open_jaw" if (is_open_jaw and return_date) else ("round_trip" if return_date else "one_way")
+        return _with_airports(data, trip_type=trip_type, home_code=departure_code)
     except Exception as e:
         logger.error(f"Failed to generate flight strategies: {e}")
         return {}
@@ -1637,6 +1910,47 @@ def _date_leg(leg: dict, start_date: str) -> None:
     leg["check_out_date"] = check_out.isoformat()
 
 
+# How the traveller reaches a leg's city. Anything else the model writes is
+# dropped rather than stored, so the prompt never quotes an invented mode.
+_ARRIVE_BY_MODES = ("flight", "train", "bus", "car", "ferry", "none")
+
+
+def _geo_leg(leg: dict, entry: dict) -> None:
+    """Carry the planner's optional geography onto a validated leg.
+
+    Coordinates, arrival mode and distance are what the route check and the
+    arrival/departure rules in the prompt read. Every field is optional and
+    silently omitted when unparseable: a leg without coordinates is still a
+    valid leg, it just cannot be distance-checked.
+    """
+    for key in ("latitude", "longitude"):
+        try:
+            value = float(entry.get(key))
+        except (TypeError, ValueError):
+            continue
+        limit = 90.0 if key == "latitude" else 180.0
+        if math.isfinite(value) and abs(value) <= limit:
+            leg[key] = round(value, 4)
+    arrive_by = str(entry.get("arrive_by") or "").strip().lower()
+    if arrive_by in _ARRIVE_BY_MODES:
+        leg["arrive_by"] = arrive_by
+    try:
+        km = int(float(entry.get("from_previous_km")))
+    except (TypeError, ValueError):
+        return
+    if km >= 0:
+        leg["from_previous_km"] = km
+
+
+def _leg_coords(leg: dict | None) -> tuple[float, float] | None:
+    if not isinstance(leg, dict):
+        return None
+    lat, lng = leg.get("latitude"), leg.get("longitude")
+    if isinstance(lat, (int, float)) and isinstance(lng, (int, float)):
+        return float(lat), float(lng)
+    return None
+
+
 def _validate_legs(raw, destination: str, days: int, start_date: str = "", geo=None) -> list[dict]:
     """Coerce a model's leg list into one that actually covers the trip.
 
@@ -1697,6 +2011,7 @@ def _validate_legs(raw, destination: str, days: int, start_date: str = "", geo=N
             "nights": end_day - start_day + 1,
         }
         _date_leg(leg, start_date)
+        _geo_leg(leg, entry)
         legs.append(leg)
         expected_start = end_day + 1
 
@@ -1881,59 +2196,359 @@ async def detect_geo_drift(
     return GeoDrift(ok=True)
 
 
-async def plan_city_legs(
+# ── Route planning ─────────────────────────────────────────────────────────
+#
+# Where the trip goes AND how it is entered and left, decided in one call
+# before anything is searched. The flight search used to start in parallel
+# with the leg planner, so the arrival airport was chosen for the destination
+# *string* ("India" -> DEL) while the legs were chosen with no idea where the
+# traveller lands. A wildlife itinerary duly opened 1,000 km from the airport
+# with no word on how to get there, and the return was priced from an airport
+# the trip never came back to. The planner now names the gateways for the
+# route it actually drew, and the flights are searched for those.
+
+# How far the first/last leg may sit from its gateway before the plan is sent
+# back for one more attempt. A regional hop or an overnight train covers this;
+# anything further is a different region and wants a different gateway.
+_GATEWAY_MAX_KM = 400.0
+
+# Consecutive legs further apart than this need a flagged flight/train hop —
+# "car" between two cities 900 km apart is a day lost on the road.
+_LEG_HOP_MAX_KM = 600.0
+
+# Below this the gateway city and the first leg are the same place: no
+# transfer activity is demanded, an airport taxi is part of check-in.
+_SAME_PLACE_KM = 40.0
+
+# Airports do not move. Verified coordinates are kept for a month so the
+# gateway check on a popular route costs no Places lookup at all.
+_AIRPORT_GEO_TTL_S = 30 * 24 * 60 * 60
+
+# One re-plan, ever, when the route comes back incoherent. Same shape as the
+# geographic-drift regeneration below: a straight line, not a loop.
+_MAX_ROUTE_RETRIES = 1
+
+_AIRPORT_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "iata": {"type": "STRING"},
+        "city": {"type": "STRING"},
+        "name": {"type": "STRING"},
+    },
+    "required": ["iata", "city"],
+    "propertyOrdering": ["iata", "city", "name"],
+}
+
+# Gemini `responseSchema` for the route planner. Constrained decoding is what
+# makes this call machine-readable without a parse-and-repair pass; the
+# coherence checks in `_validate_route` are still the real guard.
+_ROUTE_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "region": {"type": "STRING"},
+        "legs": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "city": {"type": "STRING"},
+                    "country": {"type": "STRING"},
+                    "start_day": {"type": "INTEGER"},
+                    "end_day": {"type": "INTEGER"},
+                    "latitude": {"type": "NUMBER"},
+                    "longitude": {"type": "NUMBER"},
+                    "arrive_by": {"type": "STRING", "enum": list(_ARRIVE_BY_MODES)},
+                    "from_previous_km": {"type": "INTEGER"},
+                },
+                "required": [
+                    "city", "country", "start_day", "end_day",
+                    "latitude", "longitude", "arrive_by", "from_previous_km",
+                ],
+                "propertyOrdering": [
+                    "city", "country", "start_day", "end_day",
+                    "latitude", "longitude", "arrive_by", "from_previous_km",
+                ],
+            },
+        },
+        "arrival_airport": _AIRPORT_SCHEMA,
+        "departure_airport": _AIRPORT_SCHEMA,
+    },
+    "required": ["region", "legs", "arrival_airport", "departure_airport"],
+    "propertyOrdering": ["region", "legs", "arrival_airport", "departure_airport"],
+}
+
+
+@dataclass
+class RoutePlan:
+    """The cities the trip sleeps in and the airports it enters and leaves by.
+
+    `arrival_code` / `departure_code` are what SerpApi is given (comma-separated
+    where a gateway city has several airports). Empty means "not decided here":
+    the flight search then resolves the destination the way it always did.
+    """
+    legs: list[dict]
+    arrival: dict | None = None
+    departure: dict | None = None
+    arrival_code: str = ""
+    departure_code: str = ""
+    region: str = ""
+    source: str = "fallback"        # "planner" | "fallback"
+    reasons: list[str] = field(default_factory=list)
+
+    @property
+    def trip_type(self) -> str:
+        if not self.arrival_code or not self.departure_code:
+            return ""
+        same = set(self.arrival_code.split(",")) == set(self.departure_code.split(","))
+        return "round_trip" if same else "open_jaw"
+
+    def arrival_km(self) -> float | None:
+        return _airport_leg_km(self.arrival, self.legs[0] if self.legs else None)
+
+    def departure_km(self) -> float | None:
+        return _airport_leg_km(self.departure, self.legs[-1] if self.legs else None)
+
+    def as_meta(self) -> dict:
+        """The additive keys stored on `flight_strategies` for the app."""
+        return {
+            "arrival_airport": _public_airport(self.arrival),
+            "departure_airport": _public_airport(self.departure),
+            "trip_type": self.trip_type,
+        }
+
+
+def _public_airport(airport: dict | None) -> dict:
+    if not airport:
+        return {}
+    return {
+        "iata": airport.get("iata", ""),
+        "city": airport.get("city", ""),
+        "name": airport.get("name", ""),
+    }
+
+
+def _airport_leg_km(airport: dict | None, leg: dict | None) -> float | None:
+    a = _leg_coords(airport)
+    b = _leg_coords(leg)
+    if a is None or b is None:
+        return None
+    return geo_resolver.haversine_km(a[0], a[1], b[0], b[1])
+
+
+def _parse_airport(raw) -> dict | None:
+    """A planner airport entry with a usable IATA code, or None."""
+    if not isinstance(raw, dict):
+        return None
+    code = str(raw.get("iata") or "").strip().upper()
+    if len(code) != 3 or not code.isalpha() or code in _METRO_CODES:
+        return None
+    return {
+        "iata": code,
+        "city": str(raw.get("city") or "").strip(),
+        "name": str(raw.get("name") or "").strip(),
+    }
+
+
+def _validate_route(
+    parsed, destination: str, days: int, start_date: str = "", geo=None,
+) -> tuple[RoutePlan, list[str]]:
+    """Coerce a planner response into a RoutePlan and list what is wrong with it.
+
+    Legs go through the same structural gate as before (`_validate_legs`), so
+    an unusable leg list still degrades to a single leg. The reasons returned
+    are the *coherence* problems worth one re-plan: a leg-to-leg hop too long
+    for the mode claimed, or a gateway that is not a real code. Gateway
+    distance is checked by the caller once the airport has been located.
+    """
+    data = parsed if isinstance(parsed, dict) else {}
+    legs = _validate_legs(data.get("legs"), destination, days, start_date, geo)
+    plan = RoutePlan(
+        legs=legs,
+        arrival=_parse_airport(data.get("arrival_airport")),
+        departure=_parse_airport(data.get("departure_airport")),
+        region=str(data.get("region") or "").strip(),
+        source="planner",
+    )
+
+    reasons: list[str] = []
+    for prev, cur in zip(legs, legs[1:]):
+        km = _airport_leg_km(prev, cur)
+        if km is None:
+            continue
+        mode = cur.get("arrive_by", "")
+        if km > _LEG_HOP_MAX_KM and mode not in ("flight", "train"):
+            reasons.append(
+                f"Leg '{cur['city']}' is about {km:,.0f} km from '{prev['city']}' but "
+                f"arrive_by is '{mode or 'unset'}' — either cluster the route more tightly "
+                f"or mark the hop as a flight or train."
+            )
+    for label, raw in (("arrival_airport", data.get("arrival_airport")),
+                       ("departure_airport", data.get("departure_airport"))):
+        if raw is not None and _parse_airport(raw) is None:
+            reasons.append(
+                f"{label} '{(raw or {}).get('iata') if isinstance(raw, dict) else raw}' is not a "
+                f"real 3-letter IATA airport code (metropolitan codes like LON/NYC are not accepted)."
+            )
+    return plan, reasons
+
+
+async def _airport_geo(code: str, geo, budget=None) -> dict | None:
+    """Where an airport is, from Places, cached for a month.
+
+    Returns {"latitude", "longitude", "country_code", "name"} or None when the
+    lookup could not run (no budget, no key, no result). None means "unknown",
+    never "wrong" — the caller keeps the code, as `_verify_airport_codes` does.
+    """
+    cache_key = f"geo:airport:v1:{code}"
+    try:
+        cached = await place_cache_service.get_raw(cache_key)
+        if cached:
+            data = json.loads(cached)
+            if isinstance(data, dict) and data.get("latitude") is not None:
+                return data
+    except Exception:
+        pass
+
+    if geo is None or not geo.resolved:
+        return None
+    check = await geo_resolver.verify_place(
+        f"{code} airport",
+        near=geo_resolver.DestinationContext(query=code, country_code=geo.country_code),
+        max_km=None,
+        budget=budget,
+    )
+    if not check.checked or check.latitude is None or check.longitude is None:
+        return None
+    data = {
+        "latitude": check.latitude,
+        "longitude": check.longitude,
+        "country_code": check.country_code,
+        "name": check.resolved_name,
+    }
+    try:
+        await place_cache_service.set_raw(cache_key, json.dumps(data), ttl=_AIRPORT_GEO_TTL_S)
+    except Exception:
+        pass
+    return data
+
+
+async def _locate_gateway(airport: dict | None, geo, budget=None) -> tuple[dict | None, str]:
+    """Attach coordinates to a planner gateway; reject one in the wrong country.
+
+    Returns (airport, reason). A rejected airport comes back as None with the
+    reason; an unverifiable one is kept as-is with no coordinates.
+    """
+    if not airport:
+        return None, ""
+    located = await _airport_geo(airport["iata"], geo, budget)
+    if located is None:
+        return airport, ""
+    if (
+        geo is not None and geo.resolved and located.get("country_code")
+        and located["country_code"] != geo.country_code
+    ):
+        return None, (
+            f"Airport {airport['iata']} is in {located['country_code']}, not in "
+            f"{geo.country or geo.country_code} — choose an airport inside the country."
+        )
+    enriched = dict(airport)
+    enriched["latitude"] = located["latitude"]
+    enriched["longitude"] = located["longitude"]
+    if not enriched.get("name") and located.get("name"):
+        enriched["name"] = located["name"]
+    return enriched, ""
+
+
+def _gateway_distance_reason(label: str, airport: dict | None, leg: dict | None) -> str:
+    """A leg too far from its gateway, unless the planner flagged a flight there."""
+    km = _airport_leg_km(airport, leg)
+    if km is None or km <= _GATEWAY_MAX_KM:
+        return ""
+    if label == "arrival" and leg.get("arrive_by") == "flight":
+        return ""
+    verb = "lands at" if label == "arrival" else "flies home from"
+    return (
+        f"The traveller {verb} {airport['iata']} but the {'first' if label == 'arrival' else 'last'} "
+        f"leg '{leg['city']}' is about {km:,.0f} km away. Pick the gateway airport nearest "
+        f"'{leg['city']}' instead, or move the {'first' if label == 'arrival' else 'last'} "
+        f"leg within {_GATEWAY_MAX_KM:.0f} km of {airport['iata']}."
+    )
+
+
+def _search_code_for(airport: dict | None) -> str:
+    """The comma-separated code list SerpApi is given for a gateway.
+
+    A verified single code is widened to the whole city where the static
+    table knows the city has several airports: London means LHR, LGW, STN and
+    LTN, and searching all four is what surfaces the cheaper one.
+    """
+    if not airport:
+        return ""
+    code = airport["iata"]
+    city_key = (airport.get("city") or "").strip().lower().split(",")[0].strip()
+    table = _AIRPORT_CODES.get(city_key, "") if city_key else ""
+    if table and code in table.split(","):
+        return table
+    return code
+
+
+def _route_prompt(
     *,
     destination: str,
     days: int,
     mood: str,
     travelers: int,
-    api_key: str,
-    start_date: str = "",
-    geo=None,
-) -> list[dict]:
-    """Decide which cities the trip stays in, and for how long.
-
-    Runs before flights and hotels are bought, because the per-leg hotel search
-    needs the cities and the itinerary that would otherwise name them is not
-    written until later.
-
-    Deliberately ungrounded: `_call_gemini` can only ask for JSON mode when no
-    search tool is attached (see the responseMimeType guard there), and a
-    reliable machine-readable answer matters more here than live facts — the
-    grounded itinerary pass still checks the places themselves.
-    """
-    days = max(int(days or 1), 1)
-    if not api_key or days < 2:
-        return _single_leg(destination, days, start_date, geo)
-
+    geo,
+    origin_line: str,
+    correction: str = "",
+) -> str:
     # This call is where the hotel search's city strings come from, so an
     # invented country here is expensive: it books rooms in the wrong place.
     geo_line = ""
+    country = ""
+    is_country = False
     if geo is not None and geo.resolved:
         country = geo.country or geo.country_code
+        is_country = bool(getattr(geo, "is_country", False))
         geo_line = (
             f"\n{destination} is in {country}"
             + (f", {geo.admin_area}" if geo.admin_area else "")
             + (f", at {geo.latitude:.4f}, {geo.longitude:.4f}" if geo.has_coords else "")
-            + ".\n"
+            + (" — it is a whole country, not a city." if is_country else "")
+            + "\n"
         )
 
     country_rule = ""
-    if geo is not None and geo.resolved:
+    if country:
         country_rule = (
-            f"- EVERY leg must be a real city or town in "
-            f"{geo.country or geo.country_code}, and the \"country\" field of "
-            f"every leg MUST be exactly \"{geo.country_code}\". If the "
-            f"destination's name resembles a place in another country, ignore "
-            f"the resemblance.\n"
+            f"- EVERY leg must be a real city or town in {country}, and the \"country\" "
+            f"field of every leg MUST be exactly \"{geo.country_code}\". Both airports MUST "
+            f"be in {country}. If the destination's name resembles a place in another "
+            f"country, ignore the resemblance.\n"
         )
 
-    prompt = f"""Plan the city-by-city route for a {days}-day trip to {destination}.
-{geo_line}
-Group: {travelers} traveller(s). Travel style: {mood or "balanced"}.
+    region_rule = (
+        f"- {destination} is a whole country. Choose ONE coherent region sized to "
+        f"{days} days — the cities a traveller with this style would actually combine "
+        f"in one trip — and stay inside it. Do not scatter legs across the country.\n"
+        if is_country else
+        f"- If {destination} is a single city, return exactly one leg for it, and its own "
+        f"(or nearest) airport as both arrival_airport and departure_airport.\n"
+    )
 
+    correction_rules = ""
+    if correction:
+        correction_rules = f"""
+CRITICAL — YOUR PREVIOUS ROUTE WAS NOT WORKABLE:
+{correction}
+Redraw the route so that every problem above is fixed. Keep the same trip length.
+"""
+
+    return f"""Plan the city-by-city route for a {days}-day trip to {destination}, including the airport the traveller should fly INTO and the airport they should fly HOME FROM.
+{geo_line}{origin_line}Group: {travelers} traveller(s). Travel style: {mood or "balanced"}.
+{correction_rules}
 Return ONLY this JSON:
-{{"legs": [{{"city": "...", "country": "<ISO 2-letter>", "start_day": 1, "end_day": 3}}]}}
+{{"region": "...", "legs": [{{"city": "...", "country": "<ISO 2-letter>", "start_day": 1, "end_day": 3, "latitude": 0.0, "longitude": 0.0, "arrive_by": "flight|train|bus|car|ferry|none", "from_previous_km": 0}}], "arrival_airport": {{"iata": "XXX", "city": "...", "name": "..."}}, "departure_airport": {{"iata": "XXX", "city": "...", "name": "..."}}}}
 
 Rules:
 - Cover every day from 1 to {days} with no gaps and no overlaps: each leg's
@@ -1945,24 +2560,187 @@ Rules:
   day in the smaller town, name the smaller town.
 - Prefer fewer, longer legs. Do not move city more often than every 2 days
   unless {destination} is small enough that it makes sense.
-- If {destination} is a single city, return exactly one leg for it.
+{region_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
+  leg within about {_LEG_HOP_MAX_KM:.0f} km by road of the previous one unless "arrive_by"
+  for that leg is "flight" or "train".
+- "latitude"/"longitude": the city's coordinates to 2 decimal places.
+- "arrive_by": how the traveller reaches this leg's city — from the arrival
+  airport for the first leg, from the previous city for the others. Use "none"
+  only when the first leg IS the arrival airport's own city.
+- "from_previous_km": approximate travel distance in km for that hop (0 when
+  arrive_by is "none").
+- "arrival_airport": the airport with scheduled commercial flights that is
+  NEAREST to the FIRST leg's city — not the capital and not the country's
+  biggest hub by default. The first leg's city must be within about
+  {_GATEWAY_MAX_KM:.0f} km of it. If the nearest airport with international
+  service is further away than that, still name the closest airport with
+  scheduled flights and set the first leg's arrive_by to "flight".
+- "departure_airport": the airport with scheduled flights NEAREST to the LAST
+  leg's city. When the last leg's city is within about {_GATEWAY_MAX_KM:.0f} km
+  of the arrival airport, use the arrival airport again — a round trip is
+  cheaper than flying home from somewhere else.
+- "iata": the real 3-letter IATA airport code (e.g. DEL, NAG, LHR). Never a
+  metropolitan area code such as LON, NYC, PAR or TYO.
 {country_rule}- No commentary, no markdown."""
 
-    try:
-        raw, _ = await _call_gemini(prompt, api_key, max_tokens=1024, use_grounding=False)
-        parsed = json.loads(raw)
-        legs = _validate_legs(
-            (parsed or {}).get("legs"), destination, days, start_date, geo,
+
+async def plan_route(
+    *,
+    destination: str,
+    days: int,
+    mood: str,
+    travelers: int,
+    api_key: str,
+    start_date: str = "",
+    geo=None,
+    departure_city: str = "",
+    departure_country: str = "",
+    departure_latitude: float | None = None,
+    departure_longitude: float | None = None,
+    include_flights: bool = True,
+    geo_budget=None,
+) -> RoutePlan:
+    """Decide the cities the trip sleeps in and the airports it uses, in one call.
+
+    Runs before flights and hotels are bought: the per-leg hotel search needs
+    the cities, and the flight search needs the gateways — which only make
+    sense once the route is known. Coherence (leg spacing, gateway distance,
+    airport country) is checked here, with one corrective re-plan; a route
+    that is merely imperfect after that is kept and explained to the traveller
+    by the arrival/departure rules in the itinerary prompt, never silently
+    collapsed to a single leg.
+
+    Deliberately ungrounded: `_call_gemini` can only ask for JSON mode when no
+    search tool is attached, and a reliable machine-readable answer matters
+    more here than live facts — the grounded itinerary pass still checks the
+    places themselves.
+    """
+    days = max(int(days or 1), 1)
+    if not api_key or days < 2:
+        return RoutePlan(legs=_single_leg(destination, days, start_date, geo))
+
+    # Where the traveller starts, so the gateway can be judged from their
+    # side too. The app sends the literal word "Nearby" when its reverse
+    # geocode fails; the coordinates still say which country they are in.
+    origin_line = ""
+    dep_name = "" if _is_non_place(departure_city) else (departure_city or "").strip()
+    dep_ctry = "" if _is_non_place(departure_country) else (departure_country or "").strip()
+    has_dep_coords = departure_latitude is not None and departure_longitude is not None
+    if dep_name or dep_ctry or has_dep_coords:
+        where = ", ".join(x for x in (dep_name, dep_ctry) if x) or "their home location"
+        if has_dep_coords:
+            where += f" (coordinates {departure_latitude:.4f}, {departure_longitude:.4f})"
+        origin_line = f"The traveller starts from {where} and flies in.\n"
+
+    async def _attempt(correction: str) -> tuple[RoutePlan, list[str]]:
+        prompt = _route_prompt(
+            destination=destination, days=days, mood=mood, travelers=travelers,
+            geo=geo, origin_line=origin_line, correction=correction,
         )
+        raw, _ = await _call_gemini(
+            prompt, api_key, max_tokens=3072, thinking_budget=1024,
+            use_grounding=False, response_schema=_ROUTE_SCHEMA, operation="odyssey_route",
+        )
+        plan, reasons = _validate_route(_parse_json(raw), destination, days, start_date, geo)
+
+        # Locate the gateways (Places, budgeted, cached) and judge their distance
+        # from the legs they serve. Only worth paying for when a flight will be
+        # searched for them.
+        if include_flights:
+            arrival, why = await _locate_gateway(plan.arrival, geo, geo_budget)
+            plan.arrival = arrival
+            if why:
+                reasons.append(why)
+            departure, why = await _locate_gateway(plan.departure, geo, geo_budget)
+            plan.departure = departure
+            if why:
+                reasons.append(why)
+            for label, airport, leg in (
+                ("arrival", plan.arrival, plan.legs[0] if plan.legs else None),
+                ("departure", plan.departure, plan.legs[-1] if plan.legs else None),
+            ):
+                why = _gateway_distance_reason(label, airport, leg)
+                if why:
+                    reasons.append(why)
+        return plan, reasons
+
+    try:
+        plan, reasons = await _attempt("")
     except Exception as e:
-        logger.warning(f"City-leg planning failed, using a single leg: {e}")
-        return _single_leg(destination, days, start_date, geo)
+        logger.warning(f"Route planning failed, using a single leg: {e}")
+        return RoutePlan(legs=_single_leg(destination, days, start_date, geo))
+
+    if reasons:
+        logger.warning(
+            "Route for %s is incoherent: %s", destination, " | ".join(reasons),
+        )
+        for _ in range(_MAX_ROUTE_RETRIES):
+            try:
+                retry_plan, retry_reasons = await _attempt("\n".join(reasons))
+            except Exception as e:
+                logger.warning("Route re-plan failed, keeping the first route: %s", e)
+                break
+            # Keep the retry only when it is actually better.
+            if len(retry_reasons) < len(reasons):
+                plan, reasons = retry_plan, retry_reasons
+            break
+        if reasons:
+            logger.warning(
+                "Route for %s still incoherent after re-plan: %s",
+                destination, " | ".join(reasons),
+            )
+    plan.reasons = list(reasons)
+
+    # A gateway the planner got wrong is replaced by the resolver's answer for
+    # the leg it should serve — the same lookup the destination used to get,
+    # now aimed at the right city.
+    if include_flights:
+        for attr, leg in (("arrival", plan.legs[0]), ("departure", plan.legs[-1])):
+            if getattr(plan, attr) is None and leg:
+                coords = _leg_coords(leg)
+                code = await _resolve_airport_code(
+                    leg["city"],
+                    (geo.country if geo is not None and geo.resolved else ""),
+                    api_key,
+                    latitude=coords[0] if coords else None,
+                    longitude=coords[1] if coords else None,
+                    country_code=(geo.country_code if geo is not None else ""),
+                    budget=geo_budget,
+                )
+                if code:
+                    first = code.split(",")[0]
+                    setattr(plan, attr, {"iata": first, "city": leg["city"], "name": "", "_codes": code})
+        plan.arrival_code = (plan.arrival or {}).get("_codes") or _search_code_for(plan.arrival)
+        plan.departure_code = (plan.departure or {}).get("_codes") or _search_code_for(plan.departure)
+        for airport in (plan.arrival, plan.departure):
+            if airport:
+                airport.pop("_codes", None)
 
     logger.info(
-        "Planned %d city leg(s) for %s: %s",
-        len(legs), destination, ", ".join(f"{l['city']} d{l['start_day']}-{l['end_day']}" for l in legs),
+        "Planned %d city leg(s) for %s: %s | in via %s, out via %s (%s)",
+        len(plan.legs), destination,
+        ", ".join(f"{l['city']} d{l['start_day']}-{l['end_day']}" for l in plan.legs),
+        plan.arrival_code or "?", plan.departure_code or "?", plan.trip_type or "no flights",
     )
-    return legs
+    return plan
+
+
+async def plan_city_legs(
+    *,
+    destination: str,
+    days: int,
+    mood: str,
+    travelers: int,
+    api_key: str,
+    start_date: str = "",
+    geo=None,
+) -> list[dict]:
+    """The city legs alone — `plan_route` for callers that only need the cities."""
+    plan = await plan_route(
+        destination=destination, days=days, mood=mood, travelers=travelers,
+        api_key=api_key, start_date=start_date, geo=geo, include_flights=False,
+    )
+    return plan.legs
 
 
 async def generate_odyssey(
@@ -2022,12 +2800,11 @@ async def generate_odyssey(
             final_destination,
         )
 
-    # 1. Cover photo, flights and hotels, concurrently. Cover and flights need
-    # only the destination, so they start now and overlap the leg planner's
-    # Gemini call below; hotels are per-leg, so they start once the legs are
-    # known. Same inputs, same prompts, same results as running all three
-    # after the legs — just without the leg planner's 2–7 s on the critical
-    # path twice.
+    # 1. Cover photo first (it needs only the destination), then the route,
+    # then flights and hotels concurrently. Flights used to start alongside
+    # the route planner, which is exactly how they came to land the traveller
+    # at an airport the route never went near: the gateways are an output of
+    # the route now, so the flight search waits the planner's 2-7 s for them.
     async def _get_cover():
         # Through the shared cache, so this is the *same* photo the list
         # endpoint already put on the placeholder while the plan was being
@@ -2041,13 +2818,45 @@ async def generate_odyssey(
             logger.error(f"Cover photo fetch failed: {e}")
             return ""
 
-    async def _get_flights():
-        # Coordinates alone are enough: the country recovered from them gives a
-        # real origin airport, where the name may only have been "Nearby".
-        _has_departure = bool(str(departure_city or "").strip()) or (
-            departure_latitude is not None and departure_longitude is not None
+    cover_task = asyncio.create_task(_get_cover())
+
+    # Coordinates alone are enough: the country recovered from them gives a
+    # real origin airport, where the name may only have been "Nearby".
+    _has_departure = bool(str(departure_city or "").strip()) or (
+        departure_latitude is not None and departure_longitude is not None
+    )
+    search_flights = include_flights and _has_departure
+
+    # Which cities the trip sleeps in and which airports it enters and leaves
+    # by, decided before anything is bought: the per-leg hotel search needs
+    # the cities, the flight search needs the gateways, and the itinerary that
+    # would otherwise name them is not written until further down.
+    try:
+        route = await plan_route(
+            destination=final_destination,
+            days=days,
+            mood=mood,
+            travelers=travelers,
+            api_key=api_key,
+            start_date=hotel_check_in_date or start_date or "",
+            geo=geo,
+            departure_city=departure_city,
+            departure_country=departure_country,
+            departure_latitude=departure_latitude,
+            departure_longitude=departure_longitude,
+            include_flights=search_flights,
+            geo_budget=geo_budget,
         )
-        if include_flights and _has_departure:
+    except BaseException:
+        # plan_route has its own fallback and should not raise, but if it
+        # does (or this task is cancelled) the in-flight lookup must not be
+        # left running with nobody to collect it.
+        cover_task.cancel()
+        raise
+    city_legs = route.legs
+
+    async def _get_flights():
+        if search_flights:
             try:
                 return await generate_flight_strategies(
                     departure_city=departure_city,
@@ -2065,35 +2874,12 @@ async def generate_odyssey(
                     geo_budget=geo_budget,
                     departure_latitude=departure_latitude,
                     departure_longitude=departure_longitude,
+                    route_plan=route,
                 )
             except Exception as e:
                 logger.error(f"Flight strategy sub-job failed: {e}")
                 return {}
         return {}
-
-    cover_task = asyncio.create_task(_get_cover())
-    flights_task = asyncio.create_task(_get_flights())
-
-    # Which cities the trip sleeps in, decided before anything is bought: the
-    # per-leg hotel search needs them, and the itinerary that would otherwise
-    # name them is not written until further down.
-    try:
-        city_legs = await plan_city_legs(
-            destination=final_destination,
-            days=days,
-            mood=mood,
-            travelers=travelers,
-            api_key=api_key,
-            start_date=hotel_check_in_date or start_date or "",
-            geo=geo,
-        )
-    except BaseException:
-        # plan_city_legs has its own fallback and should not raise, but if it
-        # does (or this task is cancelled) the two in-flight lookups must not
-        # be left running with nobody to collect them.
-        cover_task.cancel()
-        flights_task.cancel()
-        raise
 
     async def _get_hotels():
         if include_hotels:
@@ -2115,7 +2901,7 @@ async def generate_odyssey(
         return {}
 
     cover_url, flight_strategies, hotel_strategies = await asyncio.gather(
-        cover_task, flights_task, _get_hotels()
+        cover_task, _get_flights(), _get_hotels()
     )
 
     # Extract primary recommended hotel entity from confirmed SerpAPI results.
@@ -2153,14 +2939,19 @@ async def generate_odyssey(
                 else f"{currency} {lo:,.0f} - {hi:,.0f}"
             )
 
-    # Extract primary flight entity if available.
+    # Extract primary flight entity if available — the Recommended tier when
+    # there is one, since that is the card the traveller is steered to and the
+    # one whose return leg was priced; otherwise the first usable strategy.
     # Flight strategies key their label as "title"; only hotels use "name".
     primary_flight = None
     if flight_strategies and isinstance(flight_strategies.get("strategies"), list):
-        for s in flight_strategies["strategies"]:
-            if isinstance(s, dict) and (s.get("title") or s.get("name")):
-                primary_flight = s
-                break
+        usable = [
+            s for s in flight_strategies["strategies"]
+            if isinstance(s, dict) and (s.get("title") or s.get("name"))
+        ]
+        primary_flight = next(
+            (s for s in usable if s.get("tier") == "recommended"), usable[0] if usable else None,
+        )
 
     # 2. Build grounded prompt using confirmed live inventory
     prompt = _build_prompt(
@@ -2178,6 +2969,7 @@ async def generate_odyssey(
         has_visa=has_visa,
         legs=city_legs,
         geo=geo,
+        route_plan=route,
     )
     try:
         text, grounding_chunks = await _call_gemini(
@@ -2230,7 +3022,7 @@ async def generate_odyssey(
                         departure_city=departure_city,
                         departure_country=departure_country,
                         nationality=nationality, has_visa=has_visa,
-                        legs=city_legs, geo=geo,
+                        legs=city_legs, geo=geo, route_plan=route,
                         correction="\n".join(drift.reasons),
                     )
                     retry_text, retry_chunks = await _call_gemini(
@@ -2676,9 +3468,12 @@ async def generate_odyssey(
                 act_dict["restaurants"] = restaurants
             activities.append(act_dict)
 
-        # Guarantee Day 1 Check-in activity if not present
+        # Guarantee Day 1 Check-in activity if not present. It goes after a
+        # leading transport activity — the transfer in from the airport has to
+        # happen before anyone can check in anywhere.
         if is_first_day and has_hotel_data and not has_accommodation:
-            activities.insert(0, {
+            at = 1 if activities and activities[0].get("type") == "transport" else 0
+            activities.insert(at, {
                 "time": "14:00",
                 "name": "Hotel Check-in",
                 "tip": "Check in and settle into your accommodation.",
@@ -2822,9 +3617,32 @@ def _build_prompt(
     legs: list[dict] | None = None,
     geo: "DestinationContext | None" = None,
     correction: str = "",
+    route_plan: "RoutePlan | None" = None,
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
+    legs = legs or (route_plan.legs if route_plan is not None else None)
+
+    # Where the traveller actually lands and takes off, relative to the
+    # first and last places they sleep. Only meaningful once a flight is
+    # confirmed: without one there is nothing to transfer from.
+    arrival_airport = route_plan.arrival if (route_plan is not None and confirmed_flight) else None
+    departure_airport = route_plan.departure if (route_plan is not None and confirmed_flight) else None
+    arrival_km = route_plan.arrival_km() if arrival_airport else None
+    departure_km = route_plan.departure_km() if departure_airport else None
+    first_leg = legs[0] if legs else None
+    last_leg = legs[-1] if legs else None
+
+    def _needs_transfer(airport, leg, km) -> bool:
+        if not airport or not leg:
+            return False
+        if km is not None:
+            return km > _SAME_PLACE_KM
+        a = (airport.get("city") or "").strip().lower()
+        return bool(a) and a != (leg.get("city") or "").strip().lower()
+
+    arrival_transfer = _needs_transfer(arrival_airport, first_leg, arrival_km)
+    departure_transfer = _needs_transfer(departure_airport, last_leg, departure_km)
 
     # The route is decided before this call (see `plan_city_legs`) because the
     # per-leg hotel search needs the cities. Handing it back to the model as a
@@ -2853,7 +3671,19 @@ def _build_prompt(
                 f"refer to the SAME place in {geo.country or geo.country_code}.\n"
             )
         coord_line = ""
-        if geo.has_coords:
+        anchored = [l for l in (legs or []) if _leg_coords(l)]
+        if geo.is_country and anchored:
+            # A country's coordinates are its centroid, and a radius around
+            # that is either meaningless or wrong. The route's own cities are
+            # the anchors that mean something.
+            anchors = "; ".join(
+                f"{l['city']} ({l['latitude']:.2f}, {l['longitude']:.2f})" for l in anchored
+            )
+            coord_line = (
+                f"- The route's cities are at: {anchors}. Everything you name must be "
+                f"within roughly 150 km of one of these.\n"
+            )
+        elif geo.has_coords:
             coord_line = (
                 f"- It is at coordinates {geo.latitude:.4f}, {geo.longitude:.4f}. "
                 f"Everything you name must be within roughly {radius_km} km of there.\n"
@@ -2887,13 +3717,26 @@ country. Rewrite the ENTIRE plan from scratch using only real places in
 """
 
     route_rules = ""
-    if legs and len(legs) > 1:
-        table = "\n".join(
-            f"  Day {l['start_day']}-{l['end_day']}: {l['city']} (sleep in {l['city']})"
-            if l["start_day"] != l["end_day"]
-            else f"  Day {l['start_day']}: {l['city']} (sleep in {l['city']})"
-            for l in legs
-        )
+    if legs and (len(legs) > 1 or arrival_transfer or departure_transfer):
+        def _row(i: int, l: dict) -> str:
+            span = (
+                f"Day {l['start_day']}-{l['end_day']}" if l["start_day"] != l["end_day"]
+                else f"Day {l['start_day']}"
+            )
+            row = f"  {span}: {l['city']} (sleep in {l['city']})"
+            hop = ""
+            if i > 0:
+                mode = l.get("arrive_by") or ""
+                km = l.get("from_previous_km")
+                if km is None:
+                    d = _airport_leg_km(legs[i - 1], l)
+                    km = int(round(d)) if d is not None else None
+                bits = [f"by {mode}" if mode and mode != "none" else "", f"~{km:,} km" if km else ""]
+                hop = ", ".join(b for b in bits if b)
+                if hop:
+                    row += f" — arrive from {legs[i - 1]['city']} {hop}"
+            return row
+        table = "\n".join(_row(i, l) for i, l in enumerate(legs))
         route_rules = f"""
 CRITICAL - FIXED ROUTE (do not change it, do not add or drop a city):
 {table}
@@ -2921,21 +3764,95 @@ Accommodation Scheduling Rules:
 """
 
     flight_rules = ""
+    arrival_rules = ""
+    departure_rules = ""
     if confirmed_flight and (confirmed_flight.get("title") or confirmed_flight.get("name")):
         f_name = confirmed_flight.get("title") or confirmed_flight.get("name")
         f_route = confirmed_flight.get("route", "")
         f_currency = confirmed_flight.get("currency") or ""
         f_per_traveler = confirmed_flight.get("price_per_traveler")
+        f_type = confirmed_flight.get("trip_type") or ("round_trip" if confirmed_flight.get("return_date") else "one_way")
         if f_per_traveler:
-            trip_word = "return" if confirmed_flight.get("trip_type") == "round_trip" else "one-way"
+            trip_word = {"round_trip": "return", "open_jaw": "both legs"}.get(f_type, "one-way")
             f_price = f"{f_currency} {f_per_traveler:,.0f} per traveller ({trip_word})"
         else:
             f_price = confirmed_flight.get("estimated_price_range", "")
+
+        def _leg_line(label: str, leg: dict | None, fallback_route: str, date: str) -> str:
+            if not isinstance(leg, dict) or not (leg.get("origin") or fallback_route):
+                return ""
+            route = (
+                f"{leg['origin']} → {leg['destination']}"
+                if leg.get("origin") and leg.get("destination") else fallback_route
+            )
+            bits = [route]
+            if leg.get("airlines"):
+                bits.append(", ".join(leg["airlines"][:2]))
+            if leg.get("departure_time"):
+                bits.append(f"departs {leg['departure_time']}")
+            if leg.get("arrival_time"):
+                bits.append(f"arrives {leg['arrival_time']}")
+            if leg.get("duration"):
+                bits.append(leg["duration"])
+            stops = leg.get("stops")
+            if isinstance(stops, int):
+                bits.append("non-stop" if stops == 0 else f"{stops} stop(s)")
+            return f"- {label}{f' {date}' if date else ''}: " + ", ".join(bits) + "\n"
+
+        out_line = _leg_line(
+            "OUTBOUND", confirmed_flight.get("outbound") or {"origin": ""}, f_route,
+            confirmed_flight.get("outbound_date") or "",
+        ) or (f"- OUTBOUND: {f_route}\n" if f_route else "")
+        ret_leg = confirmed_flight.get("return")
+        ret_route = confirmed_flight.get("return_route") or ""
+        if isinstance(ret_leg, dict) and ret_leg.get("origin"):
+            ret_line = _leg_line("RETURN", ret_leg, ret_route, confirmed_flight.get("return_date") or "")
+        elif f_type != "one_way":
+            home = (departure_airport or {}).get("iata") or (ret_route.split("→")[0].strip() if ret_route else "")
+            r_date = confirmed_flight.get("return_date") or ""
+            ret_line = (
+                f"- RETURN{f' {r_date}' if r_date else ''}: from {home or 'the arrival airport'} "
+                f"back to the origin (exact flight chosen at booking)\n"
+            )
+        else:
+            ret_line = ""
+        shape = {
+            "open_jaw": (
+                f"open-jaw — land at {(arrival_airport or {}).get('iata') or '?'}, fly home from "
+                f"{(departure_airport or {}).get('iata') or '?'}"
+            ),
+            "round_trip": f"round trip via {(arrival_airport or {}).get('iata') or (f_route.split('→')[-1].strip() if f_route else '?')}",
+        }.get(f_type, "one way")
         flight_rules = f"""
-CRITICAL — CONFIRMED FLIGHT ROUTE:
-- Flight: "{f_name}"{f' ({f_route})' if f_route else ''}
-- Fare: {f_price}
+CRITICAL — CONFIRMED FLIGHTS (live Google Flights; do not change the airports or dates):
+- Option: "{f_name}" — trip type: {shape}
+{out_line}{ret_line}- Fare: {f_price}
 - Provider: Google Flights
+"""
+
+        if arrival_transfer:
+            a_city = arrival_airport.get("city") or arrival_airport["iata"]
+            a_time = ((confirmed_flight.get("outbound") or {}).get("arrival_time") or "").strip()
+            km_txt = f", about {arrival_km:,.0f} km away" if arrival_km is not None else ""
+            mode = (first_leg.get("arrive_by") or "").strip()
+            mode_hint = f" (the route planner suggests: {mode})" if mode and mode != "none" else ""
+            far = arrival_km is not None and arrival_km > _GATEWAY_MAX_KM
+            arrival_rules = f"""
+CRITICAL — ARRIVAL LOGISTICS:
+- The traveller lands at {arrival_airport['iata']} ({a_city}){f' at {a_time}' if a_time else ''} on Day 1. The first night is in {first_leg['city']}{km_txt}.
+- Day 1 MUST open with a "transport" activity named "Transfer: {a_city} airport → {first_leg['city']}" that states the mode{mode_hint}, a realistic duration, and the fare for {travelers} traveller(s) found via search.
+- {"This is a long transfer: say so plainly and prefer a domestic flight or an overnight train over a road journey; if it needs most of Day 1, plan Day 1 around it." if far else "If the transfer takes more than ~6 hours by road, say so and prefer a domestic flight or overnight train."}
+- Do not schedule sightseeing in {a_city} on Day 1 unless the transfer is under an hour.
+"""
+        if departure_transfer:
+            d_city = departure_airport.get("city") or departure_airport["iata"]
+            d_time = ((confirmed_flight.get("return") or {}).get("departure_time") or "").strip()
+            km_txt = f", about {departure_km:,.0f} km away" if departure_km is not None else ""
+            departure_rules = f"""
+CRITICAL — DEPARTURE LOGISTICS:
+- The flight home leaves from {departure_airport['iata']} ({d_city}){f' at {d_time}' if d_time else ''} on Day {days}. The last night is in {last_leg['city']}{km_txt}.
+- Day {days} MUST END with a "transport" activity named "Transfer: {last_leg['city']} → {d_city} airport" that arrives at least 3 hours before departure, with mode, duration and fare for {travelers} traveller(s).
+- If the flight leaves before 10:00, make that transfer the last activity of Day {max(days - 1, 1)} instead and note the early start.
 """
 
     # No confirmed flight means either the traveler turned flights off, or (a
@@ -2947,15 +3864,16 @@ CRITICAL — CONFIRMED FLIGHT ROUTE:
     # only covers the trip's actual start (Day 1); transport between later
     # legs is already covered by route_rules above.
     ground_transport_rules = ""
+    first_city = (first_leg or {}).get("city") or destination
     if (
         not confirmed_flight
         and departure_city
-        and departure_city.strip().lower() != destination.strip().lower()
+        and departure_city.strip().lower() != first_city.strip().lower()
     ):
         ground_transport_rules = f"""
-CRITICAL — GETTING TO {destination.upper()} (NO FLIGHT BOOKED FOR THIS TRIP):
+CRITICAL — GETTING TO {first_city.upper()} (NO FLIGHT BOOKED FOR THIS TRIP):
 - The traveler starts from "{departure_city}"{f', {departure_country}' if departure_country else ''} and has NOT booked a flight — assume they travel by bus, train, shared taxi, or car.
-- Day 1 MUST open with a "transport" activity covering this journey, named something like "Travel from {departure_city} to {destination}".
+- Day 1 MUST open with a "transport" activity covering this journey, named something like "Travel from {departure_city} to {first_city}".
 - Estimate its cost from REAL, typical bus/train/shared-taxi fares for this specific route and distance — do not invent a large or round number. A domestic ground journey of a few hundred kilometers or less is normally a small fraction of the total trip budget, not a major line item.
 - If the distance is short (under ~2 hours), keep the cost minimal and say so in the tip.
 """
@@ -3005,6 +3923,8 @@ Trip brief:
 {route_rules}
 {hotel_rules}
 {flight_rules}
+{arrival_rules}
+{departure_rules}
 {ground_transport_rules}
 {visa_rules}
 
@@ -3123,12 +4043,20 @@ async def _call_gemini(
     max_tokens: int = 4096,
     thinking_budget=None,
     use_grounding: bool = False,
+    response_schema: dict | None = None,
+    operation: str = "odyssey_generate",
 ) -> tuple[str, list[dict]]:
     """Call Gemini with optional Google Search grounding.
 
     Returns (text, grounding_chunks) where grounding_chunks is a list of
     {"title": ..., "uri": ...} dicts extracted from the response's
     groundingMetadata. Empty list when grounding is disabled or absent.
+
+    `response_schema` is a Gemini `responseSchema` (OpenAPI subset) for
+    constrained JSON output. It rides on the JSON-mode path, so it is only
+    honoured when grounding is off — the same restriction as responseMimeType.
+    `operation` names the call in telemetry (`{operation}:{model}`), so the
+    route planner's small call is not counted as an itinerary generation.
     """
     api_key = (api_key or "").strip().strip('"').strip("'")
     base_generation_config = {
@@ -3138,6 +4066,8 @@ async def _call_gemini(
     # Google Gemini API strictly rejects responseMimeType: 'application/json' when tools/grounding are active (HTTP 400).
     if not use_grounding:
         base_generation_config["responseMimeType"] = "application/json"
+        if response_schema:
+            base_generation_config["responseSchema"] = response_schema
     headers = {"Content-Type": "application/json", "x-goog-api-key": api_key}
     # Odyssey is a one-shot background job, so a single 503 would permanently
     # fail it. Rotate through the model chain twice (with a short backoff
@@ -3169,7 +4099,7 @@ async def _call_gemini(
             try:
                 sku = "gemini_flash_grounded" if use_grounding else "gemini_flash_generate"
                 async with telemetry.track(
-                    "gemini", f"odyssey_generate:{model}",
+                    "gemini", f"{operation}:{model}",
                     sku=sku,
                 ) as t:
                     resp = await client.post(_model_url(model), json=body, headers=headers)

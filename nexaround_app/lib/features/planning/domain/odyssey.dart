@@ -494,6 +494,119 @@ class OdysseyBookingPlanItem {
       };
 }
 
+/// One direction of a journey — the outbound into the trip, or the return
+/// home — as the backend's `outbound` / `return` objects describe it.
+///
+/// Null on every Odyssey generated before the return leg was searched. A
+/// round-trip strategy carries a price for the whole journey on the strategy,
+/// so its legs have [pricePerTraveler] null; an open-jaw strategy (fly into
+/// one city, home from another) is two tickets, each priced here.
+class FlightLeg {
+  final String origin;
+  final String destination;
+  final String date;
+  final String departureTime;
+  final String arrivalTime;
+  final List<String> airlines;
+  final List<String> flightNumbers;
+  final int stops;
+  final int durationMinutes;
+  final String duration;
+  final double? pricePerTraveler;
+  final String bookingUrl;
+
+  const FlightLeg({
+    required this.origin,
+    required this.destination,
+    this.date = '',
+    this.departureTime = '',
+    this.arrivalTime = '',
+    this.airlines = const [],
+    this.flightNumbers = const [],
+    this.stops = 0,
+    this.durationMinutes = 0,
+    this.duration = '',
+    this.pricePerTraveler,
+    this.bookingUrl = '',
+  });
+
+  String get route => (origin.isNotEmpty && destination.isNotEmpty) ? '$origin → $destination' : '';
+
+  /// "HH:MM" from the "YYYY-MM-DD HH:MM" strings Google returns.
+  static String clock(String raw) {
+    final t = raw.trim();
+    if (t.isEmpty) return '';
+    final parts = t.split(' ');
+    return parts.isNotEmpty ? parts.last : t;
+  }
+
+  static FlightLeg? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final m = json.cast<String, dynamic>();
+    final origin = (m['origin'] ?? '').toString();
+    final destination = (m['destination'] ?? '').toString();
+    if (origin.isEmpty && destination.isEmpty) return null;
+    return FlightLeg(
+      origin: origin,
+      destination: destination,
+      date: (m['date'] ?? '').toString(),
+      departureTime: (m['departure_time'] ?? '').toString(),
+      arrivalTime: (m['arrival_time'] ?? '').toString(),
+      airlines: (m['airlines'] is List)
+          ? (m['airlines'] as List).map((e) => e.toString()).toList()
+          : const [],
+      flightNumbers: (m['flight_numbers'] is List)
+          ? (m['flight_numbers'] as List).map((e) => e.toString()).toList()
+          : const [],
+      stops: FlightStrategy._parseInt(m['stops'], 0),
+      durationMinutes: FlightStrategy._parseInt(m['duration_minutes'], 0),
+      duration: (m['duration'] ?? '').toString(),
+      pricePerTraveler: FlightStrategy._parseDouble(m['price_per_traveler']),
+      bookingUrl: (m['booking_url'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'origin': origin,
+        'destination': destination,
+        'date': date,
+        'departure_time': departureTime,
+        'arrival_time': arrivalTime,
+        'airlines': airlines,
+        'flight_numbers': flightNumbers,
+        'stops': stops,
+        'duration_minutes': durationMinutes,
+        'duration': duration,
+        'price_per_traveler': pricePerTraveler,
+        'booking_url': bookingUrl,
+      };
+}
+
+/// An airport the trip enters or leaves by, chosen by the route planner.
+class FlightAirport {
+  final String iata;
+  final String city;
+  final String name;
+
+  const FlightAirport({required this.iata, this.city = '', this.name = ''});
+
+  /// "Nagpur (NAG)" — or just the code when the city is unknown.
+  String get label => city.isNotEmpty ? '$city ($iata)' : iata;
+
+  static FlightAirport? fromJson(dynamic json) {
+    if (json is! Map) return null;
+    final iata = (json['iata'] ?? '').toString().trim();
+    if (iata.isEmpty) return null;
+    return FlightAirport(
+      iata: iata,
+      city: (json['city'] ?? '').toString(),
+      name: (json['name'] ?? '').toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {'iata': iata, 'city': city, 'name': name};
+}
+
 class FlightStrategy {
   final int rank;
   final String strategy;
@@ -522,9 +635,17 @@ class FlightStrategy {
   final double? pricePerTraveler;
   final double? priceTotal;
   final String? currency;
-  final String? tripType; // 'round_trip' | 'one_way'
+  final String? tripType; // 'round_trip' | 'open_jaw' | 'one_way'
   final int? durationMinutes;
   final bool isLivePrice;
+
+  /// Each direction on its own. [outbound] is present on every strategy the
+  /// backend has produced since legs were split out; [returnLeg] is present
+  /// on open-jaw strategies and on the round-trip tier whose return was
+  /// priced, and null where Google has not yet been asked for it.
+  final FlightLeg? outbound;
+  final FlightLeg? returnLeg;
+  final String returnRoute; // "NAG → CMB"; '' when unknown
 
   const FlightStrategy({
     required this.rank,
@@ -548,6 +669,9 @@ class FlightStrategy {
     this.tripType,
     this.durationMinutes,
     this.isLivePrice = false,
+    this.outbound,
+    this.returnLeg,
+    this.returnRoute = '',
   });
 
   /// True when the backend priced this strategy, so the UI can render exact
@@ -556,6 +680,13 @@ class FlightStrategy {
       pricePerTraveler != null && pricePerTraveler! > 0;
 
   bool get isRoundTrip => tripType == 'round_trip';
+
+  /// Flies into one airport and home from another — two tickets, both priced.
+  bool get isOpenJaw => tripType == 'open_jaw';
+
+  /// The fare covers both directions (round trip or open-jaw), as opposed to
+  /// a single one-way ticket.
+  bool get coversBothLegs => isRoundTrip || isOpenJaw;
 
   static int _parseInt(dynamic val, [int fallback = 0]) {
     if (val is num) return val.toInt();
@@ -602,6 +733,9 @@ class FlightStrategy {
             ? null
             : _parseInt(json['total_duration_minutes'], 0),
         isLivePrice: json['is_live_price'] == true,
+        outbound: FlightLeg.fromJson(json['outbound']),
+        returnLeg: FlightLeg.fromJson(json['return']),
+        returnRoute: (json['return_route'] ?? '').toString(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -626,6 +760,9 @@ class FlightStrategy {
         if (tripType != null) 'trip_type': tripType,
         if (durationMinutes != null) 'total_duration_minutes': durationMinutes,
         'is_live_price': isLivePrice,
+        if (outbound != null) 'outbound': outbound!.toJson(),
+        if (returnLeg != null) 'return': returnLeg!.toJson(),
+        if (returnRoute.isNotEmpty) 'return_route': returnRoute,
       };
 }
 
@@ -646,6 +783,14 @@ class OdysseyLeg {
   final int endDay;
   final int nights;
 
+  /// Where the city is and how the traveller gets there, from the route
+  /// planner. All optional: absent on Odysseys generated before the route
+  /// carried geography, and never required by any reader.
+  final double? latitude;
+  final double? longitude;
+  final String arriveBy; // flight | train | bus | car | ferry | none | ''
+  final int? fromPreviousKm;
+
   const OdysseyLeg({
     required this.index,
     required this.city,
@@ -653,6 +798,10 @@ class OdysseyLeg {
     this.startDay = 0,
     this.endDay = 0,
     this.nights = 0,
+    this.latitude,
+    this.longitude,
+    this.arriveBy = '',
+    this.fromPreviousKm,
   });
 
   /// True when `day` (1-based) falls inside this leg.
@@ -665,6 +814,12 @@ class OdysseyLeg {
         startDay: FlightStrategy._parseInt(json['start_day'], 0),
         endDay: FlightStrategy._parseInt(json['end_day'], 0),
         nights: FlightStrategy._parseInt(json['nights'], 0),
+        latitude: FlightStrategy._parseDouble(json['latitude']),
+        longitude: FlightStrategy._parseDouble(json['longitude']),
+        arriveBy: (json['arrive_by'] ?? '').toString(),
+        fromPreviousKm: json['from_previous_km'] == null
+            ? null
+            : FlightStrategy._parseInt(json['from_previous_km'], 0),
       );
 
   Map<String, dynamic> toJson() => {
@@ -673,6 +828,10 @@ class OdysseyLeg {
         'start_day': startDay,
         'end_day': endDay,
         'nights': nights,
+        if (latitude != null) 'latitude': latitude,
+        if (longitude != null) 'longitude': longitude,
+        if (arriveBy.isNotEmpty) 'arrive_by': arriveBy,
+        if (fromPreviousKm != null) 'from_previous_km': fromPreviousKm,
       };
 }
 
@@ -816,6 +975,13 @@ class Odyssey {
   /// These carry no tier label and imply no recommendation.
   final List<Map<String, dynamic>> flightMoreOptions;
   final String flightBestMonths; // NEW
+
+  /// The airports the route planner chose to enter and leave by, and the
+  /// shape of the journey ('round_trip' | 'open_jaw' | 'one_way'). Null /
+  /// empty on Odysseys generated before flights followed the route.
+  final FlightAirport? flightArrivalAirport;
+  final FlightAirport? flightDepartureAirport;
+  final String flightTripType;
   /// Cities the trip sleeps in. Empty on Odysseys generated before legs
   /// existed — readers must treat that as one leg covering the whole trip.
   final List<OdysseyLeg> legs;
@@ -856,6 +1022,9 @@ class Odyssey {
     this.flightGeneralTips = const [], // NEW
     this.flightMoreOptions = const [],
     this.flightBestMonths = '', // NEW
+    this.flightArrivalAirport,
+    this.flightDepartureAirport,
+    this.flightTripType = '',
     this.legs = const [],
     this.hotelStrategies = const [],
     this.hotelGeneralTips = const [],
@@ -885,6 +1054,9 @@ class Odyssey {
     List<String>? flightGeneralTips, // NEW
     List<Map<String, dynamic>>? flightMoreOptions,
     String? flightBestMonths, // NEW
+    FlightAirport? flightArrivalAirport,
+    FlightAirport? flightDepartureAirport,
+    String? flightTripType,
     List<OdysseyLeg>? legs,
     List<HotelStrategy>? hotelStrategies,
     List<String>? hotelGeneralTips,
@@ -920,6 +1092,9 @@ class Odyssey {
         flightGeneralTips: flightGeneralTips ?? this.flightGeneralTips, // NEW
         flightMoreOptions: flightMoreOptions ?? this.flightMoreOptions,
         flightBestMonths: flightBestMonths ?? this.flightBestMonths, // NEW
+        flightArrivalAirport: flightArrivalAirport ?? this.flightArrivalAirport,
+        flightDepartureAirport: flightDepartureAirport ?? this.flightDepartureAirport,
+        flightTripType: flightTripType ?? this.flightTripType,
         legs: legs ?? this.legs,
         hotelStrategies: hotelStrategies ?? this.hotelStrategies,
         hotelGeneralTips: hotelGeneralTips ?? this.hotelGeneralTips,
@@ -1088,6 +1263,11 @@ class Odyssey {
             'general_tips': flightGeneralTips,
             'more_options': flightMoreOptions,
             'best_months': flightBestMonths,
+            if (flightArrivalAirport != null)
+              'arrival_airport': flightArrivalAirport!.toJson(),
+            if (flightDepartureAirport != null)
+              'departure_airport': flightDepartureAirport!.toJson(),
+            if (flightTripType.isNotEmpty) 'trip_type': flightTripType,
           },
           'legs': legs.map((l) => l.toJson()).toList(),
           'hotel_strategies': {
@@ -1154,6 +1334,15 @@ class Odyssey {
         : const [];
     final String flightBestMonths = flightStrategiesRaw is Map
         ? (flightStrategiesRaw['best_months'] ?? '').toString()
+        : '';
+    final FlightAirport? flightArrivalAirport = flightStrategiesRaw is Map
+        ? FlightAirport.fromJson(flightStrategiesRaw['arrival_airport'])
+        : null;
+    final FlightAirport? flightDepartureAirport = flightStrategiesRaw is Map
+        ? FlightAirport.fromJson(flightStrategiesRaw['departure_airport'])
+        : null;
+    final String flightTripType = flightStrategiesRaw is Map
+        ? (flightStrategiesRaw['trip_type'] ?? '').toString()
         : '';
 
     // Empty for every Odyssey generated before legs existed; the grouping in
@@ -1234,6 +1423,9 @@ class Odyssey {
       flightGeneralTips: flightGeneralTips,
       flightMoreOptions: flightMoreOptions,
       flightBestMonths: flightBestMonths,
+      flightArrivalAirport: flightArrivalAirport,
+      flightDepartureAirport: flightDepartureAirport,
+      flightTripType: flightTripType,
       legs: legs,
       hotelStrategies: hotelStrategies,
       hotelGeneralTips: hotelGeneralTips,

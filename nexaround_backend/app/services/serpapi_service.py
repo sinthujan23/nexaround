@@ -14,12 +14,50 @@ import urllib.parse
 from datetime import datetime
 
 import httpx
-from app.services import telemetry
+from app.services import place_cache_service, telemetry
 from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
 SERPAPI_BASE = "https://serpapi.com/search.json"
+
+# Responses are kept in Redis for a few hours. Every Odyssey retry and every
+# geo-corrective regeneration used to pay for the same flight and hotel
+# searches again; fares do move, but not within the window in which the same
+# trip gets re-planned. Tests flip this off (see tests/conftest.py) because
+# they call the same params over and over expecting a fresh HTTP call each time.
+_CACHE_ENABLED = True
+FLIGHTS_CACHE_TTL_S = 6 * 60 * 60
+HOTELS_CACHE_TTL_S = 6 * 60 * 60
+
+
+def _cache_key(params: Dict[str, Any]) -> str:
+    """One key per distinct search, never including the API key."""
+    clean = {k: v for k, v in params.items() if k != "api_key"}
+    return f"serpapi:v1:{clean.get('engine', 'search')}:{telemetry._digest(clean)}"
+
+
+async def _cache_get(key: str) -> Dict[str, Any] | None:
+    if not _CACHE_ENABLED:
+        return None
+    try:
+        raw = await place_cache_service.get_raw(key)
+        if raw:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+    except Exception as e:
+        logger.debug("[SerpApi] cache read failed: %s", e)
+    return None
+
+
+async def _cache_set(key: str, data: Dict[str, Any], ttl: int) -> None:
+    if not _CACHE_ENABLED or ttl <= 0:
+        return
+    try:
+        await place_cache_service.set_raw(key, json.dumps(data), ttl=ttl)
+    except Exception as e:
+        logger.debug("[SerpApi] cache write failed: %s", e)
 
 # Currencies SerpApi's Google engines accept. Anything else is rejected outright
 # with HTTP 400 "Unsupported `XXX` for currency", which is not a soft failure:
@@ -235,8 +273,13 @@ def _looks_like_homepage_url(url: str) -> bool:
 class SerpApiService:
     """Search Google Flights and Google Hotels via SerpApi."""
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, *, cache_ttl_s: int | None = None):
         self.api_key = (api_key or "").strip()
+        # None = module defaults per engine; 0 = no caching for this instance.
+        self.cache_ttl_s = cache_ttl_s
+
+    def _ttl(self, default: int) -> int:
+        return default if self.cache_ttl_s is None else int(self.cache_ttl_s)
 
     async def search_flights(
         self,
@@ -247,8 +290,21 @@ class SerpApiService:
         return_date: str = "",
         adults: int = 1,
         currency: str = "USD",
+        one_way: bool = False,
+        departure_token: str = "",
+        _operation: str = "search_flights",
     ) -> Dict[str, Any]:
         """Search Google Flights via SerpApi.
+
+        `one_way=True` searches a single leg regardless of `return_date` —
+        the shape an open-jaw trip needs (fly into one city, home from
+        another), priced as two one-way tickets.
+
+        `departure_token` is the token Google attaches to each outbound
+        itinerary of a round-trip search; passing it back with the same
+        parameters returns the RETURN itineraries for that outbound, each
+        priced as the whole round trip. That is the only way to see the return
+        leg — a round-trip response on its own contains outbound options only.
 
         `adults` defaults to 1 deliberately. Google Flights varies the price it
         displays with party size, and SerpApi returns whatever Google displayed
@@ -284,18 +340,25 @@ class SerpApiService:
 
         if outbound_date:
             params["outbound_date"] = outbound_date
-        if return_date:
+        if return_date and not one_way:
             params["return_date"] = return_date
             params["type"] = "1"  # round trip
         else:
             params["type"] = "2"  # one way if no return date
+        if departure_token:
+            params["departure_token"] = departure_token
 
+        key = _cache_key(params)
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 async with telemetry.track(
-                    "serpapi", "search_flights",
-                    sku="serpapi_search", params=params,
+                    "serpapi", _operation,
+                    sku="serpapi_search", params=params, cache_key=key,
                 ) as t:
+                    cached = await _cache_get(key)
+                    if cached is not None:
+                        t.hit("redis")
+                        return cached
                     resp = await client.get(SERPAPI_BASE, params=params)
                     t.upstream(resp)
                 if resp.status_code != 200:
@@ -308,11 +371,45 @@ class SerpApiService:
                     logger.warning(f"[SerpApi] Flights error: {data['error']}")
                     return {}
 
+                # Only a response with options is worth keeping: an empty one
+                # may be a transient miss, and caching it would pin the miss.
+                if data.get("best_flights") or data.get("other_flights"):
+                    await _cache_set(key, data, self._ttl(FLIGHTS_CACHE_TTL_S))
                 return data
 
         except Exception as e:
             logger.error(f"[SerpApi] Flights search exception: {e}")
             return {}
+
+    async def search_flights_return(
+        self,
+        *,
+        departure_city: str,
+        destination: str,
+        outbound_date: str,
+        return_date: str,
+        departure_token: str,
+        adults: int = 1,
+        currency: str = "USD",
+    ) -> Dict[str, Any]:
+        """The return itineraries for one outbound of a round-trip search.
+
+        Same parameters as the search that produced `departure_token`, plus
+        the token. Each option in the response is a return flight whose
+        `price` is the round trip as a whole with that outbound.
+        """
+        if not departure_token:
+            return {}
+        return await self.search_flights(
+            departure_city=departure_city,
+            destination=destination,
+            outbound_date=outbound_date,
+            return_date=return_date,
+            adults=adults,
+            currency=currency,
+            departure_token=departure_token,
+            _operation="search_flights_return",
+        )
 
     async def search_hotels(
         self,
@@ -384,22 +481,35 @@ class SerpApiService:
         if class_filter:
             params["hotel_class"] = class_filter
 
+        key = _cache_key(params)
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 async with telemetry.track(
                     "serpapi", "search_hotels",
-                    sku="serpapi_search", params=params,
+                    sku="serpapi_search", params=params, cache_key=key,
                 ) as t:
-                    resp = await client.get(SERPAPI_BASE, params=params)
-                    t.upstream(resp)
-                if resp.status_code != 200:
-                    logger.warning(f"[SerpApi] Hotels search returned {resp.status_code}: {resp.text[:200]}")
-                    return {}
-                data = resp.json()
+                    cached = await _cache_get(key)
+                    if cached is not None:
+                        t.hit("redis")
+                        data = cached
+                        resp = None
+                    else:
+                        resp = await client.get(SERPAPI_BASE, params=params)
+                        t.upstream(resp)
+                if resp is not None:
+                    if resp.status_code != 200:
+                        logger.warning(f"[SerpApi] Hotels search returned {resp.status_code}: {resp.text[:200]}")
+                        return {}
+                    data = resp.json()
 
-                if "error" in data:
-                    logger.warning(f"[SerpApi] Hotels error: {data['error']}")
-                    return {}
+                    if "error" in data:
+                        logger.warning(f"[SerpApi] Hotels error: {data['error']}")
+                        return {}
+
+                    # Cached before the rating/class post-filters below, which
+                    # are cheap and depend on arguments that are not in the key.
+                    if data.get("properties"):
+                        await _cache_set(key, data, self._ttl(HOTELS_CACHE_TTL_S))
 
                 # Apply min_rating filter
                 if min_rating > 0 and "properties" in data:
@@ -787,6 +897,22 @@ def _flight_option_metrics(option: Dict[str, Any]) -> Dict[str, Any]:
             if tc and tc not in travel_classes:
                 travel_classes.append(tc)
 
+    segments: List[Dict[str, Any]] = []
+    for leg in legs:
+        if not isinstance(leg, dict):
+            continue
+        dep = leg.get("departure_airport") or {}
+        arr = leg.get("arrival_airport") or {}
+        segments.append({
+            "from": str((dep or {}).get("id") or ""),
+            "departure_time": str((dep or {}).get("time") or ""),
+            "to": str((arr or {}).get("id") or ""),
+            "arrival_time": str((arr or {}).get("time") or ""),
+            "airline": str(leg.get("airline") or ""),
+            "flight_number": str(leg.get("flight_number") or ""),
+            "duration_minutes": int(leg.get("duration") or 0) if isinstance(leg.get("duration"), (int, float)) else 0,
+        })
+
     return {
         # Identity is the flight-number sequence: two tiers must never be the
         # same itinerary wearing different labels.
@@ -802,6 +928,12 @@ def _flight_option_metrics(option: Dict[str, Any]) -> Dict[str, Any]:
         "serpapi_type": str(option.get("type") or ""),
         "departure_time": str((first_dep or {}).get("time") or ""),
         "arrival_time": str((last_arr or {}).get("time") or ""),
+        "segments": segments,
+        # Round-trip searches attach a token to each outbound; sending it back
+        # returns that outbound's return itineraries. Never stored on a
+        # strategy — it is a search handle, not a fact about the flight.
+        "departure_token": str(option.get("departure_token") or ""),
+        "booking_token": str(option.get("booking_token") or ""),
     }
 
 
@@ -917,6 +1049,189 @@ def _select_flight_tiers(candidates: List[Dict[str, Any]]) -> Dict[str, Dict[str
     return selected
 
 
+def _candidate_metrics(serpapi_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every priced, distinct itinerary in one SerpApi response, best-ranked first."""
+    if not serpapi_data:
+        return []
+    raw_options = (serpapi_data.get("best_flights") or []) + (serpapi_data.get("other_flights") or [])
+    candidates: List[Dict[str, Any]] = []
+    seen = set()
+    for option in raw_options:
+        metrics = _flight_option_metrics(option)
+        if not metrics or metrics["identity"] in seen:
+            continue
+        seen.add(metrics["identity"])
+        candidates.append(metrics)
+    return candidates
+
+
+def _leg_payload(m: Dict[str, Any], date: str, currency: str, *, priced: bool) -> Dict[str, Any]:
+    """One direction of a journey, as the app's FlightLeg reads it.
+
+    `priced` is True only when the fare in `m` is this leg's own (a one-way
+    search). A round-trip response prices the whole journey on the outbound
+    option, so its legs carry no price of their own.
+    """
+    return {
+        "origin": m.get("origin_id") or "",
+        "destination": m.get("dest_id") or "",
+        "date": date or "",
+        "departure_time": m.get("departure_time") or "",
+        "arrival_time": m.get("arrival_time") or "",
+        "airlines": list(m.get("airlines") or []),
+        "flight_numbers": list(m.get("flight_numbers") or []),
+        "stops": int(m.get("stops") or 0),
+        "duration_minutes": int(m.get("duration") or 0),
+        "duration": _format_duration(m.get("duration") or 0),
+        "price_per_traveler": (
+            round(convert_from_search_currency(m["price"], currency), 2) if priced else None
+        ),
+        "segments": list(m.get("segments") or []),
+        "booking_url": "",  # filled server-side by _apply_flight_booking_urls
+    }
+
+
+def _stop_label(stops: int) -> str:
+    return "Non-stop" if stops == 0 else ("1 stop" if stops == 1 else f"{stops} stops")
+
+
+def _tier_copy(tier: str, m: Dict[str, Any], per_traveler: float, priciest: float) -> tuple[str, str]:
+    """(savings badge, tip) for a tier.
+
+    One badge per tier, each saying something the others don't. Only the
+    cheapest tier quotes a percentage — two cards both shouting "Save ~40%"
+    tells the traveller nothing about how they differ.
+    """
+    if tier == "minimum":
+        saving_pct = (
+            int(round((priciest - per_traveler) / priciest * 100)) if priciest > 0 else 0
+        )
+        savings = f"Save ~{saving_pct}%" if saving_pct >= 3 else "Lowest fare"
+        tip = "Cheapest live fare on this route — book early, budget fares move fastest."
+    elif tier == "comfortable":
+        savings = "Non-stop" if m["stops"] == 0 else "Fastest route"
+        tip = "Shortest time in transit. Worth the premium on long-haul or tight schedules."
+    else:
+        savings = "Best value"
+        tip = "Best balance of price and travel time across the live results."
+    return savings, tip
+
+
+_TIER_TITLES = {
+    "minimum": "Cheapest Fare",
+    "recommended": "Best Value Route",
+    "comfortable": "Fastest & Fewest Stops",
+}
+
+
+def _strategy_payload(
+    *,
+    tier: str,
+    rank: int,
+    m: Dict[str, Any],
+    per_traveler: float,
+    party: int,
+    priciest: float,
+    currency: str,
+    trip_type: str,
+    outbound_date: str,
+    return_date: str,
+    description: str,
+    outbound: Dict[str, Any],
+    return_leg: Dict[str, Any] | None,
+) -> Dict[str, Any]:
+    savings, tip = _tier_copy(tier, m, per_traveler, priciest)
+    out_minutes = int(outbound.get("duration_minutes") or 0)
+    ret_minutes = int(return_leg.get("duration_minutes") or 0) if return_leg else None
+    return {
+        # ── Structured, authoritative numbers ──────────────────────────
+        "tier": tier,
+        "price_per_traveler": per_traveler,
+        "price_total": round(per_traveler * party, 2),
+        "currency": currency.upper(),
+        "price_basis": "per_traveler",
+        "trip_type": trip_type,
+        "outbound_date": outbound_date,
+        "return_date": return_date,
+        "outbound_duration_minutes": out_minutes,
+        "return_duration_minutes": ret_minutes,
+        "total_duration_minutes": out_minutes + (ret_minutes or 0),
+        "is_live_price": True,
+        "price_source": "google_flights_serpapi",
+        "travelers": party,
+        "travel_class": m.get("travel_class") or "",
+        "flight_numbers": list(m.get("flight_numbers") or []),
+
+        # ── Each direction on its own, for the app's Outbound / Return blocks ──
+        "outbound": outbound,
+        "return": return_leg,
+        "return_route": (
+            f"{return_leg['origin']} → {return_leg['destination']}"
+            if return_leg and return_leg.get("origin") and return_leg.get("destination") else ""
+        ),
+
+        # ── Legacy fields (older app builds read these) ────────────────
+        "rank": rank,
+        "strategy": "direct" if m["stops"] == 0 else "nearby_airport" if tier == "minimum" else "budget_carrier",
+        "title": _TIER_TITLES[tier],
+        "provider_name": "Google Flights",
+        "description": description,
+        "estimated_savings": savings,
+        # Rendered from price_per_traveler, never an independent value.
+        "estimated_price_range": f"{currency.upper()} {per_traveler:,.0f}",
+        "airlines": list(m.get("airlines") or []),
+        "route": (
+            f"{outbound['origin']} → {outbound['destination']}"
+            if outbound.get("origin") and outbound.get("destination") else ""
+        ),
+        "stops": int(outbound.get("stops") or 0),
+        "total_duration": outbound.get("duration") or "",
+        "convenience": _convenience_stars(int(outbound.get("stops") or 0), out_minutes),
+        "tip": tip,
+        "booking_url": "",  # filled server-side by _build_deep_booking_url
+    }
+
+
+def _more_option_payload(m: Dict[str, Any], currency: str, party: int, leg: str) -> Dict[str, Any]:
+    per_traveler = round(convert_from_search_currency(m["price"], currency), 2)
+    return {
+        "leg": leg,
+        "price_per_traveler": per_traveler,
+        "price_total": round(per_traveler * party, 2),
+        "currency": currency.upper(),
+        "airlines": m.get("airlines") or [],
+        "route": " → ".join(x for x in (m.get("origin_id"), m.get("dest_id")) if x),
+        # Departure and arrival times are the whole reason someone picks one
+        # of these over a tier: the ranking cannot know they need to land
+        # before a meeting or avoid a 02:00 departure.
+        "departure_time": m.get("departure_time") or "",
+        "arrival_time": m.get("arrival_time") or "",
+        "flight_numbers": m.get("flight_numbers") or [],
+        "stops": m["stops"],
+        "total_duration": _format_duration(m["duration"]),
+        "convenience": _convenience_stars(m["stops"], m["duration"]),
+        "is_live_price": True,
+        "price_source": "google_flights_serpapi",
+    }
+
+
+def _typical_range_tip(serpapi_data: Dict[str, Any], currency: str, label: str = "this route") -> str:
+    price_insights = (serpapi_data or {}).get("price_insights") or {}
+    typical = price_insights.get("typical_price_range") or []
+    if isinstance(typical, list) and len(typical) == 2 and typical[0] and typical[1]:
+        # Google reports these in the currency the search was made in, which is
+        # not the traveller's when SerpApi does not support theirs. Labelling an
+        # unconverted figure with their currency code is how a Colombo-Amsterdam
+        # fare came to read "LKR 700 - 940" beside a real LKR 262,500 fare.
+        typical_lo = convert_from_search_currency(float(typical[0]), currency)
+        typical_hi = convert_from_search_currency(float(typical[1]), currency)
+        return (
+            f"Google's typical range for {label} is {currency.upper()} "
+            f"{typical_lo:,.0f} - {typical_hi:,.0f} per traveller."
+        )
+    return ""
+
+
 def extract_flight_strategies_from_serpapi(
     serpapi_data: Dict[str, Any],
     *,
@@ -940,28 +1255,22 @@ def extract_flight_strategies_from_serpapi(
     independently. This matches the convention documented in
     trip_cost_floor.py ("Cheapest plausible return airfare ... per traveller").
 
+    A round-trip response describes the OUTBOUND itineraries only; each
+    strategy's `return` is None until `attach_return_leg` fills it from a
+    `departure_token` follow-up search. The tokens for the chosen tiers are
+    returned under `_departure_tokens` for exactly that purpose — the caller
+    pops the key before the result is stored.
+
     Returns a dict shaped like:
       {
         "strategies": [...],
         "general_tips": [...],
-        "best_months": "..."
+        "best_months": "...",
+        "more_options": [...],
+        "_departure_tokens": {tier: token},
       }
     """
-    if not serpapi_data:
-        return {}
-
-    raw_options = (serpapi_data.get("best_flights") or []) + (serpapi_data.get("other_flights") or [])
-
-    # Deduplicate by itinerary identity, keeping the first (best-ranked) copy.
-    candidates: List[Dict[str, Any]] = []
-    seen = set()
-    for option in raw_options:
-        metrics = _flight_option_metrics(option)
-        if not metrics or metrics["identity"] in seen:
-            continue
-        seen.add(metrics["identity"])
-        candidates.append(metrics)
-
+    candidates = _candidate_metrics(serpapi_data)
     if not candidates:
         return {}
 
@@ -971,92 +1280,34 @@ def extract_flight_strategies_from_serpapi(
         return {}
 
     party = max(int(travelers or 1), 1)
-    priciest = max(s["price"] for s in selected.values())
-
-    tier_titles = {
-        "minimum": "Cheapest Fare",
-        "recommended": "Best Value Route",
-        "comfortable": "Fastest & Fewest Stops",
-    }
+    priciest = max(
+        convert_from_search_currency(s["price"], currency) for s in selected.values()
+    )
 
     strategies: List[Dict[str, Any]] = []
+    tokens: Dict[str, str] = {}
     for rank, tier in enumerate([t for t in FLIGHT_TIERS if t in selected], start=1):
         m = selected[tier]
         # SerpApi was asked for a currency it supports, which is not always the
         # traveller's. Convert before anything downstream treats these as the
         # trip's own numbers.
         per_traveler = round(convert_from_search_currency(m["price"], currency), 2)
-        total = round(per_traveler * party, 2)
-        route = f"{m['origin_id']} → {m['dest_id']}" if m["origin_id"] and m["dest_id"] else ""
-        airlines = m["airlines"]
-        duration_str = _format_duration(m["duration"])
-
-        # One badge per tier, each saying something the others don't. Only the
-        # cheapest tier quotes a percentage — two cards both shouting "Save
-        # ~40%" tells the traveller nothing about how they differ.
-        if tier == "minimum":
-            saving_pct = (
-                int(round((priciest - per_traveler) / priciest * 100)) if priciest > 0 else 0
-            )
-            savings = f"Save ~{saving_pct}%" if saving_pct >= 3 else "Lowest fare"
-        elif tier == "comfortable":
-            savings = "Non-stop" if m["stops"] == 0 else "Fastest route"
-        else:
-            savings = "Best value"
-
-        stop_label = "Non-stop" if m["stops"] == 0 else (
-            "1 stop" if m["stops"] == 1 else f"{m['stops']} stops"
-        )
-        carriers = ", ".join(airlines[:2]) if airlines else "multiple carriers"
+        outbound = _leg_payload(m, outbound_date, currency, priced=(trip_type == "one_way"))
+        carriers = ", ".join(m["airlines"][:2]) if m["airlines"] else "multiple carriers"
         trip_label = "round trip" if trip_type == "round_trip" else "one way"
+        duration_str = outbound["duration"]
         description = (
-            f"{stop_label} {trip_label} from {departure_city} to {destination} with {carriers}"
+            f"{_stop_label(m['stops'])} {trip_label} from {departure_city} to {destination} with {carriers}"
             + (f", {duration_str} outbound." if duration_str else ".")
         )
-
-        if tier == "minimum":
-            tip = "Cheapest live fare on this route — book early, budget fares move fastest."
-        elif tier == "comfortable":
-            tip = "Shortest time in transit. Worth the premium on long-haul or tight schedules."
-        else:
-            tip = "Best balance of price and travel time across the live results."
-
-        strategies.append({
-            # ── Structured, authoritative numbers ──────────────────────────
-            "tier": tier,
-            "price_per_traveler": per_traveler,
-            "price_total": total,
-            "currency": currency.upper(),
-            "price_basis": "per_traveler",
-            "trip_type": trip_type,
-            "outbound_date": outbound_date,
-            "return_date": return_date,
-            "outbound_duration_minutes": m["duration"],
-            "return_duration_minutes": None,
-            "total_duration_minutes": m["duration"],
-            "is_live_price": True,
-            "price_source": "google_flights_serpapi",
-            "travelers": party,
-            "travel_class": m["travel_class"],
-            "flight_numbers": m["flight_numbers"],
-
-            # ── Legacy fields (older app builds read these) ────────────────
-            "rank": rank,
-            "strategy": "direct" if m["stops"] == 0 else "nearby_airport" if tier == "minimum" else "budget_carrier",
-            "title": tier_titles[tier],
-            "provider_name": "Google Flights",
-            "description": description,
-            "estimated_savings": savings,
-            # Rendered from price_per_traveler, never an independent value.
-            "estimated_price_range": f"{currency.upper()} {per_traveler:,.0f}",
-            "airlines": airlines,
-            "route": route,
-            "stops": m["stops"],
-            "total_duration": duration_str,
-            "convenience": _convenience_stars(m["stops"], m["duration"]),
-            "tip": tip,
-            "booking_url": "",  # filled server-side by _build_deep_booking_url
-        })
+        strategies.append(_strategy_payload(
+            tier=tier, rank=rank, m=m, per_traveler=per_traveler, party=party,
+            priciest=priciest, currency=currency, trip_type=trip_type,
+            outbound_date=outbound_date, return_date=return_date,
+            description=description, outbound=outbound, return_leg=None,
+        ))
+        if m.get("departure_token"):
+            tokens[tier] = m["departure_token"]
 
     general_tips: List[str] = []
     if outbound_date and return_date:
@@ -1069,20 +1320,9 @@ def extract_flight_strategies_from_serpapi(
         general_tips.append(
             f"Group total is the per-traveller fare x {party}; seats at the lowest fare may be limited."
         )
-
-    price_insights = serpapi_data.get("price_insights") or {}
-    typical = price_insights.get("typical_price_range") or []
-    if isinstance(typical, list) and len(typical) == 2 and typical[0] and typical[1]:
-        # Google reports these in the currency the search was made in, which is
-        # not the traveller's when SerpApi does not support theirs. Labelling an
-        # unconverted figure with their currency code is how a Colombo-Amsterdam
-        # fare came to read "LKR 700 - 940" beside a real LKR 262,500 fare.
-        typical_lo = convert_from_search_currency(float(typical[0]), currency)
-        typical_hi = convert_from_search_currency(float(typical[1]), currency)
-        general_tips.append(
-            f"Google's typical range for this route is {currency.upper()} "
-            f"{typical_lo:,.0f} - {typical_hi:,.0f} per traveller."
-        )
+    typical = _typical_range_tip(serpapi_data, currency)
+    if typical:
+        general_tips.append(typical)
     general_tips.append("Fares change constantly — tap through to confirm the current price before booking.")
 
     # Every real itinerary the tiers did not take, stated plainly.
@@ -1096,24 +1336,7 @@ def extract_flight_strategies_from_serpapi(
     # ones we can rank.
     taken_ids = {m["identity"] for m in selected.values()}
     more_options = [
-        {
-            "price_per_traveler": round(convert_from_search_currency(m["price"], currency), 2),
-            "price_total": round(convert_from_search_currency(m["price"], currency) * party, 2),
-            "currency": currency.upper(),
-            "airlines": m.get("airlines") or [],
-            "route": " → ".join(x for x in (m.get("origin_id"), m.get("dest_id")) if x),
-            # Departure and arrival times are the whole reason someone picks one
-            # of these over a tier: the ranking cannot know they need to land
-            # before a meeting or avoid a 02:00 departure.
-            "departure_time": m.get("departure_time") or "",
-            "arrival_time": m.get("arrival_time") or "",
-            "flight_numbers": m.get("flight_numbers") or [],
-            "stops": m["stops"],
-            "total_duration": _format_duration(m["duration"]),
-            "convenience": _convenience_stars(m["stops"], m["duration"]),
-            "is_live_price": True,
-            "price_source": "google_flights_serpapi",
-        }
+        _more_option_payload(m, currency, party, "outbound")
         for m in sorted(candidates, key=lambda c: c["price"])
         if m["identity"] not in taken_ids
     ]
@@ -1123,7 +1346,177 @@ def extract_flight_strategies_from_serpapi(
         "general_tips": general_tips,
         "best_months": "",
         "more_options": more_options,
+        "_departure_tokens": tokens,
     }
+
+
+# Beyond this many candidates per direction the cross product stops being
+# worth ranking: 30 x 30 combinations already cover every fare level Google
+# returned, and the tail is the same airlines at worse prices.
+_OPEN_JAW_POOL = 30
+
+
+def extract_open_jaw_strategies_from_serpapi(
+    outbound_data: Dict[str, Any],
+    return_data: Dict[str, Any],
+    *,
+    departure_city: str,
+    destination: str,
+    currency: str,
+    outbound_date: str = "",
+    return_date: str = "",
+    travelers: int = 1,
+    arrival_city: str = "",
+    departure_gateway_city: str = "",
+) -> Dict[str, Any]:
+    """Tiers for a trip that lands in one city and flies home from another.
+
+    Google has no single fare for that shape short of a multi-city search plus
+    a token follow-up per option, so it is priced as two one-way tickets:
+    every outbound itinerary paired with every return one, and the existing
+    tier selection run over the pairs. `price_per_traveler` is both legs
+    together; each leg also carries its own fare.
+    """
+    outbound = _candidate_metrics(outbound_data)
+    inbound = _candidate_metrics(return_data)
+    if not outbound or not inbound:
+        return {}
+
+    outbound = sorted(outbound, key=lambda c: c["price"])[:_OPEN_JAW_POOL]
+    inbound = sorted(inbound, key=lambda c: c["price"])[:_OPEN_JAW_POOL]
+
+    combos: List[Dict[str, Any]] = []
+    for o in outbound:
+        for r in inbound:
+            airlines = list(o["airlines"])
+            airlines += [a for a in r["airlines"] if a not in airlines]
+            combos.append({
+                "identity": (o["identity"], r["identity"]),
+                "price": o["price"] + r["price"],
+                "duration": o["duration"] + r["duration"],
+                "stops": o["stops"] + r["stops"],
+                "airlines": airlines,
+                "flight_numbers": o["flight_numbers"] + r["flight_numbers"],
+                "origin_id": o["origin_id"],
+                "dest_id": o["dest_id"],
+                "travel_class": o["travel_class"] or r["travel_class"],
+                "departure_time": o["departure_time"],
+                "arrival_time": o["arrival_time"],
+                "_outbound": o,
+                "_return": r,
+            })
+
+    selected = _select_flight_tiers(combos)
+    if not selected:
+        return {}
+
+    party = max(int(travelers or 1), 1)
+    priciest = max(
+        convert_from_search_currency(s["price"], currency) for s in selected.values()
+    )
+    into = arrival_city or destination
+    home_from = departure_gateway_city or destination
+
+    strategies: List[Dict[str, Any]] = []
+    for rank, tier in enumerate([t for t in FLIGHT_TIERS if t in selected], start=1):
+        m = selected[tier]
+        o, r = m["_outbound"], m["_return"]
+        per_traveler = round(convert_from_search_currency(m["price"], currency), 2)
+        out_leg = _leg_payload(o, outbound_date, currency, priced=True)
+        ret_leg = _leg_payload(r, return_date, currency, priced=True)
+        out_carriers = ", ".join(o["airlines"][:2]) if o["airlines"] else "multiple carriers"
+        ret_carriers = ", ".join(r["airlines"][:2]) if r["airlines"] else "multiple carriers"
+        description = (
+            f"{_stop_label(o['stops'])} from {departure_city} to {into} with {out_carriers}"
+            + (f", {out_leg['duration']}" if out_leg["duration"] else "")
+            + f"; home from {home_from} with {ret_carriers}, {_stop_label(r['stops']).lower()}"
+            + (f", {ret_leg['duration']}." if ret_leg["duration"] else ".")
+        )
+        strategies.append(_strategy_payload(
+            tier=tier, rank=rank, m=m, per_traveler=per_traveler, party=party,
+            priciest=priciest, currency=currency, trip_type="open_jaw",
+            outbound_date=outbound_date, return_date=return_date,
+            description=description, outbound=out_leg, return_leg=ret_leg,
+        ))
+
+    general_tips: List[str] = [
+        f"Live Google Flights fares: fly into {into} on {outbound_date or 'the outbound date'} and "
+        f"home from {home_from} on {return_date or 'the return date'}, priced as two one-way "
+        f"tickets per traveller including taxes."
+    ]
+    if party > 1:
+        general_tips.append(
+            f"Group total is the per-traveller fare x {party}; seats at the lowest fare may be limited."
+        )
+    for data, label in ((outbound_data, "the outbound"), (return_data, "the return")):
+        typical = _typical_range_tip(data, currency, label)
+        if typical:
+            general_tips.append(typical)
+    general_tips.append("Fares change constantly — tap through to confirm the current price before booking.")
+
+    taken_out = {m["_outbound"]["identity"] for m in selected.values()}
+    taken_ret = {m["_return"]["identity"] for m in selected.values()}
+    more_options = [
+        _more_option_payload(m, currency, party, "outbound")
+        for m in outbound if m["identity"] not in taken_out
+    ] + [
+        _more_option_payload(m, currency, party, "return")
+        for m in inbound if m["identity"] not in taken_ret
+    ]
+
+    return {
+        "strategies": strategies,
+        "general_tips": general_tips,
+        "best_months": "",
+        "more_options": more_options,
+        "_departure_tokens": {},
+    }
+
+
+def attach_return_leg(
+    strategy: Dict[str, Any],
+    return_data: Dict[str, Any],
+    *,
+    currency: str,
+    return_date: str = "",
+) -> bool:
+    """Fill a round-trip strategy's `return` from its departure_token follow-up.
+
+    Each option in `return_data` is a return itinerary for the strategy's
+    outbound, priced as the whole round trip. The cheapest is taken — it is
+    the one Google's outbound-level price was quoting — and its combined fare
+    replaces the strategy's, since that is the bookable number. Returns True
+    when a return leg was attached.
+    """
+    candidates = _candidate_metrics(return_data)
+    if not candidates or not isinstance(strategy, dict):
+        return False
+    best = min(candidates, key=lambda c: (c["price"], c["duration"], c["stops"]))
+
+    ret_leg = _leg_payload(best, return_date or strategy.get("return_date") or "", currency, priced=False)
+    strategy["return"] = ret_leg
+    strategy["return_route"] = (
+        f"{ret_leg['origin']} → {ret_leg['destination']}"
+        if ret_leg["origin"] and ret_leg["destination"] else ""
+    )
+    strategy["return_duration_minutes"] = ret_leg["duration_minutes"]
+    strategy["total_duration_minutes"] = (
+        int(strategy.get("outbound_duration_minutes") or 0) + ret_leg["duration_minutes"]
+    )
+
+    combined = round(convert_from_search_currency(best["price"], currency), 2)
+    previous = strategy.get("price_per_traveler")
+    if combined > 0:
+        if isinstance(previous, (int, float)) and previous > 0 and abs(combined - previous) / previous > 0.10:
+            logger.info(
+                "[SerpApi] Round-trip fare moved from %s to %s once the return leg was priced.",
+                previous, combined,
+            )
+        party = max(int(strategy.get("travelers") or 1), 1)
+        strategy["price_per_traveler"] = combined
+        strategy["price_total"] = round(combined * party, 2)
+        strategy["estimated_price_range"] = f"{currency.upper()} {combined:,.0f}"
+    return True
 
 
 def format_flight_results_for_gemini(

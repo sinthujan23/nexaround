@@ -48,8 +48,11 @@ _CACHE_PREFIX = "geo:dest:v3:"
 # waiting on, but an Odyssey should not stall behind it either.
 _RESOLVE_TIMEOUT_S = 6.0
 
-# Hard ceiling on Places lookups per Odyssey. See GeoBudget.
-_MAX_GEO_LOOKUPS_PER_ODYSSEY = 6
+# Hard ceiling on Places lookups per Odyssey. See GeoBudget. Sized for:
+# destination resolution (1) + guessed origin airport codes (up to 3) + the
+# route's two gateway airports (2, usually cached) + drift sampling (up to 3),
+# with the cheapest-value check being the one that goes hungry.
+_MAX_GEO_LOOKUPS_PER_ODYSSEY = 8
 
 
 # ── Renamed places ─────────────────────────────────────────────────────────
