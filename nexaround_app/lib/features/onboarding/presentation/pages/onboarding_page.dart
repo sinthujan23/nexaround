@@ -30,12 +30,12 @@ class _OnboardingPageState extends State<OnboardingPage> {
       glowColor: AppColors.actionTeal,
     ),
     _OnboardingData(
-      imagePath: 'assets/images/lotus_temple.png',
+      imagePath: 'assets/images/ar_labels_discovery.png',
       icon: Icons.view_in_ar_rounded,
-      title: 'AR Exploration',
-      subtitle: 'SEE THE WORLD THROUGH AI EYES',
+      title: 'AR Discovery & Labels',
+      subtitle: 'EXPLORE SPOTS WITH LIVE LABELS',
       description:
-          'Point your camera at any landmark and instantly discover its history, ratings, and hidden stories.',
+          'Instantly discover nearby places, ratings, and contextual labels floating in real-time as you look around.',
       gradient: AppColors.primaryGradient,
       glowColor: AppColors.ratingGold,
     ),

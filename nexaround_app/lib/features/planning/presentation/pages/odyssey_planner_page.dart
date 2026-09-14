@@ -184,19 +184,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         // the only thing left to work from if the name turns out unusable.
         _departureLat = pos.latitude;
         _departureLng = pos.longitude;
-        if (name.isNotEmpty &&
-            name != 'Nearby' &&
-            _destinationController.text.trim().isEmpty) {
-          // The position that produced this name is right here — passing it on
-          // costs nothing and spares the backend a lookup. No place_id: this
-          // came from a reverse geocode, not a picked place.
-          _setDestination(
-            name,
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            address: country == 'Nearby' ? '' : country,
-          );
-        }
+        // The destination field is left blank rather than defaulted to the
+        // current area: the location picker already offers "Use Current
+        // Location" as an explicit choice, so prefilling it here just made
+        // the field look pre-answered with no clear way to tell it apart
+        // from an intentional pick.
       });
     } catch (_) {
       // Location unavailable — the user can type a destination instead.
@@ -473,7 +465,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
           const Text(
-            'We prefilled your current area — change it to anywhere.',
+            'Search for a destination, or use your current location.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
@@ -617,13 +609,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     },
                     onChanged: (val) {
                       final parsed = int.tryParse(val);
-                      if (parsed != null && parsed > 0) {
+                      if (parsed != null && parsed > 0 && parsed <= 20) {
                         setState(() => _travelers = parsed);
                       }
                     },
                     onSubmitted: (_) {
-                      if (_travelersController.text.isEmpty ||
-                          (int.tryParse(_travelersController.text) ?? 0) <= 0) {
+                      final parsed = int.tryParse(_travelersController.text);
+                      if (parsed == null || parsed <= 0 || parsed > 20) {
                         _travelersController.text = _travelers.toString();
                       }
                     },
@@ -641,16 +633,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.add_circle_outline_rounded),
-                  color: Colors.black87,
+                  color: _travelers < 20 ? Colors.black87 : Colors.black26,
                   iconSize: 28,
                   splashRadius: 20,
                   tooltip: 'Increase travelers',
-                  onPressed: () {
-                    setState(() {
-                      _travelers++;
-                      _travelersController.text = _travelers.toString();
-                    });
-                  },
+                  onPressed: _travelers < 20
+                      ? () {
+                          setState(() {
+                            _travelers++;
+                            _travelersController.text = _travelers.toString();
+                          });
+                        }
+                      : null,
                 ),
               ],
             ),
