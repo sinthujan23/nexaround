@@ -191,6 +191,63 @@ def property_hotel_class(prop: Dict[str, Any]) -> int:
 # both derive rooms from this one rule. Showing a one-room total on a tab
 # headed "2 rooms", against a budget line that had multiplied by two, is what
 # made the same stay look like two different prices.
+def _within_radius(
+    properties: List[Dict[str, Any]],
+    latitude: float,
+    longitude: float,
+    max_km: float,
+    label: str = "",
+) -> List[Dict[str, Any]]:
+    """Keep only the hotels that are actually near the city.
+
+    The last line of defence for the wrong-country bug. A property with no
+    coordinates is KEPT — this drops what it can positively place somewhere
+    else, never what it merely cannot check, the same rule the airport
+    verification follows. If every result would be dropped the list is
+    returned untouched instead: that means the coordinates we were handed are
+    wrong, and a real hotel list beats an empty one.
+    """
+    kept: List[Dict[str, Any]] = []
+    dropped: List[str] = []
+    for p in properties:
+        if not isinstance(p, dict):
+            continue
+        gps = p.get("gps_coordinates") or {}
+        lat, lng = gps.get("latitude"), gps.get("longitude")
+        if not isinstance(lat, (int, float)) or not isinstance(lng, (int, float)):
+            kept.append(p)
+            continue
+        if _haversine_km(latitude, longitude, float(lat), float(lng)) <= max_km:
+            kept.append(p)
+        else:
+            dropped.append(str(p.get("name") or "?"))
+
+    if dropped and not kept:
+        logger.warning(
+            "[SerpApi] Every hotel for %r sits outside %.0f km of the coordinates given "
+            "(%.4f, %.4f) — keeping them; the coordinates are the likelier error.",
+            label, max_km, latitude, longitude,
+        )
+        return properties
+    if dropped:
+        logger.warning(
+            "[SerpApi] Dropped %d hotel(s) more than %.0f km from %r: %s",
+            len(dropped), max_km, label, ", ".join(dropped[:3]),
+        )
+    return kept
+
+
+def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance in km. Local copy: this module must not import
+    the geo resolver, which imports the Places client, which imports this."""
+    r = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
 def rooms_for(travelers: int) -> int:
     """Rooms a party needs, at two to a room."""
     try:
@@ -481,8 +538,32 @@ class SerpApiService:
         min_rating: float = 0.0,
         min_hotel_class: int = 0,
         sort_by: int | None = None,
+        country: str = "",
+        country_code: str = "",
+        latitude: float | None = None,
+        longitude: float | None = None,
+        max_km: float | None = None,
     ) -> Dict[str, Any]:
         """Search Google Hotels via SerpApi.
+
+        `country`, `country_code`, `latitude`/`longitude` and `max_km` all
+        answer one question — WHICH Saint Petersburg? A tester's 14-day Russia
+        trip came back with correct Moscow hotels and two other cities' hotels
+        in the United States, because the query was the bare city name and `gl`
+        was pinned to "us": Google localised "hotels in Saint Petersburg" for
+        an American searcher and returned Florida. Three layers now, cheapest
+        first, none of them an extra request:
+
+          country / country_code  name the country in the query and search as
+                                  a local of it. Sourced from the
+                                  Places-verified destination, so this is the
+                                  authoritative layer.
+          latitude / longitude    bias to the city's own coordinates, which
+                                  also pulls results toward the centre rather
+                                  than the outskirts.
+          max_km                  drop whatever still comes back from the
+                                  wrong place. Free, and the only layer that
+                                  cannot itself be fooled by a bad guess.
 
         Returns a dict with:
           - properties: list of hotel results with prices, ratings, amenities
@@ -514,8 +595,14 @@ class SerpApiService:
         if not self.api_key:
             return {}
 
-        # Build the search query
-        q = f"hotels in {destination}"
+        # The country goes in the query text, not only in a parameter:
+        # "hotels in Saint Petersburg, Russia" is unambiguous before Google
+        # localises anything.
+        place = (destination or "").strip()
+        country_name = (country or "").strip()
+        if country_name and country_name.lower() not in place.lower():
+            place = f"{place}, {country_name}"
+        q = f"hotels in {place}"
 
         params: Dict[str, Any] = {
             "engine": "google_hotels",
@@ -524,8 +611,14 @@ class SerpApiService:
             "adults": str(adults),
             "currency": resolve_search_currency(currency),
             "hl": "en",
-            "gl": "us",
+            # Search as a local of the destination. Pinned to "us" before,
+            # which is exactly what sent a Russian trip to Florida.
+            "gl": (country_code or "us").strip().lower()[:2],
         }
+        if latitude is not None and longitude is not None:
+            # Zoom 12 is roughly one city: tighter re-centres on a district,
+            # looser lets the neighbouring town back in.
+            params["ll"] = f"@{latitude:.4f},{longitude:.4f},12z"
 
         if check_in_date:
             params["check_in_date"] = check_in_date
@@ -579,6 +672,15 @@ class SerpApiService:
                         await _cache_set(key, data, self._ttl(HOTELS_CACHE_TTL_S))
                     else:
                         await _cache_set(key, {"properties": []}, self._ttl(HOTELS_EMPTY_TTL_S))
+
+                # ── Layer 3: is it even in the right place? ──────────────
+                # Applied to cached results too, on purpose: a result cached
+                # before this guard existed would otherwise keep serving
+                # Florida hotels for a Russian city until the TTL expired.
+                if max_km and latitude is not None and longitude is not None:
+                    data["properties"] = _within_radius(
+                        data.get("properties") or [], latitude, longitude, max_km, destination,
+                    )
 
                 # Apply min_rating filter
                 if min_rating > 0 and "properties" in data:
@@ -882,9 +984,17 @@ def extract_hotel_strategies_from_serpapi(
 # model Google Flights / Kayak / Skyscanner use for Cheapest / Best / Fastest.
 FLIGHT_TIERS = ("minimum", "recommended", "comfortable")
 
-# Value score weights for the "recommended" tier, over min-max normalised
-# fields (lower is better on every axis).
-_VALUE_WEIGHTS = {"price": 0.55, "duration": 0.30, "stops": 0.15}
+# A fare far above the cheapest on the route is not a tier, it is a different
+# trip. Odyssey plans to the traveller's budget, so a fare that breaks it is
+# never worth a card: live results have offered a 5x fare whose whole merit was
+# arriving 95 minutes sooner.
+_FARE_CEILING = 2.0
+
+# Two itineraries landing this close together are the same journey, and the
+# cheaper one wins. Deliberately tighter than `_meaningfully_different`'s 15%:
+# that asks "are these different offers?", this asks "is the extra money buying
+# real time?" — and 10 minutes off a 34-hour trip is not.
+_NEAR_TIE_DURATION = 0.05
 
 
 def _format_duration(minutes: int) -> str:
@@ -1006,13 +1116,6 @@ def _flight_option_metrics(option: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _normalise(value: float, low: float, high: float) -> float:
-    """Min-max to 0..1; a flat field contributes nothing rather than dividing by zero."""
-    if high <= low:
-        return 0.0
-    return (value - low) / (high - low)
-
-
 def _meaningfully_different(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     """Would a traveller see these two options as different offers?
 
@@ -1035,87 +1138,106 @@ def _meaningfully_different(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
     return False
 
 
-def _is_dominated(candidate: Dict[str, Any], picked: Dict[str, Any]) -> bool:
-    """True when `picked` beats `candidate` on price, time AND stops.
+def _price_time_frontier(candidates: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Fares that no other fare beats on both money and time.
 
-    A "Recommended" option that costs more, takes longer and stops more often
-    than the "Minimum" one is not a recommendation — it is a worse deal wearing
-    a better label. Those get dropped, leaving the tier absent.
+    Stops are reported to the traveller, never ranked. A 2-stop 46-hour routing
+    is not "more comfortable" than a 3-stop 25-hour one, and ranking by stop
+    count is how a fare costing 26,000 more for 20 extra hours in transit came
+    to be labelled "Fastest & Fewest Stops" — time in transit already carries
+    the cost of a connection.
     """
-    no_better = (
-        candidate["price"] >= picked["price"]
-        and candidate["duration"] >= picked["duration"]
-        and candidate["stops"] >= picked["stops"]
-    )
-    strictly_worse = (
-        candidate["price"] > picked["price"]
-        or candidate["duration"] > picked["duration"]
-        or candidate["stops"] > picked["stops"]
-    )
-    return no_better and strictly_worse
+    frontier: List[Dict[str, Any]] = []
+    for c in candidates:
+        beaten = any(
+            o is not c
+            and o["price"] <= c["price"]
+            and o["duration"] <= c["duration"]
+            and (
+                o["price"] < c["price"]
+                or o["duration"] < c["duration"]
+                # Same fare and same time: fewer connections wins outright, and
+                # the other is not a choice. Stops break an exact tie and only
+                # an exact tie — ranking by them is what this replaces.
+                or o["stops"] < c["stops"]
+            )
+            for o in candidates
+        )
+        if not beaten:
+            frontier.append(c)
+    return frontier
 
 
 def _select_flight_tiers(candidates: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
-    """Pick up to three *distinct* itineraries: cheapest, best value, most comfortable.
+    """Pick up to three real fares, cheapest first.
 
-    Returns a {tier: metrics} dict. Tiers are omitted rather than duplicated
-    when the pool is too small or too uniform — showing the same offer under
-    two labels is the exact bug this replaces. A route with one real fare level
-    should show one card, not three identical ones.
+    Every card costs more than the one above it and gets there sooner. That is
+    the only promise the Flights tab makes, and it is the one the numbers can
+    always keep: a tier name is now a price rank, so it cannot contradict the
+    fare it labels.
+
+    What this replaces: each tier was claimed in turn by its own criterion,
+    "comfortable" before "recommended". Comfortable took the best fare on the
+    route and Recommended picked from the remainder, so a live
+    Colombo->Edinburgh search labelled a 183,456 / 3-stop itinerary "Best
+    Value" with a 139,016 / 2-stop one on the card beneath it — and the budget,
+    which prices itself off the Recommended fare, inherited the wrong number.
+    Selecting over the price/time frontier makes that arrangement
+    unrepresentable rather than merely unlikely.
+
+    Fewer than three fares is a normal outcome, not a degraded one: most live
+    routes carry two genuinely different offers, and 30 of the 55 stored
+    Odysseys with live prices already show two. The app falls back to the
+    nearest tier it has rather than printing one fare under two names.
     """
-    if not candidates:
+    frontier = _price_time_frontier(candidates)
+    if not frontier:
         return {}
 
-    prices = [c["price"] for c in candidates]
-    durations = [c["duration"] for c in candidates]
-    stops = [c["stops"] for c in candidates]
-    p_lo, p_hi = min(prices), max(prices)
-    d_lo, d_hi = min(durations), max(durations)
-    s_lo, s_hi = min(stops), max(stops)
+    floor = min(c["price"] for c in frontier)
+    frontier = [c for c in frontier if c["price"] <= floor * _FARE_CEILING]
+    # On a price/time frontier the cheapest fare is also the slowest, so price
+    # order is the order of the trade-off itself.
+    frontier.sort(key=lambda c: (c["price"], c["duration"], c["stops"]))
 
-    selected: Dict[str, Dict[str, Any]] = {}
-    taken = set()
+    cheapest = frontier[0]
+    picked = [cheapest]
 
-    def _claim(tier: str, option: Dict[str, Any]) -> None:
-        selected[tier] = option
-        taken.add(option["identity"])
+    # The fast end — but never pay extra to shave minutes, so among everything
+    # arriving within `_NEAR_TIE_DURATION` of the quickest, take the cheapest.
+    quickest = max(min(c["duration"] for c in frontier), 1)
+    fastest = min(
+        (c for c in frontier if (c["duration"] - quickest) / quickest < _NEAR_TIE_DURATION),
+        key=lambda c: c["price"],
+    )
+    if fastest is not cheapest:
+        picked.append(fastest)
 
-    # Minimum — cheapest fare, tie-broken by the shorter trip.
-    cheapest = min(candidates, key=lambda c: (c["price"], c["duration"], c["stops"]))
-    _claim("minimum", cheapest)
-
-    def _distinct_pool() -> List[Dict[str, Any]]:
-        """Candidates a traveller would read as a different offer from every pick so far."""
-        return [
-            c for c in candidates
-            if c["identity"] not in taken
-            and all(_meaningfully_different(c, picked) for picked in selected.values())
-        ]
-
-    # Comfortable — fewest stops, then fastest, then cheapest of those.
-    comfort_pool = _distinct_pool()
-    if comfort_pool:
-        _claim("comfortable", min(comfort_pool, key=lambda c: (c["stops"], c["duration"], c["price"])))
-
-    # Recommended — best blended value among options that are genuinely
-    # different AND not simply beaten outright by a tier already on show.
-    value_pool = [
-        c for c in _distinct_pool()
-        if not any(_is_dominated(c, picked) for picked in selected.values())
+    # A middle card has to earn its place: the most transit time saved per
+    # extra rupee over the cheapest fare.
+    taken = {id(c) for c in picked}
+    rest = [
+        c for c in frontier
+        if id(c) not in taken and all(_meaningfully_different(c, p) for p in picked)
     ]
-    if value_pool:
-        def _value_score(c: Dict[str, Any]) -> float:
-            return (
-                _VALUE_WEIGHTS["price"] * _normalise(c["price"], p_lo, p_hi)
-                + _VALUE_WEIGHTS["duration"] * _normalise(c["duration"], d_lo, d_hi)
-                + _VALUE_WEIGHTS["stops"] * _normalise(c["stops"], s_lo, s_hi)
-            )
-        _claim("recommended", min(value_pool, key=_value_score))
+    while rest and len(picked) < len(FLIGHT_TIERS):
+        best = max(
+            rest,
+            key=lambda c: (cheapest["duration"] - c["duration"])
+            / max(c["price"] - cheapest["price"], 1),
+        )
+        picked.append(best)
+        rest = [c for c in rest if c is not best and _meaningfully_different(c, best)]
 
-    # A tier with no genuinely different option left is simply absent. The app
-    # falls back to the nearest tier it does have, rather than being handed the
-    # same offer twice under two names.
-    return selected
+    picked.sort(key=lambda c: (c["price"], c["duration"]))
+    # Two fares fill the ends, as they have since tiers landed; the middle name
+    # is the one a thin route does without.
+    names = (
+        FLIGHT_TIERS if len(picked) == 3
+        else ("minimum", "comfortable") if len(picked) == 2
+        else ("minimum",)
+    )
+    return dict(zip(names, picked))
 
 
 def _candidate_metrics(serpapi_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1164,33 +1286,22 @@ def _stop_label(stops: int) -> str:
     return "Non-stop" if stops == 0 else ("1 stop" if stops == 1 else f"{stops} stops")
 
 
-def _tier_copy(tier: str, m: Dict[str, Any], per_traveler: float, priciest: float) -> tuple[str, str]:
-    """(savings badge, tip) for a tier.
+def _card_title(stops: int, total_minutes: int) -> str:
+    """The header of one flight card: what the itinerary *is*, never a verdict.
 
-    One badge per tier, each saying something the others don't. Only the
-    cheapest tier quotes a percentage — two cards both shouting "Save ~40%"
-    tells the traveller nothing about how they differ.
+    The three cards used to be headed "Cheapest Fare", "Best Value Route" and
+    "Fastest & Fewest Stops". Two of those are claims about the other cards,
+    and a claim can be wrong: a live Colombo->Edinburgh search headed its
+    dearest, most-stopped fare "Best Value Route". Connections and time in
+    transit are facts about this itinerary alone, and they are the two the
+    fares are ranked on, so no two cards on a route can share a header.
+
+    Carrier was tried here first and read identically on two cards of the same
+    open jaw — they flew out together and differed only on the way home.
     """
-    if tier == "minimum":
-        saving_pct = (
-            int(round((priciest - per_traveler) / priciest * 100)) if priciest > 0 else 0
-        )
-        savings = f"Save ~{saving_pct}%" if saving_pct >= 3 else "Lowest fare"
-        tip = "Cheapest live fare on this route — book early, budget fares move fastest."
-    elif tier == "comfortable":
-        savings = "Non-stop" if m["stops"] == 0 else "Fastest route"
-        tip = "Shortest time in transit. Worth the premium on long-haul or tight schedules."
-    else:
-        savings = "Best value"
-        tip = "Best balance of price and travel time across the live results."
-    return savings, tip
-
-
-_TIER_TITLES = {
-    "minimum": "Cheapest Fare",
-    "recommended": "Best Value Route",
-    "comfortable": "Fastest & Fewest Stops",
-}
+    stop_text = _stop_label(stops)
+    duration = _format_duration(total_minutes)
+    return f"{stop_text} · {duration}" if duration else stop_text
 
 
 def _strategy_payload(
@@ -1200,7 +1311,6 @@ def _strategy_payload(
     m: Dict[str, Any],
     per_traveler: float,
     party: int,
-    priciest: float,
     currency: str,
     trip_type: str,
     outbound_date: str,
@@ -1209,7 +1319,6 @@ def _strategy_payload(
     outbound: Dict[str, Any],
     return_leg: Dict[str, Any] | None,
 ) -> Dict[str, Any]:
-    savings, tip = _tier_copy(tier, m, per_traveler, priciest)
     out_minutes = int(outbound.get("duration_minutes") or 0)
     ret_minutes = int(return_leg.get("duration_minutes") or 0) if return_leg else None
     return {
@@ -1242,10 +1351,13 @@ def _strategy_payload(
         # ── Legacy fields (older app builds read these) ────────────────
         "rank": rank,
         "strategy": "direct" if m["stops"] == 0 else "nearby_airport" if tier == "minimum" else "budget_carrier",
-        "title": _TIER_TITLES[tier],
+        "title": _card_title(int(outbound.get("stops") or 0), out_minutes + (ret_minutes or 0)),
         "provider_name": "Google Flights",
         "description": description,
-        "estimated_savings": savings,
+        # Emptied with the tier titles: every badge it carried ("Best value",
+        # "Fastest route") was a verdict on the other cards. The app renders
+        # neither field when it is blank, old builds included.
+        "estimated_savings": "",
         # Rendered from price_per_traveler, never an independent value.
         "estimated_price_range": f"{currency.upper()} {per_traveler:,.0f}",
         "airlines": list(m.get("airlines") or []),
@@ -1256,7 +1368,7 @@ def _strategy_payload(
         "stops": int(outbound.get("stops") or 0),
         "total_duration": outbound.get("duration") or "",
         "convenience": _convenience_stars(int(outbound.get("stops") or 0), out_minutes),
-        "tip": tip,
+        "tip": "",
         "booking_url": "",  # filled server-side by _build_deep_booking_url
     }
 
@@ -1349,9 +1461,6 @@ def extract_flight_strategies_from_serpapi(
         return {}
 
     party = max(int(travelers or 1), 1)
-    priciest = max(
-        convert_from_search_currency(s["price"], currency) for s in selected.values()
-    )
 
     strategies: List[Dict[str, Any]] = []
     tokens: Dict[str, str] = {}
@@ -1371,7 +1480,7 @@ def extract_flight_strategies_from_serpapi(
         )
         strategies.append(_strategy_payload(
             tier=tier, rank=rank, m=m, per_traveler=per_traveler, party=party,
-            priciest=priciest, currency=currency, trip_type=trip_type,
+            currency=currency, trip_type=trip_type,
             outbound_date=outbound_date, return_date=return_date,
             description=description, outbound=outbound, return_leg=None,
         ))
@@ -1480,9 +1589,6 @@ def extract_open_jaw_strategies_from_serpapi(
         return {}
 
     party = max(int(travelers or 1), 1)
-    priciest = max(
-        convert_from_search_currency(s["price"], currency) for s in selected.values()
-    )
     into = arrival_city or destination
     home_from = departure_gateway_city or destination
 
@@ -1503,7 +1609,7 @@ def extract_open_jaw_strategies_from_serpapi(
         )
         strategies.append(_strategy_payload(
             tier=tier, rank=rank, m=m, per_traveler=per_traveler, party=party,
-            priciest=priciest, currency=currency, trip_type="open_jaw",
+            currency=currency, trip_type="open_jaw",
             outbound_date=outbound_date, return_date=return_date,
             description=description, outbound=out_leg, return_leg=ret_leg,
         ))

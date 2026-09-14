@@ -170,6 +170,17 @@ _FOUR_STAR_NIGHTLY_USD = 80.0
 # classed properties among what it gets back (see _prefer_classed).
 _HOTEL_CLASS_FALLBACKS = [0]
 
+# How far a named place may sit from the city whose day it is. A generous day
+# trip — the Church of the Intercession on the Nerl is 12 km outside Vladimir,
+# Versailles 20 km outside Paris — while still far short of a namesake city on
+# another continent.
+_PLACE_ANCHOR_KM = 150
+
+# How far a hotel may sit from the city it is supposed to be in. Generous
+# enough for an airport hotel or a hill-station property spread along a valley,
+# tight enough that a namesake city on another continent cannot survive it.
+_HOTEL_MAX_KM = 60.0
+
 # How many classed (2-star+) properties the unfiltered rung must find before
 # it drops the unclassed ones. Below this the traveller is better served by
 # four real guesthouses than by one hotel.
@@ -1501,6 +1512,10 @@ async def generate_hotel_strategies(
     hotel_check_out_date: str = "",
     api_key: str,
     serpapi_key: str = "",
+    country: str = "",
+    country_code: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
 ) -> dict:
     """Generates hotel/accommodation strategies using SerpApi Google Hotels directly.
 
@@ -1584,6 +1599,12 @@ async def generate_hotel_strategies(
                     adults=_STANDARD_ROOM_ADULTS,
                     currency=currency,
                     min_hotel_class=class_floor,
+                    # Which Saint Petersburg. See search_hotels' docstring.
+                    country=country,
+                    country_code=country_code,
+                    latitude=latitude,
+                    longitude=longitude,
+                    max_km=_HOTEL_MAX_KM,
                     # Lowest-price-first, not Google's relevance default. A
                     # quality floor alone still surfaced whichever prominent
                     # (often pricier) chains Google ranks first among the
@@ -1851,6 +1872,7 @@ async def generate_hotel_strategies_for_legs(
     hotel_check_out_date: str,
     api_key: str,
     serpapi_key: str,
+    geo=None,
 ) -> dict:
     """Hotels for every city the trip sleeps in, each priced for its own nights.
 
@@ -1883,6 +1905,14 @@ async def generate_hotel_strategies_for_legs(
             hotel_check_out_date=leg.get("check_out_date") or hotel_check_out_date or "",
             api_key=api_key,
             serpapi_key=serpapi_key,
+            # Which country this city is in, and where it is. Without them
+            # "Saint Petersburg" is a US search. The country comes from the
+            # Places-verified destination rather than the leg's own field,
+            # which the model wrote and could have invented.
+            country=(geo.country if geo is not None and geo.resolved else ""),
+            country_code=(geo.country_code if geo is not None and geo.resolved else ""),
+            latitude=leg.get("latitude"),
+            longitude=leg.get("longitude"),
         )
         for leg in legs
     ]
@@ -2087,198 +2117,15 @@ def _validate_legs(raw, destination: str, days: int, start_date: str = "", geo=N
     return legs
 
 
-# ── Geographic drift detection ─────────────────────────────────────────────
-#
-# The prompt grounding in `_build_prompt` is what actually keeps the itinerary
-# in the right country. This is the backstop for when it does not, and it is
-# built to be nearly free: Tier 1 is one regex pass over text already in
-# memory, and it is the check that would have caught the reported bug twice —
-# once on the day theme "Arrival and Kandy Exploration" and again on "Sri
-# Lankan rice and curry".
-
-# How many generated place names Tier 2 will pay to geocode. Set to 0 to turn
-# the paid tier off entirely and rely on Tier 1 alone.
-_DRIFT_SAMPLE_SIZE = 3
-
-# One regeneration, ever. The retry is a straight line, not a loop.
-_MAX_DESTINATION_RETRIES = 1
-
-
-def _drift_scan_texts(plan: dict) -> list[tuple[str, str]]:
-    """(where, text) pairs worth scanning for foreign place names.
-
-    Deliberately narrow. `visa`, `logistics`, `practical_info` and
-    `booking_partners` all legitimately name the traveller's own country and
-    the country they fly from — scanning those would flag every international
-    trip ever planned.
-    """
-    out: list[tuple[str, str]] = []
-    summary = str(plan.get("summary") or "")
-    if summary:
-        out.append(("summary", summary))
-    for d in (plan.get("day_plans") or plan.get("plan") or []):
-        if not isinstance(d, dict):
-            continue
-        theme = str(d.get("theme") or "")
-        if theme:
-            out.append(("day theme", theme))
-        for a in (d.get("activities") or []):
-            if not isinstance(a, dict):
-                continue
-            name = str(a.get("name") or a.get("attraction_name") or "")
-            if name:
-                out.append(("activity", name))
-            tip = str(a.get("tip") or "")
-            if tip:
-                out.append(("tip", tip))
-            for r in (a.get("restaurants") or []):
-                if isinstance(r, dict):
-                    for key in ("name", "cuisine"):
-                        val = str(r.get(key) or "")
-                        if val:
-                            out.append((f"restaurant {key}", val))
-    return out
-
-
-def _drift_sample_names(plan: dict, limit: int) -> list[str]:
-    """Distinct, proper-noun-ish activity names spread across the trip."""
-    seen: set[str] = set()
-    picked: list[str] = []
-    for d in (plan.get("day_plans") or plan.get("plan") or []):
-        if not isinstance(d, dict):
-            continue
-        for a in (d.get("activities") or []):
-            if not isinstance(a, dict):
-                continue
-            if str(a.get("type") or "").strip().lower() not in {
-                "attraction", "exploration", "dining", "sightseeing"
-            }:
-                continue
-            name = str(a.get("name") or a.get("attraction_name") or "").strip()
-            low = name.lower()
-            if len(name) < 6 or low in seen:
-                continue
-            if "check-in" in low or "check in" in low or "check-out" in low:
-                continue
-            seen.add(low)
-            picked.append(name)
-            break  # at most one per day, so the sample spans the trip
-        if len(picked) >= limit:
-            break
-    return picked[:limit]
-
-
-@dataclass
-class GeoDrift:
-    ok: bool = True
-    reasons: list = None
-    offending: list = None
-
-    def __post_init__(self):
-        if self.reasons is None:
-            self.reasons = []
-        if self.offending is None:
-            self.offending = []
-
-
-async def detect_geo_drift(
-    plan: dict,
-    geo,
-    *,
-    sample: int = _DRIFT_SAMPLE_SIZE,
-    allow_codes: tuple = (),
-    budget=None,
-) -> "GeoDrift":
-    """Has the model written an itinerary for the wrong country?
-
-    Tier 1 is free and always runs. Tier 2 geocodes a few generated names and
-    only runs when Tier 1 found nothing, so the common case — a clean plan —
-    costs at most `sample` lookups and a drifted one costs none.
-    """
-    if geo is None or not geo.resolved or not isinstance(plan, dict):
-        return GeoDrift(ok=True)
-
-    allow = frozenset(c.upper() for c in allow_codes if c)
-    home = geo.country_code
-    country = geo.country or home
-
-    # ── Tier 1: free name scan ──
-    hits: dict[str, str] = {}
-    reasons: list[str] = []
-    strong_hits: list[tuple[str, str, str, str]] = []   # (where, text, name, code)
-    for where, text in _drift_scan_texts(plan):
-        found = geo_resolver.foreign_place_hits(text, home, allow)
-        if not found:
-            continue
-        # A single passing mention in a tip is weak evidence; a foreign name in
-        # an activity name or a day theme is the itinerary itself relocating.
-        # Restaurant names are weak too: "The Asian Kitchen by Tokyo Bay" is a
-        # real Kochi restaurant, and treating it as strong bought a second
-        # full itinerary for nothing.
-        strong = where in {"activity", "day theme"}
-        for name, code in found.items():
-            hits[name] = code
-            if strong and name not in {h[2] for h in strong_hits}:
-                strong_hits.append((where, text, name, code))
-
-    # One strong hit is worth one Places lookup before it is worth a whole
-    # regeneration: the regex matches names, and names travel ("Goa Gajah"
-    # is in Bali, "Kandy" is also a surname). Google saying the place is in
-    # the home country clears it; anything unverifiable keeps its weight.
-    if len(strong_hits) == 1:
-        where, text, name, code = strong_hits[0]
-        try:
-            check = await geo_resolver.verify_place(text, near=geo, max_km=None, budget=budget)
-        except Exception as e:
-            logger.debug("drift verification of %r failed: %s", text, e)
-            check = None
-        if check is not None and check.checked and check.country_code and check.country_code == home:
-            logger.info(
-                'Drift verification cleared "%s": Google places the %s "%s" in %s.',
-                name, where, text, home,
-            )
-            strong_hits = []
-
-    for where, text, name, code in strong_hits:
-        reasons.append(f'The {where} "{text}" names "{name}", which is in {code}, not {country}.')
-
-    if reasons or len(hits) >= 2:
-        if not reasons:
-            listed = ", ".join(sorted(hits))
-            reasons.append(
-                f"The plan repeatedly names places outside {country}: {listed}."
-            )
-        return GeoDrift(ok=False, reasons=reasons, offending=sorted(hits))
-
-    # ── Tier 2: paid, bounded, only when Tier 1 is clean ──
-    if sample <= 0 or not geo.has_coords:
-        return GeoDrift(ok=True)
-
-    names = _drift_sample_names(plan, sample)
-    if not names:
-        return GeoDrift(ok=True)
-
-    checks = await asyncio.gather(*(
-        geo_resolver.verify_place(n, near=geo, max_km=None, budget=budget)
-        for n in names
-    ), return_exceptions=True)
-
-    bad = [
-        c for c in checks
-        if isinstance(c, geo_resolver.PlaceCheck) and c.checked and not c.ok
-    ]
-    # Two independent misses, not one. A single mis-geocoded name is a fact
-    # about Google's index, not evidence the trip moved country.
-    if len(bad) >= 2:
-        return GeoDrift(
-            ok=False,
-            reasons=[
-                f'"{c.query}" resolves to {c.country_code or "elsewhere"}, not {country}.'
-                for c in bad
-            ],
-            offending=[c.query for c in bad],
-        )
-    return GeoDrift(ok=True)
+# Geographic drift detection lived here: a free regex scan over generated
+# place names plus up to three Places geocodes, and one corrective
+# regeneration when the plan had relocated to the wrong country. Removed
+# 2026-09-14 — the team lead's decision is that the prompt's per-city
+# coordinates and the model's own google_search checking are sufficient,
+# and that the backend should not verify the model's output. The prompt
+# side of that grounding is in `_build_prompt` (DESTINATION IDENTITY and
+# the route table); `geo_resolver.foreign_place_hits` and `verify_place`
+# are still there if the decision is ever revisited.
 
 
 # ── Route planning ─────────────────────────────────────────────────────────
@@ -2828,6 +2675,62 @@ async def plan_city_legs(
     return plan.legs
 
 
+async def _reconcile_gateways(
+    route, flight_strategies: dict, primary_flight: dict | None, geo=None, budget=None,
+) -> None:
+    """Point the trip's gateways at the airports the chosen flight actually uses.
+
+    Mutates both `route` (read by the itinerary prompt) and the
+    `flight_strategies` header (read by the app) so the two cannot disagree.
+    Only the primary flight can speak for the trip: tiers may land at different
+    airports, and each tier already carries its own `outbound`/`return`.
+
+    Anything we cannot read is left alone — a strategy without leg objects (the
+    AI-estimate path) keeps the planner's gateways rather than losing them.
+    """
+    if not isinstance(primary_flight, dict) or not isinstance(flight_strategies, dict):
+        return
+
+    async def _swap(attr: str, leg_key: str, field: str) -> None:
+        leg = primary_flight.get(leg_key)
+        if not isinstance(leg, dict):
+            return
+        # Outbound is named by where it lands; the return by where it leaves.
+        code = str(leg.get("destination" if leg_key == "outbound" else "origin") or "").strip().upper()
+        if not _AIRPORT_CODE_RE.match(code):
+            return
+        planned = dict(getattr(route, attr, None) or flight_strategies.get(field) or {})
+        if planned.get("iata") == code:
+            return
+        logger.info(
+            "Gateway %s: planner said %s, the booked flight uses %s — using the flight.",
+            attr, planned.get("iata") or "?", code,
+        )
+        # The city carries over — LGW and LHR are both London — but the name
+        # and the coordinates described the old airport, so they are re-fetched
+        # for the new one. Without that the transfer distance would still be
+        # measured from Heathrow for a flight landing at Gatwick, which is the
+        # whole reason this function exists. Airport coordinates are cached for
+        # a month, so this is free on any route seen before.
+        resolved = {"iata": code, "city": planned.get("city", ""), "name": ""}
+        located = await _airport_geo(code, geo, budget)
+        if located:
+            resolved["latitude"] = located["latitude"]
+            resolved["longitude"] = located["longitude"]
+            if located.get("name"):
+                resolved["name"] = located["name"]
+        setattr(route, attr, resolved)
+        # The app reads only the public three; coordinates stay internal.
+        flight_strategies[field] = _public_airport(resolved)
+
+    await _swap("arrival", "outbound", "arrival_airport")
+    await _swap("departure", "return", "departure_airport")
+
+    trip_type = primary_flight.get("trip_type")
+    if trip_type:
+        flight_strategies["trip_type"] = trip_type
+
+
 # Output budget for the day-by-day plan, scaled to the trip. A fixed 8192 cap
 # was enough for a week and silently truncated a fortnight: a 14-day, five-city
 # plan with priced, sourced activities runs to ~16k tokens, and the response
@@ -2991,6 +2894,7 @@ async def generate_odyssey(
             try:
                 return await generate_hotel_strategies_for_legs(
                     legs=city_legs,
+                    geo=geo,
                     days=days,
                     budget=budget,
                     currency=currency,
@@ -3058,6 +2962,17 @@ async def generate_odyssey(
             (s for s in usable if s.get("tier") == "recommended"), usable[0] if usable else None,
         )
 
+    # The gateways the planner named were a starting point for the search, not
+    # a result of it. A city we know by several airports is searched across all
+    # of them — "london" expands to LHR,LGW,STN,LTN, which is how Gatwick turns
+    # up ~40,000 INR cheaper than Heathrow — so the airport on the ticket is
+    # routinely not the one the planner guessed. Everything downstream reads
+    # these fields: the app's "Land at ..." line, and the arrival/departure
+    # transfer instructions in the prompt below, whose distances would
+    # otherwise be measured from the wrong airport (MXP and BGY are 45 km
+    # apart, NRT and HND 60, ARN and NYO 100).
+    await _reconcile_gateways(route, flight_strategies, primary_flight, geo, geo_budget)
+
     # 2. Build grounded prompt using confirmed live inventory
     prompt = _build_prompt(
         destination=final_destination,
@@ -3101,76 +3016,19 @@ async def generate_odyssey(
         plan = _parse_json(text)
     _warn_if_plan_is_short(plan, days)
 
-    # ── Geographic drift backstop ──────────────────────────────────────────
-    # The grounding above is what keeps the itinerary honest; this catches the
-    # residue. Structurally incapable of looping: one await, one regeneration,
-    # and the retry cannot re-enter this block.
-    geo_check: dict = {"status": "skipped"}
-    if geo.resolved:
-        # The traveller's own country and the one they fly from get named all
-        # over a legitimate plan — neither is drift.
-        allow = tuple(
-            c for c in (
-                (trip_cost_floor.country_for(departure_country) or "").upper(),
-                (trip_cost_floor.country_for(nationality) or "").upper(),
-                (trip_cost_floor.country_for(departure_city) or "").upper(),
-            ) if c
-        )
-        drift = await detect_geo_drift(plan, geo, allow_codes=allow, budget=geo_budget)
-        geo_check = {
-            "status": "clean" if drift.ok else "drifted",
-            "regenerated": False,
-            "reasons": list(drift.reasons),
-        }
-        if not drift.ok:
-            logger.warning(
-                "Geographic drift for %s (%s): %s",
-                geo.label(), geo.country_code, "; ".join(drift.reasons),
-            )
-            for _ in range(_MAX_DESTINATION_RETRIES):
-                try:
-                    retry_prompt = _build_prompt(
-                        destination=final_destination, mood=mood, budget=budget,
-                        days=days, currency=currency, travelers=travelers,
-                        hotel_price_range=hotel_price_range,
-                        confirmed_flight=primary_flight,
-                        departure_city=departure_city,
-                        departure_country=departure_country,
-                        nationality=nationality, has_visa=has_visa,
-                        legs=city_legs, geo=geo, route_plan=route,
-                        correction="\n".join(drift.reasons),
-                    )
-                    retry_text, retry_chunks = await _call_gemini(
-                        retry_prompt, api_key, max_tokens=plan_tokens,
-                        thinking_budget=0, use_grounding=True, timeout_s=plan_timeout,
-                    )
-                    retry_plan = _parse_json(retry_text)
-                    _warn_if_plan_is_short(retry_plan, days)
-                    retry_drift = await detect_geo_drift(
-                        retry_plan, geo, allow_codes=allow, budget=geo_budget,
-                    )
-                    # Keep the retry only when it is actually better. A second
-                    # attempt that drifts just as badly is not an improvement,
-                    # and the first plan at least had the grounded pass behind it.
-                    if retry_drift.ok or len(retry_drift.reasons) < len(drift.reasons):
-                        plan, grounding_chunks, drift = retry_plan, retry_chunks, retry_drift
-                    geo_check = {
-                        "status": "clean" if drift.ok else "uncertain",
-                        "regenerated": True,
-                        "reasons": list(drift.reasons),
-                    }
-                except Exception as e:
-                    logger.warning("Geo-corrective regeneration failed, keeping the first plan: %s", e)
-                    geo_check["regenerated"] = True
-                break
-            if not drift.ok:
-                # Decision: ship it and record it. Hotels and flights are
-                # grounded separately and are correct, so the traveller still
-                # gets a usable plan; the warning is how we find out it happened.
-                logger.warning(
-                    "Geographic drift PERSISTED after regeneration for %s: %s",
-                    geo.label(), "; ".join(drift.reasons),
-                )
+    # ── Geographic grounding ───────────────────────────────────────────────
+    # The itinerary's geography rests entirely on the prompt: each leg's own
+    # coordinates are stated in the route table and in DESTINATION IDENTITY,
+    # and the model is told to confirm every place it names against that day's
+    # coordinates with the google_search tool before writing it.
+    #
+    # A backstop used to run here — it sampled three generated place names,
+    # geocoded them through Places, and regenerated once if two resolved
+    # abroad. Removed 2026-09-14 by the team lead's decision that the model's
+    # own checking is sufficient and the backend should not re-check it. The
+    # flags are still written so the field keeps its shape for readers and so
+    # a later change of mind is visible in the data rather than silent.
+    geo_check: dict = {"status": "not_checked", "regenerated": False, "reasons": []}
     logger.info("Geo lookups used for this Odyssey: %d", geo_budget.spent)
 
     g_days = _as_int(plan.get("days"), days)
@@ -3788,16 +3646,19 @@ def _build_prompt(
             )
         coord_line = ""
         anchored = [l for l in (legs or []) if _leg_coords(l)]
-        if geo.is_country and anchored:
-            # A country's coordinates are its centroid, and a radius around
-            # that is either meaningless or wrong. The route's own cities are
-            # the anchors that mean something.
+        if anchored:
+            # The route's own cities are the anchors that mean something. For a
+            # country this is the only sane reading — its coordinates are a
+            # centroid, and for Russia that is empty Siberia — but a region is
+            # no different: one point plus a radius says nothing about which of
+            # four cities a given day belongs to.
             anchors = "; ".join(
                 f"{l['city']} ({l['latitude']:.2f}, {l['longitude']:.2f})" for l in anchored
             )
             coord_line = (
                 f"- The route's cities are at: {anchors}. Everything you name must be "
-                f"within roughly 150 km of one of these.\n"
+                f"within roughly {_PLACE_ANCHOR_KM} km of the coordinates of the city "
+                f"whose day it is.\n"
             )
         elif geo.has_coords:
             coord_line = (
@@ -3815,6 +3676,14 @@ CRITICAL - DESTINATION IDENTITY (this overrides your prior knowledge):
 - Never substitute a similarly-named or culturally-adjacent place from a
   neighbouring country. If a name you are about to write is not in {country},
   it is wrong - use the google_search tool to find a real equivalent that is.
+- CHECK EVERY PLACE BEFORE YOU WRITE IT. Many place names exist in more than
+  one country - Saint Petersburg, Moscow, Birmingham, Cambridge, Odessa,
+  Naples and Athens all name somewhere in the United States as well. For each
+  attraction, restaurant, market, station and neighbourhood you are about to
+  name, confirm with the google_search tool that it is the one near that day's
+  coordinates listed above, not a namesake elsewhere. If you cannot confirm it
+  sits near those coordinates, do not write it - search for a real place that
+  does.
 - Unless the plan explicitly crosses a border for a named day trip that returns
   the same day, every overnight stay is in {country}.
 """
@@ -3839,7 +3708,12 @@ country. Rewrite the ENTIRE plan from scratch using only real places in
                 f"Day {l['start_day']}-{l['end_day']}" if l["start_day"] != l["end_day"]
                 else f"Day {l['start_day']}"
             )
-            row = f"  {span}: {l['city']} (sleep in {l['city']})"
+            # The coordinates ride on the row itself, so the anchor for a day
+            # is on the same line as the day rather than in a block above it.
+            where = (
+                f" at {l['latitude']:.2f}, {l['longitude']:.2f}" if _leg_coords(l) else ""
+            )
+            row = f"  {span}: {l['city']}{where} (sleep in {l['city']})"
             hop = ""
             if i > 0:
                 mode = l.get("arrive_by") or ""
@@ -3857,7 +3731,8 @@ country. Rewrite the ENTIRE plan from scratch using only real places in
 CRITICAL - FIXED ROUTE (do not change it, do not add or drop a city):
 {table}
 
-- Every activity on a day must be in, or a day trip from, that day's city above.
+- Every activity on a day must be in, or a day trip from, that day's city
+  above, and within roughly {_PLACE_ANCHOR_KM} km of that city's coordinates.
 - The first day of each leg after the first MUST open with a "transport"
   activity covering the journey from the previous city, priced for {travelers}.
 - The last day of each leg must END in that leg's city, because that is where

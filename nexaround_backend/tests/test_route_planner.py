@@ -404,6 +404,17 @@ def test_open_jaw_tiers_are_distinct_pairs():
     assert comfortable["outbound"]["stops"] == 0 and comfortable["return"]["stops"] == 0
 
 
+def test_open_jaw_cards_do_not_share_a_header():
+    """Both cards of an open jaw can fly out together and differ only on the
+    way home, so a header naming the outbound carrier read the same on two."""
+    titles = [s["title"] for s in _open_jaw()["strategies"]]
+    assert len(set(titles)) == len(titles)
+    assert not any(
+        w in t.lower() for t in titles
+        for w in ("best", "value", "cheapest", "fastest", "fewest")
+    )
+
+
 def test_open_jaw_more_options_are_tagged_by_leg():
     result = _open_jaw()
     legs = {o["leg"] for o in result["more_options"]}
@@ -626,7 +637,7 @@ def test_prompt_anchors_a_country_on_the_routes_cities_not_the_centroid():
 
 def test_prompt_route_table_shows_how_each_leg_is_reached():
     prompt = _prompt(_route_for_prompt(), _confirmed())
-    assert "Kanha (sleep in Kanha) — arrive from Pench by car, ~200 km" in prompt
+    assert "Kanha at 22.33, 80.63 (sleep in Kanha) — arrive from Pench by car, ~200 km" in prompt
 
 
 def test_prompt_without_a_flight_targets_the_first_leg_by_ground():

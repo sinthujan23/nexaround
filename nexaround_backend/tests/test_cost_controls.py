@@ -137,75 +137,12 @@ def test_the_expensive_calls_stay_on_the_full_chain():
         assert "models=_LITE_MODELS" not in window
 
 
-# ── Drift: verify before paying for a second itinerary ──────────────────────
-
-def _plan_naming(where_value, *, field="name"):
-    activity = {"time": "13:00", "name": "Lunch", "type": "dining", "cost": "INR 400"}
-    if field == "name":
-        activity["name"] = where_value
-    elif field == "restaurant":
-        activity["restaurants"] = [{"name": where_value, "cuisine": "Asian"}]
-    return {"summary": "A week in Kerala.", "day_plans": [{"day": 1, "theme": "Kochi", "activities": [activity]}]}
-
-
-def _drift(plan, monkeypatch, check=None, sample=0):
-    calls = []
-
-    async def _verify(name, **kw):
-        calls.append(name)
-        return check if check is not None else PlaceCheck(query=name)
-
-    monkeypatch.setattr(svc.geo_resolver, "verify_place", _verify)
-    result = asyncio.run(svc.detect_geo_drift(
-        plan, _ctx(), sample=sample, budget=GeoBudget(),
-    ))
-    return result, calls
-
-
-def test_a_foreign_name_in_a_restaurant_is_not_drift(monkeypatch):
-    """"The Asian Kitchen by Tokyo Bay" is a real Kochi restaurant.
-
-    It cost a full second 14-day generation before this.
-    """
-    plan = _plan_naming("The Asian Kitchen by Tokyo Bay", field="restaurant")
-    drift, calls = _drift(plan, monkeypatch)
-    assert drift.ok and calls == []
-
-
-def test_a_lone_strong_hit_is_verified_before_regenerating(monkeypatch):
-    plan = _plan_naming("Lunch near Kandy Street")
-    check = PlaceCheck(query="x", country_code="IN", ok=True, checked=True)
-    drift, calls = _drift(plan, monkeypatch, check=check)
-    assert drift.ok
-    assert len(calls) == 1
-
-
-def test_a_lone_strong_hit_that_verifies_abroad_still_regenerates(monkeypatch):
-    plan = _plan_naming("Lunch near Kandy Street")
-    check = PlaceCheck(query="x", country_code="LK", ok=False, checked=True)
-    drift, calls = _drift(plan, monkeypatch, check=check)
-    assert not drift.ok and len(calls) == 1
-
-
-def test_an_unverifiable_hit_keeps_its_weight(monkeypatch):
-    """No budget, no key, no result — the guard must not be talked out of it."""
-    plan = _plan_naming("Lunch near Kandy Street")
-    drift, calls = _drift(plan, monkeypatch, check=PlaceCheck(query="x"))
-    assert not drift.ok and len(calls) == 1
-
-
-def test_two_strong_hits_regenerate_without_paying_to_verify(monkeypatch):
-    plan = {
-        "summary": "",
-        "day_plans": [
-            {"day": 1, "theme": "Kandy Exploration", "activities": [
-                {"time": "09:00", "name": "Galle Fort walk", "type": "exploration"},
-            ]},
-        ],
-    }
-    drift, calls = _drift(plan, monkeypatch)
-    assert not drift.ok and calls == []
-    assert len(drift.reasons) >= 2
+# Drift gating was tested here — a lone foreign-looking name was verified
+# through Places before it was allowed to trigger a second full itinerary, and
+# restaurant names were demoted so "The Asian Kitchen by Tokyo Bay" could not
+# relocate a trip. The whole drift check left the pipeline on 2026-09-14, so
+# these went with it; the itinerary's geography now rests on the prompt alone
+# (see the per-day coordinate tests at the end of this file).
 
 
 # ── SerpApi: stop calling an empty account ──────────────────────────────────
@@ -377,3 +314,325 @@ def test_a_short_plan_is_kept_not_thrown_away():
     svc._require_days(plan, "{...}")
     svc._warn_if_plan_is_short(plan, 3)
     assert svc._plan_day_count(plan) == 2
+
+
+# ── Which Saint Petersburg? ─────────────────────────────────────────────────
+#
+# Client report, 14-day Russia trip: Moscow's hotels were right, two other
+# cities returned hotels in the United States. The query was the bare city
+# name and `gl` was pinned to "us", so Google localised "hotels in Saint
+# Petersburg" for an American searcher and answered with Florida.
+
+SPB_RU = (59.9311, 30.3609)
+SPB_US = {"gps_coordinates": {"latitude": 27.7851, "longitude": -82.6465}, "name": "Gulfport Bungalow"}
+SPB_HOTEL = {"gps_coordinates": {"latitude": 59.9462, "longitude": 30.3481}, "name": "Radisson Sonya"}
+NO_GPS = {"name": "Nevsky Guesthouse"}
+
+
+def _capture_hotel_params(monkeypatch, payload=None):
+    """Run search_hotels against a fake transport, returning the params sent."""
+    seen = {}
+
+    class _R:
+        status_code = 200
+        text = ""
+        def json(self):
+            return payload if payload is not None else {"properties": [SPB_HOTEL]}
+
+    class _Client:
+        def __init__(self, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def get(self, url, params=None):
+            seen.update(params or {})
+            return _R()
+
+    monkeypatch.setattr(serpapi_service.httpx, "AsyncClient", _Client)
+    return seen
+
+
+def test_the_country_is_named_in_the_query(monkeypatch):
+    seen = _capture_hotel_params(monkeypatch)
+    asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+    ))
+    assert seen["q"] == "hotels in Saint Petersburg, Russia"
+
+
+def test_the_search_is_localised_to_the_destination_not_the_usa(monkeypatch):
+    seen = _capture_hotel_params(monkeypatch)
+    asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+    ))
+    assert seen["gl"] == "ru"
+
+
+def test_coordinates_are_sent_as_a_location_bias(monkeypatch):
+    seen = _capture_hotel_params(monkeypatch)
+    asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+        latitude=SPB_RU[0], longitude=SPB_RU[1],
+    ))
+    assert seen["ll"] == "@59.9311,30.3609,12z"
+
+
+def test_the_country_is_not_repeated_when_already_in_the_name(monkeypatch):
+    seen = _capture_hotel_params(monkeypatch)
+    asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg, Russia", country="Russia", country_code="RU",
+    ))
+    assert seen["q"] == "hotels in Saint Petersburg, Russia"
+
+
+def test_without_a_country_the_behaviour_is_unchanged(monkeypatch):
+    """Odysseys whose destination never resolved must still search."""
+    seen = _capture_hotel_params(monkeypatch)
+    asyncio.run(serpapi_service.SerpApiService("k").search_hotels(destination="Kochi"))
+    assert seen["q"] == "hotels in Kochi" and seen["gl"] == "us" and "ll" not in seen
+
+
+def test_a_hotel_on_another_continent_is_dropped(monkeypatch):
+    _capture_hotel_params(monkeypatch, payload={"properties": [SPB_HOTEL, SPB_US]})
+    data = asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+        latitude=SPB_RU[0], longitude=SPB_RU[1], max_km=60,
+    ))
+    assert [p["name"] for p in data["properties"]] == ["Radisson Sonya"]
+
+
+def test_a_hotel_with_no_coordinates_is_kept(monkeypatch):
+    """Drop what we can place elsewhere, never what we cannot check."""
+    _capture_hotel_params(monkeypatch, payload={"properties": [SPB_HOTEL, NO_GPS]})
+    data = asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+        latitude=SPB_RU[0], longitude=SPB_RU[1], max_km=60,
+    ))
+    assert {p["name"] for p in data["properties"]} == {"Radisson Sonya", "Nevsky Guesthouse"}
+
+
+def test_bad_coordinates_do_not_empty_the_list(monkeypatch):
+    """If everything would be dropped, the coordinates are the likelier error."""
+    _capture_hotel_params(monkeypatch, payload={"properties": [SPB_HOTEL]})
+    data = asyncio.run(serpapi_service.SerpApiService("k").search_hotels(
+        destination="Saint Petersburg", country="Russia", country_code="RU",
+        latitude=27.78, longitude=-82.64, max_km=60,      # Florida, wrongly
+    ))
+    assert [p["name"] for p in data["properties"]] == ["Radisson Sonya"]
+
+
+def test_the_radius_filter_applies_to_cached_results_too(monkeypatch):
+    """A result cached before this guard existed must not keep serving Florida."""
+    monkeypatch.setattr(serpapi_service, "_CACHE_ENABLED", True)
+    store = {}
+
+    async def _get(key):
+        return store.get(key)
+
+    async def _set(key, value, ttl=0):
+        store[key] = value
+
+    monkeypatch.setattr(serpapi_service.place_cache_service, "get_raw", _get)
+    monkeypatch.setattr(serpapi_service.place_cache_service, "set_raw", _set)
+    _capture_hotel_params(monkeypatch, payload={"properties": [SPB_HOTEL, SPB_US]})
+
+    serp = serpapi_service.SerpApiService("k")
+    kw = dict(destination="Saint Petersburg", country="Russia", country_code="RU",
+              latitude=SPB_RU[0], longitude=SPB_RU[1], max_km=60)
+    first = asyncio.run(serp.search_hotels(**kw))
+    second = asyncio.run(serp.search_hotels(**kw))          # served from cache
+    assert [p["name"] for p in first["properties"]] == ["Radisson Sonya"]
+    assert [p["name"] for p in second["properties"]] == ["Radisson Sonya"]
+
+
+def test_legs_carry_their_country_and_coordinates_to_the_search(monkeypatch):
+    """End to end: the route planner's geography reaches Google."""
+    calls = []
+
+    class _ScriptedSerp:
+        def __init__(self, key, **kw):
+            pass
+
+        async def search_hotels(self, **kw):
+            calls.append(kw)
+            return {"properties": [SPB_HOTEL]}
+
+    monkeypatch.setattr(svc, "SerpApiService", _ScriptedSerp)
+    legs = [{"city": "Saint Petersburg", "country": "RU", "start_day": 1, "end_day": 3,
+             "nights": 2, "latitude": SPB_RU[0], "longitude": SPB_RU[1],
+             "check_in_date": "2026-10-01", "check_out_date": "2026-10-03"}]
+    asyncio.run(svc.generate_hotel_strategies_for_legs(
+        legs=legs, days=3, budget=100000, currency="INR", travelers=2,
+        hotel_check_in_date="2026-10-01", hotel_check_out_date="2026-10-03",
+        api_key="", serpapi_key="k",
+        geo=DestinationContext(query="Russia", name="Russia", country="Russia",
+                               country_code="RU", latitude=61.5, longitude=105.3,
+                               source="places"),
+    ))
+    assert calls, "no hotel search was made"
+    first = calls[0]
+    assert first["country"] == "Russia" and first["country_code"] == "RU"
+    assert (first["latitude"], first["longitude"]) == SPB_RU
+    assert first["max_km"] == svc._HOTEL_MAX_KM
+
+
+# ── Per-day coordinates in the itinerary prompt ─────────────────────────────
+#
+# Client (Russia, 14 days): Moscow's hotels were right, two other cities
+# returned US hotels. The hotel half is fixed by verifying what Google sends
+# back; for the places Gemini writes, the decision was to strengthen the
+# prompt rather than verify each name.
+
+def _russia_prompt(legs=None, is_country=True):
+    legs = legs if legs is not None else [
+        {"city": "Moscow", "start_day": 1, "end_day": 4, "nights": 4,
+         "latitude": 55.75, "longitude": 37.62, "arrive_by": "none"},
+        {"city": "Saint Petersburg", "start_day": 5, "end_day": 7, "nights": 2,
+         "latitude": 59.93, "longitude": 30.31, "arrive_by": "train",
+         "from_previous_km": 700},
+    ]
+    geo = DestinationContext(
+        query="Russia", name="Russia", country="Russia", country_code="RU",
+        latitude=61.52, longitude=105.32,
+        types=("country",) if is_country else (), source="places",
+    )
+    return svc._build_prompt(
+        destination="Russia", mood="Adventurous", budget=500000, days=7,
+        currency="INR", travelers=2, legs=legs, geo=geo,
+    )
+
+
+def test_every_city_is_anchored_to_its_own_coordinates():
+    prompt = _russia_prompt()
+    assert "Moscow (55.75, 37.62); Saint Petersburg (59.93, 30.31)" in prompt
+    assert f"within roughly {svc._PLACE_ANCHOR_KM} km" in prompt
+
+
+def test_the_anchors_are_not_only_for_whole_countries():
+    """A 'Kerala' trip needs per-city anchors as much as a 'Russia' one does."""
+    prompt = _russia_prompt(is_country=False)
+    assert "Moscow (55.75, 37.62)" in prompt
+    assert "within roughly 400 km of there" not in prompt      # the old single radius
+
+
+def test_the_day_table_carries_each_city_coordinates():
+    """The anchor sits on the day's own line, not in a block above it."""
+    prompt = _russia_prompt()
+    assert "Day 1-4: Moscow at 55.75, 37.62 (sleep in Moscow)" in prompt
+    assert "Day 5-7: Saint Petersburg at 59.93, 30.31 (sleep in Saint Petersburg)" in prompt
+
+
+def test_the_prompt_names_the_ambiguous_city_trap():
+    prompt = _russia_prompt()
+    assert "CHECK EVERY PLACE BEFORE YOU WRITE IT" in prompt
+    assert "Saint Petersburg" in prompt and "United States" in prompt
+    assert "not a namesake elsewhere" in prompt
+
+
+def test_a_leg_without_coordinates_still_produces_a_valid_table():
+    """Older Odysseys and the single-leg fallback carry no lat/lng."""
+    prompt = _russia_prompt(legs=[
+        {"city": "Moscow", "start_day": 1, "end_day": 4, "nights": 4},
+        {"city": "Saint Petersburg", "start_day": 5, "end_day": 7, "nights": 2},
+    ])
+    assert "Day 1-4: Moscow (sleep in Moscow)" in prompt
+    assert "The route's cities are at:" not in prompt
+    assert "61.5200, 105.3200" in prompt                       # falls back to the destination
+
+
+# ── The gateway on the ticket, not the one the planner guessed ──────────────
+#
+# Acceptance run, UK 14 days: the planner chose LHR, the code widened "london"
+# to LHR,LGW,STN,LTN so Google could compare them, and the cheapest fare landed
+# at Gatwick ~40,000 INR lower. Correct — except the plan still announced LHR,
+# and the arrival-transfer distance was measured from Heathrow.
+
+def _strategy(tier, lands, home_from, trip_type="open_jaw"):
+    return {
+        "tier": tier, "title": f"{tier} fare", "trip_type": trip_type,
+        "outbound": {"origin": "CMB", "destination": lands},
+        "return": {"origin": home_from, "destination": "CMB"},
+    }
+
+
+def _route_with(arrival, departure):
+    return svc.RoutePlan(
+        legs=[{"city": "London", "start_day": 1, "end_day": 4, "nights": 4,
+               "latitude": 51.51, "longitude": -0.13},
+              {"city": "Edinburgh", "start_day": 5, "end_day": 7, "nights": 2,
+               "latitude": 55.95, "longitude": -3.19}],
+        arrival=dict(arrival), departure=dict(departure),
+        arrival_code=arrival["iata"], departure_code=departure["iata"], source="planner",
+    )
+
+
+@pytest.fixture
+def airport_geo(monkeypatch):
+    coords = {
+        "LGW": {"latitude": 51.15, "longitude": -0.18, "country_code": "GB", "name": "Gatwick"},
+        "LHR": {"latitude": 51.47, "longitude": -0.45, "country_code": "GB", "name": "Heathrow"},
+        "EDI": {"latitude": 55.95, "longitude": -3.37, "country_code": "GB", "name": "Edinburgh"},
+    }
+
+    async def _geo(code, geo, budget=None):
+        return coords.get(code)
+
+    monkeypatch.setattr(svc, "_airport_geo", _geo)
+    return coords
+
+
+def test_the_gateway_follows_the_booked_flight(airport_geo):
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow",
+                         "latitude": 51.47, "longitude": -0.45},
+                        {"iata": "EDI", "city": "Edinburgh", "name": "Edinburgh"})
+    fs = {"arrival_airport": {"iata": "LHR", "city": "London", "name": "Heathrow"},
+          "departure_airport": {"iata": "EDI", "city": "Edinburgh", "name": ""}}
+    asyncio.run(svc._reconcile_gateways(route, fs, _strategy("recommended", "LGW", "EDI")))
+    assert fs["arrival_airport"]["iata"] == "LGW"
+    assert fs["arrival_airport"]["city"] == "London"        # still London
+    assert route.arrival["iata"] == "LGW"
+
+
+def test_the_new_gateway_carries_its_own_coordinates(airport_geo):
+    """Otherwise the transfer is still measured from the airport they avoided."""
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow",
+                         "latitude": 51.47, "longitude": -0.45},
+                        {"iata": "EDI", "city": "Edinburgh", "name": "Edinburgh"})
+    asyncio.run(svc._reconcile_gateways(route, {}, _strategy("recommended", "LGW", "EDI")))
+    assert route.arrival["latitude"] == 51.15               # Gatwick, not Heathrow
+    assert route.arrival["name"] == "Gatwick"
+
+
+def test_an_unchanged_gateway_is_left_alone(airport_geo):
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow",
+                         "latitude": 51.47, "longitude": -0.45},
+                        {"iata": "EDI", "city": "Edinburgh", "name": "Edinburgh"})
+    before = dict(route.arrival)
+    asyncio.run(svc._reconcile_gateways(route, {}, _strategy("recommended", "LHR", "EDI")))
+    assert route.arrival == before
+
+
+def test_an_estimated_flight_keeps_the_planners_gateways(airport_geo):
+    """The AI-estimate path has no leg objects — nothing to reconcile from."""
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow"},
+                        {"iata": "EDI", "city": "Edinburgh", "name": "Edinburgh"})
+    fs = {"arrival_airport": {"iata": "LHR", "city": "London", "name": "Heathrow"}}
+    asyncio.run(svc._reconcile_gateways(route, fs, {"tier": "minimum", "title": "est"}))
+    assert route.arrival["iata"] == "LHR" and fs["arrival_airport"]["iata"] == "LHR"
+
+
+def test_no_flight_at_all_changes_nothing(airport_geo):
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow"},
+                        {"iata": "EDI", "city": "Edinburgh", "name": "Edinburgh"})
+    asyncio.run(svc._reconcile_gateways(route, {}, None))
+    assert route.arrival["iata"] == "LHR"
+
+
+def test_the_trip_type_follows_the_booked_flight(airport_geo):
+    route = _route_with({"iata": "LHR", "city": "London", "name": "Heathrow"},
+                        {"iata": "LHR", "city": "London", "name": "Heathrow"})
+    fs = {"trip_type": "open_jaw"}
+    asyncio.run(svc._reconcile_gateways(route, fs, _strategy("recommended", "LGW", "LGW", "round_trip")))
+    assert fs["trip_type"] == "round_trip"

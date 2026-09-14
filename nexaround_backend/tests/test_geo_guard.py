@@ -21,7 +21,6 @@ from app.services.odyssey_ai_service import (
     _build_prompt,
     _resolve_airport_code,
     _validate_legs,
-    detect_geo_drift,
 )
 
 
@@ -72,70 +71,13 @@ def test_scanner_allows_the_travellers_own_country():
     assert geo_resolver.foreign_place_hits(text, "LK", allow=frozenset({"IN"})) == {}
 
 
-# ── Drift detection over a whole plan ───────────────────────────────────────
-
-REPORTED_PLAN = {
-    "summary": "An 8-day Sri Lankan adventure.",
-    "day_plans": [{
-        "theme": "Arrival and Kandy Exploration",
-        "activities": [
-            {"type": "attraction", "name": "Visit Temple of the Sacred Tooth Relic",
-             "tip": "Witness the evening ceremony."},
-            {"type": "dining", "name": "Dinner in Kandy",
-             "tip": "Try authentic Sri Lankan rice and curry."},
-        ],
-    }],
-}
-
-CORRECTED_PLAN = {
-    "summary": "An 8-day Andaman island adventure.",
-    "day_plans": [{
-        "theme": "Arrival and Port Blair Exploration",
-        "activities": [
-            {"type": "attraction", "name": "Visit Cellular Jail",
-             "tip": "See the light and sound show."},
-            {"type": "dining", "name": "Dinner at Aberdeen Bazaar",
-             "tip": "Try fresh Andaman seafood."},
-        ],
-    }],
-}
-
-
-def test_drift_flags_the_reported_plan():
-    drift = asyncio.run(detect_geo_drift(REPORTED_PLAN, _ctx(), sample=0))
-    assert drift.ok is False
-    assert "kandy" in drift.offending
-    # The reasons are fed back to the model verbatim, so they must name the place.
-    assert any("Kandy" in r for r in drift.reasons)
-
-
-def test_drift_passes_the_corrected_plan():
-    drift = asyncio.run(detect_geo_drift(CORRECTED_PLAN, _ctx(), sample=0))
-    assert drift.ok is True
-    assert drift.reasons == []
-
-
-def test_drift_passes_the_same_plan_for_a_sri_lankan_trip():
-    lk = _ctx(code="LK", country="Sri Lanka", name="Kandy", lat=7.29, lng=80.63)
-    assert asyncio.run(detect_geo_drift(REPORTED_PLAN, lk, sample=0)).ok is True
-
-
-def test_drift_is_skipped_when_the_destination_never_resolved():
-    unresolved = DestinationContext(query="Nowhere", source="unresolved")
-    assert asyncio.run(detect_geo_drift(REPORTED_PLAN, unresolved, sample=0)).ok is True
-
-
-def test_drift_tier2_makes_no_calls_when_disabled(monkeypatch):
-    """sample=0 must not reach Google at all, even on a clean plan."""
-    calls = []
-
-    async def _boom(*a, **k):
-        calls.append(a)
-        raise AssertionError("Tier 2 must not run")
-
-    monkeypatch.setattr(geo_resolver.google_places_client, "resolve_place_geo", _boom)
-    assert asyncio.run(detect_geo_drift(CORRECTED_PLAN, _ctx(), sample=0)).ok is True
-    assert calls == []
+# Drift detection over a whole plan used to be tested here: the scan above fed
+# `detect_geo_drift`, which geocoded a sample of generated names and triggered
+# one corrective regeneration. That check was removed from the pipeline on
+# 2026-09-14 (the prompt's per-city coordinates and the model's own
+# google_search checking stand in its place), so the tests went with it. The
+# free scanner tests above stay — `foreign_place_hits` is still in
+# geo_resolver, unused by the Odyssey path but intact if the decision changes.
 
 
 # ── City legs: the country gate ─────────────────────────────────────────────

@@ -228,8 +228,13 @@ def test_a_price_gap_alone_does_not_earn_a_tier():
     assert tiers == {"minimum", "comfortable"}
 
 
-def test_a_different_stop_count_is_always_a_different_offer():
-    """Same price, but non-stop vs one-stop is a real choice."""
+def test_a_strictly_worse_option_is_not_a_choice():
+    """Same fare, one more stop, ten minutes longer — there is nothing to choose.
+
+    This was shown as a second card on the grounds that the stop count
+    differed. A traveller offered USD 500 non-stop in 4h40 has no reason to
+    read USD 500 one-stop in 4h50; the card only made the tab look fuller.
+    """
     data = {
         "best_flights": [
             _option(500, [_leg("CMB", "DXB", "A", "A 1", minutes=280)], 280),
@@ -241,7 +246,28 @@ def test_a_different_stop_count_is_always_a_different_offer():
             ),
         ],
     }
-    assert len(_extract(data=data)["strategies"]) == 2
+    strategies = _extract(data=data)["strategies"]
+    assert len(strategies) == 1
+    assert strategies[0]["price_per_traveler"] == 500
+    assert strategies[0]["stops"] == 0
+
+
+def test_a_connection_earns_a_card_when_it_buys_something():
+    """The same connection is a real offer once it is cheaper than flying direct."""
+    data = {
+        "best_flights": [
+            _option(500, [_leg("CMB", "DXB", "A", "A 1", minutes=280)], 280),
+            _option(
+                430,
+                [_leg("CMB", "KUL", "B", "B 1"), _leg("KUL", "DXB", "B", "B 2")],
+                330,
+                layovers=1,
+            ),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert [s["price_per_traveler"] for s in strategies] == [430, 500]
+    assert [s["stops"] for s in strategies] == [1, 0]
 
 
 # ── Airport code resolution ─────────────────────────────────────────────────
@@ -341,3 +367,193 @@ def test_a_pricier_but_faster_option_is_still_a_valid_recommendation():
     }
     tiers = {s["tier"] for s in _extract(data=data)["strategies"]}
     assert tiers == {"minimum", "recommended", "comfortable"}
+
+
+# ── The price ladder ────────────────────────────────────────────────────────
+#
+# Tiers used to be claimed one at a time, each by its own criterion, and
+# "comfortable" claimed before "recommended". Comfortable took the best fare on
+# the route and Recommended picked from what was left. Selection now runs over
+# the price/time frontier instead, so a card can only appear above another by
+# costing more AND arriving sooner — and the tier name is just the price rank.
+
+
+def _ladder(result):
+    return [
+        (s["price_per_traveler"], s["total_duration_minutes"])
+        for s in result["strategies"]
+    ]
+
+
+def test_every_card_costs_more_and_arrives_sooner_than_the_one_above():
+    rungs = _ladder(_extract())
+    assert len(rungs) == 3
+    for (cheap, slow), (dear, quick) in zip(rungs, rungs[1:]):
+        assert dear > cheap, "a card costs no more than the one above it"
+        assert quick < slow, "a card costs more without arriving sooner"
+
+
+def test_the_middle_card_is_never_the_dearest_fare():
+    """The Colombo->Edinburgh regression, in miniature.
+
+    Live on 2026-09-14 the tab showed 132,462 / 45h35 / 3 stops,
+    183,456 / 30h55 / 3 stops and 139,016 / 33h05 / 2 stops — and put "Best
+    Value Route" on the middle one. It was the dearest fare on the card and
+    tied for the most stops. The Budget tab prices itself off the Recommended
+    fare, so it inherited the 44,440 difference as well.
+    """
+    data = {
+        "best_flights": [
+            _option(
+                132462,
+                [_leg("CMB", "AUH", "Etihad", "EY 1"), _leg("AUH", "OSL", "SAS", "SK 2"),
+                 _leg("OSL", "EDI", "SAS", "SK 3")],
+                2735, layovers=3,
+            ),
+            _option(
+                183456,
+                [_leg("CMB", "DOH", "Qatar Airways", "QR 1"), _leg("DOH", "LHR", "Qatar Airways", "QR 2"),
+                 _leg("LHR", "EDI", "Qatar Airways", "QR 3")],
+                1855, layovers=3,
+            ),
+        ],
+        "other_flights": [
+            _option(
+                139016,
+                [_leg("CMB", "DOH", "Qatar Airways", "QR 4"), _leg("DOH", "EDI", "Qatar Airways", "QR 5")],
+                1985, layovers=2,
+            ),
+        ],
+    }
+    tiers = _by_tier(_extract(data=data))
+    assert tiers["recommended"]["price_per_traveler"] == 139016
+    assert tiers["recommended"]["price_per_traveler"] < tiers["comfortable"]["price_per_traveler"]
+    assert _ladder(_extract(data=data)) == [(132462, 2735), (139016, 1985), (183456, 1855)]
+
+
+def test_a_fare_above_the_ceiling_is_never_shown():
+    """Odyssey plans to a budget: a fare that breaks it is not a tier.
+
+    Seen live on a Switzerland Odyssey, where the Fastest card came back at
+    1,303,482 against a 389,995 Best Value — 3.3x the fare, same stop count.
+    """
+    data = {
+        "best_flights": [
+            _option(100, [_leg("CMB", "AUH", "A", "A 1"), _leg("AUH", "ZRH", "A", "A 2")], 1800, layovers=2),
+            _option(130, [_leg("CMB", "DOH", "B", "B 1")], 1500, layovers=1),
+        ],
+        "other_flights": [
+            _option(500, [_leg("CMB", "ZRH", "C", "C 1")], 1400, layovers=0),
+        ],
+    }
+    fares = [s["price_per_traveler"] for s in _extract(data=data)["strategies"]]
+    assert fares == [100, 130]
+    # Dropped knowingly: it was the quickest itinerary on the route, but 5x the
+    # cheapest fare buys 100 minutes.
+    assert 500 not in fares
+
+
+def test_the_fast_card_is_the_cheapest_of_the_near_identical_ones():
+    """Ten minutes off a 34-hour trip is not worth 33,999.
+
+    Taken from a live Colombo->Italy open jaw: 148,904 arriving 34h20 sat
+    beside 114,905 arriving 34h30, and the dearer one was being shown.
+    """
+    data = {
+        "best_flights": [
+            _option(109782, [_leg("CMB", "AUH", "Etihad", "EY 1"), _leg("AUH", "FCO", "ITA", "AZ 2"),
+                             _leg("FCO", "NAP", "ITA", "AZ 3")], 3810, layovers=3),
+            _option(110743, [_leg("CMB", "AUH", "Etihad", "EY 4"), _leg("AUH", "FCO", "ITA", "AZ 5"),
+                             _leg("FCO", "NAP", "ITA", "AZ 6")], 3110, layovers=3),
+        ],
+        "other_flights": [
+            _option(114905, [_leg("CMB", "DOH", "Qatar Airways", "QR 7"), _leg("DOH", "FCO", "ITA", "AZ 8"),
+                             _leg("FCO", "NAP", "ITA", "AZ 9"), _leg("NAP", "BRI", "ITA", "AZ 10")],
+                    2070, layovers=4),
+            _option(148904, [_leg("CMB", "DOH", "Qatar Airways", "QR 11"), _leg("DOH", "FCO", "ITA", "AZ 12"),
+                             _leg("FCO", "NAP", "ITA", "AZ 13"), _leg("NAP", "BRI", "ITA", "AZ 14")],
+                    2060, layovers=4),
+        ],
+    }
+    fares = [s["price_per_traveler"] for s in _extract(data=data)["strategies"]]
+    assert fares == [109782, 110743, 114905]
+    assert 148904 not in fares
+
+
+def test_stop_count_never_outranks_time_in_transit():
+    """Fewer stops is not "more comfortable" when it costs 18 extra hours.
+
+    From a live Egypt Odyssey: a 2-stop 43h50 fare at 117,826 was ranked above
+    a 3-stop 25h10 at 90,651 because it stopped once less.
+    """
+    data = {
+        "best_flights": [
+            _option(86083, [_leg("CMB", "SHJ", "Air Arabia", "G9 1"), _leg("SHJ", "CAI", "Air Arabia", "G9 2"),
+                            _leg("CAI", "LXR", "Air Arabia", "G9 3")], 1670, layovers=3),
+            _option(90651, [_leg("CMB", "DOH", "Qatar Airways", "QR 1"), _leg("DOH", "CAI", "Qatar Airways", "QR 2"),
+                            _leg("CAI", "LXR", "Qatar Airways", "QR 3")], 1540, layovers=3),
+        ],
+        "other_flights": [
+            _option(117826, [_leg("CMB", "DXB", "Emirates", "EK 1"), _leg("DXB", "CAI", "Emirates", "EK 2")],
+                    2630, layovers=2),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert [s["price_per_traveler"] for s in strategies] == [86083, 90651]
+    assert all(s["stops"] == 3 for s in strategies)
+
+
+def test_an_exact_tie_is_broken_by_the_connection():
+    """Same fare, same total time — the non-stop is the only real offer."""
+    data = {
+        "best_flights": [
+            _option(500, [_leg("CMB", "KUL", "B", "B 1"), _leg("KUL", "DXB", "B", "B 2")],
+                    280, layovers=1),
+            _option(500, [_leg("CMB", "DXB", "A", "A 1", minutes=280)], 280, layovers=0),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert len(strategies) == 1
+    assert strategies[0]["stops"] == 0
+
+
+# ── Card copy: facts about this itinerary, never a verdict on the others ────
+
+
+def test_the_header_states_the_connections_and_the_time():
+    tiers = _by_tier(_extract())
+    assert tiers["minimum"]["title"] == "2 stops · 28h 0m"
+    assert tiers["recommended"]["title"] == "1 stop · 17h 20m"
+    assert tiers["comfortable"]["title"] == "Non-stop · 11h 0m"
+
+
+def test_no_two_cards_share_a_header():
+    """Headers are built from the two fields the fares are ranked on, so two
+    cards on one route cannot read the same. Carrier was tried first and read
+    identically on two cards of one open jaw."""
+    titles = [s["title"] for s in _extract()["strategies"]]
+    assert len(set(titles)) == len(titles)
+
+
+def test_no_card_claims_to_be_better_than_another():
+    """A verdict can be wrong; a fact about one itinerary cannot.
+
+    "Best Value Route" was printed over the dearest, most-stopped fare on a
+    live Colombo->Edinburgh search, and "Fastest route" over an itinerary with
+    one more connection than the card beneath it.
+    """
+    verdicts = ("best", "value", "cheapest", "fastest", "fewest", "recommend",
+                "save", "lowest", "premium", "worth", "balance")
+    for s in _extract()["strategies"]:
+        copy = f"{s['title']} {s['estimated_savings']} {s['tip']}".lower()
+        for word in verdicts:
+            assert word not in copy, f"card copy still judges: {word!r} in {copy!r}"
+
+
+def test_the_badge_and_tip_are_blank_so_older_builds_drop_them():
+    """Both are rendered only when non-empty, so emptying them is safe in the
+    field — unlike blanking `title`, which every build draws unconditionally."""
+    for s in _extract()["strategies"]:
+        assert s["estimated_savings"] == ""
+        assert s["tip"] == ""
+        assert s["title"], "an empty title would leave a blank card header"
