@@ -463,7 +463,11 @@ def test_attaching_the_return_leg_uses_the_combined_fare():
     assert rec["return"]["price_per_traveler"] is None      # priced as the whole trip
     assert rec["price_per_traveler"] == 415 and rec["price_total"] == 830
     assert rec["return_duration_minutes"] == 225
-    assert rec["total_duration_minutes"] == rec["outbound_duration_minutes"] + 225
+    # The whole journey is recorded, but separately: `total_duration_minutes`
+    # is the outbound on every card, because only one card per plan gets its
+    # return priced. See the header test below.
+    assert rec["round_trip_duration_minutes"] == rec["outbound_duration_minutes"] + 225
+    assert rec["total_duration_minutes"] == rec["outbound_duration_minutes"]
 
 
 def test_attaching_nothing_leaves_the_strategy_alone():
@@ -887,16 +891,48 @@ def test_output_budget_scales_with_the_trip():
     assert svc._itinerary_timeout_s(14) > svc._itinerary_timeout_s(3) >= 90
 
 
-def test_the_header_is_rewritten_when_the_return_leg_lands():
-    """A round-trip card is built before its return is priced, so its header
-    quoted the outbound alone: "1 stop · 10h 55m" over a 22h 35m journey."""
+def test_the_header_still_quotes_the_outbound_after_the_return_lands():
+    """Every card quotes the half of the journey Google priced for all of them.
+
+    This used to fold the return into the header, on the reasoning that a card
+    saying "1 stop x 10h 55m" over a 22h 35m journey is understating itself.
+    True of that card alone - but `_RETURN_LEG_SEARCHES` buys one return
+    itinerary per plan, not one per card, so the rewrite reached exactly one of
+    the three and the three stopped being comparable. A live Colombo->Osaka
+    plan showed 21h 10m, 25h 30m and 10h 55m side by side, two of them outbound
+    and one round trip, which made the cheapest card look quicker than the
+    middle one.
+
+    Consistency wins over completeness here because the alternative is two more
+    SerpApi searches on every round-trip plan - a 66% increase on a four-day
+    trip, which buys three searches in total.
+    """
     result = _round_trip()
     s = next(x for x in result["strategies"] if x["tier"] == "minimum")
     before = s["title"]
+    outbound = s["outbound_duration_minutes"]
+
     assert attach_return_leg(s, ROUND_TRIP_RETURN, currency="USD", return_date="2026-11-09")
-    assert s["title"] != before
-    mins = s["total_duration_minutes"]
-    assert s["title"].endswith(f"{mins // 60}h {mins % 60}m"), (s["title"], mins)
+
+    assert s["title"] == before, "the header must not move when a return lands"
+    assert s["title"].endswith(f"{outbound // 60}h {outbound % 60}m")
+    # ...and the return is still on the card, as its own line.
+    assert s["return_route"] == "DEL → CMB"
+    assert s["return_duration_minutes"] == 225
+
+
+def test_every_card_quotes_the_same_half_of_the_journey():
+    """The comparison the Flights tab invites has to be like for like."""
+    result = _round_trip()
+    strategies = result["strategies"]
+    # Only one card gets a return leg in production; simulate that.
+    rec = next(s for s in strategies if s["tier"] == "recommended")
+    attach_return_leg(rec, ROUND_TRIP_RETURN, currency="USD", return_date="2026-11-09")
+
+    for s in strategies:
+        assert s["total_duration_minutes"] == s["outbound_duration_minutes"], s["tier"]
+        mins = s["total_duration_minutes"]
+        assert s["title"].endswith(f"{mins // 60}h {mins % 60}m"), (s["tier"], s["title"])
 
 
 # ── Locating an airport by its code ─────────────────────────────────────────

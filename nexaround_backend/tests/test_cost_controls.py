@@ -944,3 +944,158 @@ def test_an_estimated_section_is_not_marked_unavailable():
     )
     assert out.get("flights_available") is not False
     assert out["strategies"][0]["is_live_price"] is False
+
+
+# ── Opening hours are hours, or they are nothing ────────────────────────────
+#
+# The prompt already says "leave hours as an empty string — never guess", and
+# the model wrote "Open until late" 20 times, "Variable" twice and "Weekends
+# only" once across three 14-day plans. The app draws the field verbatim under
+# a clock icon, so filler reads to the traveller as a fact about the venue.
+
+@pytest.mark.parametrize("hours", [
+    "9:00 AM – 6:00 PM",
+    "Open until 9:00 PM today",
+    "24 hours",
+    "10:00-17:00, closed Mondays",
+])
+def test_real_opening_hours_survive(hours):
+    assert svc.usable_hours(hours) == hours
+
+
+@pytest.mark.parametrize("hours", [
+    "Open until late", "Variable", "Weekends only", "Seasonal", "Check locally",
+])
+def test_filler_opening_hours_are_dropped(hours):
+    assert svc.usable_hours(hours) == "", f"{hours!r} reached the app as opening hours"
+
+
+def test_missing_or_junk_hours_are_empty_not_an_error():
+    for raw in (None, "", "   ", [], {}, 0):
+        assert svc.usable_hours(raw) == ""
+
+
+# ── What the day plan is actually allowed to spend ──────────────────────────
+#
+# The prompt used to hand the model the whole trip budget and a percentage
+# split, then the backend rebuilt that split from the real fares and room
+# rates. On a live Colombo->Turkey plan the flights took 48% of the budget, the
+# waterfall left 74,362 for activities, and the day plan already written listed
+# 103,800 of them.
+
+def _fs(*fares):
+    return {"strategies": [
+        {"tier": t, "price_per_traveler": float(p), "is_live_price": True, "stops": 1}
+        for t, p in fares
+    ]}
+
+
+def _hs(nightly, leg_index=0, nights=5, hotel_class=4):
+    return {"strategies": [{
+        "leg_index": leg_index, "city": "X", "nights": nights,
+        "price_per_night": f"INR {nightly}", "hotel_class": hotel_class,
+    }]}
+
+
+def test_the_ceiling_is_what_is_left_after_flights_and_rooms():
+    legs = [{"city": "X", "nights": 5}]
+    room = svc.food_and_activities_room(
+        budget=750_000,
+        flight_strategies=_fs(("minimum", 104_315), ("recommended", 119_497)),
+        hotel_strategies=_hs(5_000),
+        city_legs=legs,
+        travelers=3,
+    )
+    # 119,497 x 3 = 358,491 flights; 5,000 x 5 x 3 = 75,000 rooms.
+    assert room == 750_000 - 358_491 - 75_000
+
+
+def test_the_ceiling_uses_the_fare_the_budget_uses():
+    """The middle card, the same one `_tier_flight_cost` prices from."""
+    legs = [{"city": "X", "nights": 1}]
+    with_rec = svc.food_and_activities_room(
+        budget=500_000, flight_strategies=_fs(("minimum", 10_000), ("recommended", 20_000)),
+        hotel_strategies={}, city_legs=legs, travelers=2,
+    )
+    assert with_rec == 500_000 - 40_000          # the recommended fare, not the cheapest
+    # A thin route with no middle card falls back to the cheapest, as the
+    # budget does.
+    thin = svc.food_and_activities_room(
+        budget=500_000, flight_strategies=_fs(("minimum", 10_000), ("comfortable", 30_000)),
+        hotel_strategies={}, city_legs=legs, travelers=2,
+    )
+    assert thin == 500_000 - 20_000
+
+
+def test_the_ceiling_never_goes_negative():
+    """A trip whose flights alone break the budget still gets a usable prompt."""
+    legs = [{"city": "X", "nights": 5}]
+    room = svc.food_and_activities_room(
+        budget=50_000, flight_strategies=_fs(("recommended", 120_000)),
+        hotel_strategies=_hs(9_000), city_legs=legs, travelers=4,
+    )
+    assert room == 0.0
+
+
+def test_nothing_priced_leaves_the_whole_budget():
+    assert svc.food_and_activities_room(
+        budget=100_000, flight_strategies=None, hotel_strategies=None,
+        city_legs=[], travelers=2,
+    ) == 100_000
+
+
+def test_the_prompt_states_the_figure_rather_than_a_percentage():
+    p = svc._build_prompt(
+        destination="Turkey", mood="Adventurous", budget=750_000, days=14,
+        currency="INR", travelers=3, spend_room=185_904,
+    )
+    assert "185904 INR for food and activities" in p
+    assert "MUST stay inside 185904 INR" in p
+    assert "cost_per_person x 3 inside 185904 INR" in p
+    assert "Food & Dining (~10-15%)" not in p, "the guess must not sit beside the figure"
+
+
+def test_the_prompt_keeps_the_rule_of_thumb_when_nothing_was_priced():
+    """The estimate paths reach here with no live prices; a fabricated ceiling
+    would be worse than the percentages it replaced."""
+    p = svc._build_prompt(
+        destination="Turkey", mood="Adventurous", budget=750_000, days=14,
+        currency="INR", travelers=3,
+    )
+    assert "Food & Dining (~10-15%)" in p
+    assert "Flights and rooms for this trip come to" not in p
+
+
+# ── Activity types the app actually knows ───────────────────────────────────
+#
+# An unrecognised type lands in the client's `other` bucket, which renders no
+# button and no [Paid] badge — so a word the model invented quietly costs the
+# traveller the price chip. "activity" appeared twice in one 14-day Turkey plan.
+
+@pytest.mark.parametrize("raw", [
+    "transport", "attraction", "dining", "exploration", "accommodation", "other",
+])
+def test_the_six_real_types_pass_through(raw):
+    assert svc.normalise_activity_type(raw) == raw
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("activity", "attraction"), ("sightseeing", "attraction"),
+    ("experience", "attraction"), ("workshop", "attraction"),
+    ("transit", "transport"), ("flight", "transport"),
+    ("restaurant", "dining"), ("lunch", "dining"),
+    ("walk", "exploration"), ("leisure", "exploration"),
+    ("hotel", "accommodation"), ("check-in", "accommodation"),
+    ("ATTRACTION", "attraction"), ("  Dining  ", "dining"),
+])
+def test_synonyms_land_on_a_type_the_app_knows(raw, want):
+    assert svc.normalise_activity_type(raw) == want
+
+
+def test_a_word_nobody_recognises_is_other_not_itself():
+    assert svc.normalise_activity_type("quantum picnic") == "other"
+
+
+def test_no_type_stays_no_type():
+    for raw in (None, "", "   "):
+        assert svc.normalise_activity_type(raw) == ""

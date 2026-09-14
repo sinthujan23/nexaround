@@ -1749,14 +1749,21 @@ def attach_return_leg(
         if ret_leg["origin"] and ret_leg["destination"] else ""
     )
     strategy["return_duration_minutes"] = ret_leg["duration_minutes"]
-    strategy["total_duration_minutes"] = (
+    # The whole journey, for anything that wants it — but NOT the figure the
+    # header quotes, and not `total_duration_minutes`.
+    #
+    # Google only sells the return itinerary per outbound, so `_RETURN_LEG_TIERS`
+    # buys one of these per plan rather than one per card. Folding the return
+    # into the headline time therefore changed one card out of three, and the
+    # three stopped being comparable: a live Colombo->Osaka plan showed
+    # "21h 10m" (outbound), "25h 30m" (outbound + return) and "10h 55m"
+    # (outbound) side by side, which made the cheapest card look quicker than
+    # the middle one and undid the whole point of ranking them by time.
+    #
+    # Every card now quotes its outbound, which is the half Google priced for
+    # all of them. The return is shown as its own line on the card that has it.
+    strategy["round_trip_duration_minutes"] = (
         int(strategy.get("outbound_duration_minutes") or 0) + ret_leg["duration_minutes"]
-    )
-    # The header quotes the journey time, and the journey just got its second
-    # half: a round-trip card built before this ran said "1 stop · 10h 55m"
-    # over a 22h 35m trip.
-    strategy["title"] = _card_title(
-        int(strategy.get("stops") or 0), strategy["total_duration_minutes"]
     )
 
     combined = round(convert_from_search_currency(best["price"], currency), 2)

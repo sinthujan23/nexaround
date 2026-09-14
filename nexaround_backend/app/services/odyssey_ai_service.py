@@ -2415,6 +2415,60 @@ def budget_flight_basis(
     return "direct" if int(chosen.get("stops") or 0) == 0 else "connecting"
 
 
+def food_and_activities_room(
+    *,
+    budget: float,
+    flight_strategies: dict | None,
+    hotel_strategies: dict | None,
+    city_legs: list[dict],
+    travelers: int,
+) -> float:
+    """Roughly what is left for food and activities once flights and rooms are paid.
+
+    The itinerary prompt used to hand the model the whole trip budget and a set
+    of percentages - "Flights ~40-50%, Stay ~30-35%, Food ~10-15%, Activities
+    ~5-10%" - and ask it to keep its activity costs inside its own guess. The
+    backend then threw that guess away and rebuilt the split from the real
+    fares and room rates. On a Colombo->Turkey plan the real flights took 48%
+    of the budget, the waterfall left 74,362 for activities, and the day plan
+    the model had already written listed 103,800 of them: a trip the traveller
+    cannot afford by their own budget, shown as if they could.
+
+    Both inputs are already in hand when the prompt is built, so the model can
+    be told the figure instead of a percentage.
+
+    Deliberately approximate. Legs shift slightly after the plan comes back
+    (`_align_legs_to_itinerary`), so this is guidance; the authoritative split
+    is still the waterfall's, computed afterwards.
+    """
+    party = max(int(travelers or 1), 1)
+    flight = 0.0
+    strategies = (flight_strategies or {}).get("strategies")
+    if isinstance(strategies, list):
+        fares = []
+        for s in strategies:
+            if not isinstance(s, dict):
+                continue
+            price = s.get("price_per_traveler")
+            if not (isinstance(price, (int, float)) and price > 0):
+                price = _extract_lowest_price(s.get("estimated_price_range"))
+            if price and price > 0:
+                fares.append(float(price))
+        if fares:
+            # The middle card is the one the budget prices itself from.
+            chosen = next(
+                (float(s["price_per_traveler"]) for s in strategies
+                 if isinstance(s, dict) and s.get("tier") == "recommended"
+                 and isinstance(s.get("price_per_traveler"), (int, float))
+                 and s["price_per_traveler"] > 0),
+                min(fares),
+            )
+            flight = chosen * party
+
+    stay = required_stay_cost(hotel_strategies, city_legs, travelers, "recommended")
+    return max(round(float(budget or 0) - flight - stay, 2), 0.0)
+
+
 def _budget_notes(
     *,
     rooms: int,
@@ -3616,6 +3670,16 @@ async def generate_odyssey(
     await _reconcile_gateways(route, flight_strategies, primary_flight, geo, geo_budget)
 
     # 2. Build grounded prompt using confirmed live inventory
+    # What the itinerary itself has left to spend, from the real fares and room
+    # rates rather than a percentage the model guesses at. See the helper.
+    spend_room = food_and_activities_room(
+        budget=budget,
+        flight_strategies=flight_strategies,
+        hotel_strategies=hotel_strategies,
+        city_legs=city_legs,
+        travelers=travelers,
+    )
+
     prompt = _build_prompt(
         destination=final_destination,
         mood=mood,
@@ -3633,6 +3697,7 @@ async def generate_odyssey(
         geo=geo,
         route_plan=route,
         inter_city_flights=inter_city_flights,
+        spend_room=spend_room,
     )
     plan_tokens = _itinerary_token_budget(days)
     plan_timeout = _itinerary_timeout_s(days)
@@ -4051,7 +4116,7 @@ async def generate_odyssey(
         for a in (d.get("activities") or []):
             if not isinstance(a, dict):
                 continue
-            act_type = str(a.get("type") or "").strip().lower()
+            act_type = normalise_activity_type(a.get("type"))
             name_str = str(a.get("name") or a.get("attraction_name") or "")
             name_lower = name_str.lower()
 
@@ -4131,7 +4196,7 @@ async def generate_odyssey(
                 if act_type:
                     act_dict["type"] = act_type
 
-            hours = str(a.get("hours") or "").strip()
+            hours = usable_hours(a.get("hours"))
             if hours:
                 act_dict["hours"] = hours
 
@@ -4228,7 +4293,7 @@ async def generate_replacement_activity(
     if not name:
         raise ValueError("Replacement had no place name")
 
-    act_type = str(data.get("type") or "").strip().lower()
+    act_type = normalise_activity_type(data.get("type"))
     restaurants = []
     if isinstance(data.get("restaurants"), list):
         for r in data.get("restaurants"):
@@ -4309,8 +4374,26 @@ def _build_prompt(
     correction: str = "",
     route_plan: "RoutePlan | None" = None,
     inter_city_flights: list[dict] | None = None,
+    spend_room: float = 0.0,
 ) -> str:
     nights = days - 1 if days > 1 else 0
+    # What the day plan may actually spend. The percentage split below is a
+    # guess; this is the real one, from the fares and room rates already
+    # searched. Stated only when there is something behind it — the estimate
+    # paths reach here with nothing priced, and a fabricated ceiling would be
+    # worse than the rule of thumb it replaced.
+    spend_cap = int(spend_room) if spend_room > 0 else int(budget * 0.20)
+    spend_rule = (
+        f"4. Flights and rooms for this trip come to about "
+        f"{int(budget - spend_room)} {currency} of the {int(budget)} {currency} total. "
+        f"That leaves about {int(spend_room)} {currency} for food and activities across "
+        f"{days} days for the whole group. The sum of every cost_per_person x "
+        f"{travelers} MUST stay inside {int(spend_room)} {currency} - this is the "
+        f"figure the traveller's budget screen will show, so a plan that exceeds it "
+        f"is one they cannot afford."
+        if spend_room > 0 else
+        "4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget."
+    )
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
     legs = legs or (route_plan.legs if route_plan is not None else None)
 
@@ -4697,7 +4780,7 @@ CRITICAL BUDGET PRIORITY RULES:
 1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
 2. Allocate realistic funds for Flights (~40-50%) and Stay (~30-35%).
 3. Stay (Accommodation) budget MUST NEVER be near zero or under 25% of total budget unless flights alone exceed 70% or total budget is an ultra-saver amount.
-4. Food & Dining (~10-15%) and Activities (~5-10%) share the remaining budget.
+{spend_rule}
 
 CRITICAL PRICE JUSTIFICATION RULES:
 1. Every non-zero cost MUST cite a concrete, named reference point found via search — never a vague category.
@@ -4787,7 +4870,7 @@ Rules for "type" field in each activity:
 
 General rules:
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
-- "cost_per_person" is ALWAYS one adult share, never the group total: the party figure is worked out afterwards. {travelers} traveller(s) are going, so keep the sum of every cost_per_person x {travelers} inside the "activities" and "food" portion of {int(budget)} {currency}.
+- "cost_per_person" is ALWAYS one adult share, never the group total: the party figure is worked out afterwards. {travelers} traveller(s) are going, so keep the sum of every cost_per_person x {travelers} inside {spend_cap} {currency}.
 - Use real, recognisable places in and around {dest_anchor}.
 - Be concise; tips under ~12 words, "price_basis" under 15 words. Every string is plain text — no markdown.
 - Output MINIFIED JSON on a single line: no indentation, no line breaks between keys, no code fences, no commentary. The response is parsed by a machine; whitespace only costs.
@@ -5075,6 +5158,57 @@ def _short_plan_notice(plan: dict, days: int) -> str:
         f"The dates and budget still cover {want} days \u2014 tap Retry to "
         f"complete the plan."
     )
+
+
+# The six activity types the app switches on. Anything else lands in its
+# `other` bucket, which renders no button *and* no [Paid] badge, so an
+# unrecognised word quietly costs the traveller the price chip. The model
+# writes "activity", "sightseeing" or "experience" often enough to matter -
+# twice in one 14-day Turkey plan - so the synonyms are mapped here rather
+# than left to the client, where only some of them are known.
+_ACTIVITY_TYPES = frozenset(
+    {"transport", "attraction", "dining", "exploration", "accommodation", "other"}
+)
+_ACTIVITY_TYPE_SYNONYMS = {
+    "transit": "transport", "travel": "transport", "flight": "transport",
+    "train": "transport", "bus": "transport", "drive": "transport",
+    "museum": "attraction", "landmark": "attraction", "ticket": "attraction",
+    "sightseeing": "attraction", "activity": "attraction",
+    "experience": "attraction", "tour": "attraction", "workshop": "attraction",
+    "restaurant": "dining", "food": "dining", "meal": "dining",
+    "cafe": "dining", "lunch": "dining", "dinner": "dining",
+    "explore": "exploration", "walk": "exploration", "wander": "exploration",
+    "leisure": "exploration", "relaxation": "exploration",
+    "hotel": "accommodation", "check-in": "accommodation",
+    "checkin": "accommodation", "stay": "accommodation",
+}
+
+
+def normalise_activity_type(raw) -> str:
+    """One of the six types the app knows, or "" when there is nothing to say."""
+    text = str(raw or "").strip().lower()
+    if not text:
+        return ""
+    if text in _ACTIVITY_TYPES:
+        return text
+    return _ACTIVITY_TYPE_SYNONYMS.get(text, "other")
+
+
+def usable_hours(raw) -> str:
+    """Opening hours, or "" when what came back is not hours.
+
+    The prompt already says "leave hours as an empty string - never guess", and
+    the model writes "Open until late", "Variable" or "Weekends only" anyway:
+    22 times across three 14-day plans. The app draws the field verbatim under a
+    clock icon, so filler reads to the traveller as a fact about the venue.
+    Asking a third time would not help; containing a digit is the test, and
+    every real answer has one - a time, a date, or "24 hours".
+
+    Module-level so it can be tested against the strings the model actually
+    produced, rather than only through a whole generation.
+    """
+    text = str(raw or "").strip()
+    return text if re.search(r"\d", text) else ""
 
 
 def _logistics_text(raw) -> str:
