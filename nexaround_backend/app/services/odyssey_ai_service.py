@@ -270,6 +270,7 @@ def build_meta_item(
     budget_breakdown: dict = None,
     budget_advisory: str = "",
     budget_notes: dict = None,
+    plan_advisory: str = "",
     verified_sources: list[dict] = None,
     verdict: dict = None,
     budget_scenarios: dict = None,
@@ -313,6 +314,9 @@ def build_meta_item(
         "departure_city": departure_city,
         "budget_breakdown": budget_breakdown or {},
         "budget_advisory": budget_advisory,
+        # Set only when the model wrote fewer days than the trip asked for. The
+        # plan is kept and this says so; empty on every complete plan.
+        "plan_advisory": plan_advisory,
         # What each budget line was priced from, in the traveller's words:
         # `summary` for the one line the card always shows, `stay` and
         # `transit` for the sheet behind its info tap. A sibling key rather
@@ -3638,11 +3642,12 @@ async def generate_odyssey(
             timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
-        # A response that parses but carries no days is as useless as one that
-        # does not parse, and it used to travel another 500 lines before dying
-        # as "Generated plan had no days" — past the one retry that could have
-        # saved it. Raising here puts it on the same footing as a parse error.
-        _require_days(plan, text)
+        # A response that parses but carries no days — or only some of them —
+        # is as useless as one that does not parse, and it used to travel
+        # another 500 lines before dying as "Generated plan had no days", past
+        # the one retry that could have saved it. Raising here puts both on the
+        # same footing as a parse error.
+        _require_days(plan, text, days)
     except Exception as e:
         logger.warning(
             "Grounded Gemini generation/parsing failed (%s) — falling back to standard ungrounded generation",
@@ -3653,7 +3658,16 @@ async def generate_odyssey(
             timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
-    _warn_if_plan_is_short(plan, days)
+        # Empty still fails. Short does not: two of three days beats no plan at
+        # all, which is the rule this pipeline has always followed. What it
+        # never did was say so — a six-day header, six-day dates and a six-day
+        # budget sat over three days of itinerary and nothing on screen
+        # mentioned it. The notice below is the half that was missing.
+        _require_days(plan, text)
+
+    plan_advisory = _short_plan_notice(plan, days)
+    if plan_advisory:
+        logger.warning("%s", plan_advisory)
 
     # The itinerary is written against the legs, but the model sometimes moves
     # a day early. The legs book the hotels, so they follow the itinerary here
@@ -3993,6 +4007,7 @@ async def generate_odyssey(
             if no_airfare else ""
         ),
         budget_notes=budget_notes,
+        plan_advisory=plan_advisory,
         verified_sources=verified_sources,
         verdict=verdict,
         budget_scenarios=budget_scenarios,
@@ -5011,34 +5026,55 @@ def _plan_day_count(plan: dict) -> int:
     )
 
 
-def _require_days(plan: dict, raw: str) -> None:
-    """Reject a plan with no days, loudly enough to diagnose the next one.
+def _require_days(plan: dict, raw: str, expected: int = 0) -> None:
+    """Reject a plan that is empty, or short of the trip that was asked for.
+
+    A plan with three of six days is not a shorter trip, it is a truncated
+    response: the dates, the flights and every budget line were computed for
+    six. Shipping it puts a six-day header and a six-day budget over three days
+    of itinerary, which is why this now raises rather than logging — the caller
+    catches it and retries ungrounded, the same second chance an unparseable
+    response already got.
 
     The raw response is logged in two short slices because this is the one
     failure we cannot reproduce after the fact: the model is non-deterministic
     and the text is not stored anywhere.
     """
-    if _plan_day_count(plan) > 0:
+    got = _plan_day_count(plan)
+    want = max(int(expected or 0), 0)
+    if got > 0 and (not want or got >= want):
         return
     body = (raw or "").strip()
+    reason = (
+        "response contained no day_plans" if got == 0
+        else f"plan carried {got} of {want} days"
+    )
     logger.warning(
-        "Response parsed but contains no day_plans (%d chars, keys=%s). Head: %s ... Tail: %s",
+        "%s (%d chars, keys=%s). Head: %s ... Tail: %s",
+        reason.capitalize(),
         len(body),
         sorted(plan.keys())[:12] if isinstance(plan, dict) else type(plan).__name__,
         body[:300].replace("\n", " "),
         body[-300:].replace("\n", " "),
     )
-    raise ValueError("response contained no day_plans")
+    raise ValueError(reason)
 
 
-def _warn_if_plan_is_short(plan: dict, days: int) -> None:
-    """A repaired, truncated response has fewer days than asked; say so."""
+def _short_plan_notice(plan: dict, days: int) -> str:
+    """What to tell the traveller when the model wrote fewer days than asked.
+
+    Returned rather than raised: the plan is kept. Empty string is the normal
+    case, and the app draws nothing for it.
+    """
     got = _plan_day_count(plan)
-    if got and days and got < days:
-        logger.warning(
-            "Plan came back with %d of %d days — the response was probably truncated.",
-            got, days,
-        )
+    want = max(int(days or 0), 0)
+    if not got or not want or got >= want:
+        return ""
+    return (
+        f"Only {got} of {want} days could be written for this trip. "
+        f"The dates and budget still cover {want} days \u2014 tap Retry to "
+        f"complete the plan."
+    )
 
 
 def _logistics_text(raw) -> str:

@@ -309,12 +309,41 @@ def test_a_dayless_grounded_response_falls_back_to_ungrounded(monkeypatch):
 
 
 def test_a_short_plan_is_kept_not_thrown_away():
-    """Two of three days beats no plan at all — warn, don't fail."""
+    """Two of three days beats no plan at all — keep it, and say so.
+
+    `_require_days` is called twice in `generate_odyssey`: once with the day
+    count, which rejects a short plan so it takes the ungrounded retry, and
+    once without after that retry, which only rejects an empty one. A plan
+    that is still short then survives, carrying a notice.
+    """
     plan = {"day_plans": [{"day": 1, "theme": "A", "activities": [{"name": "x"}]},
                           {"day": 2, "theme": "B", "activities": [{"name": "y"}]}]}
+
+    # First pass: short is a reason to retry.
+    with pytest.raises(ValueError, match="2 of 3 days"):
+        svc._require_days(plan, "{...}", 3)
+
+    # After the retry: kept, because two days beats none.
     svc._require_days(plan, "{...}")
-    svc._warn_if_plan_is_short(plan, 3)
     assert svc._plan_day_count(plan) == 2
+
+    notice = svc._short_plan_notice(plan, 3)
+    assert "2 of 3 days" in notice and "Retry" in notice
+
+
+def test_a_complete_plan_carries_no_notice():
+    plan = {"day_plans": [{"day": d, "theme": "T", "activities": [{"name": "x"}]}
+                          for d in (1, 2, 3)]}
+    svc._require_days(plan, "{...}", 3)
+    assert svc._short_plan_notice(plan, 3) == ""
+    # More days than asked is not a shortfall either.
+    assert svc._short_plan_notice(plan, 2) == ""
+
+
+def test_an_empty_plan_is_refused_by_both_passes():
+    for expected in (0, 3):
+        with pytest.raises(ValueError, match="no day_plans"):
+            svc._require_days({"day_plans": []}, "{...}", expected)
 
 
 # ── Which Saint Petersburg? ─────────────────────────────────────────────────

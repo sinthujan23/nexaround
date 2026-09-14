@@ -835,6 +835,81 @@ class OdysseyLeg {
       };
 }
 
+/// One flight between two cities of the same trip, priced live.
+///
+/// Separate from [FlightStrategy], which covers only the journey into the
+/// country and home again. The fare and booking link also reach the itinerary
+/// on the travel activity for that day; this carries what that row has no room
+/// for - which airline, which flight number, how long, how many stops.
+class InterCityFlight {
+  const InterCityFlight({
+    required this.day,
+    required this.fromCity,
+    required this.toCity,
+    this.fromCode = '',
+    this.toCode = '',
+    this.date = '',
+    this.airlines = const [],
+    this.flightNumbers = const [],
+    this.stops = 0,
+    this.duration = '',
+    this.pricePerTraveler = 0,
+    this.currency = '',
+    this.bookingUrl = '',
+  });
+
+  final int day;
+  final String fromCity;
+  final String toCity;
+  final String fromCode;
+  final String toCode;
+  final String date;
+  final List<String> airlines;
+  final List<String> flightNumbers;
+  final int stops;
+  final String duration;
+  final double pricePerTraveler;
+  final String currency;
+  final String bookingUrl;
+
+  String get stopLabel =>
+      stops == 0 ? 'Non-stop' : (stops == 1 ? '1 stop' : '$stops stops');
+
+  factory InterCityFlight.fromJson(Map<String, dynamic> json) => InterCityFlight(
+        day: FlightStrategy._parseInt(json['day']),
+        fromCity: (json['from_city'] ?? '').toString(),
+        toCity: (json['to_city'] ?? '').toString(),
+        fromCode: (json['from_code'] ?? '').toString(),
+        toCode: (json['to_code'] ?? '').toString(),
+        date: (json['date'] ?? '').toString(),
+        airlines: (json['airlines'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        flightNumbers:
+            (json['flight_numbers'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+        stops: FlightStrategy._parseInt(json['stops']),
+        duration: (json['duration'] ?? '').toString(),
+        pricePerTraveler: (json['price_per_traveler'] as num?)?.toDouble() ?? 0,
+        currency: (json['currency'] ?? '').toString(),
+        bookingUrl: (json['booking_url'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'day': day,
+        'from_city': fromCity,
+        'to_city': toCity,
+        'from_code': fromCode,
+        'to_code': toCode,
+        'date': date,
+        'airlines': airlines,
+        'flight_numbers': flightNumbers,
+        'stops': stops,
+        'duration': duration,
+        'price_per_traveler': pricePerTraveler,
+        'currency': currency,
+        'booking_url': bookingUrl,
+      };
+}
+
+
 class HotelStrategy {
   final int rank;
   final String name;
@@ -1013,6 +1088,17 @@ class Odyssey {
   final Map<String, double> budgetBreakdown;
   final String budgetAdvisory;
 
+  /// Set only when the model wrote fewer days than the trip asked for.
+  ///
+  /// The plan is kept - two of three days beats no plan at all - but the
+  /// header, the dates and the budget all still describe the full trip, so
+  /// without this nothing on screen says half the itinerary is missing.
+  final String planAdvisory;
+
+  /// Flights between the cities of this trip, priced live. Empty on most
+  /// trips: only a hop too far to drive earns one.
+  final List<InterCityFlight> interCityFlights;
+
   /// What each budget line was priced from, keyed `summary`, `stay`, `transit`.
   ///
   /// `summary` is the one line the Budget Allocation card always shows; the
@@ -1064,6 +1150,8 @@ class Odyssey {
     this.budgetBreakdown = const {},
     this.budgetAdvisory = '',
     this.budgetNotes = const {},
+    this.planAdvisory = '',
+    this.interCityFlights = const [],
     this.verdict,
     this.budgetScenarios = const {},
     this.practicalInfo = const OdysseyPracticalInfo(),
@@ -1096,6 +1184,7 @@ class Odyssey {
     int? travelers,
     Map<String, double>? budgetBreakdown,
     Map<String, String>? budgetNotes,
+    List<InterCityFlight>? interCityFlights,
     OdysseyVerdict? verdict,
     Map<String, Map<String, double>>? budgetScenarios,
     OdysseyPracticalInfo? practicalInfo,
@@ -1142,6 +1231,8 @@ class Odyssey {
         budgetBreakdown: budgetBreakdown ?? this.budgetBreakdown,
         budgetAdvisory: budgetAdvisory,
         budgetNotes: budgetNotes ?? this.budgetNotes,
+        planAdvisory: planAdvisory,
+        interCityFlights: interCityFlights ?? this.interCityFlights,
         verdict: verdict ?? this.verdict,
         budgetScenarios: budgetScenarios ?? this.budgetScenarios,
         practicalInfo: practicalInfo ?? this.practicalInfo,
@@ -1273,6 +1364,12 @@ class Odyssey {
             )
           : const {},
       budgetAdvisory: (json['budget_advisory'] ?? '').toString(),
+      planAdvisory: (json['plan_advisory'] ?? '').toString(),
+      interCityFlights: (json['inter_city_flights'] as List?)
+              ?.whereType<Map>()
+              .map((e) => InterCityFlight.fromJson(Map<String, dynamic>.from(e)))
+              .toList() ??
+          const [],
       budgetNotes: json['budget_notes'] is Map
           ? (json['budget_notes'] as Map).map(
               (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
@@ -1326,6 +1423,8 @@ class Odyssey {
           'budget_breakdown': budgetBreakdown,
           'budget_advisory': budgetAdvisory,
           'budget_notes': budgetNotes,
+          'plan_advisory': planAdvisory,
+          'inter_city_flights': interCityFlights.map((f) => f.toJson()).toList(),
           'verdict': verdict?.toJson() ?? {},
           'budget_scenarios': budgetScenarios,
           'practical_info': practicalInfo.toJson(),
@@ -1497,6 +1596,12 @@ class Odyssey {
             )
           : const {},
       budgetAdvisory: (meta['budget_advisory'] ?? '').toString(),
+      planAdvisory: (meta['plan_advisory'] ?? '').toString(),
+      interCityFlights: (meta['inter_city_flights'] as List?)
+              ?.whereType<Map>()
+              .map((e) => InterCityFlight.fromJson(Map<String, dynamic>.from(e)))
+              .toList() ??
+          const [],
       budgetNotes: meta['budget_notes'] is Map
           ? (meta['budget_notes'] as Map).map(
               (k, v) => MapEntry(k.toString(), (v ?? '').toString()),

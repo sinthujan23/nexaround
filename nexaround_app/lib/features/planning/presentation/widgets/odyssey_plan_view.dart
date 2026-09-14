@@ -804,6 +804,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           // ("per traveler", plus the group total), so a blanket claim above
           // the list can only contradict it.
           FlightStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
+          // The hops between the trip's own cities. Priced live and stored on
+          // the plan since inter-city fares landed, but drawn nowhere until
+          // now - the fare reached the itinerary and the rest of what Google
+          // returned did not.
+          _buildInterCityFlights(context),
         ],
       ),
     );
@@ -890,6 +895,116 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     );
   }
 
+  /// Flights between the trip's own cities, priced live and bookable singly.
+  ///
+  /// The fare already reaches the itinerary on that day's travel row; what it
+  /// has no room for is the carrier, the flight number and the journey time,
+  /// which is what a traveller needs before booking one.
+  Widget _buildInterCityFlights(BuildContext context) {
+    final hops = widget.odyssey.interCityFlights;
+    if (hops.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 24),
+        const Text(
+          'FLIGHTS BETWEEN CITIES',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2,
+            color: AppColors.textSecondary,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Part of the trip itself, booked separately from the flights above.',
+          style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary, height: 1.35),
+        ),
+        const SizedBox(height: 12),
+        for (final hop in hops) _interCityCard(context, hop),
+      ],
+    );
+  }
+
+  Widget _interCityCard(BuildContext context, InterCityFlight hop) {
+    final carrier = hop.airlines.isEmpty ? '' : hop.airlines.take(2).join(', ');
+    final number = hop.flightNumbers.isEmpty ? '' : hop.flightNumbers.first;
+    final facts = [
+      hop.stopLabel,
+      if (hop.duration.isNotEmpty) hop.duration,
+      if (number.isNotEmpty) number,
+    ].join(' \u00b7 ');
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.flight_takeoff_rounded, size: 16, color: Color(0xFF0D9488)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${hop.fromCity} \u2192 ${hop.toCity}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (hop.pricePerTraveler > 0)
+                Text(
+                  '${hop.currency} ${formatAmount(hop.pricePerTraveler)}',
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            [
+              if (hop.day > 0) 'Day ${hop.day}',
+              if (hop.date.isNotEmpty) hop.date,
+              if (carrier.isNotEmpty) carrier,
+            ].join(' \u00b7 '),
+            style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+          ),
+          if (facts.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              facts,
+              style: const TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+            ),
+          ],
+          if (hop.pricePerTraveler > 0)
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Text(
+                'per traveller',
+                style: TextStyle(fontSize: 10.5, color: AppColors.textSecondary),
+              ),
+            ),
+          if (hop.bookingUrl.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _launchExternalUrl(hop.bookingUrl),
+                icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                label: const Text('View this flight'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildItineraryTab(BuildContext context) {
     final rows = _planRows();
     final pad = widget.padding.resolve(Directionality.of(context));
@@ -906,6 +1021,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Fewer days were written than the trip asked for. The plan is
+                // kept, but the header, dates and budget all still describe the
+                // full trip, so this is the only thing that says so.
+                if (widget.odyssey.planAdvisory.isNotEmpty) ...[
+                  _buildPriceDisclaimerBanner(widget.odyssey.planAdvisory),
+                  const SizedBox(height: 12),
+                ],
                 if (widget.odyssey.dayPlans.isNotEmpty) ...[
                   const Text(
                     'DAY-BY-DAY ITINERARY',

@@ -368,26 +368,51 @@ def test_an_empty_plan_is_refused_outright(world):
         run(world)
 
 
-@pytest.mark.xfail(
-    reason="KNOWN GAP: a partial plan ships as if it were complete. "
-           "`_warn_if_plan_is_short` logs and returns, and odyssey_jobs marks "
-           "the itinerary active regardless, so meta.days can say 6 while the "
-           "plan holds 3. Not yet observed in 283 stored plans - zero days "
-           "raises and is marked failed, only 1..days-1 slips through.",
-    strict=True,
-)
-def test_a_short_plan_is_not_passed_off_as_the_full_trip(world):
-    """A model that writes 3 days for a 6-day trip must not be accepted quietly.
+def test_a_short_plan_is_kept_but_never_passed_off_as_the_full_trip(world):
+    """Three days of plan under a six-day header, budget and set of dates.
 
-    The traveller is shown a 6-day header, a 6-day budget and 3 days of plan.
-    Whichever way it is resolved - top the plan back up, retry the call, or
-    correct `days` to what was written - the header and the plan must agree.
+    Not a shorter trip - a truncated response. The plan is kept, because two
+    of three days beats no plan at all, but it now says so: nothing on screen
+    used to mention that half the itinerary was missing.
     """
     world["mode"] = "gemini_short"
     _, meta, days = run(world)
-    assert len(days) == meta["days"], (
-        f"meta claims {meta['days']} days, the plan holds {len(days)}"
+
+    assert len(days) == 3 and meta["days"] == 6, "the plan itself is unchanged"
+    notice = meta["plan_advisory"]
+    assert "3 of 6 days" in notice
+    assert "Retry" in notice, "the traveller needs to be told what to do about it"
+
+
+def test_a_complete_plan_carries_no_notice(world):
+    _, meta, days = run(world)
+    assert len(days) == meta["days"]
+    assert meta["plan_advisory"] == ""
+
+
+def test_a_short_plan_gets_the_retry_before_it_fails(world):
+    """The ungrounded second attempt is the one that can still save it."""
+    world["mode"] = "gemini_short"
+    try:
+        run(world)
+    except ValueError:
+        pass
+    itinerary_calls = [p for p in world["gemini"] if "day_plans" in p]
+    assert len(itinerary_calls) == 2, (
+        f"expected a grounded attempt and one retry, saw {len(itinerary_calls)}"
     )
+
+
+def test_a_full_plan_is_never_treated_as_short(world):
+    """The bar is exactly the day count asked for, not more."""
+    for days in (1, 3, 6, 14):
+        _, meta, out = run(
+            world, days=days,
+            start_date="2026-11-02", end_date="2026-11-15",
+            flight_start_date="2026-11-02", flight_end_date="2026-11-15",
+            hotel_check_in_date="2026-11-02", hotel_check_out_date="2026-11-15",
+        )
+        assert len(out) == days == meta["days"]
 
 
 # ── 4. Untrusted input ──────────────────────────────────────────────────────
