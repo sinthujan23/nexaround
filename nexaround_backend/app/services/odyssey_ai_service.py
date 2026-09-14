@@ -1315,9 +1315,25 @@ async def generate_flight_strategies(
         # Not a failure and not an empty route: the journey is simply a
         # domestic one. Kinniya and Colombo both resolve to CMB, and the
         # honest answer is the one locals already use — road or rail.
+        #
+        # Named by the first city the trip sleeps in rather than by
+        # `destination`, which is whatever the traveller typed: a country name
+        # there put a town and a country on the two sides of "served by the
+        # same airport" — "Kinniya and Sri Lanka" — which is true and reads
+        # like a mistake. Falls back to the gateway city, then to what they
+        # typed, so a destination that never reached the planner still names
+        # something.
+        first_city = ""
+        if route_plan is not None:
+            first_city = str(
+                (route_plan.legs[0].get("city") if route_plan.legs else "")
+                or (route_plan.arrival or {}).get("city")
+                or ""
+            ).strip()
+        going_to = first_city or destination
         return _flights_unavailable(
             "same_airport",
-            f"{departure_city} and {destination} are served by the same airport "
+            f"{departure_city} and {going_to} are served by the same airport "
             f"({origin_code}), so there is no flight to book. Travel between them "
             f"by road or rail.",
             origin_code,

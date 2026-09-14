@@ -591,6 +591,52 @@ def test_a_gateway_shared_with_the_origin_means_no_flights(serp):
     assert serp.searches == [], "a shared gateway must not cost a search"
 
 
+def test_the_domestic_message_names_the_city_not_the_country_typed(serp):
+    """"Kinniya and Sri Lanka are served by the same airport" read like a bug.
+
+    `destination` is whatever the traveller typed, and people type country
+    names. Putting one on the far side of "served by the same airport" compares
+    a town to a country: true, and it reads as a mistake. The first city the
+    trip sleeps in is the place they are actually going.
+    """
+    route = RoutePlan(
+        legs=[{"city": "Dambulla", "start_day": 1, "end_day": 3, "nights": 3},
+              {"city": "Kandy", "start_day": 4, "end_day": 9, "nights": 5}],
+        arrival_code="CMB", departure_code="CMB",
+    )
+    msg = _flights(
+        route, departure_city="Kinniya", destination="Sri Lanka",
+    )["unavailable_message"]
+    assert "Kinniya and Dambulla are served by the same airport" in msg
+    assert "Sri Lanka" not in msg
+
+
+def test_the_domestic_message_falls_back_to_the_gateway_then_to_what_was_typed(serp):
+    """A plan with no legs still has to name somewhere."""
+    gateway = RoutePlan(legs=[], arrival={"iata": "CMB", "city": "Colombo", "name": ""},
+                        arrival_code="CMB", departure_code="CMB")
+    msg = _flights(gateway, departure_city="Kinniya", destination="Sri Lanka")
+    assert "Kinniya and Colombo" in msg["unavailable_message"]
+
+    bare = RoutePlan(legs=[], arrival_code="CMB", departure_code="CMB")
+    msg = _flights(bare, departure_city="Kinniya", destination="Kandy")
+    assert "Kinniya and Kandy" in msg["unavailable_message"]
+
+
+def test_an_unresolved_destination_still_names_what_was_typed(serp):
+    """"Check the spelling" only makes sense against the word they spelled.
+
+    Unlike the shared-airport message, this one must not substitute a city the
+    traveller never entered.
+    """
+    result = _flights(
+        None, departure_city="Colombo", destination="Xyzzy Nowhere Township",
+        destination_geo=None, serpapi_key="",
+    )
+    assert result["unavailable_reason"] == "no_airport"
+    assert "Xyzzy Nowhere Township" in result["unavailable_message"]
+
+
 # ── The itinerary prompt ────────────────────────────────────────────────────
 
 def _confirmed(trip_type="open_jaw"):
