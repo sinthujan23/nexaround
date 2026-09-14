@@ -2468,6 +2468,7 @@ def food_and_activities_room(
     hotel_strategies: dict | None,
     city_legs: list[dict],
     travelers: int,
+    on_ground: float = 0.0,
 ) -> float:
     """Roughly what is left for food and activities once flights and rooms are paid.
 
@@ -2482,6 +2483,14 @@ def food_and_activities_room(
 
     Both inputs are already in hand when the prompt is built, so the model can
     be told the figure instead of a percentage.
+
+    Measured against the same floored total the waterfall will use, not
+    against the budget as entered. A trip whose flights and rooms already break
+    that budget leaves nothing by subtraction - a 14-day Peru plan for five
+    came to LKR 6.8m against a 6m budget - and clamping that at zero sent the
+    prompt back to a percentage of the budget while the waterfall went on
+    allocating a share of the lifted total. The two disagreed by more than
+    double, and the day plan came in at 2.3x the food line it was shown under.
 
     Deliberately approximate. Legs shift slightly after the plan comes back
     (`_align_legs_to_itinerary`), so this is guidance; the authoritative split
@@ -2512,7 +2521,14 @@ def food_and_activities_room(
             flight = chosen * party
 
     stay = required_stay_cost(hotel_strategies, city_legs, travelers, "recommended")
-    return max(round(float(budget or 0) - flight - stay, 2), 0.0)
+
+    # `_scenario_total`'s floor, mirrored: the headline never sits below what
+    # the tier costs, so that is the figure the split is carved out of.
+    tier_cost = flight + stay + max(float(on_ground or 0), 0.0)
+    total = float(budget or 0)
+    if tier_cost > 0:
+        total = max(total, round(tier_cost * 1.05, 2))
+    return max(round(total - flight - stay, 2), 0.0)
 
 
 def _budget_notes(
@@ -2605,6 +2621,29 @@ async def generate_hotel_strategies_for_legs(
     if not legs:
         return {}
 
+    # A leg nobody sleeps on has nothing to book. The last leg of a trip that
+    # flies home the day it arrives somewhere is the usual case - a 14-day Peru
+    # plan closed "Paracas d12-13 -> Lima d14", and Lima was searched anyway
+    # and shown four hotels priced for a night that is not in the trip. The
+    # budget already skips these legs; the Stays tab did not, and the search
+    # was bought regardless.
+    stayed = [
+        (i, leg) for i, leg in enumerate(legs)
+        if int(leg.get("nights") or 0) > 0
+    ]
+    if not stayed:
+        stayed = list(enumerate(legs))
+    skipped = len(legs) - len(stayed)
+    if skipped:
+        logger.info(
+            "Skipping hotels for %d leg(s) with no nights: %s",
+            skipped,
+            ", ".join(
+                str(l.get("city")) for i, l in enumerate(legs)
+                if int(l.get("nights") or 0) <= 0
+            ),
+        )
+
     searches = [
         generate_hotel_strategies(
             destination=leg["city"],
@@ -2627,14 +2666,16 @@ async def generate_hotel_strategies_for_legs(
             latitude=leg.get("latitude"),
             longitude=leg.get("longitude"),
         )
-        for leg in legs
+        for _, leg in stayed
     ]
     results = await asyncio.gather(*searches, return_exceptions=True)
 
     merged: list[dict] = []
     tips: list[str] = []
     areas: list[str] = []
-    for index, (leg, result) in enumerate(zip(legs, results)):
+    # `index` is the leg's position in the original list, not in the filtered
+    # one: the budget, the Stays tab and `_reprice_stays` all group by it.
+    for (index, leg), result in zip(stayed, results):
         if isinstance(result, Exception) or not isinstance(result, dict):
             logger.warning("Hotel search failed for leg %s (%s): %s", index, leg.get("city"), result)
             continue
@@ -3724,6 +3765,12 @@ async def generate_odyssey(
         hotel_strategies=hotel_strategies,
         city_legs=city_legs,
         travelers=travelers,
+        on_ground=trip_cost_floor.on_ground_floor(
+            destination=final_destination,
+            days=days,
+            travelers=travelers,
+            currency=currency,
+        ) or 0.0,
     )
 
     prompt = _build_prompt(

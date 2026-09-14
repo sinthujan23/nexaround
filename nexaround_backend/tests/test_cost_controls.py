@@ -1027,14 +1027,41 @@ def test_the_ceiling_uses_the_fare_the_budget_uses():
     assert thin == 500_000 - 20_000
 
 
-def test_the_ceiling_never_goes_negative():
-    """A trip whose flights alone break the budget still gets a usable prompt."""
+def test_a_budget_the_trip_already_breaks_still_leaves_a_real_ceiling():
+    """Subtracting from the entered budget gives nothing; the waterfall does not.
+
+    A 14-day Peru plan for five came to LKR 6.8m against a 6m budget. Clamping
+    the remainder at zero sent the prompt back to a percentage of the budget
+    while the waterfall went on carving its split out of the lifted total - the
+    two disagreed by more than double, and the day plan came in at 2.3x the
+    food line it was shown under.
+    """
     legs = [{"city": "X", "nights": 5}]
+    flight, stay = 120_000 * 4, 9_000 * 5 * 4
     room = svc.food_and_activities_room(
         budget=50_000, flight_strategies=_fs(("recommended", 120_000)),
         hotel_strategies=_hs(9_000), city_legs=legs, travelers=4,
     )
-    assert room == 0.0
+    # The headline is floored at the tier's own cost plus 5%, and that 5% is
+    # what food and activities actually get.
+    assert room == round((flight + stay) * 1.05, 2) - flight - stay
+    assert room > 0
+
+
+def test_the_ceiling_matches_what_the_waterfall_will_allocate():
+    """The figure in the prompt and the figure on the card are one number.
+
+    Peru's real numbers: the waterfall allocated 590,283 across food and
+    activities, and the prompt has to name that, not a percentage of a budget
+    the trip already broke.
+    """
+    legs = [{"city": "X", "nights": 13}]
+    room = svc.food_and_activities_room(
+        budget=6_000_000, flight_strategies=_fs(("recommended", 956_505)),
+        hotel_strategies=_hs(27_279, nights=13), city_legs=legs, travelers=5,
+        on_ground=250_000,
+    )
+    assert room == 590_283.0
 
 
 def test_nothing_priced_leaves_the_whole_budget():

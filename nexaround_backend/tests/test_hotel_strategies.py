@@ -849,3 +849,92 @@ def test_the_note_says_estimated_when_no_live_fare_was_found():
         "Based on an estimated fare — no live price was available for this route."
     )
     assert n["summary"].endswith("· estimated fare")
+
+
+# ── A leg nobody sleeps on ──────────────────────────────────────────────────
+#
+# A 14-day Peru plan closed "Paracas d12-13 -> Lima d14": the traveller lands
+# in Lima and flies home the same day. Lima was searched anyway and shown four
+# hotels priced for a night that is not in the trip, and the search was bought.
+
+def test_a_leg_with_no_nights_is_not_searched_or_shown(monkeypatch):
+    import asyncio
+    from app.services import odyssey_ai_service as O
+
+    searched = []
+
+    async def _fake(*, destination, **kw):
+        searched.append(destination)
+        return {"strategies": [{
+            "rank": 1, "name": f"{destination} Hotel", "price_per_night": "USD 100",
+            "nights": 1, "rooms": 1, "hotel_class": 4,
+            "total_estimated_cost": "USD 100",
+        }], "general_tips": [], "best_areas": destination}
+
+    monkeypatch.setattr(O, "generate_hotel_strategies", _fake)
+
+    legs = [
+        {"city": "Cusco", "nights": 4, "start_day": 1, "end_day": 4},
+        {"city": "Paracas", "nights": 2, "start_day": 5, "end_day": 6},
+        {"city": "Lima", "nights": 0, "start_day": 7, "end_day": 7},
+    ]
+    result = asyncio.run(O.generate_hotel_strategies_for_legs(
+        legs=legs, days=7, budget=5000, currency="USD", travelers=2,
+        hotel_check_in_date="2027-05-08", hotel_check_out_date="2027-05-14",
+        api_key="k", serpapi_key="s", geo=None,
+    ))
+
+    assert searched == ["Cusco", "Paracas"], "the 0-night leg cost a search"
+    cities = {s["city"] for s in result["strategies"]}
+    assert cities == {"Cusco", "Paracas"}
+
+
+def test_the_leg_index_still_points_at_the_original_leg(monkeypatch):
+    """Skipping a leg must not renumber the ones that remain — the budget, the
+    Stays tab and `_reprice_stays` all group by `leg_index`."""
+    import asyncio
+    from app.services import odyssey_ai_service as O
+
+    async def _fake(*, destination, **kw):
+        return {"strategies": [{
+            "rank": 1, "name": f"{destination} Hotel", "price_per_night": "USD 100",
+            "nights": 1, "rooms": 1, "hotel_class": 4,
+            "total_estimated_cost": "USD 100",
+        }], "general_tips": [], "best_areas": destination}
+
+    monkeypatch.setattr(O, "generate_hotel_strategies", _fake)
+
+    legs = [
+        {"city": "Lima", "nights": 0, "start_day": 1, "end_day": 1},      # skipped
+        {"city": "Cusco", "nights": 4, "start_day": 2, "end_day": 5},     # index 1
+        {"city": "Puno", "nights": 2, "start_day": 6, "end_day": 7},      # index 2
+    ]
+    result = asyncio.run(O.generate_hotel_strategies_for_legs(
+        legs=legs, days=7, budget=5000, currency="USD", travelers=2,
+        hotel_check_in_date="2027-05-08", hotel_check_out_date="2027-05-14",
+        api_key="k", serpapi_key="s", geo=None,
+    ))
+    by_city = {s["city"]: s["leg_index"] for s in result["strategies"]}
+    assert by_city == {"Cusco": 1, "Puno": 2}
+
+
+def test_a_trip_where_nobody_sleeps_anywhere_still_searches(monkeypatch):
+    """A guard, not a rule: a day trip must not come back with no hotels at all
+    because every leg was filtered out."""
+    import asyncio
+    from app.services import odyssey_ai_service as O
+
+    async def _fake(*, destination, **kw):
+        return {"strategies": [{
+            "rank": 1, "name": "X", "price_per_night": "USD 100", "nights": 1,
+            "rooms": 1, "hotel_class": 4, "total_estimated_cost": "USD 100",
+        }], "general_tips": [], "best_areas": destination}
+
+    monkeypatch.setattr(O, "generate_hotel_strategies", _fake)
+    result = asyncio.run(O.generate_hotel_strategies_for_legs(
+        legs=[{"city": "Lima", "nights": 0, "start_day": 1, "end_day": 1}],
+        days=1, budget=500, currency="USD", travelers=1,
+        hotel_check_in_date="2027-05-08", hotel_check_out_date="2027-05-09",
+        api_key="k", serpapi_key="s", geo=None,
+    ))
+    assert result.get("strategies")
