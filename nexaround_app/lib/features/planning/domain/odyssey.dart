@@ -864,11 +864,13 @@ class HotelStrategy {
   final int? legIndex;
   final String city;
 
-  /// Nights spent on this leg, and rooms the party needs. `totalEstimatedCost`
-  /// is `nights x rooms x nightly` — showing these makes it legible as a leg
-  /// total rather than a whole-trip one, and is what reconciles it with the
-  /// stay line in the budget allocation, which is the same arithmetic on the
-  /// cheapest hotel of each leg.
+  /// Nights spent on this leg, and rooms the party needs — one per traveller,
+  /// not two sharing. `totalEstimatedCost` is `nights x rooms x nightly`:
+  /// showing these makes it legible as a leg total rather than a whole-trip
+  /// one, and is what reconciles it with the stay line in the budget
+  /// allocation, which is the same arithmetic on the cheapest hotel of each
+  /// leg. Travellers who intend to share can halve the figure themselves; one
+  /// that has already assumed sharing cannot be corrected by anyone.
   final int nights;
   final int rooms;
 
@@ -982,6 +984,19 @@ class Odyssey {
   final FlightAirport? flightArrivalAirport;
   final FlightAirport? flightDepartureAirport;
   final String flightTripType;
+
+  /// Why the flight section is empty, when the backend knows.
+  ///
+  /// "none_found" means Google answered and the answer was that nothing flies
+  /// this route on these dates — there is no fare at any price. That is not
+  /// the same as a search we failed to make, which still produces estimated
+  /// fares marked "Estimated fare". Empty string means no reason was given,
+  /// which is every Odyssey generated before this existed.
+  final String flightUnavailableReason;
+
+  /// Plain-language version of [flightUnavailableReason], written by the
+  /// backend so the section can say why rather than vanish.
+  final String flightUnavailableMessage;
   /// Cities the trip sleeps in. Empty on Odysseys generated before legs
   /// existed — readers must treat that as one leg covering the whole trip.
   final List<OdysseyLeg> legs;
@@ -997,6 +1012,14 @@ class Odyssey {
   final int travelers;
   final Map<String, double> budgetBreakdown;
   final String budgetAdvisory;
+
+  /// What each budget line was priced from, keyed `summary`, `stay`, `transit`.
+  ///
+  /// `summary` is the one line the Budget Allocation card always shows; the
+  /// other two sit behind its info tap. A map of its own rather than entries in
+  /// [budgetBreakdown], whose values are coerced to double on the way in - a
+  /// string there lands as 0.0 and draws a phantom category bar.
+  final Map<String, String> budgetNotes;
   final OdysseyVerdict? verdict;
   final Map<String, Map<String, double>> budgetScenarios;
   final OdysseyPracticalInfo practicalInfo;
@@ -1025,6 +1048,8 @@ class Odyssey {
     this.flightArrivalAirport,
     this.flightDepartureAirport,
     this.flightTripType = '',
+    this.flightUnavailableReason = '',
+    this.flightUnavailableMessage = '',
     this.legs = const [],
     this.hotelStrategies = const [],
     this.hotelGeneralTips = const [],
@@ -1038,6 +1063,7 @@ class Odyssey {
     this.travelers = 1,
     this.budgetBreakdown = const {},
     this.budgetAdvisory = '',
+    this.budgetNotes = const {},
     this.verdict,
     this.budgetScenarios = const {},
     this.practicalInfo = const OdysseyPracticalInfo(),
@@ -1057,6 +1083,8 @@ class Odyssey {
     FlightAirport? flightArrivalAirport,
     FlightAirport? flightDepartureAirport,
     String? flightTripType,
+    String? flightUnavailableReason,
+    String? flightUnavailableMessage,
     List<OdysseyLeg>? legs,
     List<HotelStrategy>? hotelStrategies,
     List<String>? hotelGeneralTips,
@@ -1067,6 +1095,7 @@ class Odyssey {
     String? departureCity,
     int? travelers,
     Map<String, double>? budgetBreakdown,
+    Map<String, String>? budgetNotes,
     OdysseyVerdict? verdict,
     Map<String, Map<String, double>>? budgetScenarios,
     OdysseyPracticalInfo? practicalInfo,
@@ -1095,6 +1124,10 @@ class Odyssey {
         flightArrivalAirport: flightArrivalAirport ?? this.flightArrivalAirport,
         flightDepartureAirport: flightDepartureAirport ?? this.flightDepartureAirport,
         flightTripType: flightTripType ?? this.flightTripType,
+        flightUnavailableReason:
+            flightUnavailableReason ?? this.flightUnavailableReason,
+        flightUnavailableMessage:
+            flightUnavailableMessage ?? this.flightUnavailableMessage,
         legs: legs ?? this.legs,
         hotelStrategies: hotelStrategies ?? this.hotelStrategies,
         hotelGeneralTips: hotelGeneralTips ?? this.hotelGeneralTips,
@@ -1108,6 +1141,7 @@ class Odyssey {
         travelers: travelers ?? this.travelers,
         budgetBreakdown: budgetBreakdown ?? this.budgetBreakdown,
         budgetAdvisory: budgetAdvisory,
+        budgetNotes: budgetNotes ?? this.budgetNotes,
         verdict: verdict ?? this.verdict,
         budgetScenarios: budgetScenarios ?? this.budgetScenarios,
         practicalInfo: practicalInfo ?? this.practicalInfo,
@@ -1239,6 +1273,11 @@ class Odyssey {
             )
           : const {},
       budgetAdvisory: (json['budget_advisory'] ?? '').toString(),
+      budgetNotes: json['budget_notes'] is Map
+          ? (json['budget_notes'] as Map).map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            )
+          : const {},
     );
   }
 
@@ -1268,6 +1307,10 @@ class Odyssey {
             if (flightDepartureAirport != null)
               'departure_airport': flightDepartureAirport!.toJson(),
             if (flightTripType.isNotEmpty) 'trip_type': flightTripType,
+            if (flightUnavailableReason.isNotEmpty)
+              'unavailable_reason': flightUnavailableReason,
+            if (flightUnavailableMessage.isNotEmpty)
+              'unavailable_message': flightUnavailableMessage,
           },
           'legs': legs.map((l) => l.toJson()).toList(),
           'hotel_strategies': {
@@ -1282,6 +1325,7 @@ class Odyssey {
           'travelers': travelers,
           'budget_breakdown': budgetBreakdown,
           'budget_advisory': budgetAdvisory,
+          'budget_notes': budgetNotes,
           'verdict': verdict?.toJson() ?? {},
           'budget_scenarios': budgetScenarios,
           'practical_info': practicalInfo.toJson(),
@@ -1343,6 +1387,12 @@ class Odyssey {
         : null;
     final String flightTripType = flightStrategiesRaw is Map
         ? (flightStrategiesRaw['trip_type'] ?? '').toString()
+        : '';
+    final String flightUnavailableReason = flightStrategiesRaw is Map
+        ? (flightStrategiesRaw['unavailable_reason'] ?? '').toString()
+        : '';
+    final String flightUnavailableMessage = flightStrategiesRaw is Map
+        ? (flightStrategiesRaw['unavailable_message'] ?? '').toString()
         : '';
 
     // Empty for every Odyssey generated before legs existed; the grouping in
@@ -1426,6 +1476,8 @@ class Odyssey {
       flightArrivalAirport: flightArrivalAirport,
       flightDepartureAirport: flightDepartureAirport,
       flightTripType: flightTripType,
+      flightUnavailableReason: flightUnavailableReason,
+      flightUnavailableMessage: flightUnavailableMessage,
       legs: legs,
       hotelStrategies: hotelStrategies,
       hotelGeneralTips: hotelGeneralTips,
@@ -1445,6 +1497,11 @@ class Odyssey {
             )
           : const {},
       budgetAdvisory: (meta['budget_advisory'] ?? '').toString(),
+      budgetNotes: meta['budget_notes'] is Map
+          ? (meta['budget_notes'] as Map).map(
+              (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
+            )
+          : const {},
       verdict: verdict,
       budgetScenarios: budgetScenarios,
       practicalInfo: practicalInfo,

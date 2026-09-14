@@ -26,6 +26,11 @@ from app.services.serpapi_service import (
     extract_flight_strategies_from_serpapi,
     extract_open_jaw_strategies_from_serpapi,
     rooms_for as serpapi_rooms_for,
+    _card_title as serpapi_card_title,
+    no_results as serpapi_no_results,
+    _candidate_metrics as serpapi_candidate_metrics,
+    _format_duration as serpapi_format_duration,
+    convert_from_search_currency,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +154,14 @@ _SCENARIO_MULTIPLIERS = {"minimum": 0.7, "comfortable": 1.4}
 # and the rate stops meaning anything a caller can multiply. The group cost is
 # then derived as rooms x rate (`_rooms_for`), the same reasoning the flight
 # search documents for querying one seat at a time.
+#
+# This is a *capacity* filter — "a room that sleeps two" — not a statement that
+# two travellers share one. `rooms_for` bills one room per traveller, so each
+# traveller is charged a standard room. Pricing a single occupant at that rate
+# overstates a little, and that is the direction a budget should err in: the
+# party can share and come in under, never the reverse. Searching `adults=1`
+# would quote singles more exactly but invalidates every cached hotel search
+# and changes which properties Google returns at all.
 _STANDARD_ROOM_ADULTS = 2
 
 # "Show only 3-star and above" — the star class every hotel search starts from.
@@ -249,12 +262,14 @@ def build_meta_item(
     booking_partners: list[dict] = None,
     cover_url: str = "",
     flight_strategies: dict = None,
+    inter_city_flights: list[dict] = None,
     hotel_strategies: dict = None,
     start_date: str = "",
     end_date: str = "",
     departure_city: str = "",
     budget_breakdown: dict = None,
     budget_advisory: str = "",
+    budget_notes: dict = None,
     verified_sources: list[dict] = None,
     verdict: dict = None,
     budget_scenarios: dict = None,
@@ -289,12 +304,21 @@ def build_meta_item(
         "booking_partners": booking_partners or [],
         "cover_url": cover_url,
         "flight_strategies": flight_strategies or {},
+        # The legs flown between cities, priced live and separately: the main
+        # flight section covers only the journey to the country and home.
+        "inter_city_flights": inter_city_flights or [],
         "hotel_strategies": hotel_strategies or {},
         "start_date": start_date,
         "end_date": end_date,
         "departure_city": departure_city,
         "budget_breakdown": budget_breakdown or {},
         "budget_advisory": budget_advisory,
+        # What each budget line was priced from, in the traveller's words:
+        # `summary` for the one line the card always shows, `stay` and
+        # `transit` for the sheet behind its info tap. A sibling key rather
+        # than entries inside `budget_breakdown`, whose values the app coerces
+        # to double — a string there lands as 0.0 and adds a phantom category.
+        "budget_notes": budget_notes or {},
         "verified_sources": verified_sources or [],
         "verdict": verdict or {},
         "budget_scenarios": budget_scenarios or {},
@@ -788,83 +812,66 @@ def _apply_flight_booking_urls(
     return data
 
 
-async def _add_flight_prose(
-    data: dict,
-    *,
-    departure_city: str,
-    destination: str,
-    api_key: str,
-) -> dict:
-    """Ask Gemini for copy only — never for numbers.
+def _same_country(departure_country: str, geo) -> bool:
+    """True when home and destination sit in the same country.
 
-    The itineraries are already priced from live data by the time this runs.
-    Gemini rewrites title/description/tip so the cards read naturally; every
-    numeric field is left exactly as SerpApi reported it. Any failure here is
-    swallowed and the templated copy stands — prose must never block prices.
+    Only a domestic trip can be made by road or rail. "No flight, so take the
+    bus" is sound advice for Kinniya to Colombo and nonsense for Colombo to
+    Italy, so the ground-journey instructions below are gated on this.
+    Unknown means False: silence beats sending someone overland to Rome.
     """
-    strategies = data.get("strategies") or []
-    if not strategies or not api_key:
-        return data
+    home = str(departure_country or "").strip().lower()
+    if not home or geo is None:
+        return False
+    there = {
+        str(getattr(geo, "country", "") or "").strip().lower(),
+        str(getattr(geo, "country_code", "") or "").strip().lower(),
+    }
+    there.discard("")
+    return bool(there) and home in there
 
-    facts = []
-    for s in strategies:
-        line = (
-            f'- tier "{s.get("tier")}": {s.get("route")}, {", ".join(s.get("airlines") or []) or "multiple carriers"}, '
-            f'{s.get("stops")} stop(s), {s.get("total_duration") or "duration n/a"} outbound'
-        )
-        ret = s.get("return")
-        if isinstance(ret, dict) and ret.get("origin"):
-            line += (
-                f'; return {s.get("return_route") or ""}, '
-                f'{", ".join(ret.get("airlines") or []) or "multiple carriers"}, '
-                f'{ret.get("stops", 0)} stop(s), {ret.get("duration") or "duration n/a"}'
-            )
-        facts.append(line)
 
-    shape = ""
-    if any(s.get("trip_type") == "open_jaw" for s in strategies):
-        shape = (
-            "\nThis is an open-jaw trip: the traveller flies into one city and home "
-            "from another, so each option is two tickets.\n"
-        )
+def _flights_unavailable(reason: str, message: str, origin_code: str = "") -> dict:
+    """An empty flight section that explains itself.
 
-    prompt = f"""Write short marketing copy for {len(strategies)} flight options from "{departure_city}" to "{destination}".
-{shape}
-The options (already priced and verified from live Google Flights data):
-{chr(10).join(facts)}
+    Three things end with no flight cards and they are not the same thing:
+    Google has no route, the two cities share an airport, or we could not
+    identify an airport at all. All three used to return a bare {}, which the
+    app rendered as nothing at all — a traveller planning Kinniya to Colombo
+    got an itinerary, a hotel list, and no word on how to make the journey.
+    """
+    return {
+        "strategies": [],
+        "more_options": [],
+        "general_tips": [],
+        "flights_available": False,
+        "unavailable_reason": reason,
+        "unavailable_message": message,
+        "origin_airport": origin_code,
+    }
 
-STRICT RULES:
-- Do NOT output any price, currency amount, percentage, duration, or airline name that is not listed above.
-- Do NOT invent or restate prices. The app renders prices itself.
-- "title": 3-6 words naming the option's character (e.g. "Cheapest Fare", "Fastest Non-Stop").
-- "description": one sentence, max 25 words, describing the routing experience.
-- "tip": one short practical booking tip, max 18 words.
 
-Return ONLY JSON:
-{{"copy": [{{"tier": "minimum", "title": "...", "description": "...", "tip": "..."}}]}}"""
+def _no_flights_found(
+    *, origin_code: str, dest_code: str, outbound_date: str,
+    return_date: str = "", arrival_city: str = "",
+) -> dict:
+    """The flight section when Google says the journey cannot be booked.
 
-    try:
-        text, _ = await _call_gemini(
-            prompt, api_key, max_tokens=1024, thinking_budget=0, models=_LITE_MODELS,
-        )
-        parsed = _parse_json(text)
-        by_tier = {
-            str(c.get("tier")): c
-            for c in (parsed.get("copy") or [])
-            if isinstance(c, dict) and c.get("tier")
-        }
-        for s in strategies:
-            c = by_tier.get(str(s.get("tier")))
-            if not c:
-                continue
-            for field in ("title", "description", "tip"):
-                value = str(c.get(field) or "").strip()
-                if value:
-                    s[field] = value
-    except Exception as e:
-        logger.warning(f"Flight prose pass failed, keeping templated copy: {e}")
-
-    return data
+    Not the same shape as a failure: `unavailable_reason` is "none_found", so
+    the app can say so plainly instead of hiding the section, and nothing here
+    carries a price. Previously both this and a timeout produced invented
+    fares, and the traveller could not tell a route that does not exist from
+    one we simply failed to look up.
+    """
+    where = arrival_city or dest_code
+    dates = outbound_date + (f" - {return_date}" if return_date else "")
+    return _flights_unavailable(
+        "none_found",
+        f"Google Flights has no route from {origin_code} to {where}"
+        + (f" on {dates}" if dates else "")
+        + ". Try different dates, or a nearby airport.",
+        origin_code,
+    )
 
 
 def _structure_ai_flight_strategies(
@@ -957,6 +964,25 @@ def _structure_ai_flight_strategies(
         priced[-1]["tier"] = "comfortable"
         priced[len(priced) // 2]["tier"] = "recommended"
 
+    # The same card copy contract as the live path. Without this the estimated
+    # cards kept the model's own names — "Cheapest Budget Flights", "Best Value
+    # Split Tickets", "Fastest Direct Option" — the exact verdicts the tier
+    # titles were removed to stop, reappearing whenever SerpApi came back empty.
+    for s in priced:
+        out_leg, ret_leg = s.get("outbound") or {}, s.get("return") or {}
+        out_min = _minutes_from_duration(out_leg.get("duration"))
+        ret_min = _minutes_from_duration(ret_leg.get("duration")) if ret_leg else 0
+        if out_leg:
+            out_leg["duration_minutes"] = out_min
+        if ret_leg:
+            ret_leg["duration_minutes"] = ret_min
+        s["outbound_duration_minutes"] = out_min
+        s["return_duration_minutes"] = ret_min if ret_leg else None
+        s["total_duration_minutes"] = out_min + ret_min
+        s["title"] = serpapi_card_title(int(out_leg.get("stops") or 0), out_min + ret_min)
+        s["estimated_savings"] = ""
+        s["tip"] = ""
+
     cheapest = priced[0]["price_per_traveler"] if priced else 0
     dearest = priced[-1]["price_per_traveler"] if priced else 0
     if cheapest > 0 and (dearest - cheapest) / cheapest < 0.15:
@@ -986,6 +1012,181 @@ def _pick_return_tiers(strategies: list[dict], tokens: dict) -> list[dict]:
         if len(picked) >= _RETURN_LEG_SEARCHES:
             break
     return picked
+
+
+# A leg the route planner marks "arrive_by": "flight" is a real ticket the
+# traveller has to buy, and until now it was the one flight nobody priced: the
+# model invented a figure and attributed it to a site it had never asked. Two
+# saved plans priced the same kind of one-hour Egyptian domestic hop at 10,000
+# and 20,000 INR. One search each fixes that, and yields a booking link too.
+def _apply_inter_city_fares(day_items: list[dict], hops: list[dict]) -> int:
+    """Put the searched fare and booking link on the hop the model wrote.
+
+    The prompt states the fare, but a prompt is a request; this is the
+    guarantee. Gemini has never been allowed to produce a flight price on the
+    main route and it is not allowed to here either — it writes the sentence,
+    the number comes from Google. Returns how many hops were matched.
+    """
+    if not day_items or not hops:
+        return 0
+    by_day: dict[int, list] = {}
+    for d in day_items:
+        acts = d.get("activities")
+        if isinstance(acts, list):
+            by_day.setdefault(int(d.get("day") or 0), []).extend(acts)
+
+    matched = 0
+    for hop in hops:
+        day_no = int(hop.get("day") or 0)
+        to_city = str(hop.get("to_city") or "").strip().lower()
+        to_code = str(hop.get("to_code") or "").strip().upper()
+        target = None
+        for a in by_day.get(day_no, []):
+            if not isinstance(a, dict) or str(a.get("type") or "") != "transport":
+                continue
+            name = str(a.get("name") or "")
+            blob = name.lower()
+            if (to_city and to_city in blob) or (to_code and to_code in name):
+                target = a
+                break
+        if target is None:
+            logger.info(
+                "No transport stop on day %d to carry the %s -> %s fare.",
+                day_no, hop.get("from_city"), hop.get("to_city"),
+            )
+            continue
+        currency = str(hop.get("currency") or "")
+        target["cost"] = f"{currency} {hop.get('price_total', 0):,.0f}".strip()
+        target["cost_per_person"] = hop.get("price_per_traveler")
+        target["price_source"] = "Google Flights"
+        target["price_confidence"] = "Fixed"
+        target["price_basis"] = (
+            f"{currency} {hop.get('price_per_traveler', 0):,.0f} each x "
+            f"{hop.get('travelers', 1)} travellers, live Google Flights fare "
+            f"for {hop.get('date')}."
+        )
+        if hop.get("booking_url"):
+            target["booking_url"] = hop["booking_url"]
+        matched += 1
+    return matched
+
+
+def _stop_label_text(stops: int) -> str:
+    return "non-stop" if stops <= 0 else ("1 stop" if stops == 1 else f"{stops} stops")
+
+
+def _date_for_day(start_date: str, day: int) -> str:
+    """The calendar date of day N of the trip, or "" if the start is unusable."""
+    try:
+        from datetime import date as _date, timedelta as _timedelta
+        return (
+            _date.fromisoformat(str(start_date)[:10]) + _timedelta(days=max(day, 1) - 1)
+        ).isoformat()
+    except Exception:
+        return ""
+
+
+_MAX_HOP_SEARCHES = 3
+
+
+async def generate_inter_city_flights(
+    *,
+    legs: list[dict],
+    geo,
+    currency: str,
+    travelers: int,
+    start_date: str,
+    api_key: str,
+    serpapi_key: str,
+    geo_budget=None,
+) -> list[dict]:
+    """Live one-way fares for the legs the traveller flies between cities.
+
+    One SerpApi search per flying leg, capped at `_MAX_HOP_SEARCHES` so a
+    six-city itinerary cannot quietly spend the month's quota. Anything that
+    cannot be resolved or priced is simply left out — the itinerary then
+    describes the hop without a fare, which is the honest outcome and what it
+    did before, minus the invented number.
+    """
+    if not legs or not serpapi_key or len(legs) < 2:
+        return []
+
+    country = str(getattr(geo, "country", "") or "")
+    country_code = str(getattr(geo, "country_code", "") or "")
+
+    async def _code(leg: dict) -> str:
+        return await _resolve_airport_code(
+            str(leg.get("city") or ""), country, api_key,
+            latitude=leg.get("latitude"), longitude=leg.get("longitude"),
+            country_code=country_code, budget=geo_budget,
+        )
+
+    serp = SerpApiService(serpapi_key)
+    hops: list[dict] = []
+    for i in range(1, len(legs)):
+        if len(hops) >= _MAX_HOP_SEARCHES:
+            logger.info("Inter-city flight search capped at %d.", _MAX_HOP_SEARCHES)
+            break
+        leg, prev = legs[i], legs[i - 1]
+        if str(leg.get("arrive_by") or "").strip().lower() != "flight":
+            continue
+
+        from_code, to_code = await asyncio.gather(_code(prev), _code(leg))
+        if not from_code or not to_code or set(from_code.split(",")) & set(to_code.split(",")):
+            logger.info(
+                "Skipping inter-city flight %s -> %s: codes %r / %r.",
+                prev.get("city"), leg.get("city"), from_code, to_code,
+            )
+            continue
+
+        date = _date_for_day(start_date, int(leg.get("start_day") or 1))
+        try:
+            data = await serp.search_flights(
+                departure_city=from_code, destination=to_code,
+                outbound_date=date, return_date="", one_way=True,
+                adults=1, currency=currency, _operation="search_flights_hop",
+            )
+        except Exception as e:
+            logger.warning("Inter-city flight search failed %s -> %s: %s", from_code, to_code, e)
+            continue
+
+        options = serpapi_candidate_metrics(data)
+        if not options:
+            logger.info("No inter-city flights %s -> %s on %s.", from_code, to_code, date)
+            continue
+        best = min(options, key=lambda c: (c["price"], c["duration"], c["stops"]))
+        party = max(int(travelers or 1), 1)
+        per = round(convert_from_search_currency(best["price"], currency), 2)
+        hops.append({
+            "day": int(leg.get("start_day") or 1),
+            "from_city": prev.get("city") or from_code,
+            "to_city": leg.get("city") or to_code,
+            "from_code": best.get("origin_id") or from_code.split(",")[0],
+            "to_code": best.get("dest_id") or to_code.split(",")[0],
+            "date": date,
+            "airlines": list(best.get("airlines") or []),
+            "flight_numbers": list(best.get("flight_numbers") or []),
+            "stops": int(best.get("stops") or 0),
+            "duration": serpapi_format_duration(int(best.get("duration") or 0)),
+            "duration_minutes": int(best.get("duration") or 0),
+            "price_per_traveler": per,
+            "price_total": round(per * party, 2),
+            "currency": currency.upper(),
+            "travelers": party,
+            "is_live_price": True,
+            "price_source": "google_flights_serpapi",
+            "booking_url": _build_deep_booking_url(
+                "Google Flights", "", leg.get("city") or to_code, date, "",
+                travelers=party, is_flight=True,
+                origin_city=prev.get("city") or from_code,
+                airlines=list(best.get("airlines") or []), one_way=True,
+            ),
+        })
+        logger.info(
+            "Inter-city flight priced: %s -> %s on %s, %s %s pp.",
+            from_code, to_code, date, currency.upper(), per,
+        )
+    return hops
 
 
 async def generate_flight_strategies(
@@ -1111,7 +1312,16 @@ async def generate_flight_strategies(
             "skipping flight generation.",
             departure_city, destination, origin_code,
         )
-        return {}
+        # Not a failure and not an empty route: the journey is simply a
+        # domestic one. Kinniya and Colombo both resolve to CMB, and the
+        # honest answer is the one locals already use — road or rail.
+        return _flights_unavailable(
+            "same_airport",
+            f"{departure_city} and {destination} are served by the same airport "
+            f"({origin_code}), so there is no flight to book. Travel between them "
+            f"by road or rail.",
+            origin_code,
+        )
 
     # An endpoint we could not resolve is not an endpoint a model should be
     # asked to guess. Without SerpApi every flight comes from the estimation
@@ -1125,7 +1335,13 @@ async def generate_flight_strategies(
             "destination=%r -> %s).",
             departure_city, origin_code or "?", destination, dest_code or "?",
         )
-        return {}
+        unknown = departure_city if not origin_code else destination
+        return _flights_unavailable(
+            "no_airport",
+            f"No airport could be identified for {unknown}, so flights could not "
+            f"be searched. Check the spelling, or plan the journey by road or rail.",
+            origin_code,
+        )
 
     is_open_jaw = set(arrival_code.split(",")) != set(departure_code.split(","))
     arrival_city = ((route_plan.arrival or {}).get("city") if route_plan is not None else "") or ""
@@ -1151,12 +1367,11 @@ async def generate_flight_strategies(
         return data
 
     async def _finish(direct: dict, *, trip_type: str, home_code: str) -> dict:
-        direct = await _add_flight_prose(
-            direct,
-            departure_city=departure_city,
-            destination=arrival_city or destination,
-            api_key=api_key,
-        )
+        # No prose pass. The card copy is templated from the fare's own numbers
+        # in `serpapi_service._strategy_payload`; a model asked to "name the
+        # option's character" wrote "Budget-Friendly Colombo to Moscow" over a
+        # factual header and put "the best chance at securing your fare" in the
+        # tip, which is the judgement the tier titles were removed to stop.
         direct = _apply_flight_booking_urls(
             direct,
             departure_city=departure_city,
@@ -1285,6 +1500,21 @@ async def generate_flight_strategies(
                     trip_type = "round_trip" if return_date else "one_way"
                     return await _finish(direct, trip_type=trip_type, home_code=dest_code)
 
+                if serpapi_no_results(serp_result):
+                    # Google answered, and the answer was that nothing flies
+                    # this route on these dates. An estimate here would invent
+                    # a fare for a journey that cannot be booked at any price,
+                    # so the section comes back empty with a reason instead.
+                    logger.info(
+                        "Google has no flights %s → %s on %s; returning an empty "
+                        "flight section rather than an estimate.",
+                        origin_code, dest_code, outbound_date,
+                    )
+                    return _no_flights_found(
+                        origin_code=origin_code, dest_code=dest_code,
+                        outbound_date=outbound_date, return_date=return_date,
+                        arrival_city=arrival_city or destination,
+                    )
                 logger.warning(
                     "SerpAPI returned no usable flight options for %s → %s; "
                     "falling back to Gemini estimation.", departure_city, destination,
@@ -1765,12 +1995,38 @@ Return ONLY a JSON object with this exact shape (note every strategy has a price
         return {}
 
 
+# Values a model writes when it means "nothing here". The app renders
+# `price_source` and `price_basis` whenever they are non-empty, so "N/A"
+# reaches the traveller as the printed source of the price.
+_NOT_A_SOURCE = {
+    "n/a", "n/a.", "na", "none", "none.", "no source", "unknown", "unknown.",
+    "-", "--", "not applicable", "not available", "tbd", "tba", "free", "n.a.",
+}
+
+
+def _sourced(value) -> str:
+    """The text, or "" when it is one of the ways a model writes "nothing"."""
+    text = str(value or "").strip()
+    return "" if text.lower().strip(" .") in {s.strip(" .") for s in _NOT_A_SOURCE} else text
+
+
+def _is_free(cost) -> bool:
+    """True when a cost line names no money — "Free", "Free (chairs extra)", ""."""
+    text = str(cost or "").strip().lower()
+    if not text:
+        return True
+    if re.search(r"\d", text.split("(")[0]):
+        return False
+    return text.startswith("free") or text in _NOT_A_SOURCE
+
+
 def _rooms_for(travelers: int) -> int:
-    """Rooms a party needs, at two to a room.
+    """Rooms a party needs, at one room per traveller.
 
     Accommodation used to ignore party size entirely — it reached SerpApi as
     `adults=` and never became rooms — so three travellers were budgeted one
-    room's worth of nights.
+    room's worth of nights. It then went to two travellers per room, which
+    still halved the stay line of every party trip; see `serpapi.rooms_for`.
 
     Delegates to `serpapi_service.rooms_for`, which the Stays tab's own stay
     totals are built from: a second copy of this rule here is how the budget's
@@ -1801,6 +2057,187 @@ def _rate_for_tier(rates: list[float], tier: str) -> float:
     return ordered[len(ordered) // 2]
 
 
+# The ways a model says a figure is for one traveller, and for the whole party.
+_PER_PERSON_RE = re.compile(r"(/\s*(person|pax|adult|head)|\bper\s+(person|pax|adult|head)\b|\bpp\b|\beach\b)", re.I)
+_PARTY_OF_RE = re.compile(
+    r"\bfor\s+(two|three|four|five|six|2|3|4|5|6)\s+(adults?|people|persons?|travell?ers?)\b", re.I)
+_WORD_COUNT = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6}
+
+
+def _minutes_from_duration(text) -> int:
+    """Minutes out of "14h 30m", "14h", "870m" or "" — 0 when unreadable.
+
+    The estimated-fare path carried duration only as the model's own string and
+    left `duration_minutes` at 0, so those cards could not state a journey time
+    and nothing could rank them by it.
+    """
+    s = str(text or "").strip()
+    if not s:
+        return 0
+    hours = re.search(r"(\d+)\s*h", s, re.I)
+    mins = re.search(r"(\d+)\s*m(?!s)", s, re.I)
+    if hours or mins:
+        return (int(hours.group(1)) * 60 if hours else 0) + (int(mins.group(1)) if mins else 0)
+    bare = re.search(r"\d+", s)
+    return int(bare.group()) if bare else 0
+
+
+def _party_cost(activity: dict, currency: str, travelers: int) -> tuple[str, float | None]:
+    """(what the card shows, one adult's share) for a single stop.
+
+    Everything the traveller reads is what the party pays, because the budget
+    they set is a party budget and the budget lines beside it are party totals.
+
+    Across nine live plans, 69% of priced stops said nothing about which unit
+    they used, 23% buried it in the small print and 8% put it on the card. A
+    couple reading "INR 1,800" for the Bahia Palace was really looking at
+    INR 3,600; a family of four at four times the number on screen. The model
+    is now asked for one adult's price as a bare number and the arithmetic and
+    the wording happen here, so the unit cannot drift again.
+
+    Returns ("", None) when there is nothing to price.
+    """
+    party = max(int(travelers or 1), 1)
+    code = str(currency or "").upper()
+
+    raw = activity.get("cost_per_person")
+    per: float | None = None
+    if raw is not None and str(raw).strip() != "":
+        if _is_free(raw):
+            return "Free", 0.0
+        value = _extract_lowest_price(str(raw))
+        if value > 0:
+            per = value
+        elif re.search(r"\d", str(raw)):
+            # An explicit zero is free, not a missing answer.
+            return "Free", 0.0
+
+    if per is None:
+        # Fallback for a model that answered with the old free-text field.
+        text = str(activity.get("cost") or "")
+        if not text.strip():
+            return "", None
+        if _is_free(text):
+            return "Free", 0.0
+        value = _extract_lowest_price(text)
+        if value <= 0:
+            return text, None
+        basis = str(activity.get("price_basis") or "")
+        stated_party = _PARTY_OF_RE.search(text) or _PARTY_OF_RE.search(basis)
+        if _PER_PERSON_RE.search(text) or _PER_PERSON_RE.search(basis):
+            per = value
+        elif stated_party:
+            token = stated_party.group(1).lower()
+            named = _WORD_COUNT.get(token, int(token) if token.isdigit() else party)
+            per = value / max(named, 1)
+        else:
+            # Unmarked and unexplained: take it at face value as the party
+            # total. Never inflate a figure we are only guessing about.
+            return f"{code} {value:,.0f}" if code else text, (value / party if party else value)
+
+    total = per * party
+    return (f"{code} {total:,.0f}" if code else f"{total:,.0f}"), per
+
+
+def _align_legs_to_itinerary(city_legs: list[dict], day_plans, days: int) -> list[str]:
+    """Move each leg boundary to the day the itinerary actually travels.
+
+    The legs are planned before the itinerary is written and the hotel nights
+    are booked from them; the day plans are what the traveller follows. When
+    the two disagree, the traveller sleeps in the next city with a room booked
+    in the last one.
+
+    Seen live on a Rome/Florence/Venice/Milan trip: the Rome->Florence train
+    ran on day 5 while the Florence leg began on day 6, and the same one-day
+    slip repeated on all three changes — over-booking Rome by a night and
+    under-booking Milan by one. Seven of the eight plans generated that day
+    were correct, so this is the model missing the instruction occasionally
+    rather than a rule nobody wrote down.
+
+    The itinerary wins, because it is the thing the traveller reads and the
+    thing every activity is already written against. Mutates `city_legs` and
+    returns a note per leg moved.
+    """
+    if not city_legs or len(city_legs) < 2 or not isinstance(day_plans, list):
+        return []
+
+    by_day: dict[int, list] = {}
+    for d in day_plans:
+        if isinstance(d, dict) and isinstance(d.get("day"), int):
+            acts = d.get("activities")
+            by_day[d["day"]] = acts if isinstance(acts, list) else []
+
+    def _travel_day(city: str) -> int | None:
+        """First day a transport stop names `city` as where it is going."""
+        if not city:
+            return None
+        pattern = re.compile(rf"(?:to|into|→|->)\s*{re.escape(city)}\b", re.I)
+        for day in sorted(by_day):
+            for a in by_day[day]:
+                if not isinstance(a, dict):
+                    continue
+                if str(a.get("type") or "").strip().lower() != "transport":
+                    continue
+                if pattern.search(str(a.get("name") or "")):
+                    return day
+        return None
+
+    notes: list[str] = []
+    for i in range(1, len(city_legs)):
+        leg, prev = city_legs[i], city_legs[i - 1]
+        found = _travel_day(str(leg.get("city") or ""))
+        if found is None:
+            continue
+        start = int(leg.get("start_day") or 0)
+        if found == start:
+            continue
+        # A boundary may move, but never so far that the previous city loses
+        # every night or the leg runs past its own end.
+        if not (int(prev.get("start_day") or 1) < found <= int(leg.get("end_day") or days)):
+            notes.append(
+                f"{leg.get('city')}: itinerary travels on d{found}, left at d{start} — "
+                f"moving it would leave {prev.get('city')} with no nights"
+            )
+            continue
+        leg["start_day"] = found
+        prev["end_day"] = found - 1
+        notes.append(f"{leg.get('city')} d{start} -> d{found}, {prev.get('city')} now ends d{found - 1}")
+
+    # Nights follow the boundaries: you sleep in a city on every day of its
+    # leg, except the last leg, whose final day is the flight home.
+    last = len(city_legs) - 1
+    for i, leg in enumerate(city_legs):
+        s, e = int(leg.get("start_day") or 1), int(leg.get("end_day") or 1)
+        leg["nights"] = max(0, (e - s) if i == last else (e - s + 1))
+    return notes
+
+
+def _reprice_stays(hotel_strategies: dict | None, city_legs: list[dict], currency: str) -> None:
+    """Re-total every hotel after a leg boundary moved.
+
+    Same arithmetic both hotel paths already use — nightly x nights x rooms —
+    so the Stays tab and the budget's stay line stay the single figure they
+    are tested to be.
+    """
+    strategies_ = (hotel_strategies or {}).get("strategies")
+    if not isinstance(strategies_, list) or not city_legs:
+        return
+    by_index = {i: leg for i, leg in enumerate(city_legs)}
+    by_city = {str(leg.get("city") or "").lower(): leg for leg in city_legs}
+    for s in strategies_:
+        if not isinstance(s, dict):
+            continue
+        leg = by_index.get(s.get("leg_index")) or by_city.get(str(s.get("city") or "").lower())
+        if not leg:
+            continue
+        nights = int(leg.get("nights") or 0)
+        s["nights"] = nights
+        rooms = max(int(s.get("rooms") or 1), 1)
+        nightly = _extract_lowest_price(s.get("price_per_night") or "")
+        if nightly > 0 and nights > 0:
+            s["total_estimated_cost"] = f"{currency.upper()} {nightly * nights * rooms:,.0f}"
+
+
 def required_stay_cost(
     hotel_strategies: dict | None,
     city_legs: list[dict],
@@ -1819,7 +2256,9 @@ def required_stay_cost(
     feasibility floor has to be measured against and what every existing
     caller and test expects. The Budget Allocation tabs pass their own tier so
     Comfortable prices a comfortable room rather than repeating the Minimum
-    figure.
+    figure. Whichever tier, the rate is drawn from properties at
+    `_BASE_HOTEL_CLASS` or above wherever the leg has any — see the star floor
+    below — so "cheapest" never means a 2-star room the search never asked for.
 
     The figure this replaced was a single `min()` over one trip-wide hotel
     search, so a four-city trip was budgeted one city's stay, party size never
@@ -1835,30 +2274,184 @@ def required_stay_cost(
         return 0.0
     rooms_ = _rooms_for(travelers)
     nightly_by_leg: dict[int, list[float]] = {}
+    # The same rates again, keeping only properties at the star class the
+    # search asked for. The ladder falls back to an unfiltered rung when a
+    # class-filtered search comes back empty (`_HOTEL_CLASS_FALLBACKS`), so on
+    # a town where Google classifies little, 2-star properties reach the list
+    # — and a 2-star rate was then setting the budget's floor. Seen on a
+    # 14-day Colombo plan, whose Minimum tier sat at 46,396 against the 50,926
+    # its 3-star rooms actually cost.
+    classed_by_leg: dict[int, list[float]] = {}
     for s in strategies_:
         if not isinstance(s, dict):
             continue
         rate = _extract_lowest_price(s.get("price_per_night"))
         if rate > 0:
-            nightly_by_leg.setdefault(int(s.get("leg_index") or 0), []).append(rate)
+            leg_key = int(s.get("leg_index") or 0)
+            nightly_by_leg.setdefault(leg_key, []).append(rate)
+            if int(s.get("hotel_class") or 0) >= _BASE_HOTEL_CLASS:
+                classed_by_leg.setdefault(leg_key, []).append(rate)
 
     total_ = 0.0
     for leg_i, leg_ in enumerate(city_legs):
         nights_ = int(leg_.get("nights") or 0)
         if nights_ <= 0:
             continue
-        rates_ = nightly_by_leg.get(leg_i)
+        # Below the star floor only when there is nothing at or above it. A leg
+        # where the whole town is unclassed still has to be priced, and the
+        # Gemini estimate path writes no `hotel_class` at all, so this falls
+        # back to every rate rather than to nothing.
+        rates_ = classed_by_leg.get(leg_i) or nightly_by_leg.get(leg_i)
         if not rates_:
             # A leg whose search came back empty still has to be slept in.
             # Carry the trip's known rates rather than pricing those nights at
             # zero, which is what made a budget look sufficient. Pooled across
             # legs, then tiered the same way, so an empty leg tracks the tier
             # instead of always falling back to the cheapest room.
-            if not nightly_by_leg:
+            pool_ = classed_by_leg or nightly_by_leg
+            if not pool_:
                 continue
-            rates_ = [r for rr in nightly_by_leg.values() for r in rr]
+            rates_ = [r for rr in pool_.values() for r in rr]
         total_ += _rate_for_tier(rates_, tier) * nights_ * rooms_
     return round(total_, 2)
+
+
+def stay_priced_at_star_floor(
+    hotel_strategies: dict | None, city_legs: list[dict],
+) -> bool:
+    """Did every slept-in leg price itself from a classed room?
+
+    Only so the budget note can say "3-star" truthfully. `required_stay_cost`
+    drops below the floor on a leg that has nothing at or above it, and the
+    Gemini estimate path writes no `hotel_class` at all, so a plan may well be
+    priced off unclassed rooms — claiming a star floor there would be the kind
+    of confident, unearned sentence this whole section exists to stop printing.
+    """
+    strategies_ = (hotel_strategies or {}).get("strategies")
+    if not isinstance(strategies_, list) or not city_legs:
+        return False
+    classed: set[int] = set()
+    for s in strategies_:
+        if not isinstance(s, dict):
+            continue
+        if (
+            _extract_lowest_price(s.get("price_per_night")) > 0
+            and int(s.get("hotel_class") or 0) >= _BASE_HOTEL_CLASS
+        ):
+            classed.add(int(s.get("leg_index") or 0))
+    if not classed:
+        return False
+    return all(
+        i in classed
+        for i, leg_ in enumerate(city_legs)
+        if int(leg_.get("nights") or 0) > 0
+    )
+
+
+def budget_flight_basis(
+    flight_strategies: dict | None, tier: str = "recommended",
+) -> str:
+    """What kind of fare the budget priced itself from.
+
+    One of "direct", "connecting", "estimated" or "none" — the four things the
+    budget note can honestly say about the transit line. It exists because the
+    client asked for the words "Based on Best Value Direct Flight", which hold
+    on 2 of the 30 live routes held in cache; on the rest the note has to say
+    something else, and on a route with no fare at all it must say nothing.
+
+    Which fare: the named tier if the Flights tab has one, else the cheapest —
+    mirroring `_tier_flight_cost`'s own fallback, so the sentence always
+    describes the number beside it rather than a card the budget ignored.
+
+    "estimated" is not a detail. `_structure_ai_flight_strategies` defaults a
+    missing `stops` to 0, so a model that simply said nothing about connections
+    would otherwise have the note announce a direct flight nobody checked for.
+
+    Module-level for the same reason as `required_stay_cost`: a rule that
+    decides what a printed sentence claims has to be testable against the
+    payloads both flight paths actually produce, not only through a whole
+    generation.
+    """
+    def _fare(s: dict) -> float:
+        price = s.get("price_per_traveler")
+        if isinstance(price, (int, float)) and price > 0:
+            return float(price)
+        return _extract_lowest_price(s.get("estimated_price_range"))
+
+    if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
+        return "none"
+    priced = [
+        s for s in flight_strategies["strategies"]
+        if isinstance(s, dict) and _fare(s) > 0
+    ]
+    if not priced:
+        return "none"
+    live = [s for s in priced if s.get("is_live_price")]
+    if not live:
+        return "estimated"
+    chosen = next((s for s in live if s.get("tier") == tier), None)
+    if chosen is None:
+        chosen = min(live, key=_fare)
+    return "direct" if int(chosen.get("stops") or 0) == 0 else "connecting"
+
+
+def _budget_notes(
+    *,
+    rooms: int,
+    at_star_floor: bool,
+    flight_basis: str,
+    no_airfare: bool,
+) -> dict:
+    """What the Stay and Transit lines were priced from, in one line and two.
+
+    Requested by the client, who supplied the wording: "Based on Best Value
+    Direct Flight" and "Based on best value price. Individual rooms assumed for
+    each pax." Both are printed verbatim where they are true, and neither is
+    printed where it is not — a note is only worth having if the traveller can
+    rely on it, and "Direct Flight" holds on 2 of the 30 live routes in cache.
+
+    `summary` is the single line the Budget Allocation card always shows;
+    `stay` and `transit` sit behind its info tap.
+    """
+    stay_phrase = "Cheapest " + ("3-star+ room" if at_star_floor else "room")
+    if rooms > 1:
+        stay_phrase += ", 1 per person"
+
+    notes = {
+        "stay": (
+            "Based on best value price. Individual rooms assumed for each pax."
+            if rooms > 1 else "Based on best value price."
+        ),
+    }
+
+    if no_airfare:
+        # Nothing flies this route; `budget_advisory` already says so in full.
+        notes["summary"] = f"{stay_phrase} · ground transport only"
+        return notes
+
+    if flight_basis == "none":
+        # No fare of any kind reached the budget — a domestic trip, or a route
+        # whose search returned nothing. Describing a flight here would invent
+        # one; the stay line is all there is to explain.
+        notes["summary"] = stay_phrase
+        return notes
+
+    notes["transit"], flight_phrase = {
+        "direct": (
+            "Based on Best Value Direct Flight",
+            "best value direct flight",
+        ),
+        "connecting": (
+            "Based on the best value flight. No direct flight is offered on this route.",
+            "best value flight",
+        ),
+        "estimated": (
+            "Based on an estimated fare — no live price was available for this route.",
+            "estimated fare",
+        ),
+    }[flight_basis]
+    notes["summary"] = f"{stay_phrase} · {flight_phrase}"
+    return notes
 
 
 async def generate_hotel_strategies_for_legs(
@@ -2324,14 +2917,23 @@ def _validate_route(
     return plan, reasons
 
 
-async def _airport_geo(code: str, geo, budget=None) -> dict | None:
+async def _airport_geo(code: str, geo, budget=None, city: str = "") -> dict | None:
     """Where an airport is, from Places, cached for a month.
 
     Returns {"latitude", "longitude", "country_code", "name"} or None when the
     lookup could not run (no budget, no key, no result). None means "unknown",
     never "wrong" — the caller keeps the code, as `_verify_airport_codes` does.
+
+    The query carries the destination country, and the city when the caller
+    knows it. A bare "RAK airport" resolves to Ras Al Khaimah in the UAE, so a
+    Morocco plan rejected Marrakesh's own airport as foreign and flew the
+    traveller into Casablanca, 197 km from the first city. The country is part
+    of the cache key for the same reason: one bad lookup used to stand for that
+    code for a month, across every destination.
     """
-    cache_key = f"geo:airport:v1:{code}"
+    country = str(getattr(geo, "country", "") or "").strip()
+    cc = str(getattr(geo, "country_code", "") or "").strip().upper()
+    cache_key = f"geo:airport:v2:{cc or '??'}:{code}"
     try:
         cached = await place_cache_service.get_raw(cache_key)
         if cached:
@@ -2343,8 +2945,9 @@ async def _airport_geo(code: str, geo, budget=None) -> dict | None:
 
     if geo is None or not geo.resolved:
         return None
+    query = " ".join(p for p in (str(city or "").strip(), code, "airport", country) if p)
     check = await geo_resolver.verify_place(
-        f"{code} airport",
+        query,
         near=geo_resolver.DestinationContext(query=code, country_code=geo.country_code),
         max_km=None,
         budget=budget,
@@ -2372,7 +2975,7 @@ async def _locate_gateway(airport: dict | None, geo, budget=None) -> tuple[dict 
     """
     if not airport:
         return None, ""
-    located = await _airport_geo(airport["iata"], geo, budget)
+    located = await _airport_geo(airport["iata"], geo, budget, city=airport.get("city") or "")
     if located is None:
         return airport, ""
     if (
@@ -2713,7 +3316,7 @@ async def _reconcile_gateways(
         # whole reason this function exists. Airport coordinates are cached for
         # a month, so this is free on any route seen before.
         resolved = {"iata": code, "city": planned.get("city", ""), "name": ""}
-        located = await _airport_geo(code, geo, budget)
+        located = await _airport_geo(code, geo, budget, city=resolved["city"])
         if located:
             resolved["latitude"] = located["latitude"]
             resolved["longitude"] = located["longitude"]
@@ -2909,8 +3512,27 @@ async def generate_odyssey(
                 return {}
         return {}
 
-    cover_url, flight_strategies, hotel_strategies = await asyncio.gather(
-        cover_task, _get_flights(), _get_hotels()
+    async def _get_hops():
+        """Live fares for the legs the traveller flies between cities.
+
+        Runs beside the main flight and hotel searches, not after: it is the
+        same kind of lookup and there is no reason for the traveller to wait
+        for it in sequence.
+        """
+        if not (search_flights and include_flights):
+            return []
+        try:
+            return await generate_inter_city_flights(
+                legs=city_legs, geo=geo, currency=currency, travelers=travelers,
+                start_date=start_date or flight_start_date or "",
+                api_key=api_key, serpapi_key=serpapi_key, geo_budget=geo_budget,
+            )
+        except Exception as e:
+            logger.error(f"Inter-city flight sub-job failed: {e}")
+            return []
+
+    cover_url, flight_strategies, hotel_strategies, inter_city_flights = await asyncio.gather(
+        cover_task, _get_flights(), _get_hotels(), _get_hops()
     )
 
     # Extract primary recommended hotel entity from confirmed SerpAPI results.
@@ -2990,6 +3612,7 @@ async def generate_odyssey(
         legs=city_legs,
         geo=geo,
         route_plan=route,
+        inter_city_flights=inter_city_flights,
     )
     plan_tokens = _itinerary_token_budget(days)
     plan_timeout = _itinerary_timeout_s(days)
@@ -3015,6 +3638,15 @@ async def generate_odyssey(
         )
         plan = _parse_json(text)
     _warn_if_plan_is_short(plan, days)
+
+    # The itinerary is written against the legs, but the model sometimes moves
+    # a day early. The legs book the hotels, so they follow the itinerary here
+    # rather than the other way round — before the stay cost, the budget and
+    # the meta block are all computed from them below.
+    moved = _align_legs_to_itinerary(city_legs, plan.get("day_plans"), days)
+    if moved:
+        logger.info("Leg boundaries realigned to the itinerary: %s", "; ".join(moved))
+        _reprice_stays(hotel_strategies, city_legs, currency)
 
     # ── Geographic grounding ───────────────────────────────────────────────
     # The itinerary's geography rests entirely on the prompt: each leg's own
@@ -3070,6 +3702,15 @@ async def generate_odyssey(
 
     cheapest_flight_cost = _tier_flight_cost("minimum")
 
+    # Google answered that nothing flies this route. With no airfare to hold,
+    # the transit line must not keep the 30% of the budget it reserves when a
+    # fare is merely unknown, or the total quietly includes a flight that
+    # cannot be bought. It covers ground transport only, and says so.
+    no_airfare = bool(
+        isinstance(flight_strategies, dict)
+        and flight_strategies.get("flights_available") is False
+    )
+
     cheapest_hotel_cost = required_stay_cost(
         hotel_strategies, city_legs, travelers,
     )
@@ -3099,6 +3740,10 @@ async def generate_odyssey(
 
         if flight_cost_ > 0:
             transit_amt_ = min(flight_cost_, round(tot_ * 0.85, 2))
+        elif no_airfare:
+            # Ground transport only: inter-city trains and coaches, local
+            # transfers. No seat on any aircraft is being budgeted for.
+            transit_amt_ = round(tot_ * 0.12, 2)
         else:
             transit_amt_ = round(tot_ * 0.30, 2)
 
@@ -3263,6 +3908,13 @@ async def generate_odyssey(
     activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
+    budget_notes = _budget_notes(
+        rooms=_rooms_for(travelers),
+        at_star_floor=stay_priced_at_star_floor(hotel_strategies, city_legs),
+        flight_basis=budget_flight_basis(flight_strategies),
+        no_airfare=no_airfare,
+    )
+
     verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
     if verified_sources:
         logger.info(
@@ -3311,12 +3963,20 @@ async def generate_odyssey(
         booking_partners=plan.get("booking_partners") or [],
         cover_url=cover_url,
         flight_strategies=flight_strategies,
+        inter_city_flights=inter_city_flights,
         hotel_strategies=hotel_strategies,
         start_date=final_start_date,
         end_date=final_end_date,
         departure_city=departure_city or "",
         budget_breakdown=budget_breakdown,
-        budget_advisory="",
+        budget_advisory=(
+            (
+                str((flight_strategies or {}).get("unavailable_message") or "")
+                + " The budget below covers ground transport only — no airfare is included."
+            ).strip()
+            if no_airfare else ""
+        ),
+        budget_notes=budget_notes,
         verified_sources=verified_sources,
         verdict=verdict,
         budget_scenarios=budget_scenarios,
@@ -3377,7 +4037,7 @@ async def generate_odyssey(
                 "time": str(a.get("time") or ""),
                 "name": name_str,
                 "tip": str(a.get("tip") or a.get("note") or ""),
-                "cost": str(a.get("cost") or ""),
+                "cost": str(a.get("cost") or ""),   # replaced below by the party total
             }
 
             # 3. Reconcile accommodation stops with a price range across the
@@ -3408,10 +4068,27 @@ async def generate_odyssey(
                 )
                 act_dict["price_confidence"] = "Estimated"
             else:
-                price_source = str(a.get("price_source") or "").strip()
-                price_basis = str(a.get("price_basis") or "").strip()
-                price_confidence = str(a.get("price_confidence") or "").strip()
+                # What the card shows is what the party pays. The model gives
+                # one adult's price; the multiplication and the wording are
+                # ours, so the unit cannot drift between stops or plans.
+                party_total, per_head = _party_cost(a, currency, travelers)
+                act_dict["cost"] = party_total
+                if per_head is not None and per_head > 0:
+                    act_dict["cost_per_person"] = round(per_head, 2)
+
+                price_source = _sourced(a.get("price_source"))
+                price_basis = _sourced(a.get("price_basis"))
+                if per_head is not None and per_head > 0 and travelers > 1:
+                    split = f"{currency.upper()} {per_head:,.0f} each x {travelers} travellers"
+                    price_basis = f"{split}. {price_basis}".strip() if price_basis else split
+                price_confidence = _sourced(a.get("price_confidence"))
                 booking_url = str(a.get("booking_url") or "").strip()
+                # Nothing was priced, so nothing sourced it. Free stops came
+                # back carrying "price_source": "N/A" — which the app prints
+                # verbatim — and one free market visit was attributed to
+                # "Vietnam Airlines".
+                if _is_free(act_dict["cost"]):
+                    price_source = price_basis = price_confidence = ""
                 if price_source:
                     act_dict["price_source"] = price_source
                 if price_basis:
@@ -3471,6 +4148,14 @@ async def generate_odyssey(
 
     if not day_items:
         raise ValueError("Generated plan had no days")
+
+    # The fare is Google's, not the model's — see `_apply_inter_city_fares`.
+    if inter_city_flights:
+        fixed = _apply_inter_city_fares(day_items, inter_city_flights)
+        logger.info(
+            "Inter-city fares applied to %d of %d flown legs.",
+            fixed, len(inter_city_flights),
+        )
 
     return title, [meta] + day_items
 
@@ -3570,7 +4255,7 @@ Suggest exactly ONE different, real, well-known place or activity near "{destina
 - is NOT in the avoid-list above.
 
 Return ONLY a JSON object with this exact shape (no markdown, no commentary):
-{{ "time": "{slot}", "name": "Place or activity name", "tip": "Short practical tip under ~12 words", "cost": "{currency} amount or 'Free'", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
+{{ "time": "{slot}", "name": "Place or activity name", "tip": "Short practical tip under ~12 words", "cost_per_person": "ONE adult's price as a bare number in {currency}, digits only, 0 when free", "type": "transport|attraction|dining|exploration|accommodation|other", "restaurants": [] }}
 """
 
 
@@ -3592,6 +4277,7 @@ def _build_prompt(
     geo: "DestinationContext | None" = None,
     correction: str = "",
     route_plan: "RoutePlan | None" = None,
+    inter_city_flights: list[dict] | None = None,
 ) -> str:
     nights = days - 1 if days > 1 else 0
     per_person = int(budget / travelers) if travelers > 0 else int(budget)
@@ -3757,6 +4443,54 @@ Accommodation Scheduling Rules:
     flight_rules = ""
     arrival_rules = ""
     departure_rules = ""
+
+    # Legs the traveller flies between cities, priced live. Before this the
+    # model wrote its own figure and credited it to a site nobody had asked:
+    # two saved plans put the same one-hour Egyptian hop at 10,000 and 20,000.
+    hop_rules = ""
+    if inter_city_flights:
+        lines = []
+        for h in inter_city_flights:
+            carriers = ", ".join(h.get("airlines") or []) or "the operating carrier"
+            stops = _stop_label_text(int(h.get("stops") or 0))
+            party = int(h.get("travelers") or 1)
+            fare = (
+                f"{h.get('currency','')} {h.get('price_per_traveler', 0):,.0f} per traveller"
+                f" ({h.get('currency','')} {h.get('price_total', 0):,.0f} for {party})"
+            )
+            lines.append(
+                f"- Day {h.get('day')}: {h.get('from_city')} ({h.get('from_code')}) -> "
+                f"{h.get('to_city')} ({h.get('to_code')}) on {h.get('date')}, {carriers}, "
+                f"{stops}, {h.get('duration') or 'duration n/a'}. Fare {fare}."
+            )
+        hop_rules = f"""
+CRITICAL - CONFIRMED INTER-CITY FLIGHTS (live Google Flights; these are booked facts):
+{chr(10).join(lines)}
+- Each of those days MUST OPEN with a "transport" activity named
+  "Flight: <from city> -> <to city>" carrying exactly the airline, the stop count,
+  the duration and the fare above. Do not substitute another airline, another
+  time, or another price, and do not write a train or a bus for these legs.
+- Set "price_source": "Google Flights" and "price_confidence": "Fixed" on them.
+"""
+
+
+    # No flight and both ends in one country: the journey is by road or rail,
+    # and it has to appear in the plan. Without this the itinerary opened with
+    # sightseeing in the destination on Day 1 — a Kinniya traveller was shown a
+    # Colombo temple at 09:00 while really sitting on a six-hour bus, and every
+    # day after that was wrong by one.
+    if (not confirmed_flight) and first_leg and _same_country(departure_country, geo):
+        home = departure_city or "the traveller's home town"
+        ground_rules = f"""
+CRITICAL — GETTING THERE AND BACK (no flight on this route):
+- {home} and {first_leg['city']} are in the same country and there is no flight. The traveller travels overland.
+- Day 1 MUST OPEN with a "transport" activity named "Travel: {home} -> {first_leg['city']}" giving the realistic mode (bus, train, or private car), the departure time, the journey time, and the fare for {travelers} traveller(s) found via search.
+- Day {days} MUST END with the journey home, named "Travel: {(last_leg or first_leg)['city']} -> {home}", with the same detail.
+- Plan Day 1 and Day {days} AROUND those journeys. If the journey takes most of the day, schedule only what genuinely fits after it — do not fill a travel day with sightseeing.
+- Never write an arrival by air, an airport transfer, or a flight number anywhere in this plan.
+"""
+        arrival_rules = ground_rules
+
     if confirmed_flight and (confirmed_flight.get("title") or confirmed_flight.get("name")):
         f_name = confirmed_flight.get("title") or confirmed_flight.get("name")
         f_route = confirmed_flight.get("route", "")
@@ -3914,7 +4648,7 @@ Trip brief:
 {route_rules}
 {hotel_rules}
 {flight_rules}
-{arrival_rules}
+{hop_rules}{arrival_rules}
 {departure_rules}
 {ground_transport_rules}
 {visa_rules}
@@ -3992,7 +4726,7 @@ Return ONLY a JSON object with EXACTLY this shape:
           "name": "Place or activity name",
           "tip": "Short practical tip, under 12 words",
           "hours": "Real opening hours if attraction/dining/accommodation and confirmed via search; OMIT this key when not confirmed",
-          "cost": "{currency} amount or 'Free'",
+          "cost_per_person": "ONE adult's price as a bare number in {currency} - digits only, no symbol, no range, no words; 0 when free",
           "price_source": "Short source name actually found via search (site, publisher or official page) — a name, not a sentence",
           "price_basis": "Under 15 words: the anchor rate/figure found and any conversion applied",
           "price_confidence": "Fixed | Typical | Estimated",
@@ -4013,16 +4747,16 @@ Return ONLY a JSON object with EXACTLY this shape:
 }}
 
 Rules for "type" field in each activity:
-- "transport": Travel/transit between locations. Cost = estimated fare.
-- "attraction": Ticketed landmarks, museums, temples, parks. Cost = ticket price.
-- "dining": Meals (Breakfast, Lunch, Dinner). Cost = estimated meal cost. MUST include "restaurants" array with up to 2 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
-- "exploration": Free self-guided walking, public markets, viewpoints. Cost = "Free".
-- "accommodation": Hotel check-in/check-out. Cost = "Free" (room cost lives in budget_breakdown).
+- "transport": Travel/transit between locations. cost_per_person = one adult fare.
+- "attraction": Ticketed landmarks, museums, temples, parks. cost_per_person = one adult ticket.
+- "dining": Meals (Breakfast, Lunch, Dinner). cost_per_person = one adult meal. MUST include "restaurants" array with up to 2 real top-rated dining suggestions with name, cuisine, price_range, rating, and tip. For non-dining activities, keep "restaurants": [].
+- "exploration": Free self-guided walking, public markets, viewpoints. cost_per_person = 0.
+- "accommodation": Hotel check-in/check-out. cost_per_person = 0 (room cost lives in budget_breakdown).
 - "other": Any other activity.
 
 General rules:
 - Produce exactly {days} entries in "day_plans", each with 3-5 activities.
-- Keep the SUM of all activity costs within the "activities" and "food" budget portion of {int(budget)} {currency}.
+- "cost_per_person" is ALWAYS one adult share, never the group total: the party figure is worked out afterwards. {travelers} traveller(s) are going, so keep the sum of every cost_per_person x {travelers} inside the "activities" and "food" portion of {int(budget)} {currency}.
 - Use real, recognisable places in and around {dest_anchor}.
 - Be concise; tips under ~12 words, "price_basis" under 15 words. Every string is plain text — no markdown.
 - Output MINIFIED JSON on a single line: no indentation, no line breaks between keys, no code fences, no commentary. The response is parsed by a machine; whitespace only costs.

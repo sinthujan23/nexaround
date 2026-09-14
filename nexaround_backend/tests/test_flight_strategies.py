@@ -443,14 +443,109 @@ def test_a_fare_above_the_ceiling_is_never_shown():
             _option(130, [_leg("CMB", "DOH", "B", "B 1")], 1500, layovers=1),
         ],
         "other_flights": [
-            _option(500, [_leg("CMB", "ZRH", "C", "C 1")], 1400, layovers=0),
+            _option(500, [_leg("CMB", "AUH", "C", "C 1"), _leg("AUH", "ZRH", "C", "C 2")],
+                    1400, layovers=2),
         ],
     }
     fares = [s["price_per_traveler"] for s in _extract(data=data)["strategies"]]
     assert fares == [100, 130]
     # Dropped knowingly: it was the quickest itinerary on the route, but 5x the
-    # cheapest fare buys 100 minutes.
+    # cheapest fare buys 100 minutes. Two stops, like the fare it is measured
+    # against — a *non-stop* at this price is kept, and has its own test below.
     assert 500 not in fares
+
+
+def test_a_direct_flight_is_shown_however_dear_it_is():
+    """"Is there a direct flight?" is the traveller's question, not ours.
+
+    A live Colombo->Gatwick search carried exactly one non-stop, at 71,538
+    against a 35,237 cheapest connection — 2.03x, and the fare ceiling dropped
+    it for being 3% over. The price is the traveller's to weigh; withholding
+    the only direct flight on the route is not a budget decision.
+    """
+    data = {
+        "best_flights": [
+            _option(100, [_leg("CMB", "AUH", "A", "A 1"), _leg("AUH", "LGW", "A", "A 2")], 1800, layovers=2),
+            _option(130, [_leg("CMB", "DOH", "B", "B 1"), _leg("DOH", "LGW", "B", "B 2")], 1500, layovers=2),
+        ],
+        "other_flights": [
+            _option(500, [_leg("CMB", "LGW", "C", "C 1", minutes=700)], 700, layovers=0),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert 500 in [s["price_per_traveler"] for s in strategies]
+    direct = [s for s in strategies if s["stops"] == 0]
+    assert len(direct) == 1
+    # Price order still holds, so the direct fare lands on the dearest card and
+    # the budget, which reads the middle one, does not move.
+    assert direct[0]["tier"] == "comfortable"
+    assert [s["price_per_traveler"] for s in strategies] == [100, 130, 500]
+
+
+def test_only_the_best_direct_fare_escapes_the_ceiling():
+    """One exemption, not an open door for every non-stop on the route.
+
+    Cached Cairo->Aswan results list the same non-stop from 5,360 up to 19,396.
+    If the exemption were per-option rather than per-route, a business-class
+    seat on the same aircraft could reach the middle card — the one the budget
+    prices itself from.
+    """
+    data = {
+        "best_flights": [
+            _option(100, [_leg("CMB", "AUH", "A", "A 1"), _leg("AUH", "LGW", "A", "A 2")], 1800, layovers=2),
+        ],
+        "other_flights": [
+            _option(500, [_leg("CMB", "LGW", "C", "C 1", minutes=700)], 700, layovers=0),
+            _option(900, [_leg("CMB", "LGW", "D", "D 1", minutes=690)], 690, layovers=0),
+        ],
+    }
+    fares = [s["price_per_traveler"] for s in _extract(data=data)["strategies"]]
+    assert fares == [100, 500]
+    assert 900 not in fares
+
+
+def test_a_route_with_no_direct_flight_is_unaffected():
+    """28 of 30 live routes in cache have no non-stop at all — they must not move."""
+    data = {
+        "best_flights": [
+            _option(100, [_leg("CMB", "AUH", "A", "A 1"), _leg("AUH", "ZRH", "A", "A 2")], 1800, layovers=2),
+            _option(130, [_leg("CMB", "DOH", "B", "B 1"), _leg("DOH", "ZRH", "B", "B 2")], 1500, layovers=2),
+        ],
+        "other_flights": [
+            _option(500, [_leg("CMB", "DXB", "C", "C 1"), _leg("DXB", "ZRH", "C", "C 2")], 1400, layovers=2),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert [s["price_per_traveler"] for s in strategies] == [100, 130]
+    assert all(s["stops"] > 0 for s in strategies)
+
+
+def test_a_cheap_direct_flight_needs_no_exemption():
+    """Cairo->Aswan: the non-stop is also the cheapest fare, so it is Minimum."""
+    data = {
+        "best_flights": [
+            _option(5360, [_leg("CAI", "ASW", "Air Cairo", "SM 1", minutes=80)], 80, layovers=0),
+            _option(9000, [_leg("CAI", "LXR", "X", "X 1"), _leg("LXR", "ASW", "X", "X 2")], 300, layovers=2),
+        ],
+    }
+    strategies = _extract(data=data)["strategies"]
+    assert strategies[0]["tier"] == "minimum"
+    assert strategies[0]["stops"] == 0
+    assert strategies[0]["price_per_traveler"] == 5360
+
+
+def test_the_direct_card_names_itself_in_its_header():
+    """No badge needed: the header already states the connections."""
+    data = {
+        "best_flights": [
+            _option(100, [_leg("CMB", "AUH", "A", "A 1"), _leg("AUH", "LGW", "A", "A 2")], 1800, layovers=2),
+        ],
+        "other_flights": [
+            _option(500, [_leg("CMB", "LGW", "C", "C 1", minutes=705)], 705, layovers=0),
+        ],
+    }
+    titles = [s["title"] for s in _extract(data=data)["strategies"]]
+    assert "Non-stop · 11h 45m" in titles
 
 
 def test_the_fast_card_is_the_cheapest_of_the_near_identical_ones():
@@ -557,3 +652,81 @@ def test_the_badge_and_tip_are_blank_so_older_builds_drop_them():
         assert s["estimated_savings"] == ""
         assert s["tip"] == ""
         assert s["title"], "an empty title would leave a blank card header"
+
+
+
+# ── Which fare the budget note describes ────────────────────────────────────
+
+def _fs(*strategies):
+    return {"strategies": list(strategies)}
+
+
+def _fare(tier, price, stops, live=True):
+    s = {"tier": tier, "price_per_traveler": float(price), "stops": stops}
+    if live:
+        s["is_live_price"] = True
+    return s
+
+
+def test_an_estimated_fare_is_never_reported_as_direct():
+    """`_structure_ai_flight_strategies` defaults a missing `stops` to 0.
+
+    A model that simply said nothing about connections would otherwise have the
+    budget note announce "Based on Best Value Direct Flight" for a route nobody
+    checked. Only a live Google fare can answer this question.
+    """
+    from app.services.odyssey_ai_service import budget_flight_basis
+
+    assert budget_flight_basis(_fs(_fare("recommended", 500, 0))) == "direct"
+    assert budget_flight_basis(
+        _fs(_fare("recommended", 500, 0, live=False)),
+    ) == "estimated"
+
+
+def test_the_basis_describes_the_fare_the_budget_actually_used():
+    """The budget reads the Recommended card, so the note must describe it."""
+    from app.services.odyssey_ai_service import budget_flight_basis
+
+    # Direct flight on the dearest card, which the budget does not price from.
+    assert budget_flight_basis(_fs(
+        _fare("minimum", 35237, 1),
+        _fare("recommended", 38417, 1),
+        _fare("comfortable", 71538, 0),
+    )) == "connecting"
+
+    # Cairo->Aswan: the non-stop is also the cheapest, so it is the budget's.
+    assert budget_flight_basis(_fs(
+        _fare("minimum", 5360, 0),
+        _fare("recommended", 9000, 2),
+    ), tier="minimum") == "direct"
+
+
+def test_a_thin_route_falls_back_to_the_fare_the_budget_fell_back_to():
+    """Two cards means no `recommended`; `_tier_flight_cost` takes the cheapest."""
+    from app.services.odyssey_ai_service import budget_flight_basis
+
+    assert budget_flight_basis(_fs(
+        _fare("minimum", 5360, 0),
+        _fare("comfortable", 15339, 0),
+    )) == "direct"
+    assert budget_flight_basis(_fs(
+        _fare("minimum", 35237, 2),
+        _fare("comfortable", 71538, 0),
+    )) == "connecting"
+
+
+def test_no_fare_at_all_describes_no_flight():
+    """Seen on a stored Colombo plan: no flight cards, yet the note named one."""
+    from app.services.odyssey_ai_service import budget_flight_basis, _budget_notes
+
+    assert budget_flight_basis(None) == "none"
+    assert budget_flight_basis({}) == "none"
+    assert budget_flight_basis(_fs()) == "none"
+    assert budget_flight_basis(_fs(_fare("recommended", 0, 0))) == "none"
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="none", no_airfare=False,
+    )
+    assert "transit" not in n
+    assert "flight" not in n["summary"]
+    assert n["summary"] == "Cheapest 3-star+ room, 1 per person"

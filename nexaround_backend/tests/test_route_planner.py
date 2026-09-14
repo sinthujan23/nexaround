@@ -10,6 +10,8 @@ prompt is told to open with the transfer in and close with the transfer out.
 Nothing here touches the network.
 """
 import asyncio
+import re
+from types import SimpleNamespace
 import json
 
 import pytest
@@ -88,7 +90,7 @@ AIRPORTS = {
 @pytest.fixture
 def located(monkeypatch):
     """Airport coordinates without Places: the static table above."""
-    async def _geo(code, geo, budget=None):
+    async def _geo(code, geo, budget=None, city=""):
         return AIRPORTS.get(code)
     monkeypatch.setattr(svc, "_airport_geo", _geo)
 
@@ -496,10 +498,9 @@ class _RecordingSerp:
 def serp(monkeypatch):
     _RecordingSerp.searches = []
     monkeypatch.setattr(svc, "SerpApiService", _RecordingSerp)
-
-    async def _no_prose(data, **kw):
-        return data
-    monkeypatch.setattr(svc, "_add_flight_prose", _no_prose)
+    # Nothing is stubbed past the search itself. A prose pass used to be
+    # stubbed out here, and while it was stubbed it went on rewriting every
+    # card title in production — the tests could not see it.
     return _RecordingSerp
 
 
@@ -549,6 +550,30 @@ def test_same_gateway_route_is_a_round_trip_with_one_return_lookup(serp):
     assert all(s["return"] is None for s in others)
 
 
+def test_card_copy_survives_the_whole_pipeline(serp):
+    """The headers the extractor writes must reach the app unaltered.
+
+    `_add_flight_prose` sat between the two and rewrote title, description and
+    tip with model-written copy — "Budget-Friendly Colombo to Moscow" over a
+    factual header, "the best chance at securing your fare" in the tip. Every
+    test that touched this path stubbed it out, so nothing caught it. This
+    asserts on the output of the real pipeline instead.
+    """
+    route = RoutePlan(
+        legs=[{"city": "Delhi", "start_day": 1, "end_day": 9, "nights": 8}],
+        arrival={"iata": "DEL", "city": "Delhi"}, departure={"iata": "DEL", "city": "Delhi"},
+        arrival_code="DEL", departure_code="DEL", source="planner",
+    )
+    strategies = _flights(route)["strategies"]
+    assert strategies
+    for s in strategies:
+        assert s["tip"] == "" and s["estimated_savings"] == ""
+        assert re.match(r"^(Non-stop|\d+ stops?) · \d+h \d+m$", s["title"]), s["title"]
+        copy = f"{s['title']} {s['description']} {s['tip']}".lower()
+        for word in ("best", "value", "cheapest", "fastest", "fewest", "budget-friendly"):
+            assert word not in copy, f"{word!r} reached the app in {copy!r}"
+
+
 def test_without_a_route_the_destination_is_resolved_as_before(serp):
     result = _flights(None, destination="Delhi")
     assert serp.searches[0]["destination"] == "DEL"
@@ -559,8 +584,11 @@ def test_without_a_route_the_destination_is_resolved_as_before(serp):
 def test_a_gateway_shared_with_the_origin_means_no_flights(serp):
     route = RoutePlan(legs=[{"city": "Kandy", "start_day": 1, "end_day": 9, "nights": 8}],
                       arrival_code="CMB", departure_code="CMB")
-    assert _flights(route) == {}
-    assert serp.searches == []
+    result = _flights(route)
+    assert result["strategies"] == []
+    assert result["unavailable_reason"] == "same_airport"
+    assert "no flight to book" in result["unavailable_message"]
+    assert serp.searches == [], "a shared gateway must not cost a search"
 
 
 # ── The itinerary prompt ────────────────────────────────────────────────────
@@ -811,3 +839,472 @@ def test_output_budget_scales_with_the_trip():
     assert svc._itinerary_token_budget(14) >= 20000
     assert svc._itinerary_token_budget(14) <= svc._ITINERARY_TOKENS_MAX
     assert svc._itinerary_timeout_s(14) > svc._itinerary_timeout_s(3) >= 90
+
+
+def test_the_header_is_rewritten_when_the_return_leg_lands():
+    """A round-trip card is built before its return is priced, so its header
+    quoted the outbound alone: "1 stop · 10h 55m" over a 22h 35m journey."""
+    result = _round_trip()
+    s = next(x for x in result["strategies"] if x["tier"] == "minimum")
+    before = s["title"]
+    assert attach_return_leg(s, ROUND_TRIP_RETURN, currency="USD", return_date="2026-11-09")
+    assert s["title"] != before
+    mins = s["total_duration_minutes"]
+    assert s["title"].endswith(f"{mins // 60}h {mins % 60}m"), (s["title"], mins)
+
+
+# ── Locating an airport by its code ─────────────────────────────────────────
+
+
+def test_an_airport_is_looked_up_with_its_city_and_country(monkeypatch):
+    """A bare code is ambiguous and the wrong answer is silent.
+
+    "RAK airport" resolves to Ras Al Khaimah in the UAE. A live Morocco plan
+    therefore rejected Marrakesh's own airport as foreign and flew the
+    traveller into Casablanca, 197 km from the first city — and cached that
+    for a month under a key with no country in it, so every Morocco plan would
+    have done the same.
+    """
+    seen = {}
+
+    async def _verify(query, **kw):
+        seen["query"] = query
+        return SimpleNamespace(
+            checked=True, latitude=31.6, longitude=-8.03,
+            country_code="MA", resolved_name="Marrakesh Menara Airport",
+        )
+
+    async def _get_raw(key):
+        seen["cache_key"] = key
+        return None
+
+    async def _set_raw(key, value, ttl=0):
+        return None
+
+    monkeypatch.setattr(svc.geo_resolver, "verify_place", _verify)
+    monkeypatch.setattr(svc.place_cache_service, "get_raw", _get_raw)
+    monkeypatch.setattr(svc.place_cache_service, "set_raw", _set_raw)
+
+    geo = svc.geo_resolver.DestinationContext(
+        query="Morocco", country="Morocco", country_code="MA", source="places",
+    )
+    found = asyncio.run(svc._airport_geo("RAK", geo, None, city="Marrakech"))
+
+    assert found and found["country_code"] == "MA"
+    assert "Morocco" in seen["query"], seen["query"]
+    assert "Marrakech" in seen["query"], seen["query"]
+    assert "RAK" in seen["query"], seen["query"]
+    # One country's answer must never be served to another's plan.
+    assert "MA" in seen["cache_key"], seen["cache_key"]
+    assert not seen["cache_key"].startswith("geo:airport:v1:"), "stale cache generation"
+
+
+# ── The legs and the itinerary must agree about the travel day ──────────────
+#
+# The legs book the hotels; the day plans are what the traveller follows. A
+# live Rome/Florence/Venice/Milan trip ran every train one day before its leg
+# began, so the traveller slept in the next city with a room booked in the
+# last one — Rome over-booked by a night, Milan under-booked by one.
+
+
+def _italy_legs():
+    return [
+        {"city": "Rome",     "start_day": 1,  "end_day": 5,  "nights": 5},
+        {"city": "Florence", "start_day": 6,  "end_day": 9,  "nights": 4},
+        {"city": "Venice",   "start_day": 10, "end_day": 12, "nights": 3},
+        {"city": "Milan",    "start_day": 13, "end_day": 14, "nights": 1},
+    ]
+
+
+def _italy_days():
+    travel = {5: "Train: Rome → Florence", 9: "Train: Florence → Venice",
+              12: "Train: Venice → Milan"}
+    days = []
+    for n in range(1, 15):
+        acts = [{"time": "09:00", "name": "Morning at Leisure", "type": "exploration"}]
+        if n in travel:
+            acts.insert(0, {"time": "08:00", "name": travel[n], "type": "transport"})
+        days.append({"day": n, "theme": f"Day {n}", "activities": acts})
+    return days
+
+
+def test_a_leg_boundary_follows_the_day_the_itinerary_travels():
+    legs = _italy_legs()
+    moved = svc._align_legs_to_itinerary(legs, _italy_days(), 14)
+    assert len(moved) == 3, moved
+    assert [(l["city"], l["start_day"], l["end_day"]) for l in legs] == [
+        ("Rome", 1, 4), ("Florence", 5, 8), ("Venice", 9, 11), ("Milan", 12, 14),
+    ]
+
+
+def test_realigned_nights_still_add_up_to_the_trip():
+    legs = _italy_legs()
+    svc._align_legs_to_itinerary(legs, _italy_days(), 14)
+    # 14 days away is 13 nights: the last day is the flight home.
+    assert sum(l["nights"] for l in legs) == 13
+    assert [l["nights"] for l in legs] == [4, 4, 3, 2]
+
+
+def test_legs_that_already_agree_are_left_alone():
+    legs = [
+        {"city": "Cairo",  "start_day": 1, "end_day": 4,  "nights": 4},
+        {"city": "Aswan",  "start_day": 5, "end_day": 14, "nights": 9},
+    ]
+    days = [{"day": n, "theme": "", "activities":
+             ([{"name": "Flight: Cairo → Aswan", "type": "transport"}] if n == 5 else [])}
+            for n in range(1, 15)]
+    assert svc._align_legs_to_itinerary(legs, days, 14) == []
+    assert [(l["start_day"], l["end_day"]) for l in legs] == [(1, 4), (5, 14)]
+
+
+def test_a_boundary_is_not_moved_so_far_it_empties_a_city():
+    """A stray "to Florence" on day 1 must not wipe out Rome."""
+    legs = _italy_legs()
+    days = [{"day": n, "theme": "", "activities":
+             ([{"name": "Transfer to Florence", "type": "transport"}] if n == 1 else [])}
+            for n in range(1, 15)]
+    moved = svc._align_legs_to_itinerary(legs, days, 14)
+    assert legs[0]["start_day"] == 1 and legs[0]["end_day"] == 5
+    assert any("no nights" in m for m in moved), moved
+
+
+def test_stays_are_retotalled_when_a_boundary_moves():
+    legs = _italy_legs()
+    svc._align_legs_to_itinerary(legs, _italy_days(), 14)
+    hotels = {"strategies": [
+        {"city": "Rome",  "leg_index": 0, "price_per_night": "EUR 100",
+         "nights": 5, "rooms": 2, "total_estimated_cost": "EUR 1,000"},
+        {"city": "Milan", "leg_index": 3, "price_per_night": "EUR 80",
+         "nights": 1, "rooms": 2, "total_estimated_cost": "EUR 160"},
+    ]}
+    svc._reprice_stays(hotels, legs, "EUR")
+    rome, milan = hotels["strategies"]
+    assert (rome["nights"], rome["total_estimated_cost"]) == (4, "EUR 800")
+    assert (milan["nights"], milan["total_estimated_cost"]) == (2, "EUR 320")
+
+
+# ── A route that cannot be flown, versus a lookup that failed ───────────────
+
+
+class _EmptyRouteSerp:
+    """Google answers, and the answer is that nothing flies this route."""
+
+    def __init__(self, key, **kw):
+        pass
+
+    async def search_flights(self, **kw):
+        return {"_serpapi_status": "no_results"}
+
+    async def search_flights_return(self, **kw):
+        return {"_serpapi_status": "no_results"}
+
+
+class _BrokenSerp:
+    """We never got an answer — a timeout, a spent quota, a 500."""
+
+    def __init__(self, key, **kw):
+        pass
+
+    async def search_flights(self, **kw):
+        return {}
+
+    async def search_flights_return(self, **kw):
+        return {}
+
+
+def _delhi_route():
+    return RoutePlan(
+        legs=[{"city": "Delhi", "start_day": 1, "end_day": 9, "nights": 8}],
+        arrival={"iata": "DEL", "city": "Delhi"}, departure={"iata": "DEL", "city": "Delhi"},
+        arrival_code="DEL", departure_code="DEL", source="planner",
+    )
+
+
+def test_an_unflyable_route_returns_no_fares_and_says_why(monkeypatch):
+    """No airline flies it, so there is no fare at any price to invent."""
+    monkeypatch.setattr(svc, "SerpApiService", _EmptyRouteSerp)
+    result = _flights(_delhi_route())
+    assert result["strategies"] == []
+    assert result["flights_available"] is False
+    assert result["unavailable_reason"] == "none_found"
+    message = result["unavailable_message"]
+    # Named for the traveller, not the routing table: "Delhi", not "DEL".
+    assert "Delhi" in message and "2026-11-01" in message, message
+    assert "no route" in message.lower()
+
+
+def test_a_failed_lookup_still_offers_estimated_fares(monkeypatch):
+    """Flights probably do exist; the failure was ours, and the cards say so."""
+    async def _estimate(prompt, api_key, **kw):
+        return json.dumps({"strategies": [{
+            "title": "x", "estimated_price_range": "USD 400 - 600",
+            "route": "CMB → DEL", "return_route": "DEL → CMB",
+            "airlines": ["IndiGo"], "stops": 1, "total_duration": "6h 30m",
+            "return_duration": "6h 10m",
+        }]}), []
+
+    monkeypatch.setattr(svc, "SerpApiService", _BrokenSerp)
+    monkeypatch.setattr(svc, "_call_gemini", _estimate)
+    result = _flights(_delhi_route(), api_key="k")
+    assert result.get("flights_available") is not False
+    assert result.get("unavailable_reason") in (None, "")
+    assert result["strategies"], "a failed lookup must not empty the section"
+    assert all(s["is_live_price"] is False for s in result["strategies"])
+
+
+def test_a_domestic_hop_says_take_the_road_not_no_flights(serp):
+    """Kinniya and Colombo both resolve to CMB, so nothing flies between them.
+
+    This used to return a bare {} and the section vanished — a traveller
+    planning the journey locals make by bus got an itinerary, a hotel list and
+    no word on how to get there.
+    """
+    result = asyncio.run(svc.generate_flight_strategies(
+        departure_city="Kinniya", departure_country="Sri Lanka", destination="Colombo",
+        days=5, budget=40000, currency="LKR", travelers=2,
+        flight_start_date="2026-11-02", flight_end_date="2026-11-06",
+        api_key="", serpapi_key="", destination_geo=None, route_plan=None,
+    ))
+    assert result["strategies"] == []
+    assert result["flights_available"] is False
+    assert result["unavailable_reason"] == "same_airport"
+    message = result["unavailable_message"]
+    assert "Kinniya" in message and "Colombo" in message and "CMB" in message
+    assert "road or rail" in message
+    # Nothing here may read as a fare for a flight that does not exist.
+    assert "price_per_traveler" not in result
+
+
+def test_an_unknown_departure_says_so_rather_than_vanishing(serp):
+    result = asyncio.run(svc.generate_flight_strategies(
+        departure_city="Xyzzy Nowhere Township", departure_country="", destination="Colombo",
+        days=5, budget=40000, currency="LKR", travelers=2,
+        flight_start_date="2026-11-02", flight_end_date="2026-11-06",
+        api_key="", serpapi_key="", destination_geo=None, route_plan=None,
+    ))
+    assert result["unavailable_reason"] == "no_airport"
+    assert "Xyzzy Nowhere Township" in result["unavailable_message"]
+
+
+def test_every_empty_flight_section_carries_a_reason(serp):
+    """Three different roads to an empty section; none may be silent."""
+    cases = [
+        ("Kinniya", "Colombo", "same_airport"),
+        ("Xyzzy Nowhere Township", "Colombo", "no_airport"),
+    ]
+    for departure, destination, expected in cases:
+        result = asyncio.run(svc.generate_flight_strategies(
+            departure_city=departure, departure_country="Sri Lanka", destination=destination,
+            days=5, budget=40000, currency="LKR", travelers=2,
+            flight_start_date="2026-11-02", flight_end_date="2026-11-06",
+            api_key="", serpapi_key="", destination_geo=None, route_plan=None,
+        ))
+        assert result.get("unavailable_reason") == expected
+        assert result.get("unavailable_message"), f"{departure} -> {destination} said nothing"
+
+
+# ── Getting there when there is no flight ───────────────────────────────────
+
+
+def _ground_prompt(departure_country, country, country_code, city, home="Kinniya"):
+    return svc._build_prompt(
+        city, "Cultural", 40000, 5, "LKR", travelers=2,
+        departure_city=home, departure_country=departure_country,
+        legs=[{"city": city, "start_day": 1, "end_day": 5, "nights": 4,
+               "latitude": 6.93, "longitude": 79.86}],
+        geo=svc.geo_resolver.DestinationContext(
+            query=city, country=country, country_code=country_code, source="places"),
+    )
+
+
+def test_a_domestic_trip_with_no_flight_plans_the_road_journey():
+    """Day 1 used to open with sightseeing in the destination, while the
+    traveller was really on a six-hour bus — and every day after was wrong."""
+    prompt = _ground_prompt("Sri Lanka", "Sri Lanka", "LK", "Colombo")
+    assert "GETTING THERE AND BACK" in prompt
+    assert "Travel: Kinniya -> Colombo" in prompt
+    assert "Travel: Colombo -> Kinniya" in prompt
+    assert "bus, train, or private car" in prompt
+    # A travel day is not a sightseeing day.
+    assert "do not fill a travel day with sightseeing" in prompt
+    # And nothing may pretend there was a flight.
+    assert "Never write an arrival by air" in prompt
+
+
+def test_an_international_trip_is_never_sent_overland():
+    """Colombo to Italy has no bus. Silence beats bad advice."""
+    prompt = _ground_prompt("Sri Lanka", "Italy", "IT", "Rome", home="Colombo")
+    assert "GETTING THERE AND BACK" not in prompt
+
+
+def test_an_unknown_destination_country_is_not_assumed_domestic():
+    prompt = svc._build_prompt(
+        "Somewhere", "Cultural", 40000, 5, "LKR", travelers=2,
+        departure_city="Kinniya", departure_country="Sri Lanka",
+        legs=[{"city": "Somewhere", "start_day": 1, "end_day": 5, "nights": 4,
+               "latitude": 6.9, "longitude": 79.8}],
+        geo=None,
+    )
+    assert "GETTING THERE AND BACK" not in prompt
+
+
+def test_a_flight_trip_keeps_its_airport_transfers():
+    """The ground block must not displace the arrival logistics."""
+    prompt = svc._build_prompt(
+        "Colombo", "Cultural", 40000, 5, "LKR", travelers=2,
+        departure_city="Kinniya", departure_country="Sri Lanka",
+        legs=[{"city": "Colombo", "start_day": 1, "end_day": 5, "nights": 4,
+               "latitude": 6.93, "longitude": 79.86}],
+        geo=svc.geo_resolver.DestinationContext(
+            query="Colombo", country="Sri Lanka", country_code="LK", source="places"),
+        confirmed_flight={
+            "title": "1 stop · 4h 0m", "route": "MAA → CMB", "currency": "LKR",
+            "price_per_traveler": 30000, "trip_type": "round_trip",
+            "outbound": {"origin": "MAA", "destination": "CMB"},
+        },
+    )
+    assert "GETTING THERE AND BACK" not in prompt
+    # (No ARRIVAL LOGISTICS here: the flight lands at CMB and the first night
+    # is in Colombo, so there is no transfer to describe.)
+    assert "CONFIRMED FLIGHTS" in prompt
+
+
+# ── Flights between cities inside the trip ──────────────────────────────────
+#
+# A leg the planner marks "arrive_by": "flight" is a real ticket, and it was
+# the one flight nobody priced: the model wrote a figure and credited it to a
+# site it had never asked. Two saved plans put the same one-hour Egyptian hop
+# at INR 10,000 and INR 20,000, neither with a booking link.
+
+
+HOP = {
+    "best_flights": [
+        _option(90, [_leg("CAI", "ASW", "EgyptAir", "MS 81", minutes=80)], 80),
+    ],
+    "other_flights": [
+        _option(140, [_leg("CAI", "ASW", "Nile Air", "NP 5", minutes=95)], 95),
+    ],
+}
+
+
+class _HopSerp:
+    searches = []
+
+    def __init__(self, key, **kw):
+        pass
+
+    async def search_flights(self, **kw):
+        _HopSerp.searches.append(kw)
+        return HOP
+
+    async def search_flights_return(self, **kw):
+        return {}
+
+
+def _egypt_legs():
+    return [
+        {"city": "Cairo", "start_day": 1, "end_day": 4, "nights": 4,
+         "latitude": 30.04, "longitude": 31.24, "arrive_by": "none"},
+        {"city": "Aswan", "start_day": 5, "end_day": 9, "nights": 4,
+         "latitude": 24.09, "longitude": 32.90, "arrive_by": "flight"},
+    ]
+
+
+# Aswan and Luxor are not in the static airport table, so resolving them costs
+# a Gemini lookup. These tests are about the hop, not the lookup.
+_HOP_CODES = {"Cairo": "CAI", "Aswan": "ASW", "Luxor": "LXR", "Hurghada": "HRG"}
+
+
+def _hops(monkeypatch, legs=None, **kw):
+    _HopSerp.searches = []
+    monkeypatch.setattr(svc, "SerpApiService", _HopSerp)
+
+    async def _code(place, country, api_key, **kwargs):
+        if place in _HOP_CODES:
+            return _HOP_CODES[place]
+        # Distinct per city, so a capped run is genuinely capped and not just
+        # skipped for sharing an airport with the leg before it.
+        return f"Z{str(place)[-1]}" if str(place).startswith("City") else ""
+
+    monkeypatch.setattr(svc, "_resolve_airport_code", _code)
+    args = dict(
+        legs=legs if legs is not None else _egypt_legs(),
+        geo=svc.geo_resolver.DestinationContext(
+            query="Egypt", country="Egypt", country_code="EG", source="places"),
+        currency="INR", travelers=2, start_date="2026-11-02",
+        api_key="", serpapi_key="k",
+    )
+    args.update(kw)
+    return asyncio.run(svc.generate_inter_city_flights(**args))
+
+
+def test_a_flown_leg_is_priced_from_google(monkeypatch):
+    hops = _hops(monkeypatch)
+    assert len(hops) == 1
+    hop = hops[0]
+    assert hop["from_city"] == "Cairo" and hop["to_city"] == "Aswan"
+    assert hop["day"] == 5 and hop["date"] == "2026-11-06"   # day 5 of a 2 Nov start
+    assert hop["price_per_traveler"] == 90 and hop["price_total"] == 180
+    assert hop["is_live_price"] is True
+    assert hop["price_source"] == "google_flights_serpapi"
+    assert hop["booking_url"], "a priced hop must be bookable"
+    # The cheapest of the two, not whichever Google listed first.
+    assert hop["airlines"] == ["EgyptAir"]
+
+
+def test_the_hop_search_is_one_way_on_the_travel_date(monkeypatch):
+    _hops(monkeypatch)
+    assert len(_HopSerp.searches) == 1
+    search = _HopSerp.searches[0]
+    assert search["one_way"] is True
+    assert search["return_date"] == ""
+    assert search["outbound_date"] == "2026-11-06"
+    assert search["adults"] == 1, "the fare must stay per-traveller"
+
+
+def test_legs_reached_by_road_cost_no_search(monkeypatch):
+    legs = _egypt_legs()
+    legs[1]["arrive_by"] = "train"
+    assert _hops(monkeypatch, legs=legs) == []
+    assert _HopSerp.searches == []
+
+
+def test_the_number_of_searches_is_capped(monkeypatch):
+    legs = [{"city": f"City{i}", "start_day": i, "end_day": i, "nights": 1,
+             "latitude": 30.0, "longitude": 31.0,
+             "arrive_by": "none" if i == 1 else "flight"} for i in range(1, 9)]
+    hops = _hops(monkeypatch, legs=legs)
+    # Seven flown legs offered; only the cap is bought.
+    assert sum(1 for l in legs if l["arrive_by"] == "flight") == 7
+    assert len(hops) == svc._MAX_HOP_SEARCHES
+    assert len(_HopSerp.searches) == svc._MAX_HOP_SEARCHES
+
+
+def test_no_serpapi_key_means_no_hop_searches(monkeypatch):
+    assert _hops(monkeypatch, serpapi_key="") == []
+
+
+def test_the_itinerary_carries_the_searched_fare_not_the_models(monkeypatch):
+    """The prompt asks; this guarantees. The model never owns a flight price."""
+    days = [{"day": 5, "activities": [
+        {"type": "transport", "name": "Flight: Cairo -> Aswan",
+         "cost": "INR 20,000", "price_source": "Skyscanner, Expedia"},
+        {"type": "dining", "name": "Lunch in Aswan", "cost": "INR 900"},
+    ]}]
+    hops = _hops(monkeypatch)
+    assert svc._apply_inter_city_fares(days, hops) == 1
+    flight, lunch = days[0]["activities"]
+    assert flight["cost"] == "INR 180"
+    assert flight["price_source"] == "Google Flights"
+    assert flight["price_confidence"] == "Fixed"
+    assert flight["booking_url"]
+    assert "each x 2 travellers" in flight["price_basis"]
+    # Nothing else on the day is touched.
+    assert lunch["cost"] == "INR 900" and "booking_url" not in lunch
+
+
+def test_an_unmatched_hop_changes_nothing(monkeypatch):
+    days = [{"day": 5, "activities": [{"type": "dining", "name": "Lunch", "cost": "INR 900"}]}]
+    before = json.dumps(days, sort_keys=True)
+    assert svc._apply_inter_city_fares(days, _hops(monkeypatch)) == 0
+    assert json.dumps(days, sort_keys=True) == before

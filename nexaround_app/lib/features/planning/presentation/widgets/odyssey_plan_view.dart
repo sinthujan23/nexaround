@@ -860,8 +860,14 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
             _scenarioToggle(),
             const SizedBox(height: 12),
           ],
+          // Said the opposite of the figures beside it: the nightly rate is
+          // per room, and Est. Total has been `nightly x nights x rooms` — a
+          // party total — since city legs landed. Now that rooms are one per
+          // traveller the old wording would understate the stay by half, so it
+          // states the basis and the one lever the traveller actually has.
           _buildPriceDisclaimerBanner(
-            'Hotel prices shown are per traveler, not the total cost for your group.',
+            'Nightly rates are per room. Est. Total books one room per '
+            'traveller for the whole stay — share rooms and it comes down.',
           ),
           const SizedBox(height: 12),
           HotelStrategiesSection(odyssey: widget.odyssey, highlightScenario: _selectedScenario),
@@ -1486,6 +1492,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final activeKey = scenarios.containsKey(_selectedScenario) ? _selectedScenario : 'recommended';
     final bd = scenarios[activeKey] ?? widget.odyssey.budgetBreakdown;
     final currency = widget.odyssey.currency;
+    final notes = widget.odyssey.budgetNotes;
     final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : widget.odyssey.budget;
 
     // Default category estimates if breakdown dictionary is empty
@@ -1583,6 +1590,39 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               ],
             ),
           ),
+        // A note about what this budget does and does not cover. Written by
+        // the backend and, until now, parsed into the model and never drawn:
+        // when no flights exist for the route the transit line covers ground
+        // transport only, and nothing on screen said so.
+        if (widget.odyssey.budgetAdvisory.isNotEmpty)
+          Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE3F2FD),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFF90CAF9)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline_rounded,
+                    color: Color(0xFF1565C0), size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    widget.odyssey.budgetAdvisory,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0D47A1),
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         Container(
           margin: const EdgeInsets.only(bottom: 16),
           padding: const EdgeInsets.all(20),
@@ -1604,11 +1644,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Row(
+                  Row(
                     children: [
-                      Icon(Icons.account_balance_wallet_rounded, size: 20, color: Colors.black),
-                      SizedBox(width: 8),
-                      Text(
+                      const Icon(Icons.account_balance_wallet_rounded, size: 20, color: Colors.black),
+                      const SizedBox(width: 8),
+                      const Text(
                         'BUDGET ALLOCATION',
                         style: TextStyle(
                           fontSize: 11,
@@ -1617,6 +1657,23 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      // Only offered when the backend sent something to show:
+                      // legacy Odysseys carry no notes and get no dead tap.
+                      if (notes['stay'] != null || notes['transit'] != null) ...[
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => _showBudgetBasisInfo(context, notes),
+                          child: const Padding(
+                            padding: EdgeInsets.all(4),
+                            child: Icon(
+                              Icons.info_outline_rounded,
+                              size: 13,
+                              color: Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   Container(
@@ -1645,6 +1702,21 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),
               categoryBar('Food & Dining', '🍔', food, const Color(0xFFD97706)),
               categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
+              // What these figures were priced from, in one line. The client
+              // asked for a sentence under Stay and another under Flights;
+              // two more lines inside the bars crowded the card, so the short
+              // form lives here and the full wording sits behind the tap above.
+              if ((notes['summary'] ?? '').isNotEmpty) ...[
+                const Divider(height: 20, thickness: 0.5),
+                Text(
+                  notes['summary']!,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    height: 1.35,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2624,6 +2696,128 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } catch (_) {}
+  }
+
+  /// Bottom sheet spelling out what the Budget Allocation figures were priced
+  /// from: the stay's room basis and the fare the transit line was built on.
+  ///
+  /// The card itself carries only the one-line short form. These are the
+  /// sentences the client asked for in full, and they are written by the
+  /// backend rather than composed here, so what the traveller reads always
+  /// matches what was actually priced — a note that says "Direct Flight" on a
+  /// route with no non-stop is worse than no note.
+  void _showBudgetBasisInfo(BuildContext context, Map<String, String> notes) {
+    Widget line(IconData icon, String label, String body, Color tint) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: tint.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, size: 18, color: tint),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.8,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    body,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      height: 1.4,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctxModal) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Text(
+                  'How this budget was worked out',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if ((notes['stay'] ?? '').isNotEmpty)
+                  line(
+                    Icons.hotel_rounded,
+                    'STAY / ACCOMMODATION',
+                    notes['stay']!,
+                    const Color(0xFF2563EB),
+                  ),
+                if ((notes['transit'] ?? '').isNotEmpty)
+                  line(
+                    Icons.flight_takeoff_rounded,
+                    'FLIGHTS & TRANSIT',
+                    notes['transit']!,
+                    const Color(0xFF0D9488),
+                  ),
+                const SizedBox(height: 2),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctxModal).pop(),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Bottom sheet detailing the source basis for an activity's estimated price

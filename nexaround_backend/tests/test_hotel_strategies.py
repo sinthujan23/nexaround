@@ -82,9 +82,9 @@ def test_unclassed_property_is_zero():
 # ── Rooms: the party-size half of the mismatch ──────────────────────────────
 
 @pytest.mark.parametrize("travelers,rooms", [
-    (1, 1), (2, 1),        # two to a room
-    (3, 2), (4, 2),
-    (5, 3), (6, 3),
+    (1, 1), (2, 2),        # one room each; sharing is the party's own call
+    (3, 3), (4, 4),
+    (5, 5), (6, 6),
     (0, 1), (None, 1),     # never zero rooms
 ])
 def test_rooms_for(travelers, rooms):
@@ -118,17 +118,19 @@ def _extract(**kw):
 
 
 def test_stay_total_is_per_party_not_per_room():
-    """Three travellers need two rooms, and the quote has to say so.
+    """Three travellers need three rooms, and the quote has to say so.
 
     Google's own `total_rate` for these dates is $200 — one room. The party
-    pays twice that, which is also what the budget allocation charges them.
+    pays three times that, which is also what the budget allocation charges
+    them. Sharing is the travellers' own decision to make against this figure;
+    a budget that has already assumed it cannot be corrected by anyone.
     """
     solo = _extract(travelers=1)["strategies"][1]
     trio = _extract(travelers=3)["strategies"][1]
 
-    assert solo["rooms"] == 1 and trio["rooms"] == 2
+    assert solo["rooms"] == 1 and trio["rooms"] == 3
     assert solo["total_estimated_cost"] == "USD 200"     # 40 x 5 x 1
-    assert trio["total_estimated_cost"] == "USD 400"     # 40 x 5 x 2
+    assert trio["total_estimated_cost"] == "USD 600"     # 40 x 5 x 3
 
 
 def test_stay_total_matches_the_budget_stay_line():
@@ -151,7 +153,7 @@ def test_stay_total_matches_the_budget_stay_line():
     # separators in the formatted total have to survive the round trip.
     tab_total = _extract_lowest_price(cheapest_card["total_estimated_cost"])
 
-    assert tab_total == budget_stay_line == 400.0
+    assert tab_total == budget_stay_line == 600.0
 
 
 def test_planned_nights_win_over_the_date_window():
@@ -166,7 +168,7 @@ def test_stay_total_defined_without_dates():
     s = extract_hotel_strategies_from_serpapi(
         FIXTURE, destination="Colombo", currency="USD", travelers=2, nights=4,
     )["strategies"][1]
-    assert s["total_estimated_cost"] == "USD 160"         # 40 x 4 x 1 room
+    assert s["total_estimated_cost"] == "USD 320"         # 40 x 4 x 2 rooms
 
 
 def test_star_class_reaches_the_app():
@@ -179,7 +181,7 @@ def test_tips_state_the_class_floor_not_an_average_rating():
     tips = _extract(travelers=3)["general_tips"]
     assert any("3-star class or above" in t for t in tips)
     assert not any("★ or higher" in t for t in tips)
-    assert any("5 nights x 2 rooms for 3 travellers" in t for t in tips)
+    assert any("5 nights x 3 rooms for 3 travellers" in t for t in tips)
 
 
 # ── The request Google actually receives, and what comes back ───────────────
@@ -426,7 +428,7 @@ def test_the_unfiltered_rung_keeps_everything_in_a_town_with_few_classed_hotels(
 
 
 def test_party_size_reaches_the_stay_total_end_to_end(monkeypatch):
-    """Four travellers, five nights, two rooms: 40 x 5 x 2.
+    """Four travellers, five nights, four rooms: 40 x 5 x 4.
 
     Stocked at every rung so the assertion is about party size alone and not
     about which class floor this particular budget happens to pick.
@@ -435,9 +437,9 @@ def test_party_size_reaches_the_stay_total_end_to_end(monkeypatch):
         monkeypatch, budget=4_000, travelers=4,
         results_by_class={4: CLASSED, 3: CLASSED},
     )
-    assert strategies[0]["rooms"] == 2
+    assert strategies[0]["rooms"] == 4
     assert strategies[0]["nights"] == 5
-    assert strategies[0]["total_estimated_cost"] == "USD 400"
+    assert strategies[0]["total_estimated_cost"] == "USD 800"
 
 
 def test_large_stay_total_survives_the_budget_parser():
@@ -454,8 +456,8 @@ def test_large_stay_total_survives_the_budget_parser():
         big, destination="Colombo", currency="USD", travelers=4, nights=5,
     )["strategies"][0]
 
-    assert s["total_estimated_cost"] == "USD 131,280"     # 13,128 x 5 x 2
-    assert _extract_lowest_price(s["total_estimated_cost"]) == 131_280.0
+    assert s["total_estimated_cost"] == "USD 262,560"     # 13,128 x 5 x 4
+    assert _extract_lowest_price(s["total_estimated_cost"]) == 262_560.0
 
 
 # ── The Gemini fallback, held to the same arithmetic ────────────────────────
@@ -485,9 +487,9 @@ def test_gemini_fallback_stay_total_is_recomputed(monkeypatch):
     ))
     s = result["strategies"][0]
 
-    assert s["nights"] == 5 and s["rooms"] == 2
-    # Gemini said 250 — one room. Three travellers need two.
-    assert s["total_estimated_cost"] == "USD 500"        # 50 x 5 x 2
+    assert s["nights"] == 5 and s["rooms"] == 3
+    # Gemini said 250 — one room. Three travellers need three.
+    assert s["total_estimated_cost"] == "USD 750"        # 50 x 5 x 3
 
 
 # ── The two screens, reconciled ─────────────────────────────────────────────
@@ -542,7 +544,7 @@ def test_multi_city_budget_stay_line_is_the_sum_of_each_leg_cheapest():
     """
     from app.services.odyssey_ai_service import _extract_lowest_price, required_stay_cost
 
-    travelers = 3          # 2 rooms
+    travelers = 3          # 3 rooms
     legs = [
         {"city": "Siem Reap", "nights": 3},
         {"city": "Phnom Penh", "nights": 2},
@@ -554,8 +556,8 @@ def test_multi_city_budget_stay_line_is_the_sum_of_each_leg_cheapest():
     )
 
     budget_line = required_stay_cost({"strategies": strategies}, legs, travelers)
-    # 30x3x2 + 45x2x2 + 25x4x2 = 180 + 180 + 200
-    assert budget_line == 560.0
+    # 30x3x3 + 45x2x3 + 25x4x3 = 270 + 270 + 300
+    assert budget_line == 840.0
 
     per_leg_cheapest = []
     for leg_index in range(len(legs)):
@@ -563,7 +565,7 @@ def test_multi_city_budget_stay_line_is_the_sum_of_each_leg_cheapest():
         cheapest = min(group, key=lambda s: _extract_lowest_price(s["price_per_night"]))
         per_leg_cheapest.append(_extract_lowest_price(cheapest["total_estimated_cost"]))
 
-    assert per_leg_cheapest == [180.0, 180.0, 200.0]
+    assert per_leg_cheapest == [270.0, 270.0, 300.0]
     assert sum(per_leg_cheapest) == budget_line
 
 
@@ -574,8 +576,8 @@ def test_a_leg_with_no_hotels_is_still_slept_in():
     legs = [{"city": "Siem Reap", "nights": 3}, {"city": "Battambang", "nights": 2}]
     strategies = _stays_tab_totals({"Siem Reap": [30]}, travelers=2, legs=legs[:1])
 
-    # 30x3x1 for the searched leg + 30x2x1 carried onto the one that found none.
-    assert required_stay_cost({"strategies": strategies}, legs, 2) == 150.0
+    # 30x3x2 for the searched leg + 30x2x2 carried onto the one that found none.
+    assert required_stay_cost({"strategies": strategies}, legs, 2) == 300.0
 
 
 def test_no_hotels_at_all_costs_nothing_rather_than_guessing():
@@ -608,10 +610,10 @@ def test_stay_cost_moves_with_the_budget_tier():
     recommended = required_stay_cost({"strategies": strategies}, legs, 2, "recommended")
     comfortable = required_stay_cost({"strategies": strategies}, legs, 2, "comfortable")
 
-    # 5 nights x 1 room, at the cheapest / median / dearest nightly rate.
-    assert minimum == 200.0
-    assert recommended == 475.0
-    assert comfortable == 775.0
+    # 5 nights x 2 rooms, at the cheapest / median / dearest nightly rate.
+    assert minimum == 400.0
+    assert recommended == 950.0
+    assert comfortable == 1550.0
     assert minimum < recommended < comfortable
 
 
@@ -624,7 +626,7 @@ def test_stay_cost_default_tier_is_the_cheapest_room():
         {"Colombo": [40, 60, 95, 155]}, travelers=2, legs=legs,
     )
 
-    assert required_stay_cost({"strategies": strategies}, legs, 2) == 200.0
+    assert required_stay_cost({"strategies": strategies}, legs, 2) == 400.0
     assert required_stay_cost(
         {"strategies": strategies}, legs, 2,
     ) == required_stay_cost({"strategies": strategies}, legs, 2, "minimum")
@@ -641,7 +643,7 @@ def test_single_hotel_leg_prices_every_tier_the_same():
         required_stay_cost({"strategies": strategies}, legs, 2, t)
         for t in ("minimum", "recommended", "comfortable")
     }
-    assert tiers == {100.0}
+    assert tiers == {200.0}
 
 
 def test_unsearched_leg_tracks_the_tier_it_is_carried_onto():
@@ -653,9 +655,197 @@ def test_unsearched_leg_tracks_the_tier_it_is_carried_onto():
         {"Siem Reap": [30, 90]}, travelers=2, legs=legs[:1],
     )
 
-    # Comfortable: 90x3 for the searched leg + 90x2 carried onto the empty one.
+    # Comfortable: 90x3x2 for the searched leg + 90x2x2 carried onto the empty one.
     assert required_stay_cost(
         {"strategies": strategies}, legs, 2, "comfortable",
-    ) == 450.0
-    # Minimum keeps the old behaviour exactly: 30x3 + 30x2.
-    assert required_stay_cost({"strategies": strategies}, legs, 2) == 150.0
+    ) == 900.0
+    # Minimum ranks the same way: 30x3x2 + 30x2x2.
+    assert required_stay_cost({"strategies": strategies}, legs, 2) == 300.0
+
+
+# ── The star floor: under the budget, not under the Stays list ──────────────
+#
+# The class ladder searches 3-star+ first and falls back to an unfiltered rung
+# (`_HOTEL_CLASS_FALLBACKS`), so in a town where Google classifies little, 2-star
+# properties reach the list. They belong there — a traveller may want one — but
+# a 2-star rate was setting the budget's floor. Seen on a 14-day Colombo plan,
+# whose Minimum tier sat at 46,396 against the 50,926 its 3-star rooms cost.
+
+def _leg_strategies(rates_and_classes, *, city="Colombo", nights=5, travelers=2,
+                    leg_index=0):
+    """One leg's Stays cards, each with its own nightly rate and star class."""
+    extracted = extract_hotel_strategies_from_serpapi(
+        {"properties": [
+            _prop(f"{city} Hotel {i}", nightly=rate, hotel_class=cls)
+            for i, (rate, cls) in enumerate(rates_and_classes)
+        ]},
+        destination=city, currency="USD", travelers=travelers, nights=nights,
+    )
+    for s in extracted["strategies"]:
+        s["leg_index"] = leg_index
+        s["city"] = city
+    return extracted["strategies"]
+
+
+def test_a_two_star_rate_never_sets_the_budget_floor():
+    """The cheap guesthouse stays on the list; it just stops pricing the trip."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Colombo", "nights": 5}]
+    strategies = _leg_strategies([(20, 2), (40, 3), (100, 4)])
+
+    # The 2-star card is still there for the traveller to pick.
+    assert 2 in [s["hotel_class"] for s in strategies]
+    # ...but Minimum is the cheapest *3-star+* room: 40 x 5 x 2, not 20 x 5 x 2.
+    assert required_stay_cost({"strategies": strategies}, legs, 2, "minimum") == 400.0
+
+
+def test_a_leg_with_only_low_class_hotels_is_still_priced():
+    """A town where nothing clears 3-star must not price its nights at zero."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Battambang", "nights": 4}]
+    strategies = _leg_strategies([(20, 2), (35, 2)], city="Battambang", nights=4)
+
+    # No classed room exists, so the floor gives way rather than the leg.
+    assert required_stay_cost({"strategies": strategies}, legs, 2, "minimum") == 160.0
+
+
+def test_unclassed_hotels_price_exactly_as_before():
+    """The Gemini estimate path writes no `hotel_class` at all.
+
+    Its strategies carry no class, so the classed bucket is empty on every leg
+    and the old arithmetic has to survive untouched.
+    """
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Colombo", "nights": 5}]
+    strategies = [
+        {"leg_index": 0, "city": "Colombo", "price_per_night": "USD 40", "nights": 5},
+        {"leg_index": 0, "city": "Colombo", "price_per_night": "USD 100", "nights": 5},
+    ]
+    assert "hotel_class" not in strategies[0]
+    assert required_stay_cost({"strategies": strategies}, legs, 2, "minimum") == 400.0
+
+
+def test_the_star_floor_applies_per_leg_not_across_the_trip():
+    """One city's 3-star rooms must not rescue another city that has none."""
+    from app.services.odyssey_ai_service import required_stay_cost
+
+    legs = [{"city": "Colombo", "nights": 3}, {"city": "Battambang", "nights": 2}]
+    strategies = (
+        _leg_strategies([(20, 2), (60, 3)], city="Colombo", nights=3, leg_index=0)
+        + _leg_strategies([(25, 2), (30, 2)], city="Battambang", nights=2, leg_index=1)
+    )
+
+    # Colombo takes its 3-star (60x3x2); Battambang has none, so it keeps its
+    # own cheapest (25x2x2) rather than borrowing Colombo's floor.
+    assert required_stay_cost({"strategies": strategies}, legs, 2, "minimum") == 460.0
+
+
+def test_the_note_claims_a_star_floor_only_when_every_leg_met_it():
+    """A note is worth having only if the traveller can rely on it."""
+    from app.services.odyssey_ai_service import stay_priced_at_star_floor
+
+    legs = [{"city": "Colombo", "nights": 3}, {"city": "Battambang", "nights": 2}]
+
+    both = (
+        _leg_strategies([(60, 3)], city="Colombo", nights=3, leg_index=0)
+        + _leg_strategies([(30, 4)], city="Battambang", nights=2, leg_index=1)
+    )
+    assert stay_priced_at_star_floor({"strategies": both}, legs) is True
+
+    one_short = (
+        _leg_strategies([(60, 3)], city="Colombo", nights=3, leg_index=0)
+        + _leg_strategies([(30, 2)], city="Battambang", nights=2, leg_index=1)
+    )
+    assert stay_priced_at_star_floor({"strategies": one_short}, legs) is False
+
+    # The estimate path, which writes no class at all.
+    unclassed = [{"leg_index": 0, "city": "Colombo", "price_per_night": "USD 40"}]
+    assert stay_priced_at_star_floor({"strategies": unclassed}, legs) is False
+
+
+# ── The budget note: the client's wording, only where it is true ────────────
+#
+# Requested by the client, who supplied both sentences. "Based on Best Value
+# Direct Flight" holds on 2 of the 30 live routes held in cache, so the note is
+# derived from the fare the budget actually priced rather than asserted.
+
+def test_the_note_uses_the_clients_wording_for_a_direct_flight():
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="direct", no_airfare=False,
+    )
+    assert n["transit"] == "Based on Best Value Direct Flight"
+    assert n["stay"] == (
+        "Based on best value price. Individual rooms assumed for each pax."
+    )
+    assert n["summary"] == (
+        "Cheapest 3-star+ room, 1 per person · best value direct flight"
+    )
+
+
+def test_the_note_says_so_when_the_route_has_no_direct_flight():
+    """28 of 30 live routes carry no non-stop; the note must not claim one."""
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="connecting", no_airfare=False,
+    )
+    assert "Direct Flight" not in n["transit"]
+    assert n["transit"] == (
+        "Based on the best value flight. No direct flight is offered on this route."
+    )
+    assert "direct" not in n["summary"]
+
+
+def test_the_note_drops_the_flight_line_when_nothing_flies():
+    """`budget_advisory` already carries the ground-transport wording in full."""
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="connecting", no_airfare=True,
+    )
+    assert "transit" not in n
+    assert n["summary"].endswith("ground transport only")
+
+
+def test_the_note_drops_the_rooms_clause_for_a_solo_traveller():
+    """One traveller, one room: "individual rooms" is noise, not information."""
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=1, at_star_floor=False, flight_basis="connecting", no_airfare=False,
+    )
+    assert n["stay"] == "Based on best value price."
+    assert "per person" not in n["summary"]
+    assert n["summary"] == "Cheapest room · best value flight"
+
+
+def test_the_note_claims_three_star_only_when_the_floor_held():
+    from app.services.odyssey_ai_service import _budget_notes
+
+    held = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="connecting", no_airfare=False,
+    )
+    gave_way = _budget_notes(
+        rooms=2, at_star_floor=False, flight_basis="connecting", no_airfare=False,
+    )
+    assert "3-star+" in held["summary"]
+    assert "3-star" not in gave_way["summary"]
+    assert gave_way["summary"].startswith("Cheapest room, 1 per person")
+
+
+def test_the_note_says_estimated_when_no_live_fare_was_found():
+    """An estimate is a different claim from a price, and reads as one."""
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="estimated", no_airfare=False,
+    )
+    assert n["transit"] == (
+        "Based on an estimated fare — no live price was available for this route."
+    )
+    assert n["summary"].endswith("· estimated fare")

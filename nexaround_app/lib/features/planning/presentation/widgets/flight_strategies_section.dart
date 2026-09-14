@@ -23,6 +23,16 @@ class FlightStrategiesSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (odyssey.flightStrategies.isEmpty) {
+      // The backend distinguishes "Google says nothing flies this route" from
+      // "we could not look it up". The first is worth saying out loud: the
+      // section used to vanish, leaving the traveller with an itinerary, a
+      // hotel list and no explanation of where the flights went.
+      if (odyssey.flightUnavailableMessage.isNotEmpty) {
+        return _noFlightsNotice(
+          odyssey.flightUnavailableMessage,
+          odyssey.flightUnavailableReason,
+        );
+      }
       return const SizedBox.shrink();
     }
 
@@ -428,6 +438,79 @@ class FlightStrategiesSection extends StatelessWidget {
             ...returnOptions.map(optionRow),
           ],
           const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+
+  /// Shown in place of the cards when the route itself cannot be booked.
+  ///
+  /// Deliberately carries no price and no booking link: there is no fare to
+  /// quote. An estimated fare is still shown as a normal card, marked
+  /// "Estimated fare — confirm before booking", because there the flights
+  /// probably exist and only our lookup failed.
+  Widget _noFlightsNotice(String message, String reason) {
+    // "No flights found" is the wrong words for a domestic hop: Kinniya and
+    // Colombo share an airport, and nothing is missing — there is simply
+    // nothing to fly. The heading follows the reason the backend gave.
+    final bool noFlightNeeded = reason == 'same_airport';
+    final String heading = noFlightNeeded
+        ? 'No flight needed'
+        : reason == 'no_airport'
+            ? 'Flights could not be searched'
+            : 'No flights found';
+    final IconData icon = noFlightNeeded
+        ? Icons.directions_bus_filled_rounded
+        : Icons.flight_takeoff_rounded;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: Colors.orange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  heading,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  message,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    height: 1.45,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'The rest of this plan — the day-by-day itinerary and the '
+                  'stays — is unaffected. Airfare is not included in the budget.',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.45,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

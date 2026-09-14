@@ -28,6 +28,26 @@ SERPAPI_BASE = "https://serpapi.com/search.json"
 # trip gets re-planned. Tests flip this off (see tests/conftest.py) because
 # they call the same params over and over expecting a fresh HTTP call each time.
 _CACHE_ENABLED = True
+# A Google Flights search through SerpApi is usually quick — 2.1 s on average
+# across 149 live searches — but the tail is long, and the slowest of those ran
+# to exactly 10.0 s: our own ceiling, not theirs. Cutting one off wastes the
+# search credit (they served it, we hung up) and drops the whole trip onto
+# Gemini's estimated fares, which is what put "Cheapest Budget Flights" on an
+# Italy plan while the account still had 105 searches left.
+_HTTP_TIMEOUT_S = 25.0
+
+# Google answering "there are none" is not the same as our failing to ask.
+# No airline flies Pisa to Colombo, and no price exists at any figure — while
+# a timeout or a spent quota says nothing about the world at all. Both used to
+# come back as {} and both ended up showing the traveller an invented fare.
+_NO_RESULTS_RE = re.compile(r"(has\s*n[o']t|have\s*n[o']t|has not|have not)\s+returned\s+any\s+results", re.I)
+_NO_RESULTS = "no_results"
+
+
+def no_results(data) -> bool:
+    """True when the provider answered and the answer was "there are none"."""
+    return isinstance(data, dict) and data.get("_serpapi_status") == _NO_RESULTS
+
 FLIGHTS_CACHE_TTL_S = 6 * 60 * 60
 HOTELS_CACHE_TTL_S = 6 * 60 * 60
 
@@ -249,12 +269,20 @@ def _haversine_km(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 
 def rooms_for(travelers: int) -> int:
-    """Rooms a party needs, at two to a room."""
+    """Rooms a party needs, at one room per traveller.
+
+    Two to a room was the rule until now, which halved the stay line of every
+    multi-traveller trip: a 2-pax Egypt plan was budgeted one room at 38,368
+    against the 76,736 two rooms cost. Sharing is the travellers' own decision
+    and they can halve this themselves once they see it — a budget that has
+    already assumed sharing cannot be un-assumed by anyone, and quotes a trip
+    colleagues or a parent and adult child cannot actually book.
+    """
     try:
         party = int(travelers or 1)
     except (TypeError, ValueError):
         party = 1
-    return max(1, math.ceil(max(party, 1) / 2))
+    return max(1, party)
 
 
 def nights_between(check_in_date: str, check_out_date: str) -> int:
@@ -464,7 +492,7 @@ class SerpApiService:
             cached = await _cache_get(key)
             if cached is None and await _quota_exhausted():
                 return {}
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
                 async with telemetry.track(
                     "serpapi", _operation,
                     sku="serpapi_search", params=params, cache_key=key,
@@ -484,7 +512,16 @@ class SerpApiService:
 
                 # Check for errors
                 if "error" in data:
-                    logger.warning(f"[SerpApi] Flights error: {data['error']}")
+                    message = str(data["error"])
+                    if _NO_RESULTS_RE.search(message):
+                        # A fact about the route, not a failure of ours.
+                        logger.info(
+                            "[SerpApi] Google has no flights %s -> %s on %s.",
+                            params.get("departure_id"), params.get("arrival_id"),
+                            params.get("outbound_date"),
+                        )
+                        return {"_serpapi_status": _NO_RESULTS}
+                    logger.warning(f"[SerpApi] Flights error: {message}")
                     return {}
 
                 # Only a response with options is worth keeping: an empty one
@@ -494,7 +531,8 @@ class SerpApiService:
                 return data
 
         except Exception as e:
-            logger.error(f"[SerpApi] Flights search exception: {e}")
+            logger.error("[SerpApi] Flights search failed: %s%s", type(e).__name__,
+                         f": {e}" if str(e) else " (no detail — usually a timeout)")
             return {}
 
     async def search_flights_return(
@@ -638,7 +676,7 @@ class SerpApiService:
             cached = await _cache_get(key)
             if cached is None and await _quota_exhausted():
                 return {}
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S) as client:
                 async with telemetry.track(
                     "serpapi", "search_hotels",
                     sku="serpapi_search", params=params, cache_key=key,
@@ -714,7 +752,8 @@ class SerpApiService:
                 return data
 
         except Exception as e:
-            logger.error(f"[SerpApi] Hotels search exception: {e}")
+            logger.error("[SerpApi] Hotels search failed: %s%s", type(e).__name__,
+                         f": {e}" if str(e) else " (no detail — usually a timeout)")
             return {}
 
 
@@ -1189,19 +1228,50 @@ def _select_flight_tiers(candidates: List[Dict[str, Any]]) -> Dict[str, Dict[str
     routes carry two genuinely different offers, and 30 of the 55 stored
     Odysseys with live prices already show two. The app falls back to the
     nearest tier it has rather than printing one fare under two names.
+
+    The one fare selected on something other than the trade-off is the route's
+    direct flight, which always gets a card when the route has one — see the
+    two blocks marked "direct" below. Direct flights are rare enough that this
+    is nearly free: of 30 live searches held in cache, 28 routes have no
+    non-stop at all, one is non-stop throughout (Cairo->Aswan, where the
+    cheapest fare is already the direct one), and exactly one route changes.
     """
     frontier = _price_time_frontier(candidates)
     if not frontier:
         return {}
 
+    # The route's best direct flight, taken before the fare ceiling below can
+    # price it out. "Is there a direct flight?" is the first question asked of
+    # a long-haul route, and the answer is the traveller's to weigh against the
+    # fare beside it — not ours to withhold because the fare is high. A live
+    # Colombo->Gatwick search carried exactly one non-stop, at 2.03x the
+    # cheapest connection, and the ceiling dropped it for being 3% over.
+    #
+    # Only this one fare is exempt. Every other non-stop still answers to the
+    # ceiling, so a first-class seat on the same aircraft cannot ride in behind
+    # it and reach the middle card, which is the one the budget prices itself
+    # from.
+    nonstops = [c for c in frontier if c["stops"] == 0]
+    direct = min(nonstops, key=lambda c: (c["price"], c["duration"])) if nonstops else None
+
     floor = min(c["price"] for c in frontier)
-    frontier = [c for c in frontier if c["price"] <= floor * _FARE_CEILING]
+    frontier = [
+        c for c in frontier
+        if c["price"] <= floor * _FARE_CEILING or c is direct
+    ]
     # On a price/time frontier the cheapest fare is also the slowest, so price
     # order is the order of the trade-off itself.
     frontier.sort(key=lambda c: (c["price"], c["duration"], c["stops"]))
 
     cheapest = frontier[0]
     picked = [cheapest]
+
+    # A route that has a direct flight shows it. Leaving that to the "fastest"
+    # rule below is not enough: a connection landing within
+    # `_NEAR_TIE_DURATION` of the non-stop beats it there on price, and the
+    # direct flight vanishes from a route that has one.
+    if direct is not None and direct is not cheapest:
+        picked.append(direct)
 
     # The fast end — but never pay extra to shave minutes, so among everything
     # arriving within `_NEAR_TIE_DURATION` of the quickest, take the cheapest.
@@ -1210,7 +1280,11 @@ def _select_flight_tiers(candidates: List[Dict[str, Any]]) -> Dict[str, Dict[str
         (c for c in frontier if (c["duration"] - quickest) / quickest < _NEAR_TIE_DURATION),
         key=lambda c: c["price"],
     )
-    if fastest is not cheapest:
+    # `picked[1:]` is the direct card when the route has one and nothing
+    # otherwise, so a route without a non-stop keeps exactly its old behaviour.
+    if all(fastest is not p for p in picked) and all(
+        _meaningfully_different(fastest, p) for p in picked[1:]
+    ):
         picked.append(fastest)
 
     # A middle card has to earn its place: the most transit time saved per
@@ -1677,6 +1751,12 @@ def attach_return_leg(
     strategy["return_duration_minutes"] = ret_leg["duration_minutes"]
     strategy["total_duration_minutes"] = (
         int(strategy.get("outbound_duration_minutes") or 0) + ret_leg["duration_minutes"]
+    )
+    # The header quotes the journey time, and the journey just got its second
+    # half: a round-trip card built before this ran said "1 stop · 10h 55m"
+    # over a 22h 35m trip.
+    strategy["title"] = _card_title(
+        int(strategy.get("stops") or 0), strategy["total_duration_minutes"]
     )
 
     combined = round(convert_from_search_currency(best["price"], currency), 2)

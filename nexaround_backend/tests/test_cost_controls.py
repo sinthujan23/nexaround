@@ -8,6 +8,7 @@ the account had already run out of searches. Nothing here touches the network.
 """
 import asyncio
 import json
+import re
 
 import pytest
 
@@ -576,7 +577,7 @@ def airport_geo(monkeypatch):
         "EDI": {"latitude": 55.95, "longitude": -3.37, "country_code": "GB", "name": "Edinburgh"},
     }
 
-    async def _geo(code, geo, budget=None):
+    async def _geo(code, geo, budget=None, city=""):
         return coords.get(code)
 
     monkeypatch.setattr(svc, "_airport_geo", _geo)
@@ -636,3 +637,281 @@ def test_the_trip_type_follows_the_booked_flight(airport_geo):
     fs = {"trip_type": "open_jaw"}
     asyncio.run(svc._reconcile_gateways(route, fs, _strategy("recommended", "LGW", "LGW", "round_trip")))
     assert fs["trip_type"] == "round_trip"
+
+
+# ── What the app prints under a price ───────────────────────────────────────
+#
+# `odyssey_plan_view` renders `price_source` and `price_basis` whenever they
+# are non-empty, so whatever the model writes there reaches the traveller
+# verbatim. A live Vietnam plan came back with eleven free stops carrying
+# "price_source": "N/A", and a free market visit sourced to "Vietnam Airlines".
+
+from app.services.odyssey_ai_service import _is_free, _sourced
+
+
+@pytest.mark.parametrize("written", [
+    "N/A", "n/a", "N/A.", "na", "None", "none.", "-", "--", "Unknown",
+    "TBD", "not applicable", "no source",
+])
+def test_a_models_way_of_writing_nothing_is_not_a_source(written):
+    assert _sourced(written) == ""
+
+
+@pytest.mark.parametrize("written", [
+    "Google Hotels", "Vietnam Airlines", "Official site", "Lonely Planet",
+])
+def test_a_real_source_survives(written):
+    assert _sourced(written) == written
+
+
+@pytest.mark.parametrize("cost", ["Free", "free", "Free (chairs/umbrellas extra)", "", None])
+def test_a_stop_that_names_no_money_is_free(cost):
+    assert _is_free(cost) is True
+
+
+@pytest.mark.parametrize("cost", ["USD 25", "₹1,200", "Free entry, USD 5 for the tower", "12.50 EUR"])
+def test_a_stop_that_names_money_is_not_free(cost):
+    assert _is_free(cost) is False
+
+
+# ── One unit for every price on the card ────────────────────────────────────
+#
+# Measured across nine live plans: of 447 priced stops, 69% said nothing about
+# whether the figure was for one traveller or the party, 23% buried it in the
+# small print and 8% put it on the card. A couple reading "INR 1,800" for the
+# Bahia Palace was really looking at INR 3,600; a family of four at four times
+# the number on screen. The model now returns one adult share as a number and
+# the arithmetic happens in `_party_cost`.
+
+from app.services.odyssey_ai_service import _party_cost
+
+
+def test_the_card_shows_what_the_party_pays():
+    assert _party_cost({"cost_per_person": "18"}, "EUR", 4) == ("EUR 72", 18.0)
+    assert _party_cost({"cost_per_person": "1800"}, "INR", 2) == ("INR 3,600", 1800.0)
+
+
+def test_a_solo_traveller_pays_one_share():
+    assert _party_cost({"cost_per_person": "25"}, "USD", 1) == ("USD 25", 25.0)
+
+
+def test_an_explicit_zero_is_free_not_missing():
+    for written in ("0", "0.00", "EUR 0"):
+        assert _party_cost({"cost_per_person": written}, "EUR", 3) == ("Free", 0.0)
+
+
+def test_nothing_to_price_stays_empty():
+    assert _party_cost({}, "EUR", 2) == ("", None)
+    assert _party_cost({"cost": ""}, "EUR", 2) == ("", None)
+
+
+def test_a_legacy_per_person_string_is_multiplied_out():
+    """Older plans wrote the unit into the text instead of a field."""
+    assert _party_cost({"cost": "EUR 18 / person"}, "EUR", 4) == ("EUR 72", 18.0)
+    assert _party_cost(
+        {"cost": "INR 1,800", "price_basis": "Standard ticket per person."}, "INR", 2
+    ) == ("INR 3,600", 1800.0)
+
+
+def test_a_legacy_party_string_is_not_multiplied_again():
+    """"INR 3,200 ... for two adults" is already the couple's total."""
+    shown, per = _party_cost(
+        {"cost": "INR 3,200", "price_basis": "Estimated adult entry for two adults."}, "INR", 2
+    )
+    assert shown == "INR 3,200" and per == 1600.0
+
+
+def test_an_unmarked_legacy_figure_is_never_inflated():
+    """Guessing high would tell a traveller they cannot afford a trip they can."""
+    shown, per = _party_cost({"cost": "INR 1,500", "price_basis": "Estimated entry fee."}, "INR", 2)
+    assert shown == "INR 1,500" and per == 750.0
+
+
+def test_free_survives_every_spelling():
+    for written in ("Free", "free", "Free (chairs extra)"):
+        assert _party_cost({"cost": written}, "INR", 2) == ("Free", 0.0)
+
+
+def test_the_prompt_asks_for_one_adult_share_as_a_number():
+    from app.services.odyssey_ai_service import _build_prompt
+    prompt = _build_prompt(
+        "Italy", "Relaxed", 12000, 14, "EUR", travelers=4,
+        legs=[{"city": "Rome", "start_day": 1, "end_day": 14, "nights": 13,
+               "latitude": 41.9, "longitude": 12.5}],
+    )
+    assert "cost_per_person" in prompt
+    assert "ONE adult" in prompt
+    assert "4 traveller(s)" in prompt
+    # The free-text field the old plans disagreed about is gone.
+    assert '"cost": "EUR amount' not in prompt
+
+
+# ── The estimated-fare path keeps the same promises ─────────────────────────
+#
+# When SerpApi returns nothing the cards are Gemini estimates. That path never
+# went through `_strategy_payload`, so it kept the model's own names — a live
+# Italy plan came back headed "Cheapest Budget Flights", "Best Value Split
+# Tickets" and "Fastest Direct Option" after the titles had been removed
+# everywhere else.
+
+from app.services.odyssey_ai_service import (
+    _minutes_from_duration,
+    _structure_ai_flight_strategies,
+)
+
+
+@pytest.mark.parametrize("written,minutes", [
+    ("14h 30m", 870), ("14h", 840), ("870m", 870), ("1h 5m", 65),
+    ("", 0), (None, 0), ("about 20 hours", 1200),
+])
+def test_a_duration_string_becomes_minutes(written, minutes):
+    assert _minutes_from_duration(written) == minutes
+
+
+def _estimated():
+    data = {"strategies": [
+        {"title": "Cheapest Budget Flights", "estimated_price_range": "EUR 240 - 300",
+         "route": "CMB → FCO", "return_route": "FCO → CMB", "airlines": ["Gulf Air"],
+         "stops": 1, "total_duration": "18h 20m", "return_duration": "17h 10m",
+         "estimated_savings": "Save ~30%", "tip": "Book early for the best fare."},
+        {"title": "Fastest Direct Option", "estimated_price_range": "EUR 425 - 500",
+         "route": "CMB → FCO", "return_route": "FCO → CMB", "airlines": ["Qatar Airways"],
+         "stops": 1, "total_duration": "13h 50m", "return_duration": "14h 5m",
+         "estimated_savings": "Fastest route", "tip": "Worth the premium."},
+    ]}
+    return _structure_ai_flight_strategies(
+        data, currency="EUR", travelers=4,
+        outbound_date="2026-11-02", return_date="2026-11-15",
+    )["strategies"]
+
+
+def test_an_estimated_card_states_stops_and_time_not_a_verdict():
+    for s in _estimated():
+        assert re.match(r"^(Non-stop|\d+ stops?) · \d+h \d+m$", s["title"]), s["title"]
+        assert s["estimated_savings"] == ""
+        assert s["tip"] == ""
+
+
+def test_an_estimated_card_carries_its_journey_time():
+    cheap, fast = sorted(_estimated(), key=lambda s: s["price_per_traveler"])
+    assert cheap["total_duration_minutes"] == 18 * 60 + 20 + 17 * 60 + 10
+    assert fast["total_duration_minutes"] == 13 * 60 + 50 + 14 * 60 + 5
+    # The header must agree with the number beside it, as on the live path.
+    for s in (cheap, fast):
+        mins = s["total_duration_minutes"]
+        assert s["title"].endswith(f"{mins // 60}h {mins % 60}m")
+
+
+def test_estimated_cards_are_still_marked_as_estimates():
+    for s in _estimated():
+        assert s["is_live_price"] is False
+        assert s["price_source"] == "ai_estimate"
+
+
+# ── A search we cut off ourselves ───────────────────────────────────────────
+#
+# Across 149 live flight searches the average was 2.1 s and the slowest was
+# exactly 10.0 s — our own ceiling, not SerpApi's. Cutting one off spends the
+# search credit anyway and drops the whole trip onto estimated fares, which is
+# how an Italy plan came back headed "Cheapest Budget Flights" while the
+# account still had 105 searches left. The exception was logged as an empty
+# string, because that is what `str(httpx.ReadTimeout())` is.
+
+def test_a_search_is_given_longer_than_the_slowest_one_observed():
+    from app.services import serpapi_service as s
+    assert s._HTTP_TIMEOUT_S > 10.0, "the old ceiling is what was cutting searches off"
+
+
+def test_both_searches_use_the_same_ceiling():
+    import inspect
+    from app.services import serpapi_service as s
+    src = inspect.getsource(s)
+    assert "httpx.AsyncClient(timeout=10.0)" not in src, "a hard-coded 10s client is left"
+    assert src.count("httpx.AsyncClient(timeout=_HTTP_TIMEOUT_S)") == 2
+
+
+def test_a_silent_exception_still_names_itself(monkeypatch, caplog):
+    """httpx timeouts stringify to "", so the log said nothing at all."""
+    import logging, httpx
+    from app.services import serpapi_service as s
+
+    class _Boom:
+        def __init__(self, *a, **kw): pass
+        async def __aenter__(self): raise httpx.ReadTimeout("")
+        async def __aexit__(self, *a): return False
+
+    monkeypatch.setattr(s.httpx, "AsyncClient", _Boom)
+    with caplog.at_level(logging.ERROR):
+        out = asyncio.run(s.SerpApiService("k").search_flights(
+            departure_city="CMB", destination="FCO", outbound_date="2026-11-02",
+        ))
+    assert out == {}
+    assert "ReadTimeout" in caplog.text, caplog.text
+
+
+# ── "There is no such flight" vs "we could not look it up" ──────────────────
+#
+# No airline flies Pisa to Colombo, so no price exists at any figure. A
+# timeout says nothing about the world. Both used to return {} and both ended
+# up showing an invented fare, so a traveller could not tell a route that does
+# not exist from one we simply failed to reach.
+
+from app.services.serpapi_service import no_results as serp_no_results, _NO_RESULTS_RE
+from app.services.odyssey_ai_service import _no_flights_found
+
+
+@pytest.mark.parametrize("message", [
+    "Google Flights hasn't returned any results for this query.",
+    "Google Flights has not returned any results for this query.",
+    "Google Hotels haven't returned any results for this query.",
+])
+def test_the_providers_way_of_saying_none_is_recognised(message):
+    assert _NO_RESULTS_RE.search(message)
+
+
+@pytest.mark.parametrize("message", [
+    "Your account has run out of searches.",
+    "Invalid API key.",
+    "Unsupported `XXX` for currency",
+])
+def test_our_own_failures_are_not_mistaken_for_an_empty_route(message):
+    assert not _NO_RESULTS_RE.search(message)
+
+
+def test_a_failure_is_not_an_empty_route():
+    assert serp_no_results({}) is False
+    assert serp_no_results(None) is False
+    assert serp_no_results({"best_flights": []}) is False
+
+
+def test_an_empty_route_is_marked_as_one():
+    assert serp_no_results({"_serpapi_status": "no_results"}) is True
+
+
+def test_the_empty_section_carries_a_reason_and_no_price():
+    section = _no_flights_found(
+        origin_code="CMB", dest_code="PSA", outbound_date="2026-11-02",
+        return_date="2026-11-15", arrival_city="Pisa",
+    )
+    assert section["strategies"] == []
+    assert section["flights_available"] is False
+    assert section["unavailable_reason"] == "none_found"
+    assert "Pisa" in section["unavailable_message"]
+    assert "2026-11-02" in section["unavailable_message"]
+    # Nothing in it may read as a fare.
+    assert not any(
+        k in section for k in ("price_per_traveler", "price_total", "estimated_price_range")
+    )
+
+
+def test_an_estimated_section_is_not_marked_unavailable():
+    """A timeout must still offer fares — flights probably do exist."""
+    data = {"strategies": [{
+        "title": "x", "estimated_price_range": "EUR 240 - 300", "route": "CMB → FCO",
+        "airlines": ["Gulf Air"], "stops": 1, "total_duration": "18h 20m",
+    }]}
+    out = _structure_ai_flight_strategies(
+        data, currency="EUR", travelers=2, outbound_date="2026-11-02", return_date="",
+    )
+    assert out.get("flights_available") is not False
+    assert out["strategies"][0]["is_live_price"] is False

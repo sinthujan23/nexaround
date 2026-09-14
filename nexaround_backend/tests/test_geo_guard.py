@@ -335,7 +335,12 @@ def test_flights_are_skipped_when_an_endpoint_cannot_be_resolved():
         destination="Sri Vijaya Puram", days=8, budget=150000,
         currency="INR", travelers=3, api_key="", serpapi_key="",
     ))
-    assert result == {}
+    # No fares, and — since this replaced a bare {} — a reason, so the app can
+    # say why instead of hiding the section.
+    assert result["strategies"] == []
+    assert result["flights_available"] is False
+    assert result["unavailable_reason"] == "no_airport"
+    assert result["unavailable_message"]
 
 
 def test_flights_survive_when_both_endpoints_resolve_statically():
