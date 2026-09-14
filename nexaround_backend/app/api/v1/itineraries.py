@@ -16,12 +16,17 @@ from app.services import odyssey_ai_service, odyssey_jobs
 from app.services.settings_service import SettingsService
 from app.services import cover_photo_service
 from app.schemas.itinerary import (
+    BUDGET_RANGE,
+    DAYS_RANGE,
+    DESTINATION_MAX,
     ItineraryCreate,
     ItineraryUpdate,
     ItineraryResponse,
+    MOOD_MAX,
     OdysseyGenerateRequest,
     OdysseySwapRequest,
     OdysseyPartnerSwapRequest,
+    TRAVELERS_RANGE,
 )
 
 logger = logging.getLogger(__name__)
@@ -291,12 +296,36 @@ async def retry_odyssey_generation(
         raise HTTPException(status_code=400, detail="Not an Odyssey")
 
     gen_params = meta.get("generation_params") or {}
-    destination = gen_params.get("destination") or meta.get("destination") or itin.title or ""
-    mood = gen_params.get("mood") or meta.get("mood") or "balanced"
-    budget = float(gen_params.get("budget") or meta.get("budget") or 1000.0)
-    days = int(gen_params.get("days") or meta.get("days") or 3)
+
+    def _clamp(value, bounds, fallback):
+        """Hold a replayed parameter to the same bounds a fresh request has.
+
+        Clamped, not refused: the traveller is retrying a trip that already
+        exists and wants it to work. Trips stored before these bounds existed
+        carry values outside them - one has travelers=110, another days=31 -
+        and replaying those books 110 rooms or asks for a month in one call.
+        """
+        lo, hi = bounds
+        try:
+            n = type(fallback)(value)
+        except (TypeError, ValueError):
+            return fallback
+        if n != n:                       # NaN
+            return fallback
+        return max(lo, min(hi, n))
+
+    destination = str(
+        gen_params.get("destination") or meta.get("destination") or itin.title or ""
+    )[:DESTINATION_MAX]
+    mood = str(gen_params.get("mood") or meta.get("mood") or "balanced")[:MOOD_MAX]
+    budget = _clamp(
+        gen_params.get("budget") or meta.get("budget") or 1000.0, BUDGET_RANGE, 1000.0,
+    )
+    days = _clamp(gen_params.get("days") or meta.get("days") or 3, DAYS_RANGE, 3)
     currency = gen_params.get("currency") or meta.get("currency") or "USD"
-    travelers = int(gen_params.get("travelers") or meta.get("travelers") or 1)
+    travelers = _clamp(
+        gen_params.get("travelers") or meta.get("travelers") or 1, TRAVELERS_RANGE, 1,
+    )
     include_flights = bool(gen_params.get("include_flights", False))
     departure_city = gen_params.get("departure_city") or meta.get("departure_city") or ""
     departure_country = gen_params.get("departure_country") or ""
