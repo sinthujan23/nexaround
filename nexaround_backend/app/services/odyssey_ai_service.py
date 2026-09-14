@@ -3925,8 +3925,23 @@ async def generate_odyssey(
     if budget_is_sufficient:
         # User's budget IS the Recommended tier — normal flow.
         tot = user_budget
-        # Recommended is the user's own budget, left exactly as entered — it is
-        # the headline total on the card, so it is never floored upward.
+        # ...unless the Recommended tier costs more than they entered.
+        #
+        # The headline used to be left exactly as typed while its four parts
+        # were computed from the real fares and room rates, so a trip whose
+        # recommended room outran the budget showed a split that did not add
+        # up. Client report, 7-day Italy plan for three: "90% Stay - 64%
+        # Transit - 3% Food - 0% Activities" against a total of INR 339,000 —
+        # 157%, with Activities at zero and the card still calling the trip
+        # feasible.
+        #
+        # Feasibility is measured against the *cheapest* room, which that
+        # budget did cover; the card prices the *middle* one, which it did not.
+        # The total now covers its own parts, and `overran` below says so
+        # rather than leaving the traveller to add the bars up.
+        rec_total = _scenario_total(tot, "recommended")
+        overran = rec_total > tot + 1
+        tot = rec_total
         budget_breakdown = _waterfall(
             tot,
             _tier_flight_cost("recommended"),
@@ -3951,8 +3966,15 @@ async def generate_odyssey(
             _tier_flight_cost("comfortable"),
             _tier_stay_cost("comfortable"),
         )
-        feasible = True
-        if real_minimum_cost > 0 and (tot - real_minimum_cost) / real_minimum_cost < 0.2:
+        # The trip is feasible — at the cheapest room, which is what
+        # `real_minimum_cost` prices and what the Minimum tab shows. It is the
+        # Recommended tier the entered budget will not buy, and the banner has
+        # to say so or the lifted total reads as the app ignoring the number
+        # they typed.
+        feasible = not overran
+        if overran:
+            budget_tightness = "insufficient"
+        elif real_minimum_cost > 0 and (tot - real_minimum_cost) / real_minimum_cost < 0.2:
             budget_tightness = "tight"
         else:
             budget_tightness = "comfortable"

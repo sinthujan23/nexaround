@@ -92,6 +92,45 @@ HOTELS = {"properties": [
 ]}
 
 
+# What Gemini answers when it is asked to estimate the flights itself.
+ESTIMATED_FLIGHTS = {
+    "departure_city": "Colombo",
+    "destination_city": "India",
+    "strategies": [
+        {
+            "rank": 1, "strategy": "direct", "title": "Direct Flight",
+            "provider_name": "Google Flights",
+            "estimated_price_range": "INR 52000 - 58000",
+            "airlines": ["IndiGo"], "route": "CMB \u2192 DEL", "stops": 1,
+            "total_duration": "9h 30m",
+            "return_route": "DEL \u2192 CMB", "return_airlines": ["IndiGo"],
+            "return_stops": 1, "return_duration": "9h 50m",
+            "tip": "Book early.", "booking_url": "",
+        },
+        {
+            "rank": 2, "strategy": "value", "title": "One-stop",
+            "provider_name": "Google Flights",
+            "estimated_price_range": "INR 72000 - 76000",
+            "airlines": ["Emirates"], "route": "CMB \u2192 DEL", "stops": 1,
+            "total_duration": "14h 10m",
+            "return_route": "DEL \u2192 CMB", "return_airlines": ["Emirates"],
+            "return_stops": 1, "return_duration": "13h 40m",
+            "tip": "Longer layover.", "booking_url": "",
+        },
+    ],
+}
+
+ESTIMATED_HOTELS = {
+    "strategies": [
+        {"rank": 1, "name": "Estimated Inn", "provider_name": "Google Hotels",
+         "category": "Budget", "rating": "4.2", "price_per_night": "INR 4000",
+         "total_estimated_cost": "INR 20000", "location": "Centre",
+         "amenities": ["Wi-Fi"], "description": "A stay.", "booking_url": ""},
+    ],
+    "general_tips": [], "best_areas": "Centre",
+}
+
+
 def _itinerary(days, per_day=3):
     """A plausible model answer with `days` days."""
     out = []
@@ -137,11 +176,18 @@ class _Serp:
             return {}
         return json.loads(json.dumps(FLIGHTS))
 
+    # Nightly rates the stub quotes; a test can raise them to reproduce a trip
+    # whose rooms alone outrun the budget.
+    rates = (40, 90, 160)
+
     async def search_hotels(self, **kw):
         _Serp.searches.append(("hotels", kw))
         if _Serp.mode in ("serp_down", "hotels_empty"):
             return {}
-        return json.loads(json.dumps(HOTELS))
+        return {"properties": [
+            _hotel(f"Hotel {i}", rate, cls)
+            for i, (rate, cls) in enumerate(zip(_Serp.rates, (3, 4, 5)))
+        ]}
 
 
 @pytest.fixture
@@ -164,6 +210,12 @@ def world(monkeypatch):
         # The route planner asks first; the itinerary is the long grounded call.
         if '"legs"' in prompt and "arrival_airport" in prompt:
             return json.dumps(ROUTE), []
+        # Flight estimation, reached when SerpApi gives nothing back.
+        if "estimated_price_range" in prompt and "return_route" in prompt:
+            return json.dumps(ESTIMATED_FLIGHTS), []
+        # Hotel estimation, same situation.
+        if "price_per_night" in prompt and "best_areas" in prompt:
+            return json.dumps(ESTIMATED_HOTELS), []
         if mode == "gemini_prose":
             return "I'm sorry, I can't help with that request.", []
         if mode == "gemini_truncated":
@@ -183,6 +235,7 @@ def world(monkeypatch):
     monkeypatch.setattr(svc.cover_photo_service, "get_cover_url", _cover, raising=False)
     _Serp.searches = []
     _Serp.mode = "ok"
+    _Serp.rates = (40, 90, 160)
     return state
 
 
@@ -477,3 +530,128 @@ def test_absurd_parameters_are_refused_or_survived(world):
             assert v == v, f"{kw} produced NaN in budget.{k}"      # NaN != NaN
             assert v != float("inf"), f"{kw} produced infinity in budget.{k}"
             assert v >= 0, f"{kw} produced a negative budget.{k}"
+
+
+# ── The client's Italy report, 2026-09-12 ───────────────────────────────────
+#
+# "the budget split is not correct": a 7-day Rome + Florence plan for three
+# showed "90% Stay - 64% Transit - 3% Food - 0% Activities" against a total of
+# INR 339,000. The parts came to 531,670 - 157% - and the card still called the
+# trip feasible. Rome's rooms on that plan ran 6,500 / 28,000 / 70,000 a night,
+# so the budget covered the cheapest room (which is what feasibility measured)
+# and nowhere near the middle one (which is what the card priced).
+
+ITALY_RATES = (6_500, 28_000, 70_000)
+
+
+@pytest.mark.parametrize("budget", [200_000, 339_000, 500_000, 1_000_000])
+def test_a_budget_split_always_adds_up(world, budget):
+    _Serp.rates = ITALY_RATES
+    try:
+        _, meta, _ = run(world, budget=float(budget), travelers=3)
+    finally:
+        _Serp.rates = (40, 90, 160)
+
+    bb = meta["budget_breakdown"]
+    parts = sum(money(bb[k]) for k in ("stay", "transit", "food", "activities"))
+    total = money(bb["total"])
+    assert abs(parts - total) / total < 0.02, (
+        f"the four bars come to {parts:,.0f} of a {total:,.0f} total"
+    )
+    assert money(bb["activities"]) > 0, "activities was zeroed to absorb the overrun"
+
+
+def test_a_budget_that_will_not_buy_the_recommended_tier_says_so(world):
+    """The lifted total has to be explained, or it reads as the app ignoring
+    the number the traveller typed."""
+    _Serp.rates = ITALY_RATES
+    try:
+        _, meta, _ = run(world, budget=339_000.0, travelers=3)
+    finally:
+        _Serp.rates = (40, 90, 160)
+
+    assert money(meta["budget_breakdown"]["total"]) > 339_000
+    verdict = meta["verdict"]
+    assert verdict["feasible"] is False
+    assert verdict["budget_tightness"] == "insufficient"
+    # The trip is still doable at the cheapest room, and that is the number
+    # worth telling them.
+    assert 0 < money(verdict["minimum_required"]) <= money(meta["budget_breakdown"]["total"])
+
+
+def test_a_budget_that_covers_the_recommended_tier_is_left_alone(world):
+    """The headline must not be inflated on a plan that fits."""
+    _, meta, _ = run(world, budget=400_000.0, travelers=2)
+    assert money(meta["budget_breakdown"]["total"]) == 400_000.0
+    assert meta["verdict"]["feasible"] is True
+
+
+def test_every_scenario_tab_adds_up_too(world):
+    """Minimum and Comfortable are the same waterfall and the same risk."""
+    _Serp.rates = ITALY_RATES
+    try:
+        _, meta, _ = run(world, budget=339_000.0, travelers=3)
+    finally:
+        _Serp.rates = (40, 90, 160)
+
+    for name, bd in (meta["budget_scenarios"] or {}).items():
+        parts = sum(money(bd.get(k)) for k in ("stay", "transit", "food", "activities"))
+        total = money(bd.get("total"))
+        assert total > 0, name
+        assert abs(parts - total) / total < 0.02, (
+            f"{name} tab: bars come to {parts:,.0f} of {total:,.0f}"
+        )
+
+
+# ── The client's Italy report, parts 2 and 3 ────────────────────────────────
+#
+# "Itinerary says departure to home country from Florence" / "But flights
+# didn't show return journey at all". Every fare on that plan was
+# `is_live_price: False` — SerpApi was out of quota that week — and all three
+# cards carried `return_route: None`. A traveller was told to leave from
+# Florence with nothing anywhere saying how.
+
+def test_an_estimated_flight_section_still_shows_the_way_home(world):
+    """No live prices is a reason for an estimate, never for a one-way trip."""
+    world["mode"] = "serp_down"
+    _, meta, _ = run(world)
+
+    strategies = (meta["flight_strategies"] or {}).get("strategies") or []
+    assert strategies, "the section came back empty instead of estimating"
+    for s in strategies:
+        assert s.get("is_live_price") is False, "estimates must be marked as such"
+        assert s.get("return_route"), f"{s.get('tier')} has no journey home"
+        assert (s.get("return") or {}).get("destination"), s.get("tier")
+
+
+def test_an_estimated_round_trip_is_labelled_a_round_trip(world):
+    world["mode"] = "serp_down"
+    _, meta, _ = run(world)
+    for s in (meta["flight_strategies"] or {}).get("strategies") or []:
+        assert s.get("trip_type") == "round_trip", s.get("tier")
+
+
+def test_the_transit_budget_still_buys_the_estimated_fare(world):
+    """A budget built on an estimate still has to cover it."""
+    world["mode"] = "serp_down"
+    _, meta, _ = run(world)
+    fares = [
+        money(s.get("price_per_traveler")) for s in
+        (meta["flight_strategies"] or {}).get("strategies") or []
+    ]
+    assert fares and min(fares) > 0
+    assert money(meta["budget_breakdown"]["transit"]) >= min(fares) * 2 - 1
+
+
+def test_the_way_home_leaves_from_where_the_trip_ends(world):
+    """"Departure from Florence" has to be matched by a flight out of Florence."""
+    world["mode"] = "serp_down"
+    _, meta, _ = run(world)
+    fs = meta["flight_strategies"] or {}
+    gateway = (fs.get("departure_airport") or {}).get("iata") or ROUTE["departure_airport"]["iata"]
+    for s in fs.get("strategies") or []:
+        ret = s.get("return") or {}
+        assert ret.get("origin") == gateway, (
+            f"{s.get('tier')} flies home from {ret.get('origin')}, "
+            f"but the trip ends at {gateway}"
+        )
