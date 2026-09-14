@@ -1039,14 +1039,32 @@ def test_legs_that_already_agree_are_left_alone():
     assert [(l["start_day"], l["end_day"]) for l in legs] == [(1, 4), (5, 14)]
 
 
-def test_a_boundary_is_not_moved_so_far_it_empties_a_city():
-    """A stray "to Florence" on day 1 must not wipe out Rome."""
+def test_a_stray_transfer_on_the_opening_day_is_not_a_city_change():
+    """A "to Florence" on day 1, where Rome's own leg begins, must not move it.
+
+    It used to be found and then refused for leaving Rome no nights. Now each
+    leg only looks past the day its predecessor began, so the arrival transfer
+    is never a candidate in the first place - which is also what lets a trip
+    that returns to its opening city match the right visit.
+    """
     legs = _italy_legs()
     days = [{"day": n, "theme": "", "activities":
              ([{"name": "Transfer to Florence", "type": "transport"}] if n == 1 else [])}
             for n in range(1, 15)]
     moved = svc._align_legs_to_itinerary(legs, days, 14)
     assert legs[0]["start_day"] == 1 and legs[0]["end_day"] == 5
+    assert legs[1]["start_day"] == 6, "Florence must not move onto day 1"
+    assert moved == []
+
+
+def test_a_boundary_is_not_moved_past_the_legs_own_end():
+    """Travel found after the leg has already finished is not a boundary."""
+    legs = _italy_legs()
+    days = [{"day": n, "theme": "", "activities":
+             ([{"name": "Train to Florence", "type": "transport"}] if n == 11 else [])}
+            for n in range(1, 15)]
+    moved = svc._align_legs_to_itinerary(legs, days, 14)
+    assert legs[0]["end_day"] == 5 and legs[1]["start_day"] == 6, "nothing moved"
     assert any("no nights" in m for m in moved), moved
 
 
@@ -1390,3 +1408,89 @@ def test_an_unmatched_hop_changes_nothing(monkeypatch):
     before = json.dumps(days, sort_keys=True)
     assert svc._apply_inter_city_fares(days, _hops(monkeypatch)) == 0
     assert json.dumps(days, sort_keys=True) == before
+
+
+# ── Leg boundaries against a plan that flies home mid-trip ──────────────────
+#
+# A 14-day Egypt plan: Cairo -> Luxor -> Aswan -> Cairo. The itinerary flew
+# ASW -> CAI on day 13 and slept in Cairo that night; the legs still read
+# "Aswan d9-13 (5 nights), Cairo d14 (0 nights)", so Aswan was booked a night
+# too many and the closing Cairo leg was booked no room at all.
+
+def _egypt14_days():
+    def day(n, theme, *acts):
+        return {"day": n, "theme": theme,
+                "activities": [{"name": a, "type": t} for t, a in acts]}
+    days = [day(1, "Cairo", ("transport", "Transfer to Cairo hotel"),
+                ("attraction", "Egyptian Museum"))]
+    days += [day(n, "Cairo", ("attraction", f"Cairo sight {n}")) for n in (2, 3, 4)]
+    # The model copied the airport codes out of the confirmed-hop line.
+    days.append(day(5, "Luxor", ("transport", "Flight: CAI -> LXR"),
+                    ("attraction", "Luxor Temple")))
+    days += [day(n, "Luxor", ("attraction", f"Luxor sight {n}")) for n in (6, 7, 8)]
+    days.append(day(9, "Aswan", ("transport", "Train: Luxor -> Aswan")))
+    days += [day(n, "Aswan", ("attraction", f"Aswan sight {n}")) for n in (10, 11, 12)]
+    days.append(day(13, "Cairo", ("transport", "Flight: ASW -> CAI"),
+                    ("dining", "Dinner in Cairo")))
+    days.append(day(14, "Departure", ("transport", "Flight: CAI -> CMB")))
+    return days
+
+
+def _egypt14_legs():
+    return [
+        {"city": "Cairo", "start_day": 1, "end_day": 4, "nights": 4},
+        {"city": "Luxor", "start_day": 5, "end_day": 8, "nights": 4},
+        {"city": "Aswan", "start_day": 9, "end_day": 13, "nights": 5},
+        {"city": "Cairo", "start_day": 14, "end_day": 14, "nights": 0},
+    ]
+
+
+EGYPT14_HOPS = [
+    {"day": 5, "from_city": "Cairo", "to_city": "Luxor", "from_code": "CAI", "to_code": "LXR"},
+    {"day": 13, "from_city": "Aswan", "to_city": "Cairo", "from_code": "ASW", "to_code": "CAI"},
+]
+
+
+def test_a_leg_moves_when_the_flight_is_written_with_airport_codes():
+    legs = _egypt14_legs()
+    notes = svc._align_legs_to_itinerary(legs, _egypt14_days(), 14, EGYPT14_HOPS)
+
+    assert notes, "the boundary did not move"
+    assert [(l["city"], l["start_day"], l["end_day"], l["nights"]) for l in legs] == [
+        ("Cairo", 1, 4, 4),
+        ("Luxor", 5, 8, 4),
+        ("Aswan", 9, 12, 4),     # was 5 nights
+        ("Cairo", 13, 14, 1),    # was 0 nights, so no room was ever booked
+    ]
+
+
+def test_a_city_visited_twice_matches_the_right_visit():
+    """Cairo has a day-1 transfer into it as well as the day-13 flight back.
+
+    Searching from the start found day 1 for the closing leg and refused to
+    move it, because that would have left Aswan no nights at all.
+    """
+    legs = _egypt14_legs()
+    svc._align_legs_to_itinerary(legs, _egypt14_days(), 14, EGYPT14_HOPS)
+    assert legs[3]["start_day"] == 13, "the closing Cairo leg matched the arrival transfer"
+    assert legs[0]["start_day"] == 1, "the opening Cairo leg must not move"
+
+
+def test_city_names_still_work_without_hops():
+    """The codes are an addition, not a replacement."""
+    legs = [
+        {"city": "Rome", "start_day": 1, "end_day": 5, "nights": 5},
+        {"city": "Florence", "start_day": 6, "end_day": 9, "nights": 3},
+    ]
+    days = [{"day": n, "theme": "t", "activities": []} for n in range(1, 10)]
+    days[4]["activities"] = [{"name": "Train to Florence", "type": "transport"}]
+    notes = svc._align_legs_to_itinerary(legs, days, 9)
+    assert notes
+    assert legs[0]["end_day"] == 4 and legs[1]["start_day"] == 5
+
+
+def test_nothing_moves_when_the_itinerary_already_agrees():
+    legs = _egypt14_legs()
+    legs[2]["end_day"], legs[2]["nights"] = 12, 4
+    legs[3]["start_day"], legs[3]["nights"] = 13, 1
+    assert svc._align_legs_to_itinerary(legs, _egypt14_days(), 14, EGYPT14_HOPS) == []

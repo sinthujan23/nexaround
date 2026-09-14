@@ -730,3 +730,73 @@ def test_no_fare_at_all_describes_no_flight():
     assert "transit" not in n
     assert "flight" not in n["summary"]
     assert n["summary"] == "Cheapest 3-star+ room, 1 per person"
+
+
+# ── The ladder after a fare moves ───────────────────────────────────────────
+#
+# Google prices a round trip at the outbound level, so every card carries the
+# cheapest total achievable with that outbound. `attach_return_leg` buys one
+# card's specific return and replaces its fare with what that exact pair costs,
+# while the other cards keep the "from" price — after the tier names have
+# already been handed out by price.
+
+def _card(tier, price, minutes, stops=1):
+    return {"tier": tier, "rank": 0, "price_per_traveler": float(price),
+            "total_duration_minutes": minutes, "stops": stops}
+
+
+def test_a_moved_fare_moves_the_tier_name_with_it():
+    """Live Colombo->Spain: Recommended EUR 1,459 / 39h 35m sat beside a
+    Comfortable at EUR 939 / 15h 50m — cheaper and two and a half times
+    quicker, and the budget prices itself from the middle card."""
+    from app.services.serpapi_service import rerank_tiers
+
+    cards = [_card("minimum", 846, 2475, 2),
+             _card("recommended", 1459, 2375, 2),
+             _card("comfortable", 939, 950, 1)]
+    assert rerank_tiers(cards) is True
+
+    # The 1,459 fare is slower *and* dearer than the 939 — nothing to offer.
+    assert [c["price_per_traveler"] for c in cards] == [846, 939]
+    assert [c["tier"] for c in cards] == ["minimum", "comfortable"]
+    assert [c["rank"] for c in cards] == [1, 2]
+
+
+def test_the_surviving_cards_still_climb_in_price_and_fall_in_time():
+    from app.services.serpapi_service import rerank_tiers
+
+    cards = [_card("minimum", 846, 2475, 2),
+             _card("recommended", 1459, 2375, 2),
+             _card("comfortable", 939, 950, 1)]
+    rerank_tiers(cards)
+    for a, b in zip(cards, cards[1:]):
+        assert b["price_per_traveler"] > a["price_per_traveler"]
+        assert b["total_duration_minutes"] < a["total_duration_minutes"]
+
+
+def test_a_fare_that_moved_but_stayed_in_order_keeps_three_cards():
+    """Re-ranking must not thin a ladder that is still coherent."""
+    from app.services.serpapi_service import rerank_tiers
+
+    cards = [_card("minimum", 800, 2400), _card("recommended", 1000, 1800),
+             _card("comfortable", 1200, 1200)]
+    assert rerank_tiers(cards) is False
+    assert [c["tier"] for c in cards] == ["minimum", "recommended", "comfortable"]
+
+
+def test_a_single_card_is_left_alone():
+    from app.services.serpapi_service import rerank_tiers
+
+    cards = [_card("minimum", 800, 2400)]
+    assert rerank_tiers(cards) is False
+    assert cards[0]["tier"] == "minimum"
+
+
+def test_unpriced_cards_do_not_crash_the_ranking():
+    from app.services.serpapi_service import rerank_tiers
+
+    cards = [_card("minimum", 800, 2400),
+             {"tier": "recommended", "price_per_traveler": None},
+             _card("comfortable", 1200, 1200)]
+    rerank_tiers(cards)
+    assert [c["price_per_traveler"] for c in cards] == [800, 1200]

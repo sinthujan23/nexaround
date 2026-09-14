@@ -1722,6 +1722,70 @@ def extract_open_jaw_strategies_from_serpapi(
     }
 
 
+def rerank_tiers(strategies: List[Dict[str, Any]]) -> bool:
+    """Put the cards back in order after a fare has moved, dropping any that
+    the move has made pointless.
+
+    A tier name is a price rank, and every card must cost more than the one
+    above it and get there sooner - that is the whole basis of the Flights tab
+    and what stops a card claiming to be better than one it is beaten by.
+    `attach_return_leg` breaks both: Google prices a round trip at the outbound
+    level, so every card carries the cheapest total achievable with that
+    outbound, and pricing one card's specific return replaces its fare with
+    what that exact pair costs while the others keep the "from" price.
+
+    Seen live on a Colombo->Spain search: Recommended came back at EUR 1,459
+    over 39h 35m beside a Comfortable at EUR 939 over 15h 50m - cheaper and two
+    and a half times quicker. Re-ranking alone would have left that fare on the
+    top card, still dearer and still slower than the one beneath it, so an
+    itinerary beaten on both axes is dropped instead. Two cards is a normal
+    outcome for a route, not a degraded one.
+
+    Re-ranked here rather than pricing every return first: returns cost a
+    SerpApi search each and only one is bought per plan, so the fare that moves
+    is known only after the ladder exists. Returns True when anything changed.
+    """
+    priced = [
+        s for s in strategies
+        if isinstance(s, dict) and isinstance(s.get("price_per_traveler"), (int, float))
+        and s["price_per_traveler"] > 0
+    ]
+    if len(priced) < 2:
+        return False
+
+    before = [(id(s), s.get("tier")) for s in strategies]
+
+    def _mins(s):
+        return int(s.get("total_duration_minutes") or 0)
+
+    # Beaten on money and on time, by a card that is not merely its equal.
+    kept = [
+        s for s in priced
+        if not any(
+            o is not s
+            and o["price_per_traveler"] <= s["price_per_traveler"]
+            and _mins(o) <= _mins(s)
+            and (o["price_per_traveler"] < s["price_per_traveler"] or _mins(o) < _mins(s))
+            for o in priced
+        )
+    ]
+    if not kept:
+        kept = priced
+
+    kept.sort(key=lambda s: (s["price_per_traveler"], _mins(s)))
+    names = (
+        FLIGHT_TIERS if len(kept) == 3
+        else ("minimum", "comfortable") if len(kept) == 2
+        else ("minimum",)
+    )
+    for rank, (name, strat) in enumerate(zip(names, kept), start=1):
+        strat["tier"] = name
+        strat["rank"] = rank
+
+    strategies[:] = kept
+    return [(id(s), s.get("tier")) for s in strategies] != before
+
+
 def attach_return_leg(
     strategy: Dict[str, Any],
     return_data: Dict[str, Any],

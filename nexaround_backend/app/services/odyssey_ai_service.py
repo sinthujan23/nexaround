@@ -20,6 +20,7 @@ from app.services.serpapi_service import (
     _MIN_GOOGLE_HOTEL_CLASS,
     property_hotel_class as serpapi_property_hotel_class,
     attach_return_leg,
+    rerank_tiers,
     format_flight_results_for_gemini,
     format_hotel_results_for_gemini,
     extract_hotel_strategies_from_serpapi,
@@ -1517,6 +1518,17 @@ async def generate_flight_strategies(
                                 )
                         except Exception as e:
                             logger.warning("Return-leg lookup failed for %s tier: %s", strat.get("tier"), e)
+                    # Pricing one card's return can move its fare past a card
+                    # that was dearer when the names were handed out, so the
+                    # names are handed out again against the fares now shown.
+                    if rerank_tiers(direct["strategies"]):
+                        logger.info(
+                            "Flight tiers re-ranked after the return leg was priced: %s",
+                            ", ".join(
+                                f"{s.get('tier')} {s.get('price_per_traveler'):,.0f}"
+                                for s in direct["strategies"]
+                            ),
+                        )
                     trip_type = "round_trip" if return_date else "one_way"
                     return await _finish(direct, trip_type=trip_type, home_code=dest_code)
 
@@ -2159,7 +2171,9 @@ def _party_cost(activity: dict, currency: str, travelers: int) -> tuple[str, flo
     return (f"{code} {total:,.0f}" if code else f"{total:,.0f}"), per
 
 
-def _align_legs_to_itinerary(city_legs: list[dict], day_plans, days: int) -> list[str]:
+def _align_legs_to_itinerary(
+    city_legs: list[dict], day_plans, days: int, hops: list[dict] | None = None,
+) -> list[str]:
     """Move each leg boundary to the day the itinerary actually travels.
 
     The legs are planned before the itinerary is written and the hotel nights
@@ -2181,18 +2195,48 @@ def _align_legs_to_itinerary(city_legs: list[dict], day_plans, days: int) -> lis
     if not city_legs or len(city_legs) < 2 or not isinstance(day_plans, list):
         return []
 
+    # A hop we priced ourselves tells us the destination's airport code, and
+    # the model writes the row with whichever of the two it copied. The prompt
+    # asks for "Flight: <from city> -> <to city>" and the confirmed-hop line
+    # above it reads "Cairo (CAI) -> Luxor (LXR)", so it often writes
+    # "Flight: CAI -> LXR" instead - which this could not see, so a 14-day
+    # Egypt plan flew to Cairo on day 13 with the Aswan leg still holding five
+    # nights and the Cairo leg holding none.
+    codes_for: dict[str, set[str]] = {}
+    for h in hops or []:
+        if not isinstance(h, dict):
+            continue
+        city = str(h.get("to_city") or "").strip().lower()
+        code = str(h.get("to_code") or "").strip()
+        if city and code:
+            codes_for.setdefault(city, set()).add(code)
+
     by_day: dict[int, list] = {}
     for d in day_plans:
         if isinstance(d, dict) and isinstance(d.get("day"), int):
             acts = d.get("activities")
             by_day[d["day"]] = acts if isinstance(acts, list) else []
 
-    def _travel_day(city: str) -> int | None:
-        """First day a transport stop names `city` as where it is going."""
+    def _travel_day(city: str, after: int = 0) -> int | None:
+        """First day after `after` that a transport stop travels to `city`.
+
+        The city, or the airport code of a hop that lands there.
+
+        `after` is what makes a repeated city work. A trip that opens and
+        closes in the same place - Cairo, Delhi, Bangkok - has a day-1 transfer
+        into it, and searching from the start found that one for the closing
+        leg too: the Egypt plan's return to Cairo on d13 was read as d1 and
+        refused for leaving Aswan no nights. Each leg only looks past the day
+        its predecessor began.
+        """
         if not city:
             return None
-        pattern = re.compile(rf"(?:to|into|→|->)\s*{re.escape(city)}\b", re.I)
-        for day in sorted(by_day):
+        targets = [re.escape(city)]
+        targets += [re.escape(c) for c in sorted(codes_for.get(city.strip().lower(), ()))]
+        pattern = re.compile(
+            rf"(?:to|into|→|->)\s*(?:{'|'.join(targets)})\b", re.I,
+        )
+        for day in sorted(d for d in by_day if d > after):
             for a in by_day[day]:
                 if not isinstance(a, dict):
                     continue
@@ -2205,7 +2249,9 @@ def _align_legs_to_itinerary(city_legs: list[dict], day_plans, days: int) -> lis
     notes: list[str] = []
     for i in range(1, len(city_legs)):
         leg, prev = city_legs[i], city_legs[i - 1]
-        found = _travel_day(str(leg.get("city") or ""))
+        found = _travel_day(
+            str(leg.get("city") or ""), after=int(prev.get("start_day") or 0),
+        )
         if found is None:
             continue
         start = int(leg.get("start_day") or 0)
@@ -3738,7 +3784,9 @@ async def generate_odyssey(
     # a day early. The legs book the hotels, so they follow the itinerary here
     # rather than the other way round — before the stay cost, the budget and
     # the meta block are all computed from them below.
-    moved = _align_legs_to_itinerary(city_legs, plan.get("day_plans"), days)
+    moved = _align_legs_to_itinerary(
+        city_legs, plan.get("day_plans"), days, inter_city_flights,
+    )
     if moved:
         logger.info("Leg boundaries realigned to the itinerary: %s", "; ".join(moved))
         _reprice_stays(hotel_strategies, city_legs, currency)
