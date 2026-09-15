@@ -45,6 +45,32 @@ void main() {
           reason: 'in countryCodes but not countriesList: $orphans');
     });
 
+    test('the list holds the countries a traveller actually asks for', () {
+      // Absent at first, each for its own reason: Zimbabwe was the last entry
+      // and had no trailing comma, so a reader that expected one skipped it and
+      // it shipped without a code; the other three were never in the list.
+      for (final name in const [
+        'Zimbabwe',
+        "Cote d'Ivoire",
+        'Taiwan',
+        'Vatican City',
+      ]) {
+        expect(countriesList, contains(name));
+        expect(countryCodeFor(name), isNotNull,
+            reason: '$name is offered but cannot restrict a search');
+      }
+    });
+
+    test('the list is sorted, so the picker reads in order', () {
+      final sorted = [...countriesList]
+        ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+      expect(countriesList, orderedEquals(sorted));
+    });
+
+    test('no country appears twice', () {
+      expect(countriesList.toSet().length, countriesList.length);
+    });
+
     test('a few known codes are right', () {
       expect(countryCodeFor('Sri Lanka'), 'LK');
       expect(countryCodeFor('India'), 'IN');
@@ -99,6 +125,9 @@ void main() {
       expect(countryNameFromPlace('Türkiye'), 'Turkey');
       expect(countryNameFromPlace('Czech Republic'), 'Czechia');
       expect(countryNameFromPlace('Swaziland'), 'Eswatini');
+      expect(countryNameFromPlace("Abidjan, Côte d'Ivoire"), "Cote d'Ivoire");
+      expect(countryNameFromPlace('Ivory Coast'), "Cote d'Ivoire");
+      expect(countryNameFromPlace('Holy See'), 'Vatican City');
     });
 
     test('the answer is spelled the way the picker spells it', () {

@@ -39,6 +39,7 @@ const List<String> countriesList = [
   'Comoros',
   'Congo',
   'Costa Rica',
+  'Cote d\'Ivoire',
   'Croatia',
   'Cuba',
   'Cyprus',
@@ -168,6 +169,7 @@ const List<String> countriesList = [
   'Sweden',
   'Switzerland',
   'Syria',
+  'Taiwan',
   'Tajikistan',
   'Tanzania',
   'Thailand',
@@ -187,11 +189,12 @@ const List<String> countriesList = [
   'Uruguay',
   'Uzbekistan',
   'Vanuatu',
+  'Vatican City',
   'Venezuela',
   'Vietnam',
   'Yemen',
   'Zambia',
-  'Zimbabwe'
+  'Zimbabwe',
 ];
 
 /// ISO 3166-1 alpha-2 code for each name in [countriesList].
@@ -245,6 +248,7 @@ const Map<String, String> countryCodes = {
   'Comoros': 'KM',
   'Congo': 'CG',
   'Costa Rica': 'CR',
+  'Cote d\'Ivoire': 'CI',
   'Croatia': 'HR',
   'Cuba': 'CU',
   'Cyprus': 'CY',
@@ -374,6 +378,7 @@ const Map<String, String> countryCodes = {
   'Sweden': 'SE',
   'Switzerland': 'CH',
   'Syria': 'SY',
+  'Taiwan': 'TW',
   'Tajikistan': 'TJ',
   'Tanzania': 'TZ',
   'Thailand': 'TH',
@@ -393,10 +398,12 @@ const Map<String, String> countryCodes = {
   'Uruguay': 'UY',
   'Uzbekistan': 'UZ',
   'Vanuatu': 'VU',
+  'Vatican City': 'VA',
   'Venezuela': 'VE',
   'Vietnam': 'VN',
   'Yemen': 'YE',
   'Zambia': 'ZM',
+  'Zimbabwe': 'ZW',
 };
 
 /// The ISO code for a country name, or `null` when it is not one we know.
@@ -455,6 +462,13 @@ const Map<String, String> _countryAliases = {
   "lao people's democratic republic": 'Laos',
   'syrian arab republic': 'Syria',
   'brunei darussalam': 'Brunei',
+  // Google writes it accented and the list holds the plain spelling. Double
+  // quotes here so the apostrophe inside needs no escaping either way.
+  "côte d'ivoire": "Cote d'Ivoire",
+  "ivory coast": "Cote d'Ivoire",
+  'holy see': 'Vatican City',
+  'vatican': 'Vatican City',
+  'chinese taipei': 'Taiwan',
 };
 
 /// The country named at the end of a place's address, or null when unclear.
