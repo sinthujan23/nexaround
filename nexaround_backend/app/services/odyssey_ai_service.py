@@ -1127,6 +1127,76 @@ def food_share_of_plan(plan: dict, travelers: int = 1) -> float:
     return min(max(food / total, _MIN_LINE_SHARE), 1.0 - _MIN_LINE_SHARE)
 
 
+def _drop_repeated_tips(day_items: list[dict]) -> int:
+    """Keep the first use of a tip and clear every later repeat.
+
+    The tip sits under the activity, so the same sentence four days running
+    reads as though nobody wrote it. Mostly it is filler on the check-in rows -
+    "Check in and settle into your accommodation." appeared five times in one
+    14-day Turkey plan and four in a Spain one, on rows already called "Hotel
+    Check-in" - and the model copies the phrasing onto every leg because the
+    day-one row we insert ourselves uses it.
+
+    Cleared, not rewritten: a tip that adds nothing is better absent than
+    reworded into a second thing that adds nothing. Returns how many were
+    dropped.
+    """
+    seen: set[str] = set()
+    dropped = 0
+    for day in sorted(
+        (d for d in day_items if isinstance(d, dict)),
+        key=lambda d: int(d.get("day") or 0),
+    ):
+        for a in day.get("activities") or []:
+            if not isinstance(a, dict):
+                continue
+            tip = str(a.get("tip") or "").strip()
+            if not tip:
+                continue
+            key = re.sub(r"[^a-z0-9]+", " ", tip.lower()).strip()
+            if key in seen:
+                a["tip"] = ""
+                dropped += 1
+            else:
+                seen.add(key)
+    return dropped
+
+
+def _name_the_price_source(day_items: list[dict]) -> int:
+    """Give a priced stop a source when it has a basis but no name for it.
+
+    The app only shows `price_basis` when `price_source` is set, so a stop that
+    carried a real explanation - "Estimated typical meal price in Kandy" - and
+    no source name threw that explanation away and fell back to a bare
+    "Estimated" chip. Six such stops across twelve generated plans.
+
+    The source named here is what it honestly is: our own estimate, at the
+    confidence the model already assigned. A stop with no basis either is left
+    alone - there is nothing to reveal behind the chip.
+    """
+    named = 0
+    for day in day_items:
+        if not isinstance(day, dict):
+            continue
+        for a in day.get("activities") or []:
+            if not isinstance(a, dict):
+                continue
+            if str(a.get("price_source") or "").strip():
+                continue
+            if _extract_lowest_price(a.get("cost_per_person")) <= 0:
+                continue
+            if not str(a.get("price_basis") or "").strip():
+                continue
+            confidence = str(a.get("price_confidence") or "").strip().lower()
+            a["price_source"] = (
+                "Typical local rate" if confidence == "typical" else "Estimated"
+            )
+            if not confidence:
+                a["price_confidence"] = "Estimated"
+            named += 1
+    return named
+
+
 def _apply_main_flight_details(
     day_items: list[dict], flight_strategies: dict | None, tier: str = "recommended",
 ) -> int:
@@ -4515,6 +4585,16 @@ async def generate_odyssey(
 
     if not day_items:
         raise ValueError("Generated plan had no days")
+
+    # Tips that say the same thing twice, and prices whose explanation the app
+    # would otherwise discard. Both run over the finished days, so they see
+    # every row the traveller will.
+    repeats = _drop_repeated_tips(day_items)
+    if repeats:
+        logger.info("Cleared %d repeated tip(s).", repeats)
+    sourced = _name_the_price_source(day_items)
+    if sourced:
+        logger.info("Named the price source on %d estimated stop(s).", sourced)
 
     # The flight into the country and the one home: link them where they are
     # read, and stop the row home looking free.

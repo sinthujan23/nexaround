@@ -1184,3 +1184,106 @@ def test_the_real_peru_split_is_what_was_measured():
     """46/54, against the 60/40 that put its activities line 16% over."""
     share = svc.food_share_of_plan(_plan(("dining", 327_500), ("attraction", 377_750)))
     assert abs(share - 0.464) < 0.005
+
+
+# ── Tips that say the same thing twice ──────────────────────────────────────
+#
+# The tip sits under the activity, so the same sentence four days running reads
+# as though nobody wrote it. "Check in and settle into your accommodation."
+# appeared five times in one 14-day Turkey plan and four in a Spain one, on rows
+# already called "Hotel Check-in" — the model copies the phrasing from the
+# day-one row the backend inserts itself.
+
+def _days(*per_day):
+    return [
+        {"day": i + 1, "theme": "t", "activities": [
+            {"name": f"stop {i}-{j}", "type": "attraction", "tip": tip}
+            for j, tip in enumerate(tips)
+        ]}
+        for i, tips in enumerate(per_day)
+    ]
+
+
+def test_a_repeated_tip_is_cleared_and_the_first_one_kept():
+    days = _days(["Book online to skip the queue."], ["Book online to skip the queue."])
+    assert svc._drop_repeated_tips(days) == 1
+    assert days[0]["activities"][0]["tip"] == "Book online to skip the queue."
+    assert days[1]["activities"][0]["tip"] == ""
+
+
+def test_the_check_in_filler_is_cleared_across_every_leg():
+    filler = "Check in and settle into your accommodation."
+    days = _days([filler], ["Go early."], [filler], [filler], [filler])
+    assert svc._drop_repeated_tips(days) == 3
+    kept = [a["tip"] for d in days for a in d["activities"] if a["tip"]]
+    assert kept == [filler, "Go early."]
+
+
+def test_punctuation_and_case_do_not_smuggle_a_repeat_through():
+    days = _days(["Book online to skip the queue."], ["book online to skip the queue!"])
+    assert svc._drop_repeated_tips(days) == 1
+
+
+def test_genuinely_different_tips_all_survive():
+    days = _days(["Go early.", "Bring cash."], ["Wear good shoes."])
+    assert svc._drop_repeated_tips(days) == 0
+    assert all(a["tip"] for d in days for a in d["activities"])
+
+
+def test_the_first_day_wins_whatever_order_the_days_arrive_in():
+    days = _days(["First."], ["Second."])
+    days.reverse()
+    svc._drop_repeated_tips(days)
+    assert {a["tip"] for d in days for a in d["activities"]} == {"First.", "Second."}
+
+
+# ── A price with an explanation but no name for its source ──────────────────
+#
+# The app only shows `price_basis` when `price_source` is set, so a stop
+# carrying "Estimated typical meal price in Kandy" and no source name threw
+# that away and fell back to a bare "Estimated" chip. Six such stops across
+# twelve generated plans.
+
+def _stop(**kw):
+    a = {"name": "Lunch", "type": "dining", "cost_per_person": 800.0,
+         "price_basis": "LKR 800 each, estimated typical meal price in Kandy."}
+    a.update(kw)
+    return [{"day": 1, "theme": "t", "activities": [a]}]
+
+
+def test_an_estimated_price_is_given_a_source_so_its_basis_is_shown():
+    days = _stop(price_confidence="Typical")
+    assert svc._name_the_price_source(days) == 1
+    assert days[0]["activities"][0]["price_source"] == "Typical local rate"
+
+
+def test_the_source_matches_the_confidence_the_model_gave():
+    days = _stop(price_confidence="Estimated")
+    svc._name_the_price_source(days)
+    assert days[0]["activities"][0]["price_source"] == "Estimated"
+
+
+def test_a_missing_confidence_is_called_an_estimate_not_left_blank():
+    days = _stop()
+    svc._name_the_price_source(days)
+    assert days[0]["activities"][0]["price_source"] == "Estimated"
+    assert days[0]["activities"][0]["price_confidence"] == "Estimated"
+
+
+def test_a_real_source_is_never_overwritten():
+    days = _stop(price_source="Google Hotels", price_confidence="Fixed")
+    assert svc._name_the_price_source(days) == 0
+    assert days[0]["activities"][0]["price_source"] == "Google Hotels"
+
+
+def test_a_price_with_no_explanation_is_left_alone():
+    """There is nothing to reveal behind the chip, so inventing a source
+    would only promise the traveller something to tap."""
+    days = _stop(price_basis="")
+    assert svc._name_the_price_source(days) == 0
+    assert not days[0]["activities"][0].get("price_source")
+
+
+def test_a_free_stop_is_left_alone():
+    days = _stop(cost_per_person=0)
+    assert svc._name_the_price_source(days) == 0
