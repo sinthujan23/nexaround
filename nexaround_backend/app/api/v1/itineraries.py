@@ -143,6 +143,8 @@ async def generate_odyssey(
         hotel_check_out_date=data.hotel_check_out_date,
         start_date=data.start_date,
         end_date=data.end_date,
+        entry_city=data.entry_city or "",
+        exit_city=data.exit_city or "",
         destination_place_id=data.destination_place_id or "",
         destination_latitude=data.destination_latitude,
         destination_longitude=data.destination_longitude,
@@ -317,6 +319,8 @@ async def retry_odyssey_generation(
     destination = str(
         gen_params.get("destination") or meta.get("destination") or itin.title or ""
     )[:DESTINATION_MAX]
+    entry_city = str(gen_params.get("entry_city") or "")[:DESTINATION_MAX]
+    exit_city = str(gen_params.get("exit_city") or "")[:DESTINATION_MAX]
     mood = str(gen_params.get("mood") or meta.get("mood") or "balanced")[:MOOD_MAX]
     budget = _clamp(
         gen_params.get("budget") or meta.get("budget") or 1000.0, BUDGET_RANGE, 1000.0,
@@ -378,6 +382,8 @@ async def retry_odyssey_generation(
         hotel_check_out_date=hotel_check_out_date,
         start_date=start_date,
         end_date=end_date,
+        entry_city=entry_city,
+        exit_city=exit_city,
         destination_place_id=destination_place_id,
         destination_latitude=destination_latitude,
         destination_longitude=destination_longitude,

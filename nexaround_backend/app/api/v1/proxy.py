@@ -80,6 +80,25 @@ def _snap_pair_fine(latlng: str) -> str:
     return f"{_snap_fine(parts[0])},{_snap_fine(parts[1])}"
 
 
+def _region_codes(components: str | None) -> str:
+    """The country codes in a legacy `components` value, normalised.
+
+    Google's legacy autocomplete spells a country restriction
+    `components=country:lk` (up to five, joined by "|"). Places API (New) takes
+    the same thing as `includedRegionCodes: ["LK"]`, so the app keeps sending
+    the spelling it already knows and the proxy translates.
+    """
+    out: list[str] = []
+    for part in str(components or "").split("|"):
+        key, _, value = part.partition(":")
+        if key.strip().lower() != "country":
+            continue
+        code = value.strip().upper()
+        if len(code) == 2 and code.isalpha() and code not in out:
+            out.append(code)
+    return ",".join(out[:5])
+
+
 def _google_maps_cache_key(path: str, params: dict) -> str | None:
     """Normalised identity of a proxied Google Maps call.
 
@@ -110,7 +129,12 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
         # cached "nothing" instead of ever running its own unbiased query.
         loc = q.get("location", "")
         loc_part = f"{_snap_pair(loc)}|r{q.get('radius', '?')}" if loc else "global"
-        return f"ac:{(q.get('input') or '').strip().lower()}|{loc_part}"
+        # `components` narrows the answer to one country, so it is part of the
+        # question. Without it here, "paris" restricted to Italy and "paris"
+        # unrestricted would share a cache entry and serve each other's
+        # results — the same collision the location part above exists to stop.
+        region = _region_codes(q.get("components")) or "anywhere"
+        return f"ac:{(q.get('input') or '').strip().lower()}|{loc_part}|{region}"
     if path.startswith("place/photo"):
         ref = q.get("photo_reference") or q.get("photoreference") or "?"
         return f"photo:{ref[:180]}:{q.get('maxwidth','?')}"
@@ -223,6 +247,19 @@ async def _google_places_new(
         body: dict = {"input": (params.get("input") or "").strip()}
         if params.get("language"):
             body["languageCode"] = params["language"]
+        # A country restriction, when the caller asks for one. This is the one
+        # place a *restriction* is wanted: the Odyssey planner's entry and exit
+        # boxes are filled only after a country is chosen, so a city in another
+        # country is never a valid answer there — "Saint Petersburg" must not
+        # offer Florida to someone planning Russia.
+        #
+        # Opt-in and nothing else changes: the destination box sends no
+        # `components`, so it keeps searching the whole world, which is what
+        # the location comment below is protecting.
+        regions = _region_codes(params.get("components"))
+        if regions:
+            body["includedRegionCodes"] = regions.split(",")
+
         # A *bias*, never a restriction: the whole point of the app's two-phase
         # search is that a destination far from the user still has to match, so
         # narrowing the search area here would reintroduce the bug the

@@ -82,6 +82,13 @@ class OdysseyGenerateRequest(BaseModel):
     # the destination on its own, so older builds and free-text stay correct —
     # these only let it skip a lookup and disambiguate a name Google would
     # otherwise have to guess at.
+    # Where the traveller wants the trip to begin and end inside the
+    # destination country. Optional and independent: either may be given alone.
+    # The app only enables these once a country is chosen and restricts their
+    # search to it, so a city from elsewhere should never arrive - but the
+    # planner treats them as a request rather than a guarantee either way.
+    entry_city: str = Field(default="", max_length=DESTINATION_MAX)
+    exit_city: str = Field(default="", max_length=DESTINATION_MAX)
     destination_place_id: str = ""
     destination_latitude: Optional[float] = None
     destination_longitude: Optional[float] = None

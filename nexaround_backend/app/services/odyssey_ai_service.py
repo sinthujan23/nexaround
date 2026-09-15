@@ -1197,6 +1197,52 @@ def _name_the_price_source(day_items: list[dict]) -> int:
     return named
 
 
+def stretched_route_notice(
+    route, days: int, entry_city: str = "", exit_city: str = "",
+) -> str:
+    """What to tell a traveller whose two chosen ends are far apart for the days.
+
+    The planner keeps a trip inside one region so nobody spends half of it in
+    transit, and an entry and exit the traveller picked themselves outrank that
+    - they may have a flight already booked, or a wedding to get to. When the
+    two pull the route further than the days comfortably allow, the route is
+    still built, and this says so: the same choice the budget makes when it
+    cannot cover the trip, rather than quietly dropping one end.
+
+    Empty when nothing was asked for, when the ends are close enough, or when
+    the planner did not manage to honour them - there is nothing to warn about
+    a route that did not stretch.
+    """
+    legs = getattr(route, "legs", None) or []
+    if not legs or not (entry_city and exit_city):
+        return ""
+    if entry_city.strip().lower() == exit_city.strip().lower():
+        return ""
+
+    first, last = legs[0], legs[-1]
+    if not _leg_coords(first) or not _leg_coords(last):
+        return ""
+    (lat1, lng1), (lat2, lng2) = _leg_coords(first), _leg_coords(last)
+    apart = geo_resolver.haversine_km(lat1, lng1, lat2, lng2)
+
+    # Measured against the planner's own pace, not against the calendar: it is
+    # told not to move city more often than every two days, and each hop runs
+    # to about `_LEG_HOP_MAX_KM` by road. So a trip of `days` days covers
+    # roughly `days // 2` hops before it is all transit.
+    hops_available = max(int(days or 1) // 2, 1)
+    reach = _LEG_HOP_MAX_KM * hops_available
+    if apart <= reach:
+        return ""
+
+    hops_needed = max(int(round(apart / _LEG_HOP_MAX_KM)), 2)
+    return (
+        f"{first.get('city') or entry_city} and {last.get('city') or exit_city} are about "
+        f"{apart:,.0f} km apart \u2014 further than {days} days comfortably covers, so "
+        f"expect long journeys between stops, or an internal flight. Both were asked "
+        f"for, so the route keeps them."
+    )
+
+
 def _apply_main_flight_details(
     day_items: list[dict], flight_strategies: dict | None, tier: str = "recommended",
 ) -> int:
@@ -3407,6 +3453,8 @@ def _route_prompt(
     geo,
     origin_line: str,
     correction: str = "",
+    entry_city: str = "",
+    exit_city: str = "",
 ) -> str:
     # This call is where the hotel search's city strings come from, so an
     # invented country here is expensive: it books rooms in the wrong place.
@@ -3442,6 +3490,37 @@ def _route_prompt(
         f"(or nearest) airport as both arrival_airport and departure_airport.\n"
     )
 
+    # Where the traveller asked to start and finish. Optional and independent:
+    # either may be given alone, and the planner chooses the other end.
+    #
+    # These outrank the clustering rule below, because the traveller has said
+    # something about their own trip the model cannot know - a flight already
+    # booked into one city, a wedding in another. A route stretched as a result
+    # is not corrected; it is explained, the way a budget that will not cover
+    # the trip is explained rather than quietly trimmed.
+    ends = []
+    if entry_city:
+        ends.append(
+            f'- THE TRAVELLER STARTS AT {entry_city}. The FIRST leg\'s "city" MUST be '
+            f'"{entry_city}", whatever the clustering rule below would otherwise prefer. '
+            f'"arrival_airport" MUST be the airport with scheduled flights nearest '
+            f'{entry_city} - if {entry_city} has none of its own, the nearest one that '
+            f'has, and the traveller reaches {entry_city} from it by road.'
+        )
+    if exit_city:
+        ends.append(
+            f'- THE TRAVELLER FINISHES AT {exit_city}. The LAST leg\'s "city" MUST be '
+            f'"{exit_city}", and "departure_airport" MUST be the airport nearest it.'
+        )
+    if entry_city and exit_city and entry_city.strip().lower() != exit_city.strip().lower():
+        ends.append(
+            f'- Order the cities between {entry_city} and {exit_city} so the route runs '
+            f'from one to the other without backtracking. If the two are far apart for '
+            f'{days} days, use fewer stops and longer hops rather than dropping either '
+            f'end - both were asked for.'
+        )
+    ends_rule = ("\n".join(ends) + "\n") if ends else ""
+
     correction_rules = ""
     if correction:
         correction_rules = f"""
@@ -3466,7 +3545,7 @@ Rules:
   day in the smaller town, name the smaller town.
 - Prefer fewer, longer legs. Do not move city more often than every 2 days
   unless {destination} is small enough that it makes sense.
-{region_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
+{ends_rule}{region_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
   leg within about {_LEG_HOP_MAX_KM:.0f} km by road of the previous one unless "arrive_by"
   for that leg is "flight" or "train".
 - "latitude"/"longitude": the city's coordinates to 2 decimal places.
@@ -3505,6 +3584,8 @@ async def plan_route(
     departure_longitude: float | None = None,
     include_flights: bool = True,
     geo_budget=None,
+    entry_city: str = "",
+    exit_city: str = "",
 ) -> RoutePlan:
     """Decide the cities the trip sleeps in and the airports it uses, in one call.
 
@@ -3540,6 +3621,7 @@ async def plan_route(
 
     async def _attempt(correction: str) -> tuple[RoutePlan, list[str]]:
         prompt = _route_prompt(
+            entry_city=entry_city, exit_city=exit_city,
             destination=destination, days=days, mood=mood, travelers=travelers,
             geo=geo, origin_line=origin_line, correction=correction,
         )
@@ -3752,6 +3834,8 @@ async def generate_odyssey(
     destination_latitude: float | None = None,
     destination_longitude: float | None = None,
     destination_address: str = "",
+    entry_city: str = "",
+    exit_city: str = "",
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
 ) -> tuple[str, list[dict]]:
@@ -3828,6 +3912,8 @@ async def generate_odyssey(
             departure_longitude=departure_longitude,
             include_flights=search_flights,
             geo_budget=geo_budget,
+            entry_city=entry_city,
+            exit_city=exit_city,
         )
     except BaseException:
         # plan_route has its own fallback and should not raise, but if it
@@ -4033,7 +4119,11 @@ async def generate_odyssey(
         # mentioned it. The notice below is the half that was missing.
         _require_days(plan, text)
 
-    plan_advisory = _short_plan_notice(plan, days)
+    notices = [
+        _short_plan_notice(plan, days),
+        stretched_route_notice(route, days, entry_city, exit_city),
+    ]
+    plan_advisory = " ".join(n for n in notices if n)
     if plan_advisory:
         logger.warning("%s", plan_advisory)
 

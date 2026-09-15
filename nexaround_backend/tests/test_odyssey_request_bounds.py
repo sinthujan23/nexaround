@@ -118,3 +118,35 @@ def test_a_value_already_inside_the_bounds_is_untouched():
     assert _retry_clamp(4, TRAVELERS_RANGE, 1) == 4
     assert _retry_clamp(9, DAYS_RANGE, 3) == 9
     assert _retry_clamp(250000.0, BUDGET_RANGE, 1000.0) == 250000.0
+
+
+# ── Entry and exit cities ───────────────────────────────────────────────────
+#
+# The app only enables these once a country is chosen and restricts their
+# search to it, so a city from elsewhere should never arrive. The API treats
+# them as free text anyway: the client is not the only thing that can call it.
+
+def test_entry_and_exit_default_to_empty():
+    r = _req()
+    assert r.entry_city == "" and r.exit_city == ""
+
+
+def test_entry_and_exit_are_accepted():
+    r = _req(entry_city="Kandy", exit_city="Galle")
+    assert (r.entry_city, r.exit_city) == ("Kandy", "Galle")
+
+
+def test_either_may_be_given_alone():
+    assert _req(entry_city="Kandy").exit_city == ""
+    assert _req(exit_city="Galle").entry_city == ""
+
+
+def test_they_are_capped_like_every_other_free_text_field():
+    """Their length is billed as prompt tokens, same as the destination."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        _req(entry_city="K" * 201)
+    with pytest.raises(ValidationError):
+        _req(exit_city="G" * 201)
+    assert _req(entry_city="Saint-Denis, La Reunion").entry_city
