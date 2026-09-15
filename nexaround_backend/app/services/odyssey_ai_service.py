@@ -2687,14 +2687,23 @@ def stay_cost_lines(
         rate_, hotel_ = sorted(entries_, key=lambda e: e[0])[
             _tier_index(len(entries_), tier)
         ]
+        # A pooled rate was borrowed from another city, so the property it
+        # belongs to is not in this one. Carrying its name here printed
+        # "Hakone · 3 nights — Kyoto Ryokan" on the Stay sheet: the rate is
+        # a stand-in, and only the rate.
+        pooled_ = basis_ == "pooled"
         lines.append({
             "leg_index": leg_i,
             "city": str(leg_.get("city") or hotel_.get("city") or ""),
             "nights": nights_,
             "rooms": rooms_,
             "nightly": round(rate_, 2),
-            "hotel": str(hotel_.get("name") or ""),
-            "hotel_class": int(hotel_.get("hotel_class") or 0),
+            "hotel": "" if pooled_ else str(hotel_.get("name") or ""),
+            "hotel_class": 0 if pooled_ else int(hotel_.get("hotel_class") or 0),
+            # How many rooms this city actually offered. Two of them leave the
+            # mid-priced and dearest tiers pricing the same room — see the
+            # caveat `budget_basis` draws from this.
+            "options": len(entries_),
             "basis": basis_,
             "amount": round(rate_ * nights_ * rooms_, 2),
         })
@@ -2733,6 +2742,59 @@ def stay_priced_at_star_floor(
     )
 
 
+def _flight_fare(s: dict) -> float:
+    """What one traveller pays on this card, live price or estimate."""
+    price = s.get("price_per_traveler")
+    if isinstance(price, (int, float)) and price > 0:
+        return float(price)
+    return _extract_lowest_price(s.get("estimated_price_range"))
+
+
+def _chosen_live_flight(
+    flight_strategies: dict | None, tier: str = "recommended",
+) -> dict | None:
+    """The live-priced card the budget's transit line is describing.
+
+    The named tier when the Flights tab has one, otherwise the cheapest live
+    fare - the same fallback `transit_cost_lines` applies to the money, kept
+    in one place so the sentence and the number cannot describe different
+    cards.
+    """
+    if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
+        return None
+    live = [
+        s for s in flight_strategies["strategies"]
+        if isinstance(s, dict) and _flight_fare(s) > 0 and s.get("is_live_price")
+    ]
+    if not live:
+        return None
+    return next(
+        (s for s in live if s.get("tier") == tier),
+        min(live, key=_flight_fare),
+    )
+
+
+def effective_flight_tier(
+    flight_strategies: dict | None, tier: str = "recommended",
+) -> str:
+    """The tier whose fare the budget actually took.
+
+    The Pareto frontier can collapse to two cards: a live Colombo -> Hanoi
+    plan shipped with Minimum and Comfortable and no Recommended at all. The
+    transit figure was right - the fallback took the cheapest live fare - but
+    the note beside it still read "best value", naming a card that was not on
+    the Flights tab for the traveller to find.
+
+    Returns the requested tier untouched when nothing is priced, so wording
+    never turns on an empty search.
+    """
+    chosen = _chosen_live_flight(flight_strategies, tier)
+    if chosen is None:
+        return tier
+    got = str(chosen.get("tier") or "").strip()
+    return got if got in _TIER_WORDS else tier
+
+
 def budget_flight_basis(
     flight_strategies: dict | None, tier: str = "recommended",
 ) -> str:
@@ -2757,26 +2819,17 @@ def budget_flight_basis(
     payloads both flight paths actually produce, not only through a whole
     generation.
     """
-    def _fare(s: dict) -> float:
-        price = s.get("price_per_traveler")
-        if isinstance(price, (int, float)) and price > 0:
-            return float(price)
-        return _extract_lowest_price(s.get("estimated_price_range"))
-
     if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
         return "none"
     priced = [
         s for s in flight_strategies["strategies"]
-        if isinstance(s, dict) and _fare(s) > 0
+        if isinstance(s, dict) and _flight_fare(s) > 0
     ]
     if not priced:
         return "none"
-    live = [s for s in priced if s.get("is_live_price")]
-    if not live:
-        return "estimated"
-    chosen = next((s for s in live if s.get("tier") == tier), None)
+    chosen = _chosen_live_flight(flight_strategies, tier)
     if chosen is None:
-        chosen = min(live, key=_fare)
+        return "estimated"
     return "direct" if int(chosen.get("stops") or 0) == 0 else "connecting"
 
 
@@ -2938,6 +2991,7 @@ def _budget_notes(
     flight_basis: str,
     no_airfare: bool,
     tier: str = "recommended",
+    flight_tier: str = "",
 ) -> dict:
     """What the Stay and Transit lines were priced from, in one line and two.
 
@@ -2955,8 +3009,15 @@ def _budget_notes(
     `summary` is the single line the Budget Allocation card always shows;
     `stay` and `transit` sit behind the tap on their own bars.
     """
-    rank_label, rank_phrase, fare_rank = _TIER_WORDS.get(
+    rank_label, rank_phrase, _ = _TIER_WORDS.get(
         tier, _TIER_WORDS["recommended"],
+    )
+    # The room wording follows the tab the traveller is looking at; the flight
+    # wording follows the card the fare was actually read from, which is not
+    # always the same tier - see `effective_flight_tier`.
+    fare_tier = flight_tier or tier
+    _, _, fare_rank = _TIER_WORDS.get(
+        fare_tier, _TIER_WORDS.get(tier, _TIER_WORDS["recommended"]),
     )
     room_words = "3-star+ room" if at_star_floor else "room"
     stay_phrase = f"{rank_label} {room_words}"
@@ -2987,7 +3048,7 @@ def _budget_notes(
         # The client's own wording, kept verbatim on the tier it describes.
         "direct": (
             "Based on Best Value Direct Flight"
-            if tier == "recommended"
+            if fare_tier == "recommended"
             else f"Based on the {fare_rank} direct flight.",
             f"{fare_rank} direct flight",
         ),
@@ -3047,6 +3108,7 @@ def budget_basis(
         flight_basis=budget_flight_basis(flight_strategies, tier),
         no_airfare=no_airfare,
         tier=tier,
+        flight_tier=effective_flight_tier(flight_strategies, tier),
     )
     total = float(breakdown.get("total") or 0)
     stay_total = float(breakdown.get("stay") or 0)
@@ -3088,6 +3150,15 @@ def budget_basis(
         stay_caveat = (
             "Some cities list nothing at 3 stars or above, so their nights are "
             "priced from whatever is listed there."
+        )
+    elif tier != "minimum" and any(ln.get("options", 0) < 3 for ln in lines):
+        # With two rooms to choose from, the middle one and the dearest are the
+        # same room, so this tab and another quote the same figure. Saying so
+        # is the difference between a thin market and an app that looks broken
+        # — the client has already reported the silent version of this.
+        stay_caveat = (
+            "Some cities list only one or two rooms, so this tab prices the "
+            "same room as another."
         )
     if not stay_items and stay_total > 0:
         stay_items = [{
@@ -4430,19 +4501,7 @@ async def generate_odyssey(
         and isinstance(hotel_strategies.get("strategies"), list)
         and hotel_strategies["strategies"]
     )
-    hotel_price_range = ""
-    if has_hotel_data:
-        rates = [
-            _extract_lowest_price(s.get("price_per_night"))
-            for s in hotel_strategies["strategies"]
-            if isinstance(s, dict) and _extract_lowest_price(s.get("price_per_night")) > 0
-        ]
-        if rates:
-            lo, hi = min(rates), max(rates)
-            hotel_price_range = (
-                f"{currency} {lo:,.0f}" if lo == hi
-                else f"{currency} {lo:,.0f} - {hi:,.0f}"
-            )
+    hotel_price_range, hotel_range_by_leg = nightly_ranges(hotel_strategies, currency)
 
     # Extract primary flight entity if available — the Recommended tier when
     # there is one, since that is the card the traveller is steered to and the
@@ -4847,6 +4906,7 @@ async def generate_odyssey(
         rooms=_rooms_for(travelers),
         at_star_floor=at_star_floor,
         flight_basis=budget_flight_basis(flight_strategies),
+        flight_tier=effective_flight_tier(flight_strategies),
         no_airfare=no_airfare,
     )
 
@@ -5004,6 +5064,12 @@ async def generate_odyssey(
         is_first_day = (d_idx == 0)
         is_last_day = (d_idx == total_days - 1)
         has_accommodation = False
+        # Same expression the append below uses, read once so the hotel range
+        # and the stored day number cannot disagree about which day this is.
+        day_no = _as_int(d.get("day"), len(day_items) + 1)
+        stay_range, stay_city = stay_basis_for_day(
+            day_no, city_legs, hotel_range_by_leg, hotel_price_range,
+        )
 
         for a in (d.get("activities") or []):
             if not isinstance(a, dict):
@@ -5034,7 +5100,7 @@ async def generate_odyssey(
             # shown on the Stays tab.
             if is_acc and has_hotel_data:
                 has_accommodation = True
-                display_cost = f"{hotel_price_range} / night" if hotel_price_range else "See Stays tab"
+                display_cost, display_basis = stay_cost_row(stay_range, stay_city)
 
                 if is_first_day:
                     act_dict["name"] = "Hotel Check-in"
@@ -5049,11 +5115,7 @@ async def generate_odyssey(
                 act_dict["type"] = "accommodation"
                 act_dict["cost"] = display_cost
                 act_dict["price_source"] = "Google Hotels"
-                act_dict["price_basis"] = (
-                    f"Nightly rate range across hotel options found for this trip: {hotel_price_range}."
-                    if hotel_price_range else
-                    "See the Stays tab for hotel pricing options."
-                )
+                act_dict["price_basis"] = display_basis
                 act_dict["price_confidence"] = "Estimated"
             else:
                 # What the card shows is what the party pays. The model gives
@@ -5116,20 +5178,16 @@ async def generate_odyssey(
                 "time": "14:00",
                 "name": "Hotel Check-in",
                 "tip": "Check in and settle into your accommodation.",
-                "cost": f"{hotel_price_range} / night" if hotel_price_range else "See Stays tab",
+                "cost": stay_cost_row(stay_range, stay_city)[0],
                 "price_source": "Google Hotels",
-                "price_basis": (
-                    f"Nightly rate range across hotel options found for this trip: {hotel_price_range}."
-                    if hotel_price_range else
-                    "See the Stays tab for hotel pricing options."
-                ),
+                "price_basis": stay_cost_row(stay_range, stay_city)[1],
                 "price_confidence": "Estimated",
                 "type": "accommodation",
             })
 
         day_items.append({
             "kind": "day",
-            "day": _as_int(d.get("day"), len(day_items) + 1),
+            "day": day_no,
             "theme": str(d.get("theme") or ""),
             "activities": activities,
         })
@@ -6134,6 +6192,86 @@ def normalise_activity_type(raw) -> str:
     if text in _ACTIVITY_TYPES:
         return text
     return _ACTIVITY_TYPE_SYNONYMS.get(text, "other")
+
+
+def nightly_ranges(
+    hotel_strategies: dict | None, currency: str,
+) -> tuple[str, dict[int, str]]:
+    """The nightly rate range for the whole trip, and one per leg.
+
+    `generate_hotel_strategies_for_legs` already searches each city on its own
+    coordinates and dates and tags every result with `leg_index`. Collapsing
+    all of them into a single min/max threw that grouping away: a live 14-day
+    Japan plan quoted "INR 4,507 - 28,232" on all five cities, so the Hakone
+    day advertised an Osaka floor 400 km away (real Hakone rooms start at
+    14,932) and the Osaka day advertised a Hakone ceiling.
+
+    The trip-wide string is still returned because a leg whose own search came
+    back empty has to print something, and because a single-city plan has one
+    leg - there the two are the same string, which is why this stayed invisible
+    until the route planner made multi-city trips normal.
+    """
+    trip_wide = ""
+    by_leg: dict[int, str] = {}
+    if not (hotel_strategies and isinstance(hotel_strategies.get("strategies"), list)):
+        return trip_wide, by_leg
+
+    def _text(values: list[float]) -> str:
+        lo, hi = min(values), max(values)
+        return (
+            f"{currency} {lo:,.0f}" if lo == hi
+            else f"{currency} {lo:,.0f} - {hi:,.0f}"
+        )
+
+    rates: list[float] = []
+    grouped: dict[int, list[float]] = {}
+    for s in hotel_strategies["strategies"]:
+        if not isinstance(s, dict):
+            continue
+        rate = _extract_lowest_price(s.get("price_per_night"))
+        if rate <= 0:
+            continue
+        rates.append(rate)
+        leg_i = s.get("leg_index")
+        if isinstance(leg_i, int) and not isinstance(leg_i, bool):
+            grouped.setdefault(leg_i, []).append(rate)
+    if rates:
+        trip_wide = _text(rates)
+    return trip_wide, {i: _text(v) for i, v in grouped.items() if v}
+
+
+def stay_basis_for_day(
+    day_no: int,
+    city_legs: list[dict] | None,
+    ranges_by_leg: dict[int, str],
+    trip_range: str,
+) -> tuple[str, str]:
+    """(nightly range, city) for the city a given day sleeps in.
+
+    Falls back to the trip-wide range when the day sits outside every leg, or
+    when that leg's own search returned nothing - a rate has to be printed
+    either way, and a neighbouring city's is closer than none.
+    """
+    for i, leg in enumerate(city_legs or []):
+        if not isinstance(leg, dict):
+            continue
+        start = _as_int(leg.get("start_day"), 0)
+        end = _as_int(leg.get("end_day"), 0)
+        if start <= day_no <= end:
+            return ranges_by_leg.get(i) or trip_range, str(leg.get("city") or "")
+    return trip_range, ""
+
+
+def stay_cost_row(rng: str, city: str) -> tuple[str, str]:
+    """The `cost` and `price_basis` one accommodation row prints.
+
+    The basis names the city when one is known: "for this trip" was the exact
+    wording that made a trip-wide range look deliberate rather than wrong.
+    """
+    if not rng:
+        return "See Stays tab", "See the Stays tab for hotel pricing options."
+    where = f"in {city}" if city else "found for this trip"
+    return f"{rng} / night", f"Nightly rate range across hotel options {where}: {rng}."
 
 
 def usable_hours(raw) -> str:
