@@ -1494,3 +1494,109 @@ def test_nothing_moves_when_the_itinerary_already_agrees():
     legs[2]["end_day"], legs[2]["nights"] = 12, 4
     legs[3]["start_day"], legs[3]["nights"] = 13, 1
     assert svc._align_legs_to_itinerary(legs, _egypt14_days(), 14, EGYPT14_HOPS) == []
+
+
+# ── The two rows that carry the main flight ─────────────────────────────────
+#
+# The inter-city hops have carried a booking link since they were priced live.
+# The flight into the country — the most expensive line on the plan — had none:
+# day one read "Flight: CMB -> CAI" with a fare and a source and no way to book
+# it, while a one-hour domestic hop three days later was one tap away. The row
+# home was worse: no cost and no source at all, which the app renders as free.
+
+def _flight_days():
+    return [
+        {"day": 1, "theme": "Arrival", "activities": [
+            {"name": "Flight: CMB -> CAI", "type": "transport",
+             "cost_per_person": 50613.0, "price_source": "Google Flights"},
+            {"name": "Taxi to Hotel", "type": "transport", "cost_per_person": 300.0},
+        ]},
+        {"day": 2, "theme": "Cairo", "activities": [
+            {"name": "Egyptian Museum", "type": "attraction", "cost_per_person": 500.0},
+        ]},
+        {"day": 3, "theme": "Departure", "activities": [
+            {"name": "Transfer to Cairo International Airport (CAI)", "type": "transport",
+             "cost_per_person": 300.0},
+            {"name": "Flight: CAI -> CMB", "type": "transport"},
+        ]},
+    ]
+
+
+def _flight_section(ret_url=""):
+    strat = {
+        "tier": "recommended", "price_per_traveler": 50613.0,
+        "booking_url": "https://www.google.com/travel/flights?q=out",
+    }
+    if ret_url:
+        strat["return"] = {"booking_url": ret_url}
+    return {
+        "strategies": [strat],
+        "origin_airport": "CMB",
+        "arrival_airport": {"iata": "CAI"},
+        "departure_airport": {"iata": "CAI"},
+    }
+
+
+def test_the_arrival_flight_row_gets_the_booking_link():
+    days = _flight_days()
+    assert svc._apply_main_flight_details(days, _flight_section()) == 2
+    row = days[0]["activities"][0]
+    assert row["booking_url"] == "https://www.google.com/travel/flights?q=out"
+    # The fare it already had is untouched.
+    assert row["cost_per_person"] == 50613.0
+
+
+def test_the_row_home_says_it_is_already_paid_for_rather_than_looking_free():
+    days = _flight_days()
+    svc._apply_main_flight_details(days, _flight_section())
+    row = days[-1]["activities"][-1]
+    assert row["booking_url"]
+    assert row["cost_per_person"] == 0
+    assert "Included in the outbound fare" in row["price_basis"]
+    assert row["price_source"] == "Google Flights"
+
+
+def test_the_fare_is_never_carried_twice():
+    """Google quotes the round trip once; repeating it double-counts the flight."""
+    days = _flight_days()
+    svc._apply_main_flight_details(days, _flight_section())
+    fares = [
+        a.get("cost_per_person") for d in days for a in d["activities"]
+        if str(a.get("name", "")).startswith("Flight:")
+    ]
+    assert fares == [50613.0, 0]
+
+
+def test_an_open_jaw_uses_its_own_return_link():
+    days = _flight_days()
+    section = _flight_section(ret_url="https://www.google.com/travel/flights?q=home")
+    svc._apply_main_flight_details(days, section)
+    assert days[-1]["activities"][-1]["booking_url"].endswith("q=home")
+    assert days[0]["activities"][0]["booking_url"].endswith("q=out")
+
+
+def test_a_taxi_transfer_is_not_mistaken_for_the_flight():
+    days = _flight_days()
+    svc._apply_main_flight_details(days, _flight_section())
+    assert "booking_url" not in days[0]["activities"][1], "the hotel taxi got the flight link"
+    assert "booking_url" not in days[-1]["activities"][0], "the airport transfer got it"
+
+
+def test_a_row_that_already_states_its_price_is_left_alone():
+    """A ground journey home, priced by the model, must not be zeroed."""
+    days = _flight_days()
+    days[-1]["activities"][-1] = {
+        "name": "Train: Cairo -> CMB", "type": "transport",
+        "cost_per_person": 1200.0, "price_source": "Egyptian National Railways",
+    }
+    svc._apply_main_flight_details(days, _flight_section())
+    row = days[-1]["activities"][-1]
+    assert row["cost_per_person"] == 1200.0
+    assert row["price_source"] == "Egyptian National Railways"
+
+
+def test_nothing_happens_without_a_flight_section():
+    for section in (None, {}, {"strategies": []}):
+        days = _flight_days()
+        assert svc._apply_main_flight_details(days, section) == 0
+        assert "booking_url" not in days[0]["activities"][0]

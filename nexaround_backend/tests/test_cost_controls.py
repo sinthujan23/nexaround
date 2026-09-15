@@ -1126,3 +1126,61 @@ def test_a_word_nobody_recognises_is_other_not_itself():
 def test_no_type_stays_no_type():
     for raw in (None, "", "   "):
         assert svc.normalise_activity_type(raw) == ""
+
+
+# ── Which column the money sits in ──────────────────────────────────────────
+#
+# The waterfall split food and activities 60/40 whatever the itinerary held.
+# Real plans divide it anywhere from 28/72 to 73/27, so the fixed ratio put one
+# line over and the other far under on the same trip: a 14-day Peru plan for
+# five listed 377,750 of activities against a 325,433 line while its food line
+# sat at 0.67x — the two together came to 0.87x of what they were allowed.
+
+def _plan(*costed):
+    """day_plans holding (type, cost_per_person) pairs on one day."""
+    return {"day_plans": [{"day": 1, "theme": "t", "activities": [
+        {"name": f"stop {i}", "type": t, "cost_per_person": c}
+        for i, (t, c) in enumerate(costed)
+    ]}]}
+
+
+def test_the_split_follows_the_itinerary():
+    # 300 dining, 700 sightseeing -> 30% food.
+    share = svc.food_share_of_plan(_plan(("dining", 300), ("attraction", 700)))
+    assert abs(share - 0.30) < 0.001
+
+
+def test_flights_and_hotels_are_not_counted_in_either_column():
+    """They have their own budget lines; counting them here moves the wrong money."""
+    with_travel = _plan(
+        ("dining", 300), ("attraction", 700),
+        ("transport", 50_000), ("accommodation", 20_000),
+    )
+    assert abs(svc.food_share_of_plan(with_travel) - 0.30) < 0.001
+
+
+def test_neither_line_is_ever_allowed_to_collapse():
+    """People eat whether or not the itinerary lists a restaurant."""
+    no_food = _plan(("attraction", 1000), ("exploration", 500))
+    no_activities = _plan(("dining", 1000))
+    assert svc.food_share_of_plan(no_food) == 0.25
+    assert svc.food_share_of_plan(no_activities) == 0.75
+
+
+def test_a_plan_with_no_prices_keeps_the_old_rule_of_thumb():
+    assert svc.food_share_of_plan(_plan(("dining", 0), ("attraction", 0))) == 0.60
+    assert svc.food_share_of_plan({"day_plans": []}) == 0.60
+    assert svc.food_share_of_plan({}) == 0.60
+    assert svc.food_share_of_plan({"day_plans": "nonsense"}) == 0.60
+
+
+def test_an_unknown_type_counts_as_an_activity_not_as_food():
+    """`normalise_activity_type` sends anything unrecognised to `other`."""
+    share = svc.food_share_of_plan(_plan(("dining", 500), ("quantum picnic", 500)))
+    assert abs(share - 0.50) < 0.001
+
+
+def test_the_real_peru_split_is_what_was_measured():
+    """46/54, against the 60/40 that put its activities line 16% over."""
+    share = svc.food_share_of_plan(_plan(("dining", 327_500), ("attraction", 377_750)))
+    assert abs(share - 0.464) < 0.005

@@ -1076,6 +1076,146 @@ def _apply_inter_city_fares(day_items: list[dict], hops: list[dict]) -> int:
     return matched
 
 
+# What share of the food-and-activities money goes to food, when the plan
+# itself has nothing to say. Only a starting point: `food_share_of_plan`
+# replaces it with the plan's own split wherever the plan carries prices.
+_DEFAULT_FOOD_SHARE = 0.60
+# Neither line may collapse: a plan with no dining stop still needs a food
+# budget, because people eat whether or not the itinerary lists a restaurant.
+_MIN_LINE_SHARE = 0.25
+
+
+def food_share_of_plan(plan: dict, travelers: int = 1) -> float:
+    """How the day plan actually divides its money between food and activities.
+
+    The waterfall used to split that money 60/40 no matter what the itinerary
+    contained, and the card is what the traveller reads the plan against. Real
+    plans divide it anywhere from 28/72 to 73/27, so the fixed ratio put one
+    line over and the other far under on the same trip: a 14-day Peru plan for
+    five listed 377,750 of activities against a 325,433 line while its food
+    line sat at 0.67x, when the two together came to 0.87x of what they were
+    allowed. Nothing was overspent - the money was in the wrong column.
+
+    Returns a share in [0.25, 0.75]. Prices are never touched: this decides
+    which line each one is counted under, not what anything costs.
+    """
+    day_plans = plan.get("day_plans") if isinstance(plan, dict) else None
+    if not isinstance(day_plans, list):
+        return _DEFAULT_FOOD_SHARE
+
+    food = other = 0.0
+    for day in day_plans:
+        if not isinstance(day, dict):
+            continue
+        for a in day.get("activities") or []:
+            if not isinstance(a, dict):
+                continue
+            kind = normalise_activity_type(a.get("type"))
+            if kind in ("transport", "accommodation"):
+                continue          # their own budget lines
+            cost = _extract_lowest_price(a.get("cost_per_person"))
+            if cost <= 0:
+                continue
+            if kind == "dining":
+                food += cost
+            else:
+                other += cost
+
+    total = food + other
+    if total <= 0:
+        return _DEFAULT_FOOD_SHARE
+    return min(max(food / total, _MIN_LINE_SHARE), 1.0 - _MIN_LINE_SHARE)
+
+
+def _apply_main_flight_details(
+    day_items: list[dict], flight_strategies: dict | None, tier: str = "recommended",
+) -> int:
+    """Put the booking link on the two rows that carry the main flight.
+
+    The inter-city hops have had this since they were priced live
+    (`_apply_inter_city_fares`), and the flight into the country - the most
+    expensive line on the whole plan - had nothing: day one read
+    "Flight: CMB -> CAI" with a fare and a source and no way to book it, while
+    a one-hour domestic hop three days later was one tap away. The link is on
+    the Flights tab either way; what was missing is the link where the
+    traveller is actually reading.
+
+    The row home is a second problem of its own. The fare Google quotes is for
+    the round trip and is already carried on day one, so this row must not
+    repeat it or the day plan counts the flight twice - but it arrived with no
+    cost and no source at all, which the app renders as free. It now says what
+    it is: nothing more to pay, because the outbound fare covered it.
+
+    Returns how many rows were matched.
+    """
+    if not day_items or not isinstance(flight_strategies, dict):
+        return 0
+    strategies = flight_strategies.get("strategies")
+    if not isinstance(strategies, list) or not strategies:
+        return 0
+
+    chosen = next(
+        (s for s in strategies if isinstance(s, dict) and s.get("tier") == tier), None,
+    )
+    if chosen is None:
+        chosen = next((s for s in strategies if isinstance(s, dict)), None)
+    if chosen is None:
+        return 0
+
+    out_url = str(chosen.get("booking_url") or "").strip()
+    ret_url = str((chosen.get("return") or {}).get("booking_url") or "").strip() or out_url
+
+    into = str((flight_strategies.get("arrival_airport") or {}).get("iata") or "").strip().upper()
+    home = str(flight_strategies.get("origin_airport") or "").strip().upper()
+    if not into and not home:
+        return 0
+
+    def _flight_row_to(acts, codes: list[str]) -> dict | None:
+        """The transport row flying *to* one of these airports."""
+        wanted = [c for c in codes if c]
+        if not wanted:
+            return None
+        pattern = re.compile(
+            r"(?:to|into|→|->)\s*(?:" + "|".join(re.escape(c) for c in wanted) + r")\b", re.I,
+        )
+        for a in acts:
+            if not isinstance(a, dict) or str(a.get("type") or "") != "transport":
+                continue
+            if pattern.search(str(a.get("name") or "")):
+                return a
+        return None
+
+    ordered = sorted(
+        (d for d in day_items if isinstance(d, dict)),
+        key=lambda d: int(d.get("day") or 0),
+    )
+    if not ordered:
+        return 0
+
+    matched = 0
+    # The way in: the first day's flight to the arrival airport.
+    arriving = _flight_row_to(ordered[0].get("activities") or [], into.split(","))
+    if arriving is not None and out_url:
+        arriving["booking_url"] = out_url
+        matched += 1
+
+    # The way home: the last day's flight back to where they started.
+    leaving = _flight_row_to(ordered[-1].get("activities") or [], home.split(","))
+    if leaving is not None:
+        if ret_url:
+            leaving["booking_url"] = ret_url
+            matched += 1
+        if not str(leaving.get("price_source") or "").strip():
+            leaving["cost_per_person"] = 0
+            leaving["cost"] = ""
+            leaving["price_source"] = "Google Flights"
+            leaving["price_confidence"] = "Fixed"
+            leaving["price_basis"] = (
+                "Included in the outbound fare shown on day 1 - nothing further to pay."
+            )
+    return matched
+
+
 def _stop_label_text(stops: int) -> str:
     return "non-stop" if stops <= 0 else ("1 stop" if stops == 1 else f"{stops} stops")
 
@@ -3916,6 +4056,18 @@ async def generate_odyssey(
         cost = required_stay_cost(hotel_strategies, city_legs, travelers, tier)
         return cost if cost > 0 else cheapest_hotel_cost
 
+    # How this itinerary divides its own food and activity spending. Read once
+    # from the plan Gemini already returned, so every scenario splits the same
+    # way — a Comfortable tab that reallocated the columns differently from the
+    # Recommended one would be describing a different trip.
+    food_share = food_share_of_plan(plan, travelers)
+    if abs(food_share - _DEFAULT_FOOD_SHARE) > 0.01:
+        logger.info(
+            "Food/activities split taken from the itinerary: %.0f/%.0f (default %.0f/%.0f).",
+            food_share * 100, (1 - food_share) * 100,
+            _DEFAULT_FOOD_SHARE * 100, (1 - _DEFAULT_FOOD_SHARE) * 100,
+        )
+
     # Base budget allocation. Parameterized on `total` so the same waterfall
     # can price out Minimum/Comfortable scenarios below without a second
     # Gemini call. `flight_cost` and `stay_cost` both vary per scenario: each
@@ -3950,7 +4102,9 @@ async def generate_odyssey(
             stay_amt_ = round(rem_after_transit_ * 0.45, 2)
 
         rem_for_food_act_ = max(tot_ - (transit_amt_ + stay_amt_), round(tot_ * 0.05, 2))
-        food_amt_ = round(rem_for_food_act_ * 0.60, 2)
+        # Split the way the itinerary does, not 60/40 regardless — see
+        # `food_share_of_plan`.
+        food_amt_ = round(rem_for_food_act_ * food_share, 2)
         # Floored at zero: a tier whose own flights and rooms outrun its total
         # would otherwise quote a negative activities budget. The scenario
         # totals below are floored against each tier's real cost precisely so
@@ -4361,6 +4515,12 @@ async def generate_odyssey(
 
     if not day_items:
         raise ValueError("Generated plan had no days")
+
+    # The flight into the country and the one home: link them where they are
+    # read, and stop the row home looking free.
+    linked = _apply_main_flight_details(day_items, flight_strategies)
+    if linked:
+        logger.info("Main flight details applied to %d itinerary row(s).", linked)
 
     # The fare is Google's, not the model's — see `_apply_inter_city_fares`.
     if inter_city_flights:
