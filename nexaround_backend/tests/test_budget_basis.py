@@ -287,3 +287,54 @@ def test_the_per_day_line_divides_by_party_and_days(stays, legs):
     block = _basis(stays, legs, fs, "minimum")
     per_day = bd["food"] / (3 * 12)
     assert f"{per_day:,.0f}" in block["food"]["note"]
+
+
+# ── What a line may and may not claim about itself ──────────────────────────
+
+def test_a_borrowed_rate_is_not_attributed_to_another_citys_hotel(stays, legs):
+    """Venice was never searched, so its nights carry a Rome or Florence rate.
+
+    Printing that property's name against Venice told the traveller they were
+    being quoted a Venice hotel that does not exist there — found by running a
+    five-city plan through the whole generator, where a Hakone leg came back
+    reading "Kyoto Ryokan".
+    """
+    venice = next(
+        ln for ln in stay_cost_lines(stays, legs, 3, "minimum")
+        if ln["city"] == "Venice"
+    )
+    assert venice["basis"] == "pooled"
+    assert venice["hotel"] == ""
+    assert venice["hotel_class"] == 0
+    assert venice["nightly"] > 0, "the rate itself still stands in"
+
+    fs = _flights(("minimum", 400.0, 1, True))
+    block = _basis(stays, legs, fs, "minimum")
+    line = next(i for i in block["stay"]["items"] if i["label"].startswith("Venice"))
+    for name in ("Rome", "Florence", "Hostel", "Guesthouse", "Grand", "Mid"):
+        assert name not in line["detail"], line["detail"]
+
+
+def test_a_thin_market_says_why_two_tabs_quote_the_same_room(stays, legs):
+    """A city with two rooms prices its middle and dearest the same.
+
+    `_rate_for_tier` ranks by price, so with two options the median *is* the
+    dearest and the Recommended tab quotes the Comfortable one. The arithmetic
+    is left alone — with two rooms some pair must coincide — but the sheet says
+    so rather than leaving the card looking broken, which is how the client
+    reported the silent version of this.
+    """
+    two_rooms = {"strategies": [
+        _room("Zurich Altstadt", 420, 4, 0, "Zurich"),
+        _room("Zurich Grand", 780, 5, 0, "Zurich"),
+    ]}
+    one_leg = [{"city": "Zurich", "nights": 2}]
+    fs = _flights(("minimum", 400.0, 0, True))
+
+    assert (required_stay_cost(two_rooms, one_leg, 1, "recommended")
+            == required_stay_cost(two_rooms, one_leg, 1, "comfortable"))
+
+    mid = _basis(two_rooms, one_leg, fs, "recommended")
+    assert "same room as another" in mid["stay"]["caveat"]
+    cheapest = _basis(two_rooms, one_leg, fs, "minimum")
+    assert cheapest["stay"]["caveat"] == "", "the cheapest room is unambiguous"
