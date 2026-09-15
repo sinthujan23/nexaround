@@ -15,10 +15,23 @@ class LocationSearchModal extends StatefulWidget {
   final double? currentLatitude;
   final double? currentLongitude;
 
+  /// Hold the search to one country (ISO 3166-1 alpha-2), instead of searching
+  /// everywhere. Used by the Odyssey planner's entry and exit boxes, which are
+  /// only offered once a country has been chosen: a city somewhere else is
+  /// never a valid answer there.
+  final String? restrictToCountryCode;
+
+  /// What the sheet is for, when it is not the usual "where to?".
+  final String? title;
+  final String? hintText;
+
   const LocationSearchModal({
     super.key,
     this.currentLatitude,
     this.currentLongitude,
+    this.restrictToCountryCode,
+    this.title,
+    this.hintText,
   });
 
   @override
@@ -330,6 +343,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         input: trimmed,
         latitude: biasLat,
         longitude: biasLng,
+        countryCode: widget.restrictToCountryCode,
       );
 
       if (mounted) {
@@ -467,7 +481,9 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
                       textInputAction: TextInputAction.search,
                       onChanged: _onSearchChanged,
                       onSubmitted: (query) => _executeSearch(query),
-                      decoration: const InputDecoration(
+                      // Not const: the hint depends on what the sheet was
+                      // opened for.
+                      decoration: InputDecoration(
                         border: InputBorder.none,
                         enabledBorder: InputBorder.none,
                         focusedBorder: InputBorder.none,
@@ -476,9 +492,12 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
                         disabledBorder: InputBorder.none,
                         filled: false,
                         fillColor: Colors.transparent,
-                        hintText: 'Search city, region, or attraction...',
-                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
-                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                        hintText: widget.hintText ??
+                            'Search city, region, or attraction...',
+                        hintStyle: const TextStyle(
+                            color: Color(0xFF94A3B8), fontSize: 14),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 14),
                       ),
                       style: const TextStyle(
                         color: Colors.black87,

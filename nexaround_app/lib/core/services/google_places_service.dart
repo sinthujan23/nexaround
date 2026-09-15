@@ -601,19 +601,32 @@ class GooglePlacesService {
   /// required, which pushed every caller into inventing a coordinate — all of
   /// them defaulted to Colombo, quietly reordering suggestions around the
   /// wrong continent. An unbiased query is the honest answer instead.
+  /// [countryCode] is an ISO 3166-1 alpha-2 code that RESTRICTS the answer to
+  /// one country, rather than merely biasing it towards somewhere. Only the
+  /// Odyssey planner's entry and exit boxes pass it, and only once a country
+  /// has been chosen: everywhere else must keep finding places worldwide.
   static Future<List<Map<String, dynamic>>> getAutocompleteSuggestions({
     required String input,
     double? latitude,
     double? longitude,
+    String? countryCode,
   }) async {
     final cleanedInput = input.trim();
     if (cleanedInput.isEmpty) return [];
+
+    final String? region =
+        (countryCode != null && countryCode.trim().length == 2)
+            ? countryCode.trim().toUpperCase()
+            : null;
+    final String? components = region == null ? null : 'country:${region.toLowerCase()}';
 
     final bool hasBias = latitude != null && longitude != null;
     final String biasKey = hasBias
         ? '${latitude!.toStringAsFixed(2)},${longitude!.toStringAsFixed(2)}'
         : 'nobias';
-    final cacheKey = '${cleanedInput.toLowerCase()}|$biasKey';
+    // The restriction is part of the question: a search held to Italy and one
+    // searched worldwide must never share a cached answer.
+    final cacheKey = '${cleanedInput.toLowerCase()}|$biasKey|${region ?? 'any'}';
 
     // 1. Instant Cache Hit (0ms)
     if (_autocompleteMemoryCache.containsKey(cacheKey)) {
@@ -634,6 +647,7 @@ class GooglePlacesService {
           if (hasBias) 'location': '$latitude,$longitude',
           if (hasBias) 'radius': 50000,
           if (hasBias) 'origin': '$latitude,$longitude',
+          if (components != null) 'components': components,
           'language': 'en',
         },
         cancelToken: cancelToken,
@@ -656,13 +670,17 @@ class GooglePlacesService {
         }).toList();
       }
 
-      // If no local predictions returned (e.g. searching for a foreign/global destination), search globally
+      // If no local predictions returned (e.g. searching for a foreign/global
+      // destination), search without the location bias. The country
+      // restriction is carried through: dropping it here would widen a search
+      // the caller deliberately narrowed, which is the whole point of it.
       if (results.isEmpty && cleanedInput.length >= 2) {
         try {
           final globalResp = await ApiClient.instance.get(
             '${ApiConstants.googleMapsProxy}/place/autocomplete/json',
             queryParameters: {
               'input': cleanedInput,
+              if (components != null) 'components': components,
               'language': 'en',
             },
             cancelToken: cancelToken,

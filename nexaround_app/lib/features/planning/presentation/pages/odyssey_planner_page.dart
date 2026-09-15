@@ -10,6 +10,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/location_search_modal.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/widgets/country_picker_sheet.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
 
@@ -70,6 +71,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   // Always written through [_setDestination] so the name and the coordinates
   // cannot drift apart. The field itself is readOnly + AbsorbPointer, so these
   // are the only two ways a destination is ever set.
+  /// The country the trip is in, when the traveller picked one rather than
+  /// searching for a place directly. It gates the entry and exit boxes: their
+  /// search is held to this country, so there is nothing to hold them to until
+  /// it is chosen.
+  String _country = '';
+  String _entryCity = '';
+  String _exitCity = '';
+
+  String get _countryCode => countryCodeFor(_country) ?? '';
+
   String _destPlaceId = '';
   double? _destLat;
   double? _destLng;
@@ -203,6 +214,60 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     }
   }
 
+  Future<void> _pickCountry() async {
+    final picked = await showCountryPickerSheet(
+      context,
+      selectedCountry: _country.isEmpty ? null : _country,
+      title: 'Which country?',
+    );
+    if (picked == null || !mounted) return;
+    final changed = picked != _country;
+    setState(() {
+      _country = picked;
+      _setDestination(picked);
+      // Entry and exit are cities inside the old country, so they cannot
+      // survive a change of country. Cleared rather than left to fail later,
+      // and said out loud so it does not read as the app losing them.
+      if (changed && (_entryCity.isNotEmpty || _exitCity.isNotEmpty)) {
+        _entryCity = '';
+        _exitCity = '';
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(
+            content: Text('Entry and exit cleared — you changed the country.'),
+            behavior: SnackBarBehavior.floating,
+          ));
+      }
+    });
+  }
+
+  /// Pick the city the trip starts or ends at, from inside the chosen country.
+  Future<void> _pickEnd({required bool isEntry}) async {
+    if (_countryCode.isEmpty) return;
+    final result = await showModalBottomSheet<dynamic>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => LocationSearchModal(
+        restrictToCountryCode: _countryCode,
+        hintText: isEntry
+            ? 'Where does the trip start in $_country?'
+            : 'Where does the trip finish in $_country?',
+      ),
+    );
+    if (result is! Map || !mounted) return;
+    final name = result['name']?.toString() ?? '';
+    if (name.isEmpty) return;
+    setState(() {
+      if (isEntry) {
+        _entryCity = name;
+      } else {
+        _exitCity = name;
+      }
+    });
+  }
+
   void _showLocationSearch() {
     showModalBottomSheet(
       context: context,
@@ -306,12 +371,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     try {
       await _repository.requestGeneration(
         destination: _destinationController.text.trim(),
-      destinationPlaceId: _destPlaceId,
-      destinationLatitude: _destLat,
-      destinationLongitude: _destLng,
-      destinationAddress: _destAddress,
-      departureLatitude: _departureLat,
-      departureLongitude: _departureLng,
+        entryCity: _entryCity,
+        exitCity: _exitCity,
+        destinationPlaceId: _destPlaceId,
+        destinationLatitude: _destLat,
+        destinationLongitude: _destLng,
+        destinationAddress: _destAddress,
+        departureLatitude: _departureLat,
+        departureLongitude: _departureLng,
         mood: _selectedMood,
         budget: _budget * _travelers,
         days: _days,
@@ -460,6 +527,68 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     }
   }
 
+  /// A tappable field shaped like the destination box above it.
+  Widget _pickerField({
+    required String label,
+    required String? value,
+    required IconData icon,
+    required VoidCallback? onTap,
+    String? helper,
+  }) {
+    final enabled = onTap != null;
+    final filled = (value ?? '').isNotEmpty;
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.black12),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 20, color: Colors.black54),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      filled ? label : (helper ?? label),
+                      style: TextStyle(
+                        fontSize: filled ? 11 : 14,
+                        fontWeight: filled ? FontWeight.w700 : FontWeight.w400,
+                        letterSpacing: filled ? 0.6 : 0,
+                        color: filled ? AppColors.textSecondary : Colors.black45,
+                      ),
+                    ),
+                    if (filled) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        value!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              if (enabled)
+                const Icon(Icons.chevron_right_rounded, color: Colors.black26),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildDestinationStep() {
     return SingleChildScrollView(
       key: const ValueKey('destination'),
@@ -477,6 +606,67 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
+          _pickerField(
+            label: 'COUNTRY',
+            value: _country.isEmpty ? null : _country,
+            icon: Icons.public_rounded,
+            helper: 'Select a country',
+            onTap: _pickCountry,
+          ).animate().fade(delay: 100.ms),
+          const SizedBox(height: 12),
+          // Only offered once a country is chosen: their search is held to it,
+          // so there is nothing to hold them to until then.
+          Row(
+            children: [
+              Expanded(
+                child: _pickerField(
+                  label: 'ENTRY',
+                  value: _entryCity.isEmpty ? null : _entryCity,
+                  icon: Icons.flight_land_rounded,
+                  helper: 'Entry (optional)',
+                  onTap: _countryCode.isEmpty
+                      ? null
+                      : () => _pickEnd(isEntry: true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _pickerField(
+                  label: 'EXIT',
+                  value: _exitCity.isEmpty ? null : _exitCity,
+                  icon: Icons.flight_takeoff_rounded,
+                  helper: 'Exit (optional)',
+                  onTap: _countryCode.isEmpty
+                      ? null
+                      : () => _pickEnd(isEntry: false),
+                ),
+              ),
+            ],
+          ).animate().fade(delay: 130.ms),
+          if (_countryCode.isEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Pick a country first to choose where the trip starts and ends.',
+              style: TextStyle(fontSize: 12, color: Colors.black45),
+            ),
+          ],
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              const Expanded(child: Divider(color: Colors.black12)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text('OR',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2,
+                        color: Colors.black.withValues(alpha: 0.35))),
+              ),
+              const Expanded(child: Divider(color: Colors.black12)),
+            ],
+          ),
+          const SizedBox(height: 20),
           GestureDetector(
             onTap: _showLocationSearch,
             child: AbsorbPointer(

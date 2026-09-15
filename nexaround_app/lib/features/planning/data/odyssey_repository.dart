@@ -44,6 +44,10 @@ class OdysseyRepository {
     String? endDate,
     // What the place picker resolved. All optional — the backend resolves the
     // destination itself, so omitting these only costs it a lookup.
+    // Where the traveller wants the trip to begin and end inside the country.
+    // Both optional and independent: a blank end means the planner chooses it.
+    String entryCity = '',
+    String exitCity = '',
     String destinationPlaceId = '',
     double? destinationLatitude,
     double? destinationLongitude,
@@ -74,6 +78,8 @@ class OdysseyRepository {
         'hotel_check_out_date': hotelCheckOutDate,
         'start_date': startDate,
         'end_date': endDate,
+        'entry_city': entryCity,
+        'exit_city': exitCity,
         'destination_place_id': destinationPlaceId,
         'destination_latitude': destinationLatitude,
         'destination_longitude': destinationLongitude,
