@@ -357,12 +357,24 @@ class OdysseyVerdict {
   final String biggestRisk;
   final String recommendation;
 
+  /// What the cheapest and the middle version of this trip cost, and what the
+  /// traveller actually typed. The banner names two of these, so they are sent
+  /// rather than recovered from the scenarios — a sentence the app assembles
+  /// out of figures it guessed at is how the old one came to say "increase
+  /// your budget to the recommended amount" without ever naming it.
+  final double? minimumTotal;
+  final double? recommendedTotal;
+  final double? enteredBudget;
+
   const OdysseyVerdict({
     this.feasible = true,
     this.budgetTightness = 'unknown',
     this.minimumRequired,
     this.biggestRisk = '',
     this.recommendation = '',
+    this.minimumTotal,
+    this.recommendedTotal,
+    this.enteredBudget,
   });
 
   factory OdysseyVerdict.fromJson(Map<String, dynamic> json) => OdysseyVerdict(
@@ -371,6 +383,9 @@ class OdysseyVerdict {
         minimumRequired: (json['minimum_required'] as num?)?.toDouble(),
         biggestRisk: (json['biggest_risk'] ?? '').toString(),
         recommendation: (json['recommendation'] ?? '').toString(),
+        minimumTotal: (json['minimum_total'] as num?)?.toDouble(),
+        recommendedTotal: (json['recommended_total'] as num?)?.toDouble(),
+        enteredBudget: (json['entered_budget'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => {
@@ -379,7 +394,137 @@ class OdysseyVerdict {
         'minimum_required': minimumRequired,
         'biggest_risk': biggestRisk,
         'recommendation': recommendation,
+        'minimum_total': minimumTotal,
+        'recommended_total': recommendedTotal,
+        'entered_budget': enteredBudget,
       };
+}
+
+/// One row of working inside a Budget Allocation sheet.
+///
+/// "Rome · 5 nights", "Hotel X · 4-star · INR 12,340/night × 5 nights × 3
+/// rooms", 185100 — a label, how it was reached, and what it came to.
+class BudgetBasisItem {
+  final String label;
+  final String detail;
+  final double amount;
+
+  const BudgetBasisItem({
+    this.label = '',
+    this.detail = '',
+    this.amount = 0,
+  });
+
+  factory BudgetBasisItem.fromJson(Map<String, dynamic> json) =>
+      BudgetBasisItem(
+        label: (json['label'] ?? '').toString(),
+        detail: (json['detail'] ?? '').toString(),
+        amount: (json['amount'] as num?)?.toDouble() ?? 0,
+      );
+
+  Map<String, dynamic> toJson() =>
+      {'label': label, 'detail': detail, 'amount': amount};
+}
+
+/// How one bar on the Budget Allocation card was arrived at.
+///
+/// Written by the backend beside the arithmetic it describes — never derived
+/// here. The star floor, the empty-leg pooling and the 85% transit cap are all
+/// server-side rules; a second implementation of them in Dart would drift from
+/// the bars, which is exactly the "the split doesn't add up" report this card
+/// has already produced once.
+class BudgetBasisLine {
+  final String formula;
+  final List<BudgetBasisItem> items;
+  final double total;
+
+  /// What this line was priced from, in the client's own wording where it is
+  /// true of the tier being shown.
+  final String note;
+
+  /// Where the rule gave way — a city with nothing at 3 stars, a fare held at
+  /// the cap. Empty when nothing needs owning up to.
+  final String caveat;
+
+  const BudgetBasisLine({
+    this.formula = '',
+    this.items = const [],
+    this.total = 0,
+    this.note = '',
+    this.caveat = '',
+  });
+
+  bool get isEmpty => items.isEmpty && formula.isEmpty;
+
+  factory BudgetBasisLine.fromJson(Map<String, dynamic> json) =>
+      BudgetBasisLine(
+        formula: (json['formula'] ?? '').toString(),
+        items: (json['items'] as List?)
+                ?.whereType<Map>()
+                .map((e) => BudgetBasisItem.fromJson(
+                    Map<String, dynamic>.from(e)))
+                .toList() ??
+            const [],
+        total: (json['total'] as num?)?.toDouble() ?? 0,
+        note: (json['note'] ?? '').toString(),
+        caveat: (json['caveat'] ?? '').toString(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'formula': formula,
+        'items': items.map((i) => i.toJson()).toList(),
+        'total': total,
+        'note': note,
+        'caveat': caveat,
+      };
+}
+
+/// One Budget Allocation tab, explained: a line for each of the four bars.
+///
+/// Keys are the same ones [Odyssey.budgetBreakdown] uses — `stay`, `transit`,
+/// `food`, `activities` — so a bar and its explanation are looked up the same
+/// way.
+class BudgetBasis {
+  final String summary;
+  final Map<String, BudgetBasisLine> lines;
+
+  const BudgetBasis({this.summary = '', this.lines = const {}});
+
+  BudgetBasisLine? operator [](String category) => lines[category];
+
+  factory BudgetBasis.fromJson(Map<String, dynamic> json) {
+    final lines = <String, BudgetBasisLine>{};
+    for (final key in const ['stay', 'transit', 'food', 'activities']) {
+      final raw = json[key];
+      if (raw is Map) {
+        lines[key] = BudgetBasisLine.fromJson(Map<String, dynamic>.from(raw));
+      }
+    }
+    return BudgetBasis(
+      summary: (json['summary'] ?? '').toString(),
+      lines: lines,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'summary': summary,
+        ...lines.map((k, v) => MapEntry(k, v.toJson())),
+      };
+}
+
+/// `budget_basis` off the wire: tier -> that tab's four explanations.
+///
+/// Empty for every Odyssey generated before the card could be tapped, which is
+/// what the card checks before offering the tap at all.
+Map<String, BudgetBasis> parseBudgetBasis(dynamic raw) {
+  if (raw is! Map) return const {};
+  final out = <String, BudgetBasis>{};
+  raw.forEach((k, v) {
+    if (v is Map) {
+      out[k.toString()] = BudgetBasis.fromJson(Map<String, dynamic>.from(v));
+    }
+  });
+  return out;
 }
 
 class OdysseyPracticalInfo {
@@ -1108,6 +1253,12 @@ class Odyssey {
   final Map<String, String> budgetNotes;
   final OdysseyVerdict? verdict;
   final Map<String, Map<String, double>> budgetScenarios;
+
+  /// How each bar of each tab was arrived at, keyed by tier then by category.
+  ///
+  /// Empty on every Odyssey generated before the card could be tapped, which
+  /// is what the card checks before offering a tap that would open nothing.
+  final Map<String, BudgetBasis> budgetBasis;
   final OdysseyPracticalInfo practicalInfo;
   final List<OdysseyBookingPlanItem> bookingPlan;
   final List<VerifiedSource> verifiedSources;
@@ -1154,6 +1305,7 @@ class Odyssey {
     this.interCityFlights = const [],
     this.verdict,
     this.budgetScenarios = const {},
+    this.budgetBasis = const {},
     this.practicalInfo = const OdysseyPracticalInfo(),
     this.bookingPlan = const [],
     this.verifiedSources = const [],
@@ -1187,6 +1339,7 @@ class Odyssey {
     List<InterCityFlight>? interCityFlights,
     OdysseyVerdict? verdict,
     Map<String, Map<String, double>>? budgetScenarios,
+    Map<String, BudgetBasis>? budgetBasis,
     OdysseyPracticalInfo? practicalInfo,
     List<OdysseyBookingPlanItem>? bookingPlan,
     List<VerifiedSource>? verifiedSources,
@@ -1235,6 +1388,7 @@ class Odyssey {
         interCityFlights: interCityFlights ?? this.interCityFlights,
         verdict: verdict ?? this.verdict,
         budgetScenarios: budgetScenarios ?? this.budgetScenarios,
+        budgetBasis: budgetBasis ?? this.budgetBasis,
         practicalInfo: practicalInfo ?? this.practicalInfo,
         bookingPlan: bookingPlan ?? this.bookingPlan,
         verifiedSources: verifiedSources ?? this.verifiedSources,
@@ -1375,6 +1529,7 @@ class Odyssey {
               (k, v) => MapEntry(k.toString(), (v ?? '').toString()),
             )
           : const {},
+      budgetBasis: parseBudgetBasis(json['budget_basis']),
     );
   }
 
@@ -1427,6 +1582,7 @@ class Odyssey {
           'inter_city_flights': interCityFlights.map((f) => f.toJson()).toList(),
           'verdict': verdict?.toJson() ?? {},
           'budget_scenarios': budgetScenarios,
+          'budget_basis': budgetBasis.map((k, v) => MapEntry(k, v.toJson())),
           'practical_info': practicalInfo.toJson(),
           'booking_plan': bookingPlan.map((b) => b.toJson()).toList(),
           'verified_sources': verifiedSources.map((s) => s.toJson()).toList(),
@@ -1535,6 +1691,9 @@ class Odyssey {
           ))
         : const {};
 
+    final Map<String, BudgetBasis> budgetBasis =
+        parseBudgetBasis(meta['budget_basis']);
+
     final practicalInfoRaw = meta['practical_info'];
     final OdysseyPracticalInfo practicalInfo = practicalInfoRaw is Map
         ? OdysseyPracticalInfo.fromJson(practicalInfoRaw.cast<String, dynamic>())
@@ -1609,6 +1768,7 @@ class Odyssey {
           : const {},
       verdict: verdict,
       budgetScenarios: budgetScenarios,
+      budgetBasis: budgetBasis,
       practicalInfo: practicalInfo,
       bookingPlan: bookingPlan,
       verifiedSources: verifiedSources,

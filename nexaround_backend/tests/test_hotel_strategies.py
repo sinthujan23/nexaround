@@ -780,11 +780,46 @@ def test_the_note_uses_the_clients_wording_for_a_direct_flight():
     )
     assert n["transit"] == "Based on Best Value Direct Flight"
     assert n["stay"] == (
-        "Based on best value price. Individual rooms assumed for each pax."
+        "Based on the mid-priced 3-star+ room. "
+        "Individual rooms assumed for each pax."
     )
     assert n["summary"] == (
-        "Cheapest 3-star+ room, 1 per person · best value direct flight"
+        "Mid-priced 3-star+ room, 1 per person · best value direct flight"
     )
+
+
+def test_the_note_says_cheapest_on_the_tier_that_prices_the_cheapest_room():
+    """The tab the card now opens on, and the one the client's rule describes.
+
+    The note used to be written for Recommended and shown on every tab, so the
+    Minimum tab — the cheapest room and the cheapest fare — claimed to be
+    priced on "best value" ones.
+    """
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=2, at_star_floor=True, flight_basis="direct", no_airfare=False,
+        tier="minimum",
+    )
+    assert n["stay"] == (
+        "Based on the lowest-priced 3-star+ room. "
+        "Individual rooms assumed for each pax."
+    )
+    assert n["transit"] == "Based on the lowest-priced direct flight."
+    assert n["summary"] == (
+        "Cheapest 3-star+ room, 1 per person · lowest-priced direct flight"
+    )
+
+
+def test_the_dearest_tier_never_calls_its_room_the_cheapest():
+    from app.services.odyssey_ai_service import _budget_notes
+
+    n = _budget_notes(
+        rooms=1, at_star_floor=True, flight_basis="connecting", no_airfare=False,
+        tier="comfortable",
+    )
+    assert "Cheapest" not in n["summary"]
+    assert n["stay"] == "Based on the highest-priced 3-star+ room."
 
 
 def test_the_note_says_so_when_the_route_has_no_direct_flight():
@@ -819,9 +854,9 @@ def test_the_note_drops_the_rooms_clause_for_a_solo_traveller():
     n = _budget_notes(
         rooms=1, at_star_floor=False, flight_basis="connecting", no_airfare=False,
     )
-    assert n["stay"] == "Based on best value price."
+    assert n["stay"] == "Based on the mid-priced room."
     assert "per person" not in n["summary"]
-    assert n["summary"] == "Cheapest room · best value flight"
+    assert n["summary"] == "Mid-priced room · best value flight"
 
 
 def test_the_note_claims_three_star_only_when_the_floor_held():
@@ -835,7 +870,7 @@ def test_the_note_claims_three_star_only_when_the_floor_held():
     )
     assert "3-star+" in held["summary"]
     assert "3-star" not in gave_way["summary"]
-    assert gave_way["summary"].startswith("Cheapest room, 1 per person")
+    assert gave_way["summary"].startswith("Mid-priced room, 1 per person")
 
 
 def test_the_note_says_estimated_when_no_live_fare_was_found():

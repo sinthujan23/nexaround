@@ -123,3 +123,56 @@ def test_a_route_with_no_coordinates_says_nothing_rather_than_guessing():
     route = RoutePlan(legs=[{"city": "Delhi"}, {"city": "Chennai"}])
     assert svc.stretched_route_notice(route, 4, "Delhi", "Chennai") == ""
     assert svc.stretched_route_notice(RoutePlan(legs=[]), 4, "Delhi", "Chennai") == ""
+
+
+# ── One country, both ends ─────────────────────────────────────────────────
+#
+# TL and client, 2026-09-15: the country dropdown goes, Entry becomes required
+# and takes either a country or a city, Exit stays optional — and a trip cannot
+# start in one country and finish in another. The app holds the Exit search to
+# the Entry's country, so the pair should always agree; the prompt says what to
+# do when they do not, because the API can be called without the app.
+
+def _sri_lanka():
+    from app.services.geo_resolver import DestinationContext
+    return DestinationContext(
+        query="Sri Lanka", name="Sri Lanka", country="Sri Lanka",
+        country_code="LK", latitude=7.87, longitude=80.77,
+        types=("country",), source="places",
+    )
+
+
+def test_an_end_outside_the_country_is_dropped_not_obeyed():
+    p = _prompt(destination="Sri Lanka", geo=_sri_lanka(),
+                entry_city="Kandy", exit_city="Chennai")
+    assert "If either of those two places is not in Sri Lanka" in p
+    assert "choose that end yourself" in p
+    assert "A trip starts and finishes in the same country" in p
+
+
+def test_the_country_rule_outranks_the_two_ends():
+    """Both are in the prompt; the order they resolve in has to be stated."""
+    p = _prompt(destination="Sri Lanka", geo=_sri_lanka(),
+                entry_city="Kandy", exit_city="Galle")
+    assert "the country rule below outranks both" in p
+    assert p.index("THE TRAVELLER STARTS") < p.index("EVERY leg must be a real city")
+
+
+def test_the_rule_is_only_stated_when_an_end_was_asked_for():
+    p = _prompt(destination="Sri Lanka", geo=_sri_lanka())
+    assert "is not in Sri Lanka" not in p
+
+
+def test_no_country_resolved_means_no_country_rule_to_state():
+    """Nothing to hold the ends to, so nothing is claimed about them."""
+    p = _prompt(entry_city="Kandy", exit_city="Galle")
+    assert "THE TRAVELLER STARTS AT Kandy" in p
+    assert "ignore that one" not in p
+
+
+def test_a_country_named_as_the_destination_still_takes_an_entry_city():
+    """Entry is now the destination field, so "Sri Lanka" and "Kandy" both
+    arrive here — the planner opens at the city when one was named."""
+    p = _prompt(destination="Sri Lanka", geo=_sri_lanka(), entry_city="Kandy")
+    assert "THE TRAVELLER STARTS AT Kandy" in p
+    assert "TRAVELLER FINISHES" not in p

@@ -729,7 +729,7 @@ def test_no_fare_at_all_describes_no_flight():
     )
     assert "transit" not in n
     assert "flight" not in n["summary"]
-    assert n["summary"] == "Cheapest 3-star+ room, 1 per person"
+    assert n["summary"] == "Mid-priced 3-star+ room, 1 per person"
 
 
 # ── The ladder after a fare moves ───────────────────────────────────────────

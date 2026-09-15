@@ -275,6 +275,7 @@ def build_meta_item(
     verified_sources: list[dict] = None,
     verdict: dict = None,
     budget_scenarios: dict = None,
+    budget_basis: dict = None,
     practical_info: dict = None,
     booking_plan: list[dict] = None,
     legs: list[dict] = None,
@@ -327,6 +328,7 @@ def build_meta_item(
         "verified_sources": verified_sources or [],
         "verdict": verdict or {},
         "budget_scenarios": budget_scenarios or {},
+        "budget_basis": budget_basis or {},
         "practical_info": practical_info or {},
         "booking_plan": booking_plan or [],
         # The cities the trip sleeps in, with each leg's nights and dates.
@@ -2323,6 +2325,23 @@ def _rooms_for(travelers: int) -> int:
     return serpapi_rooms_for(travelers)
 
 
+def _tier_index(count: int, tier: str) -> int:
+    """Which rank a tier reads, once the options are ordered cheapest first.
+
+    Split out so a list of rates and a list of (rate, property) pairs can be
+    ranked by the same rule. `stay_cost_lines` has to name the property whose
+    rate the budget took, and re-deriving "which one is the middle" beside
+    `_rate_for_tier` is exactly how the sheet and the bar would drift apart.
+    """
+    if count <= 0:
+        return 0
+    if tier == "minimum":
+        return 0
+    if tier == "comfortable":
+        return count - 1
+    return count // 2
+
+
 def _rate_for_tier(rates: list[float], tier: str) -> float:
     """One leg's nightly rate for a budget tier, chosen by price rank.
 
@@ -2337,12 +2356,7 @@ def _rate_for_tier(rates: list[float], tier: str) -> float:
     """
     if not rates:
         return 0.0
-    ordered = sorted(rates)
-    if tier == "minimum":
-        return ordered[0]
-    if tier == "comfortable":
-        return ordered[-1]
-    return ordered[len(ordered) // 2]
+    return sorted(rates)[_tier_index(len(rates), tier)]
 
 
 # The ways a model says a figure is for one traveller, and for the whole party.
@@ -2591,11 +2605,42 @@ def required_stay_cost(
     tested against the Stays tab's totals directly, which is the only way to
     catch the two drifting apart again.
     """
+    return round(
+        sum(
+            line["amount"]
+            for line in stay_cost_lines(
+                hotel_strategies, city_legs, travelers, tier,
+            )
+        ),
+        2,
+    )
+
+
+def stay_cost_lines(
+    hotel_strategies: dict | None,
+    city_legs: list[dict],
+    travelers: int,
+    tier: str = "minimum",
+) -> list[dict]:
+    """The same arithmetic, one line per city the trip sleeps in.
+
+    `required_stay_cost` is the sum of these, so the Stay sheet in Budget
+    Allocation can print its own working and cannot disagree with the bar it
+    sits under. That is why the derivation lives here rather than being redone
+    in Dart from `hotel_strategies`: the star-floor fallback and the pooling
+    below are not obvious, and a second implementation of them would drift.
+
+    Each line carries how its rate was found, in `basis`:
+      "classed"   — a property at `_BASE_HOTEL_CLASS` or above, the normal case
+      "unclassed" — the leg had nothing at that class, so every rate was open
+      "pooled"    — the leg's own search came back empty and the trip's other
+                    rates stood in for it
+    """
     strategies_ = (hotel_strategies or {}).get("strategies")
     if not isinstance(strategies_, list) or not city_legs:
-        return 0.0
+        return []
     rooms_ = _rooms_for(travelers)
-    nightly_by_leg: dict[int, list[float]] = {}
+    by_leg: dict[int, list[tuple[float, dict]]] = {}
     # The same rates again, keeping only properties at the star class the
     # search asked for. The ladder falls back to an unfiltered rung when a
     # class-filtered search comes back empty (`_HOTEL_CLASS_FALLBACKS`), so on
@@ -2603,18 +2648,18 @@ def required_stay_cost(
     # — and a 2-star rate was then setting the budget's floor. Seen on a
     # 14-day Colombo plan, whose Minimum tier sat at 46,396 against the 50,926
     # its 3-star rooms actually cost.
-    classed_by_leg: dict[int, list[float]] = {}
+    classed_by_leg: dict[int, list[tuple[float, dict]]] = {}
     for s in strategies_:
         if not isinstance(s, dict):
             continue
         rate = _extract_lowest_price(s.get("price_per_night"))
         if rate > 0:
             leg_key = int(s.get("leg_index") or 0)
-            nightly_by_leg.setdefault(leg_key, []).append(rate)
+            by_leg.setdefault(leg_key, []).append((rate, s))
             if int(s.get("hotel_class") or 0) >= _BASE_HOTEL_CLASS:
-                classed_by_leg.setdefault(leg_key, []).append(rate)
+                classed_by_leg.setdefault(leg_key, []).append((rate, s))
 
-    total_ = 0.0
+    lines: list[dict] = []
     for leg_i, leg_ in enumerate(city_legs):
         nights_ = int(leg_.get("nights") or 0)
         if nights_ <= 0:
@@ -2623,19 +2668,37 @@ def required_stay_cost(
         # where the whole town is unclassed still has to be priced, and the
         # Gemini estimate path writes no `hotel_class` at all, so this falls
         # back to every rate rather than to nothing.
-        rates_ = classed_by_leg.get(leg_i) or nightly_by_leg.get(leg_i)
-        if not rates_:
+        basis_ = "classed"
+        entries_ = classed_by_leg.get(leg_i)
+        if not entries_:
+            entries_ = by_leg.get(leg_i)
+            basis_ = "unclassed"
+        if not entries_:
             # A leg whose search came back empty still has to be slept in.
             # Carry the trip's known rates rather than pricing those nights at
             # zero, which is what made a budget look sufficient. Pooled across
             # legs, then tiered the same way, so an empty leg tracks the tier
             # instead of always falling back to the cheapest room.
-            pool_ = classed_by_leg or nightly_by_leg
+            pool_ = classed_by_leg or by_leg
             if not pool_:
                 continue
-            rates_ = [r for rr in pool_.values() for r in rr]
-        total_ += _rate_for_tier(rates_, tier) * nights_ * rooms_
-    return round(total_, 2)
+            entries_ = [e for ee in pool_.values() for e in ee]
+            basis_ = "pooled"
+        rate_, hotel_ = sorted(entries_, key=lambda e: e[0])[
+            _tier_index(len(entries_), tier)
+        ]
+        lines.append({
+            "leg_index": leg_i,
+            "city": str(leg_.get("city") or hotel_.get("city") or ""),
+            "nights": nights_,
+            "rooms": rooms_,
+            "nightly": round(rate_, 2),
+            "hotel": str(hotel_.get("name") or ""),
+            "hotel_class": int(hotel_.get("hotel_class") or 0),
+            "basis": basis_,
+            "amount": round(rate_ * nights_ * rooms_, 2),
+        })
+    return lines
 
 
 def stay_priced_at_star_floor(
@@ -2717,6 +2780,73 @@ def budget_flight_basis(
     return "direct" if int(chosen.get("stops") or 0) == 0 else "connecting"
 
 
+def transit_cost_lines(
+    flight_strategies: dict | None, travelers: int, tier: str = "recommended",
+) -> list[dict]:
+    """The fare the transit line is built from, as one priced line.
+
+    `tier_flight_cost` is the total of these, the same relationship
+    `required_stay_cost` has with `stay_cost_lines`, so the Flights sheet
+    always describes the card the budget actually took — including the
+    fallback to the cheapest fare when the tier has no card of its own, which
+    is the case a second implementation would quietly get wrong.
+
+    Empty when nothing is priced: a domestic trip, a route Google has no fares
+    for, or an Odyssey generated before fares were structured at all.
+    """
+    if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
+        return []
+    party = max(travelers, 1)
+    priced: list[tuple[float, dict]] = []
+    chosen: tuple[float, dict] | None = None
+    for s in flight_strategies["strategies"]:
+        if not isinstance(s, dict):
+            continue
+        price = s.get("price_per_traveler")
+        if not isinstance(price, (int, float)) or price <= 0:
+            # Legacy odysseys / AI fallback without structured pricing.
+            price = _extract_lowest_price(s.get("estimated_price_range"))
+        if price and price > 0:
+            priced.append((float(price), s))
+            if s.get("tier") == tier:
+                chosen = (float(price), s)
+    if not priced:
+        return []
+    tier_exact = chosen is not None
+    if chosen is None:
+        chosen = min(priced, key=lambda e: e[0])
+    fare, strat = chosen
+    stops = int(strat.get("stops") or 0)
+    airlines = strat.get("airlines")
+    carrier = (
+        ", ".join(str(a) for a in airlines)
+        if isinstance(airlines, list) and airlines else ""
+    )
+    return [{
+        "label": str(strat.get("route") or strat.get("title") or "Air fare"),
+        "airline": carrier,
+        "stops": stops,
+        "stops_label": (
+            "non-stop" if stops == 0
+            else ("1 stop" if stops == 1 else f"{stops} stops")
+        ),
+        "live": bool(strat.get("is_live_price")),
+        "tier": str(strat.get("tier") or ""),
+        "tier_exact": tier_exact,
+        "per_traveler": round(fare, 2),
+        "travelers": party,
+        "amount": fare * party,
+    }]
+
+
+def tier_flight_cost(
+    flight_strategies: dict | None, travelers: int, tier: str = "recommended",
+) -> float:
+    """Party-total flight cost for one tier, falling back to the cheapest."""
+    lines = transit_cost_lines(flight_strategies, travelers, tier)
+    return lines[0]["amount"] if lines else 0.0
+
+
 def food_and_activities_room(
     *,
     budget: float,
@@ -2787,32 +2917,57 @@ def food_and_activities_room(
     return max(round(total - flight - stay, 2), 0.0)
 
 
+# How each tier ranks the rooms and fares it prices itself from, in words.
+#
+# The client supplied "Based on best value price" for the stay line while
+# asking for the *cheapest* hotel, and his 15 Sep follow-up ("lowest cost but
+# hi star rated hotel", "lowest cost flight") settled that the words should
+# follow the arithmetic. "Best value" survives on the Recommended tier, which
+# is the one it was always true of.
+_TIER_WORDS = {
+    "minimum": ("Cheapest", "the lowest-priced", "lowest-priced"),
+    "recommended": ("Mid-priced", "the mid-priced", "best value"),
+    "comfortable": ("Dearest", "the highest-priced", "highest-priced"),
+}
+
+
 def _budget_notes(
     *,
     rooms: int,
     at_star_floor: bool,
     flight_basis: str,
     no_airfare: bool,
+    tier: str = "recommended",
 ) -> dict:
     """What the Stay and Transit lines were priced from, in one line and two.
 
     Requested by the client, who supplied the wording: "Based on Best Value
     Direct Flight" and "Based on best value price. Individual rooms assumed for
-    each pax." Both are printed verbatim where they are true, and neither is
-    printed where it is not — a note is only worth having if the traveller can
-    rely on it, and "Direct Flight" holds on 2 of the 30 live routes in cache.
+    each pax." Both are printed where they are true, and neither is printed
+    where it is not — a note is only worth having if the traveller can rely on
+    it, and "Direct Flight" holds on 2 of the 30 live routes in cache.
+
+    Written per tier. The card used to carry one note computed for Recommended
+    and show it on every tab, so on Minimum it described a room and a fare that
+    were not the ones on screen — which is what made it look as though the
+    cheapest-room rule had never been applied at all.
 
     `summary` is the single line the Budget Allocation card always shows;
-    `stay` and `transit` sit behind its info tap.
+    `stay` and `transit` sit behind the tap on their own bars.
     """
-    stay_phrase = "Cheapest " + ("3-star+ room" if at_star_floor else "room")
+    rank_label, rank_phrase, fare_rank = _TIER_WORDS.get(
+        tier, _TIER_WORDS["recommended"],
+    )
+    room_words = "3-star+ room" if at_star_floor else "room"
+    stay_phrase = f"{rank_label} {room_words}"
     if rooms > 1:
         stay_phrase += ", 1 per person"
 
+    stay_note = f"Based on {rank_phrase} {room_words}."
     notes = {
         "stay": (
-            "Based on best value price. Individual rooms assumed for each pax."
-            if rooms > 1 else "Based on best value price."
+            stay_note + " Individual rooms assumed for each pax."
+            if rooms > 1 else stay_note
         ),
     }
 
@@ -2829,13 +2984,17 @@ def _budget_notes(
         return notes
 
     notes["transit"], flight_phrase = {
+        # The client's own wording, kept verbatim on the tier it describes.
         "direct": (
-            "Based on Best Value Direct Flight",
-            "best value direct flight",
+            "Based on Best Value Direct Flight"
+            if tier == "recommended"
+            else f"Based on the {fare_rank} direct flight.",
+            f"{fare_rank} direct flight",
         ),
         "connecting": (
-            "Based on the best value flight. No direct flight is offered on this route.",
-            "best value flight",
+            f"Based on the {fare_rank} flight. "
+            "No direct flight is offered on this route.",
+            f"{fare_rank} flight",
         ),
         "estimated": (
             "Based on an estimated fare — no live price was available for this route.",
@@ -2844,6 +3003,222 @@ def _budget_notes(
     }[flight_basis]
     notes["summary"] = f"{stay_phrase} · {flight_phrase}"
     return notes
+
+
+def _money(currency: str, value: float) -> str:
+    """One amount the way the card prints it: "INR 526,410"."""
+    return f"{str(currency or '').upper()} {value:,.0f}".strip()
+
+
+def budget_basis(
+    *,
+    tier: str,
+    breakdown: dict,
+    flight_strategies: dict | None,
+    hotel_strategies: dict | None,
+    city_legs: list[dict],
+    travelers: int,
+    days: int,
+    currency: str,
+    food_share: float,
+    no_airfare: bool,
+    at_star_floor: bool,
+) -> dict:
+    """How every line of one Budget Allocation tab was arrived at.
+
+    The client asked for each category to open and explain itself. The
+    explanation is built here, beside the arithmetic it describes, and the app
+    only draws it: `stay` is `stay_cost_lines`, `transit` is
+    `transit_cost_lines`, and `food`/`activities` are the waterfall's own
+    subtraction written out. Deriving any of it in Dart instead would mean a
+    second implementation of the star floor, the leg pooling and the 85%
+    transit cap, and the sheet would eventually contradict the bar above it —
+    the "budget split does not add up" report, reopened from the other side.
+
+    Where a line is priced from nothing — no fares on the route, no room rates
+    for the trip — the block says the figure is a share of the budget instead
+    of inventing a derivation for it.
+    """
+    rooms = _rooms_for(travelers)
+    party = max(int(travelers or 1), 1)
+    notes = _budget_notes(
+        rooms=rooms,
+        at_star_floor=at_star_floor,
+        flight_basis=budget_flight_basis(flight_strategies, tier),
+        no_airfare=no_airfare,
+        tier=tier,
+    )
+    total = float(breakdown.get("total") or 0)
+    stay_total = float(breakdown.get("stay") or 0)
+    transit_total = float(breakdown.get("transit") or 0)
+    food_total = float(breakdown.get("food") or 0)
+    activities_total = float(breakdown.get("activities") or 0)
+    rank_phrase = _TIER_WORDS.get(tier, _TIER_WORDS["recommended"])[1]
+
+    def _nights(n: int) -> str:
+        return f"{n} night" if n == 1 else f"{n} nights"
+
+    # ── Stay: one line per city, exactly what the bar sums ──────────────
+    lines = stay_cost_lines(hotel_strategies, city_legs, travelers, tier)
+    stay_items: list[dict] = []
+    for line in lines:
+        room_word = "room" if line["rooms"] == 1 else "rooms"
+        detail = [b for b in (
+            line["hotel"],
+            f"{line['hotel_class']}-star" if line["hotel_class"] else "",
+        ) if b]
+        detail.append(
+            f"{_money(currency, line['nightly'])}/night"
+            f" × {_nights(line['nights'])}"
+            f" × {line['rooms']} {room_word}"
+        )
+        stay_items.append({
+            "label": f"{line['city']} · {_nights(line['nights'])}".lstrip(" ·"),
+            "detail": " · ".join(detail),
+            "amount": line["amount"],
+        })
+
+    stay_caveat = ""
+    if any(ln["basis"] == "pooled" for ln in lines):
+        stay_caveat = (
+            "One city's own hotel search came back empty; those nights are "
+            "priced from the rest of the trip's rooms."
+        )
+    elif any(ln["basis"] == "unclassed" for ln in lines):
+        stay_caveat = (
+            "Some cities list nothing at 3 stars or above, so their nights are "
+            "priced from whatever is listed there."
+        )
+    if not stay_items and stay_total > 0:
+        stay_items = [{
+            "label": "Estimated share of the budget",
+            "detail": "No room rates came back for this trip.",
+            "amount": stay_total,
+        }]
+
+    rooms_word = "room" if rooms == 1 else "rooms"
+    stay_formula = (
+        f"{rank_phrase.capitalize()} "
+        f"{'3-star+ room' if at_star_floor else 'room'} in each city"
+        f" × {rooms} {rooms_word}"
+        f"{' (one per traveller)' if rooms > 1 else ''}"
+        f" × nights there"
+    )
+
+    # ── Transit: the one fare the budget took ──────────────────────────
+    fare_lines = transit_cost_lines(flight_strategies, party, tier)
+    transit_items: list[dict] = []
+    transit_caveat = ""
+    if fare_lines:
+        fare = fare_lines[0]
+        detail = [b for b in (fare["airline"], fare["stops_label"]) if b]
+        detail.append(
+            f"{_money(currency, fare['per_traveler'])} per traveller"
+            f" × {fare['travelers']}"
+        )
+        transit_items.append({
+            "label": fare["label"],
+            "detail": " · ".join(detail),
+            "amount": fare["amount"],
+        })
+        if not fare["live"]:
+            transit_caveat = (
+                "No live fare came back for this route, so this is an estimate."
+            )
+        elif not fare["tier_exact"]:
+            transit_caveat = (
+                "This tier had no fare of its own, so the cheapest one was used."
+            )
+        # `_waterfall` caps the transit line at 85% of the total. When that
+        # bites, the fare above is not what the bar shows, and saying so is
+        # the only honest way to print both.
+        if abs(fare["amount"] - transit_total) > 1:
+            transit_items.append({
+                "label": "Held at 85% of the trip total",
+                "detail": "The fare alone would take almost the whole budget.",
+                "amount": transit_total,
+            })
+    elif no_airfare:
+        transit_items.append({
+            "label": "Ground transport only",
+            "detail": "Nothing flies this route — trains, coaches and transfers.",
+            "amount": transit_total,
+        })
+    elif transit_total > 0:
+        transit_items.append({
+            "label": "Estimated share of the budget",
+            "detail": "No fares came back for this route.",
+            "amount": transit_total,
+        })
+
+    transit_formula = (
+        "Ground transport, as a share of the trip" if no_airfare
+        else f"{rank_phrase.capitalize()} fare × {party} "
+             f"{'traveller' if party == 1 else 'travellers'}"
+    )
+
+    # ── Food and activities: what is left, and how it divides ──────────
+    remainder = round(total - (transit_total + stay_total), 2)
+    food_pct = round(max(min(food_share, 1.0), 0.0) * 100)
+    ladder = [
+        {"label": "Trip total", "detail": f"{tier.capitalize()} plan",
+         "amount": total},
+        {"label": "less Flights & Transit", "detail": "", "amount": -transit_total},
+        {"label": "less Stay", "detail": "", "amount": -stay_total},
+        {"label": "Left for food and activities", "detail": "",
+         "amount": remainder},
+    ]
+
+    def _per_day(amount: float) -> str:
+        span = party * max(int(days or 0), 0)
+        if span <= 0 or amount <= 0:
+            return ""
+        return f"About {_money(currency, amount / span)} per person per day."
+
+    residual_formula = (
+        "What is left after flights and rooms, split the way the day plan "
+        "splits it"
+    )
+
+    return {
+        "summary": notes.get("summary", ""),
+        "stay": {
+            "formula": stay_formula,
+            "items": stay_items,
+            "total": stay_total,
+            "note": notes.get("stay", ""),
+            "caveat": stay_caveat,
+        },
+        "transit": {
+            "formula": transit_formula,
+            "items": transit_items,
+            "total": transit_total,
+            "note": notes.get("transit", ""),
+            "caveat": transit_caveat,
+        },
+        "food": {
+            "formula": residual_formula,
+            "items": ladder + [{
+                "label": "Dining share of the day plan",
+                "detail": f"{food_pct}% — read from the meals and activities planned",
+                "amount": food_total,
+            }],
+            "total": food_total,
+            "note": _per_day(food_total),
+            "caveat": "",
+        },
+        "activities": {
+            "formula": residual_formula,
+            "items": ladder + [{
+                "label": "Everything else in the day plan",
+                "detail": f"{100 - food_pct}% — entry fees, tours, experiences",
+                "amount": activities_total,
+            }],
+            "total": activities_total,
+            "note": _per_day(activities_total),
+            "caveat": "",
+        },
+    }
 
 
 async def generate_hotel_strategies_for_legs(
@@ -3519,6 +3894,17 @@ def _route_prompt(
             f'{days} days, use fewer stops and longer hops rather than dropping either '
             f'end - both were asked for.'
         )
+    if ends and country:
+        # The country rule below is absolute, and these are requests. The app
+        # holds the exit search to the entry's country so the pair should
+        # always agree, but the API can be called without it - and an end in
+        # the wrong country must be dropped rather than drag a leg out of the
+        # country the whole trip is planned in.
+        ends.append(
+            f'- If either of those two places is not in {country}, ignore that one '
+            f'and choose that end yourself. A trip starts and finishes in the same '
+            f'country, and the country rule below outranks both.'
+        )
     ends_rule = ("\n".join(ends) + "\n") if ends else ""
 
     correction_rules = ""
@@ -4170,25 +4556,7 @@ async def generate_odyssey(
     # the whole group.
     def _tier_flight_cost(tier: str) -> float:
         """Party-total flight cost for one tier, falling back to the cheapest."""
-        if not (flight_strategies and isinstance(flight_strategies.get("strategies"), list)):
-            return 0.0
-        party = max(travelers, 1)
-        per_traveler = []
-        tier_price = 0.0
-        for s in flight_strategies["strategies"]:
-            if not isinstance(s, dict):
-                continue
-            price = s.get("price_per_traveler")
-            if not isinstance(price, (int, float)) or price <= 0:
-                # Legacy odysseys / AI fallback without structured pricing.
-                price = _extract_lowest_price(s.get("estimated_price_range"))
-            if price and price > 0:
-                per_traveler.append(float(price))
-                if s.get("tier") == tier:
-                    tier_price = float(price)
-        if tier_price > 0:
-            return tier_price * party
-        return min(per_traveler) * party if per_traveler else 0.0
+        return tier_flight_cost(flight_strategies, travelers, tier)
 
     cheapest_flight_cost = _tier_flight_cost("minimum")
 
@@ -4357,16 +4725,21 @@ async def generate_odyssey(
             _tier_stay_cost("recommended"),
         )
 
-        budget_scenarios = {}
-        # Only show a Minimum tier if there's meaningful headroom below.
-        if real_minimum_cost > 0 and tot > real_minimum_cost * 1.25:
-            budget_scenarios["minimum"] = _waterfall(
+        # A Minimum tier on every plan, not only where there was 25% of
+        # headroom below the budget. The card now opens on Minimum — the
+        # client's "start at the minimum spend required" — and a plan whose
+        # budget was merely *close* to the floor would otherwise have opened on
+        # Recommended, which is the one case where starting at the cheapest
+        # version matters most.
+        budget_scenarios = {
+            "minimum": _waterfall(
                 _scenario_total(
                     tot * _SCENARIO_MULTIPLIERS["minimum"], "minimum",
                 ),
                 _tier_flight_cost("minimum"),
                 _tier_stay_cost("minimum"),
-            )
+            ),
+        }
         budget_scenarios["recommended"] = budget_breakdown
         budget_scenarios["comfortable"] = _waterfall(
             _scenario_total(
@@ -4434,12 +4807,36 @@ async def generate_odyssey(
     activities_pct = max(100 - (stay_pct + transit_pct + food_pct), 0)
     harmonized_budget_split = f"{stay_pct}% Stay - {transit_pct}% Transit - {food_pct}% Food - {activities_pct}% Activities"
 
+    at_star_floor = stay_priced_at_star_floor(hotel_strategies, city_legs)
+
+    # The flat note stays computed for Recommended: app builds that predate
+    # `budget_basis` open on that tab and read this, and handing them a note
+    # written for a tier they never show is the bug this release is fixing.
     budget_notes = _budget_notes(
         rooms=_rooms_for(travelers),
-        at_star_floor=stay_priced_at_star_floor(hotel_strategies, city_legs),
+        at_star_floor=at_star_floor,
         flight_basis=budget_flight_basis(flight_strategies),
         no_airfare=no_airfare,
     )
+
+    # What every line of every tab was priced from — the client's "make each
+    # category clickable to explain how the budget was arrived at".
+    budget_basis_blocks = {
+        tier_: budget_basis(
+            tier=tier_,
+            breakdown=bd_,
+            flight_strategies=flight_strategies,
+            hotel_strategies=hotel_strategies,
+            city_legs=city_legs,
+            travelers=travelers,
+            days=g_days,
+            currency=final_currency,
+            food_share=food_share,
+            no_airfare=no_airfare,
+            at_star_floor=at_star_floor,
+        )
+        for tier_, bd_ in budget_scenarios.items()
+    }
 
     verified_sources = _deduplicate_grounding_chunks(grounding_chunks)
     if verified_sources:
@@ -4448,7 +4845,34 @@ async def generate_odyssey(
             len(verified_sources),
         )
 
-    if not feasible:
+    # What the card can actually offer, either side of what they typed.
+    recommended_total = round(
+        float(budget_scenarios.get("recommended", {}).get("total") or tot), 2,
+    )
+    minimum_total = round(
+        float(budget_scenarios.get("minimum", {}).get("total") or 0), 2,
+    )
+
+    # The old banner named neither figure — "increase your budget to the
+    # recommended amount" without saying what that amount was, or what the trip
+    # costs at its cheapest — and it stayed red above a Minimum tab the
+    # traveller could well afford, which is what the client was looking at when
+    # he asked for the card to start at the minimum.
+    if not feasible and minimum_total > 0 and user_budget + 1 < minimum_total:
+        recommendation = (
+            f"Even the cheapest version of this trip costs "
+            f"{_money(final_currency, minimum_total)} — "
+            f"{_money(final_currency, minimum_total - user_budget)} more than "
+            "your budget. Shorten the trip, or raise the budget."
+        )
+    elif not feasible and minimum_total > 0:
+        recommendation = (
+            "Your budget doesn't stretch to the Recommended plan "
+            f"({_money(final_currency, recommended_total)}). What you're "
+            "seeing is the cheapest version of this trip — "
+            f"{_money(final_currency, minimum_total)}."
+        )
+    elif not feasible:
         recommendation = (
             "Your selected budget may not be sufficient for this itinerary and travel dates. "
             "Please increase your budget to the recommended amount or adjust your trip duration."
@@ -4460,6 +4884,11 @@ async def generate_odyssey(
         "feasible": feasible,
         "budget_tightness": budget_tightness,
         "minimum_required": minimum_required,
+        # Both figures the banner names, so the app never has to recompute one
+        # of them out of the scenarios to write a sentence.
+        "minimum_total": minimum_total,
+        "recommended_total": recommended_total,
+        "entered_budget": round(user_budget, 2),
         "biggest_risk": str(plan.get("biggest_risk") or "").strip(),
         "recommendation": recommendation,
     }
@@ -4507,6 +4936,7 @@ async def generate_odyssey(
         verified_sources=verified_sources,
         verdict=verdict,
         budget_scenarios=budget_scenarios,
+        budget_basis=budget_basis_blocks,
         practical_info=practical_info,
         booking_plan=booking_plan,
         legs=city_legs,

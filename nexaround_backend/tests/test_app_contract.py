@@ -30,7 +30,8 @@ APP_READS = {
     "cover_url", "flight_strategies", "hotel_strategies", "inter_city_flights",
     "start_date", "end_date", "departure_city", "budget_breakdown",
     "budget_advisory", "budget_notes", "plan_advisory", "verified_sources",
-    "verdict", "budget_scenarios", "practical_info", "booking_plan", "legs",
+    "verdict", "budget_scenarios", "budget_basis", "practical_info",
+    "booking_plan", "legs",
 }
 
 
@@ -49,8 +50,8 @@ def test_every_key_is_present_even_on_a_bare_plan():
 def test_the_containers_are_the_shapes_the_app_casts_to():
     meta = _meta()
     for key in ("flight_strategies", "hotel_strategies", "visa", "verdict",
-                "budget_breakdown", "budget_scenarios", "practical_info",
-                "budget_notes"):
+                "budget_breakdown", "budget_scenarios", "budget_basis",
+                "practical_info", "budget_notes"):
         assert isinstance(meta[key], dict), f"{key} must be a map"
     for key in ("booking_partners", "verified_sources", "booking_plan", "legs",
                 "inter_city_flights"):

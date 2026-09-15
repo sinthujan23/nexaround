@@ -81,6 +81,20 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   bool _isNavigatingToMap = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Start on the minimum spend required, which is what the client asked for
+    // and what the card's own rules describe. Opening on Recommended meant the
+    // first figures anyone saw were the *middle*-priced room and the
+    // *middle*-priced fare, so the cheapest-room, cheapest-flight arithmetic
+    // looked as though it had never been applied. Legacy Odysseys carry no
+    // minimum tier and keep their old landing tab.
+    if (widget.odyssey.budgetScenarios.containsKey('minimum')) {
+      _selectedScenario = 'minimum';
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final bool hasFlights = widget.odyssey.flightStrategies.isNotEmpty ||
         widget.odyssey.flightGeneralTips.isNotEmpty ||
@@ -1615,6 +1629,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bd = scenarios[activeKey] ?? widget.odyssey.budgetBreakdown;
     final currency = widget.odyssey.currency;
     final notes = widget.odyssey.budgetNotes;
+    // The explanations behind this tab's four bars. Null on every Odyssey
+    // generated before the card could be tapped — those keep the single note
+    // at the foot of the card and the info tap beside the title.
+    final basis = widget.odyssey.budgetBasis[activeKey];
     final total = (bd['total'] ?? 0) > 0 ? (bd['total']!) : widget.odyssey.budget;
 
     // Default category estimates if breakdown dictionary is empty
@@ -1638,46 +1656,78 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
       }
     }
 
-    Widget categoryBar(String name, String emoji, double val, Color color) {
+    Widget categoryBar(
+      String key,
+      String name,
+      String emoji,
+      double val,
+      Color color,
+      IconData icon,
+    ) {
       final pStr = formatPercentage(val);
       final progVal = (val > 0 && percent(val) < 0.01) ? 0.01 : percent(val);
+      // Only a line the backend actually explained is worth a tap. A bar with
+      // nothing behind it keeps its old, inert look rather than opening an
+      // empty sheet.
+      final line = basis?[key];
+      final canOpen = line != null && line.items.isNotEmpty;
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  '$emoji  $name',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black87,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          // The null check is written out here rather than read off `canOpen`:
+          // Dart promotes `line` inside the closure from this condition, not
+          // from a bool computed earlier.
+          onTap: (line != null && line.items.isNotEmpty)
+              ? () => _showCategoryBasis(context, name, icon, color, line)
+              : null,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      '$emoji  $name',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
                   ),
-                ),
-                Text(
-                  '$currency ${formatAmount(val)} ($pStr)',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.black,
+                  Text(
+                    '$currency ${formatAmount(val)} ($pStr)',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.black,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                value: progVal,
-                minHeight: 8,
-                backgroundColor: color.withValues(alpha: 0.15),
-                valueColor: AlwaysStoppedAnimation<Color>(color),
+                  if (canOpen)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 2),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: Color(0xFF94A3B8),
+                      ),
+                    ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: LinearProgressIndicator(
+                  value: progVal,
+                  minHeight: 8,
+                  backgroundColor: color.withValues(alpha: 0.15),
+                  valueColor: AlwaysStoppedAnimation<Color>(color),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -1693,15 +1743,23 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: const Color(0xFFFFB74D)),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100), size: 20),
-                SizedBox(width: 10),
+                const Icon(Icons.warning_amber_rounded, color: Color(0xFFE65100), size: 20),
+                const SizedBox(width: 10),
                 Expanded(
+                  // The backend now names both figures: what the cheapest
+                  // version of this trip costs, and what the Recommended one
+                  // does. The sentence below it replaced named neither, and
+                  // sat above a Minimum tab the traveller could often afford.
+                  // Plans generated before that carry no sentence of their own
+                  // and keep the one they shipped with.
                   child: Text(
-                    'Your selected budget may not be sufficient for this itinerary and travel dates. Please increase your budget to the recommended amount or adjust your trip duration.',
-                    style: TextStyle(
+                    widget.odyssey.verdict!.recommendation.isNotEmpty
+                        ? widget.odyssey.verdict!.recommendation
+                        : 'Your selected budget may not be sufficient for this itinerary and travel dates. Please increase your budget to the recommended amount or adjust your trip duration.',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFFBF360C),
@@ -1779,9 +1837,13 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                           color: AppColors.textSecondary,
                         ),
                       ),
-                      // Only offered when the backend sent something to show:
-                      // legacy Odysseys carry no notes and get no dead tap.
-                      if (notes['stay'] != null || notes['transit'] != null) ...[
+                      // Only offered when the backend sent something to show,
+                      // and only where the bars themselves cannot be opened:
+                      // legacy Odysseys carry no notes and get no dead tap,
+                      // and a card whose every line explains itself has no
+                      // need of a second way in.
+                      if (basis == null &&
+                          (notes['stay'] != null || notes['transit'] != null)) ...[
                         const SizedBox(width: 6),
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
@@ -1820,18 +1882,27 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                 _scenarioToggle(),
               ],
               const SizedBox(height: 16),
-              categoryBar('Stay / Accommodation', '🏨', stay, const Color(0xFF2563EB)),
-              categoryBar('Flights & Transit', '✈️', transit, const Color(0xFF0D9488)),
-              categoryBar('Food & Dining', '🍔', food, const Color(0xFFD97706)),
-              categoryBar('Activities & Experiences', '🎟️', activities, const Color(0xFF7C3AED)),
-              // What these figures were priced from, in one line. The client
-              // asked for a sentence under Stay and another under Flights;
-              // two more lines inside the bars crowded the card, so the short
-              // form lives here and the full wording sits behind the tap above.
-              if ((notes['summary'] ?? '').isNotEmpty) ...[
+              categoryBar('stay', 'Stay / Accommodation', '🏨', stay,
+                  const Color(0xFF2563EB), Icons.hotel_rounded),
+              categoryBar('transit', 'Flights & Transit', '✈️', transit,
+                  const Color(0xFF0D9488), Icons.flight_takeoff_rounded),
+              categoryBar('food', 'Food & Dining', '🍔', food,
+                  const Color(0xFFD97706), Icons.restaurant_rounded),
+              categoryBar('activities', 'Activities & Experiences', '🎟️',
+                  activities, const Color(0xFF7C3AED), Icons.local_activity_rounded),
+              // What these figures were priced from, in one line, for the tab
+              // on show. The client asked for a sentence under Stay and
+              // another under Flights; two more lines inside the bars crowded
+              // the card, so the short form lives here and the full working
+              // sits behind each bar's own tap. Plans generated before the
+              // bars could be tapped fall back to their stored note, which
+              // was written for the Recommended tier.
+              if (((basis?.summary ?? notes['summary']) ?? '').isNotEmpty) ...[
                 const Divider(height: 20, thickness: 0.5),
                 Text(
-                  notes['summary']!,
+                  (basis?.summary.isNotEmpty ?? false)
+                      ? basis!.summary
+                      : notes['summary']!,
                   style: const TextStyle(
                     fontSize: 11,
                     height: 1.35,
@@ -2818,6 +2889,259 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       }
     } catch (_) {}
+  }
+
+  /// Bottom sheet for one Budget Allocation line: the sum behind the bar.
+  ///
+  /// The client asked for each category to explain how its figure was arrived
+  /// at. Everything shown here — the formula, the rows, the total, the note —
+  /// is the backend's own working, drawn and not recomputed: the star floor,
+  /// the pooling of a city that was never searched and the cap on a runaway
+  /// fare are all server-side rules, and a second version of them here would
+  /// drift from the bar this sheet was opened from.
+  void _showCategoryBasis(
+    BuildContext context,
+    String name,
+    IconData icon,
+    Color tint,
+    BudgetBasisLine line,
+  ) {
+    final currency = widget.odyssey.currency;
+
+    // A subtraction in the food and activities ladder arrives negative.
+    String money(double v) =>
+        '${v < 0 ? '− ' : ''}$currency ${formatAmount(v.abs())}';
+
+    Widget itemRow(BudgetBasisItem item) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item.label,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.3,
+                    ),
+                  ),
+                  if (item.detail.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      item.detail,
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        height: 1.35,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              money(item.amount),
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Colors.black,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (ctxModal) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.black12,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: tint.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(icon, size: 18, color: tint),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.8,
+                              color: tint,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          const Text(
+                            'How this was worked out',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (line.formula.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      line.formula,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 6),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var i = 0; i < line.items.length; i++) ...[
+                          if (i > 0)
+                            const Divider(height: 1, thickness: 0.5),
+                          itemRow(line.items[i]),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                Container(
+                  margin: const EdgeInsets.only(top: 4),
+                  padding: const EdgeInsets.only(top: 12),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      top: BorderSide(color: Colors.black26, width: 1.2),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        money(line.total),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (line.note.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    line.note,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      height: 1.4,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+                if (line.caveat.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7E8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF0B968)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline_rounded,
+                            size: 16, color: Color(0xFF8A4B1B)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            line.caveat,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              height: 1.4,
+                              color: Color(0xFF8A4B1B),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(ctxModal).pop(),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   /// Bottom sheet spelling out what the Budget Allocation figures were priced

@@ -655,3 +655,76 @@ def test_the_way_home_leaves_from_where_the_trip_ends(world):
             f"{s.get('tier')} flies home from {ret.get('origin')}, "
             f"but the trip ends at {gateway}"
         )
+
+
+# ── The card that explains itself ───────────────────────────────────────────
+#
+# The client asked for each Budget Allocation category to open and show how it
+# was arrived at, and for the card to start on the minimum spend required.
+# These run the whole generation, because the failure they guard against is a
+# wiring one: `budget_basis` is built from the scenarios, the food split and
+# the trip length, and every one of those is a local of `generate_odyssey`.
+
+def test_every_tier_carries_a_basis_for_every_bar(world):
+    _, meta, _ = run(world)
+    basis = meta["budget_basis"]
+    scenarios = meta["budget_scenarios"]
+
+    assert set(basis) == set(scenarios), "a tab with no explanation behind it"
+    for tier, block in basis.items():
+        for line in ("stay", "transit", "food", "activities"):
+            assert block[line]["formula"], f"{tier}/{line}: no formula"
+            assert block[line]["items"], f"{tier}/{line}: explains nothing"
+
+
+def test_the_sheet_sums_to_the_bar_on_every_tier(world):
+    """The one rule: an explanation may never contradict the figure above it."""
+    _, meta, _ = run(world)
+    for tier, block in meta["budget_basis"].items():
+        bars = meta["budget_scenarios"][tier]
+        for line in ("stay", "transit"):
+            items = sum(money(i["amount"]) for i in block[line]["items"])
+            bar = money(bars[line])
+            if len(block[line]["items"]) > 1 and line == "transit":
+                # A capped transit line prints the fare *and* the cap; the cap
+                # is the bar.
+                items = money(block[line]["items"][-1]["amount"])
+            assert abs(items - bar) < 1, (
+                f"{tier}/{line}: sheet says {items:,.0f}, bar says {bar:,.0f}"
+            )
+            assert abs(money(block[line]["total"]) - bar) < 1, f"{tier}/{line}"
+
+
+def test_a_minimum_tier_exists_on_every_plan(world):
+    """The card opens on Minimum, so there has to be one — including on a
+    budget that sits just above the floor, which used to fall short of the
+    25% headroom the tier was gated behind."""
+    for budget in (1000.0, 120_000.0, 400_000.0, 50_000_000.0):
+        _, meta, _ = run(world, budget=budget)
+        assert "minimum" in meta["budget_scenarios"], budget
+        assert "minimum" in meta["budget_basis"], budget
+
+
+def test_the_banner_names_what_the_trip_costs(world):
+    """"Increase your budget to the recommended amount" named no figure at
+    all, and sat above a Minimum tab the traveller could afford."""
+    _, meta, _ = run(world, budget=1000.0)
+    verdict = meta["verdict"]
+    assert verdict["feasible"] is False
+    said = verdict["recommendation"]
+    assert said, "an infeasible plan must say something"
+    assert "recommended amount" not in said
+    # Whichever of the two cases it is, the cheapest version's price is in it.
+    floor = money(verdict["minimum_total"]) or money(verdict["minimum_required"])
+    assert f"{floor:,.0f}" in said, said
+    assert money(verdict["entered_budget"]) == 1000.0
+    assert money(verdict["recommended_total"]) >= floor
+
+
+def test_the_note_on_each_tab_describes_that_tab(world):
+    """One note written for Recommended used to be shown on all three."""
+    _, meta, _ = run(world)
+    basis = meta["budget_basis"]
+    assert basis["minimum"]["stay"]["note"] != basis["comfortable"]["stay"]["note"]
+    assert "lowest-priced" in basis["minimum"]["stay"]["note"]
+    assert "highest-priced" in basis["comfortable"]["stay"]["note"]
