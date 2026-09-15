@@ -3830,6 +3830,8 @@ def _route_prompt(
     correction: str = "",
     entry_city: str = "",
     exit_city: str = "",
+    entry_latlng: tuple[float | None, float | None] = (None, None),
+    exit_latlng: tuple[float | None, float | None] = (None, None),
 ) -> str:
     # This call is where the hotel search's city strings come from, so an
     # invented country here is expensive: it books rooms in the wrong place.
@@ -3873,19 +3875,39 @@ def _route_prompt(
     # booked into one city, a wedding in another. A route stretched as a result
     # is not corrected; it is explained, the way a budget that will not cover
     # the trip is explained rather than quietly trimmed.
+    def _at(latlng) -> str:
+        """" at 7.2906, 80.6337", or nothing when the app did not send it.
+
+        Worth stating rather than leaving to inference: the app picked the place
+        from Google and knows where it is, while the model would work it out
+        from the name - and its answer becomes that leg's coordinates, which the
+        hotel search and every distance check downstream are measured against.
+        A wrong guess there is not one wrong line, it is the trip.
+        """
+        pair = latlng if isinstance(latlng, (tuple, list)) and len(latlng) == 2 else (None, None)
+        lat, lng = pair
+        if lat is None or lng is None:
+            return ""
+        try:
+            return f" at {float(lat):.4f}, {float(lng):.4f}"
+        except (TypeError, ValueError):
+            return ""
+
+    entry_at, exit_at = _at(entry_latlng), _at(exit_latlng)
+
     ends = []
     if entry_city:
         ends.append(
-            f'- THE TRAVELLER STARTS AT {entry_city}. The FIRST leg\'s "city" MUST be '
-            f'"{entry_city}", whatever the clustering rule below would otherwise prefer. '
+            f'- THE TRAVELLER STARTS AT {entry_city}{entry_at}. The FIRST leg\'s "city" MUST be '
+            f'"{entry_city}"{", with exactly those coordinates" if entry_at else ""}, whatever the clustering rule below would otherwise prefer. '
             f'"arrival_airport" MUST be the airport with scheduled flights nearest '
             f'{entry_city} - if {entry_city} has none of its own, the nearest one that '
             f'has, and the traveller reaches {entry_city} from it by road.'
         )
     if exit_city:
         ends.append(
-            f'- THE TRAVELLER FINISHES AT {exit_city}. The LAST leg\'s "city" MUST be '
-            f'"{exit_city}", and "departure_airport" MUST be the airport nearest it.'
+            f'- THE TRAVELLER FINISHES AT {exit_city}{exit_at}. The LAST leg\'s "city" MUST be '
+            f'"{exit_city}"{", with exactly those coordinates" if exit_at else ""}, and "departure_airport" MUST be the airport nearest it.'
         )
     if entry_city and exit_city and entry_city.strip().lower() != exit_city.strip().lower():
         ends.append(
@@ -3972,6 +3994,8 @@ async def plan_route(
     geo_budget=None,
     entry_city: str = "",
     exit_city: str = "",
+    entry_latlng: tuple[float | None, float | None] = (None, None),
+    exit_latlng: tuple[float | None, float | None] = (None, None),
 ) -> RoutePlan:
     """Decide the cities the trip sleeps in and the airports it uses, in one call.
 
@@ -4008,6 +4032,7 @@ async def plan_route(
     async def _attempt(correction: str) -> tuple[RoutePlan, list[str]]:
         prompt = _route_prompt(
             entry_city=entry_city, exit_city=exit_city,
+            entry_latlng=entry_latlng, exit_latlng=exit_latlng,
             destination=destination, days=days, mood=mood, travelers=travelers,
             geo=geo, origin_line=origin_line, correction=correction,
         )
@@ -4222,6 +4247,10 @@ async def generate_odyssey(
     destination_address: str = "",
     entry_city: str = "",
     exit_city: str = "",
+    entry_latitude: float | None = None,
+    entry_longitude: float | None = None,
+    exit_latitude: float | None = None,
+    exit_longitude: float | None = None,
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
 ) -> tuple[str, list[dict]]:
@@ -4300,6 +4329,8 @@ async def generate_odyssey(
             geo_budget=geo_budget,
             entry_city=entry_city,
             exit_city=exit_city,
+            entry_latlng=(entry_latitude, entry_longitude),
+            exit_latlng=(exit_latitude, exit_longitude),
         )
     except BaseException:
         # plan_route has its own fallback and should not raise, but if it
@@ -5146,9 +5177,17 @@ async def generate_replacement_activity(
     reason: str,
     existing_names: list[str],
     api_key: str,
+    city: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    country: str = "",
 ) -> dict:
     """Generate ONE replacement activity with restaurants."""
     prompt = _build_swap_prompt(
+        city=city,
+        latitude=latitude,
+        longitude=longitude,
+        country=country,
         destination=destination,
         mood=mood,
         budget=budget,
@@ -5208,20 +5247,46 @@ def _build_swap_prompt(
     old_name: str,
     reason: str,
     existing_names: list[str],
+    city: str = "",
+    latitude: float | None = None,
+    longitude: float | None = None,
+    country: str = "",
 ) -> str:
     avoid = ", ".join(n for n in existing_names if n) or "(none)"
     why = reason.strip() or "the traveler wants a different option"
     slot = time_slot or "this time slot"
+
+    # Where the day actually is. Without it this asked for somewhere "near
+    # {destination}" — near Sri Lanka, near India — and the replacement could
+    # land anywhere in the country or on a namesake abroad. The main itinerary
+    # prompt has pinned every place to its leg's coordinates since the
+    # Saint-Petersburg-to-Florida report; a swapped stop had no such rule, and
+    # it replaces a place on a day the traveller is already committed to.
+    here = city or destination
+    where = f'"{here}"'
+    if country and country.lower() not in here.lower():
+        where += f", {country}"
+
+    anchor = ""
+    if latitude is not None and longitude is not None:
+        anchor = (
+            f"\n- {here} is at {latitude:.4f}, {longitude:.4f}. The place you name MUST "
+            f"be within about {_PLACE_ANCHOR_KM} km of that point and reachable from it "
+            f"in the {slot} slot. A place of the same name somewhere else is the wrong "
+            f"answer — if you cannot confirm it sits near those coordinates, name "
+            f"something else you can."
+        )
+
     return f"""A traveler is on a {mood} trip to {destination} (total budget {int(budget)} {currency}).
 
-On Day {day_no} ("{theme}"), one stop needs replacing.
+On Day {day_no} ("{theme}"), one stop needs replacing. That day is spent in {where}.
 - Stop to replace: "{old_name}" (scheduled for {slot})
 - Why replace it: {why}
 
 These places are ALREADY in the trip - do NOT suggest any of them again:
 {avoid}
 
-Suggest exactly ONE different, real, well-known place or activity near "{destination}" that:
+Suggest exactly ONE different, real, well-known place or activity in or near {where} that:{anchor}
 - fits the day's "{theme}" theme and the "{slot}" time slot,
 - matches the "{mood}" travel style,
 - keeps within the overall {int(budget)} {currency} budget,

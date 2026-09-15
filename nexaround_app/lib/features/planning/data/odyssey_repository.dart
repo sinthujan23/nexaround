@@ -48,6 +48,13 @@ class OdysseyRepository {
     // Both optional and independent: a blank end means the planner chooses it.
     String entryCity = '',
     String exitCity = '',
+    // Where those two places are. The picker knows to the metre; sending only
+    // the name makes the route planner infer it, and its inference becomes the
+    // leg coordinates the hotel search then uses.
+    double? entryLatitude,
+    double? entryLongitude,
+    double? exitLatitude,
+    double? exitLongitude,
     String destinationPlaceId = '',
     double? destinationLatitude,
     double? destinationLongitude,
@@ -80,6 +87,10 @@ class OdysseyRepository {
         'end_date': endDate,
         'entry_city': entryCity,
         'exit_city': exitCity,
+        'entry_latitude': entryLatitude,
+        'entry_longitude': entryLongitude,
+        'exit_latitude': exitLatitude,
+        'exit_longitude': exitLongitude,
         'destination_place_id': destinationPlaceId,
         'destination_latitude': destinationLatitude,
         'destination_longitude': destinationLongitude,

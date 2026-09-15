@@ -176,3 +176,44 @@ def test_a_country_named_as_the_destination_still_takes_an_entry_city():
     p = _prompt(destination="Sri Lanka", geo=_sri_lanka(), entry_city="Kandy")
     assert "THE TRAVELLER STARTS AT Kandy" in p
     assert "TRAVELLER FINISHES" not in p
+
+
+# ── The coordinates behind the two names ───────────────────────────────────
+#
+# The app picks entry and exit from Google and knows where they are to the
+# metre. Sending only the name made the planner infer the location, and its
+# inference becomes that leg's coordinates — which the hotel search and every
+# distance check downstream are then measured against.
+
+def test_the_coordinates_the_app_picked_are_stated():
+    p = _prompt(entry_city="Kandy", exit_city="Galle",
+                entry_latlng=(7.2906, 80.6337), exit_latlng=(6.0535, 80.2210))
+    assert "STARTS AT Kandy at 7.2906, 80.6337" in p
+    assert "FINISHES AT Galle at 6.0535, 80.2210" in p
+    assert p.count("with exactly those coordinates") == 2
+
+
+def test_a_name_without_coordinates_still_works():
+    """Older app builds send no coordinates; the rule just loses its anchor."""
+    p = _prompt(entry_city="Kandy", exit_city="Galle")
+    assert "STARTS AT Kandy." in p
+    assert "with exactly those coordinates" not in p
+
+
+def test_one_end_located_and_the_other_not():
+    p = _prompt(entry_city="Kandy", exit_city="Galle", entry_latlng=(7.2906, 80.6337))
+    assert "STARTS AT Kandy at 7.2906" in p
+    assert "FINISHES AT Galle." in p
+    assert p.count("with exactly those coordinates") == 1
+
+
+@pytest.mark.parametrize("bad", [
+    (None, None), (7.29, None), (None, 80.63), (), (7.29,), "7.29,80.63", None,
+    ("not", "a number"),
+])
+def test_an_unusable_pair_is_ignored_rather_than_printed(bad):
+    """A half-pair or a malformed one says nothing, instead of an anchor that
+    points somewhere the traveller never picked."""
+    p = _prompt(entry_city="Kandy", entry_latlng=bad)
+    assert "STARTS AT Kandy." in p
+    assert "with exactly those coordinates" not in p

@@ -145,6 +145,10 @@ async def generate_odyssey(
         end_date=data.end_date,
         entry_city=data.entry_city or "",
         exit_city=data.exit_city or "",
+        entry_latitude=data.entry_latitude,
+        entry_longitude=data.entry_longitude,
+        exit_latitude=data.exit_latitude,
+        exit_longitude=data.exit_longitude,
         destination_place_id=data.destination_place_id or "",
         destination_latitude=data.destination_latitude,
         destination_longitude=data.destination_longitude,
@@ -196,8 +200,41 @@ async def swap_odyssey_activity(
         for a in (d.get("activities") or [])
     ]
 
+    # Which city that day is spent in, and where it is. Both are already on the
+    # stored plan — the swap prompt simply never asked for them, so a
+    # replacement for a day in Kandy was solicited as somewhere "near Sri
+    # Lanka" and could land anywhere in the country, or on a namesake abroad.
+    legs = [l for l in (meta.get("legs") or []) if isinstance(l, dict)]
+    day_no = int(day.get("day") or data.day_index + 1)
+    leg = next(
+        (
+            l for l in legs
+            if int(l.get("start_day") or 0) <= day_no <= int(l.get("end_day") or 0)
+        ),
+        None,
+    )
+    dctx = meta.get("destination_context") or {}
+
+    def _coord(value):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    swap_city = str((leg or {}).get("city") or "")
+    swap_lat = _coord((leg or {}).get("latitude"))
+    swap_lng = _coord((leg or {}).get("longitude"))
+    if swap_lat is None or swap_lng is None:
+        # No leg for that day, or a plan stored before legs carried coordinates:
+        # the destination's own point still beats naming a whole country.
+        swap_lat, swap_lng = _coord(dctx.get("latitude")), _coord(dctx.get("longitude"))
+
     try:
         replacement = await odyssey_ai_service.generate_replacement_activity(
+            city=swap_city,
+            latitude=swap_lat,
+            longitude=swap_lng,
+            country=str(dctx.get("country") or ""),
             destination=str(meta.get("destination") or ""),
             mood=str(meta.get("mood") or ""),
             budget=float(meta.get("budget") or 0),
@@ -319,6 +356,14 @@ async def retry_odyssey_generation(
     destination = str(
         gen_params.get("destination") or meta.get("destination") or itin.title or ""
     )[:DESTINATION_MAX]
+    def _coord_or_none(value):
+        """A replayed coordinate, or None when it is missing or unusable."""
+        try:
+            n = float(value)
+        except (TypeError, ValueError):
+            return None
+        return None if n != n else n          # NaN is not a location
+
     entry_city = str(gen_params.get("entry_city") or "")[:DESTINATION_MAX]
     exit_city = str(gen_params.get("exit_city") or "")[:DESTINATION_MAX]
     mood = str(gen_params.get("mood") or meta.get("mood") or "balanced")[:MOOD_MAX]
@@ -384,6 +429,10 @@ async def retry_odyssey_generation(
         end_date=end_date,
         entry_city=entry_city,
         exit_city=exit_city,
+        entry_latitude=_coord_or_none(gen_params.get("entry_latitude")),
+        entry_longitude=_coord_or_none(gen_params.get("entry_longitude")),
+        exit_latitude=_coord_or_none(gen_params.get("exit_latitude")),
+        exit_longitude=_coord_or_none(gen_params.get("exit_longitude")),
         destination_place_id=destination_place_id,
         destination_latitude=destination_latitude,
         destination_longitude=destination_longitude,

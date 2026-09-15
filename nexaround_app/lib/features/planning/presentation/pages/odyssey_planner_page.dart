@@ -78,6 +78,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   String _country = '';
   String _entryCity = '';
   String _exitCity = '';
+  double? _entryLat;
+  double? _entryLng;
+  double? _exitLat;
+  double? _exitLng;
 
   String get _countryCode => countryCodeFor(_country) ?? '';
 
@@ -259,8 +263,15 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     final name = result['name']?.toString() ?? '';
     if (name.isEmpty) return;
 
+    final lat = (result['latitude'] as num?)?.toDouble();
+    final lng = (result['longitude'] as num?)?.toDouble();
+
     if (!isEntry) {
-      setState(() => _exitCity = name);
+      setState(() {
+        _exitCity = name;
+        _exitLat = lat;
+        _exitLng = lng;
+      });
       return;
     }
 
@@ -275,6 +286,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     final leftCountry = derived != null && derived != _country;
     setState(() {
       _entryCity = pickedCountry != null ? '' : name;
+      // A country names no single place to start from, so there is no point
+      // to send: the planner picks the city and its coordinates with it.
+      _entryLat = pickedCountry != null ? null : lat;
+      _entryLng = pickedCountry != null ? null : lng;
       if (derived != null) {
         _country = derived;
         _setDestination(derived);
@@ -285,7 +300,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         _setDestination(name);
       }
       // An exit chosen for the previous country cannot survive the new one.
-      if (leftCountry && _exitCity.isNotEmpty) _exitCity = '';
+      if (leftCountry && _exitCity.isNotEmpty) {
+        _exitCity = '';
+        _exitLat = null;
+        _exitLng = null;
+      }
     });
 
     if (!mounted) return;
@@ -387,6 +406,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         destination: _destinationController.text.trim(),
         entryCity: _entryCity,
         exitCity: _exitCity,
+        entryLatitude: _entryLat,
+        entryLongitude: _entryLng,
+        exitLatitude: _exitLat,
+        exitLongitude: _exitLng,
         destinationPlaceId: _destPlaceId,
         destinationLatitude: _destLat,
         destinationLongitude: _destLng,

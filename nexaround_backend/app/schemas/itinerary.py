@@ -89,6 +89,14 @@ class OdysseyGenerateRequest(BaseModel):
     # planner treats them as a request rather than a guarantee either way.
     entry_city: str = Field(default="", max_length=DESTINATION_MAX)
     exit_city: str = Field(default="", max_length=DESTINATION_MAX)
+    # Where those two places actually are. The app picks them from Google, so
+    # it knows to the metre; without these the route planner has to guess from
+    # the name, and its guess becomes the leg coordinates that the hotel search
+    # and every distance check downstream then use.
+    entry_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    entry_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    exit_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    exit_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     destination_place_id: str = ""
     destination_latitude: Optional[float] = None
     destination_longitude: Optional[float] = None
