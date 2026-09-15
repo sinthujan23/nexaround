@@ -81,6 +81,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
 
   String get _countryCode => countryCodeFor(_country) ?? '';
 
+  /// Exit is the one end that needs the other two first.
+  ///
+  /// A traveller who knows only a city types it into Entry and the country
+  /// fills itself in from what they picked, so Entry cannot wait for a country
+  /// - it is one of the ways to choose one. Exit has no such job: by the time
+  /// it matters both the country and the starting point are known, and holding
+  /// it back keeps its search restricted to the right country from the first
+  /// keystroke.
+  bool get _canPickExit => _countryCode.isNotEmpty && _entryCity.isNotEmpty;
+
   String _destPlaceId = '';
   double? _destLat;
   double? _destLng;
@@ -241,31 +251,62 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     });
   }
 
-  /// Pick the city the trip starts or ends at, from inside the chosen country.
+  /// Pick the city the trip starts or ends at.
+  ///
+  /// Restricted to the chosen country whenever there is one. Entry without a
+  /// country searches everywhere on purpose: that search is how the traveller
+  /// names the country, and the country is then read off what they picked.
   Future<void> _pickEnd({required bool isEntry}) async {
-    if (_countryCode.isEmpty) return;
+    if (!isEntry && !_canPickExit) return;
+    final code = _countryCode;
     final result = await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (context) => LocationSearchModal(
-        restrictToCountryCode: _countryCode,
+        restrictToCountryCode: code.isEmpty ? null : code,
         hintText: isEntry
-            ? 'Where does the trip start in $_country?'
+            ? (code.isEmpty
+                ? 'Which city does the trip start in?'
+                : 'Where does the trip start in $_country?')
             : 'Where does the trip finish in $_country?',
       ),
     );
     if (result is! Map || !mounted) return;
     final name = result['name']?.toString() ?? '';
     if (name.isEmpty) return;
+
+    // A city chosen before any country names one: "Kandy, Sri Lanka" tells us
+    // the country, and the destination follows it so the rest of the planner
+    // has somewhere to plan. Left alone when the place does not say - better an
+    // empty field the traveller fills than a country they did not choose.
+    String? discovered;
+    if (isEntry && code.isEmpty) {
+      discovered = countryNameFromPlace(result['address']?.toString()) ??
+          countryNameFromPlace(result['district']?.toString());
+    }
+
     setState(() {
       if (isEntry) {
         _entryCity = name;
+        if (discovered != null) {
+          _country = discovered;
+          _setDestination(discovered);
+        }
       } else {
         _exitCity = name;
       }
     });
+
+    if (isEntry && code.isEmpty && discovered == null && mounted) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(
+          content: Text('Pick the country too — we could not tell it from that place.'),
+          behavior: SnackBarBehavior.floating,
+        ));
+    }
   }
 
   void _showLocationSearch() {
@@ -624,9 +665,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   value: _entryCity.isEmpty ? null : _entryCity,
                   icon: Icons.flight_land_rounded,
                   helper: 'Entry (optional)',
-                  onTap: _countryCode.isEmpty
-                      ? null
-                      : () => _pickEnd(isEntry: true),
+                  // Always open: typing a city here is one of the ways to
+                  // name the country.
+                  onTap: () => _pickEnd(isEntry: true),
                 ),
               ),
               const SizedBox(width: 12),
@@ -636,18 +677,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   value: _exitCity.isEmpty ? null : _exitCity,
                   icon: Icons.flight_takeoff_rounded,
                   helper: 'Exit (optional)',
-                  onTap: _countryCode.isEmpty
-                      ? null
-                      : () => _pickEnd(isEntry: false),
+                  onTap: _canPickExit ? () => _pickEnd(isEntry: false) : null,
                 ),
               ),
             ],
           ).animate().fade(delay: 130.ms),
-          if (_countryCode.isEmpty) ...[
+          if (!_canPickExit) ...[
             const SizedBox(height: 8),
-            const Text(
-              'Pick a country first to choose where the trip starts and ends.',
-              style: TextStyle(fontSize: 12, color: Colors.black45),
+            Text(
+              _countryCode.isEmpty
+                  ? 'Both optional. Pick a country, or type the city you start '
+                      'in and we will work the country out.'
+                  : 'Set where the trip starts to choose where it finishes.',
+              style: const TextStyle(fontSize: 12, color: Colors.black45),
             ),
           ],
           const SizedBox(height: 20),

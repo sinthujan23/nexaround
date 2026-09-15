@@ -59,6 +59,20 @@ void main() {
       expect(countryCodeFor('INDIA'), 'IN');
     });
 
+    test('every alias points at a country the list actually offers', () {
+      // An alias naming a country the picker cannot show would resolve a place
+      // to a country the traveller can never confirm.
+      for (final name in const [
+        'United States', 'United Kingdom', 'United Arab Emirates', 'South Korea',
+        'Czechia', 'Eswatini', 'Cabo Verde', 'Timor-Leste', 'North Macedonia',
+        'Myanmar', 'Netherlands', 'Turkey', 'Russia', 'Vietnam', 'Laos',
+        'Syria', 'Brunei',
+      ]) {
+        expect(countriesList, contains(name),
+            reason: '_countryAliases points at "$name", which is not in the list');
+      }
+    });
+
     test('an unknown name returns null rather than a guess', () {
       // Null means "search everywhere"; a made-up code would be rejected by
       // Google outright, which is worse than not restricting at all.
@@ -66,6 +80,41 @@ void main() {
       expect(countryCodeFor(''), isNull);
       expect(countryCodeFor('   '), isNull);
       expect(countryCodeFor(null), isNull);
+    });
+  });
+
+  group('country from a picked place', () {
+    test('the country is read off the end of the address', () {
+      expect(countryNameFromPlace('Sri Lanka'), 'Sri Lanka');
+      expect(countryNameFromPlace('Central Province, Sri Lanka'), 'Sri Lanka');
+      expect(countryNameFromPlace('Tuscany, Italy'), 'Italy');
+    });
+
+    test('the spellings Google uses are understood', () {
+      // This is the third way into the planner: a traveller who knows only a
+      // city types it and the country fills itself in.
+      expect(countryNameFromPlace('IL, USA'), 'United States');
+      expect(countryNameFromPlace('England, UK'), 'United Kingdom');
+      expect(countryNameFromPlace('Dubai, UAE'), 'United Arab Emirates');
+      expect(countryNameFromPlace('Türkiye'), 'Turkey');
+      expect(countryNameFromPlace('Czech Republic'), 'Czechia');
+      expect(countryNameFromPlace('Swaziland'), 'Eswatini');
+    });
+
+    test('the answer is spelled the way the picker spells it', () {
+      // So the value can be shown in the country field and matched again.
+      final found = countryNameFromPlace('IL, USA');
+      expect(countriesList, contains(found));
+      expect(countryCodeFor(found), 'US');
+    });
+
+    test('an address that names no country we know returns null', () {
+      // Null leaves the field for the traveller; a guess would put them in a
+      // country they never chose.
+      expect(countryNameFromPlace('Somewhere, Wakanda'), isNull);
+      expect(countryNameFromPlace(''), isNull);
+      expect(countryNameFromPlace(null), isNull);
+      expect(countryNameFromPlace('   '), isNull);
     });
   });
 }

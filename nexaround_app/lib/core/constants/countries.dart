@@ -414,3 +414,74 @@ String? countryCodeFor(String? name) {
   }
   return null;
 }
+
+/// Names Google returns that [countriesList] spells differently.
+///
+/// Google writes a prediction's country the way a local would - "USA", "UK",
+/// "UAE" - and the picker's list uses the long form. Anything not here and not
+/// in the list resolves to null, and null means "we could not tell": the
+/// country is left for the traveller to pick rather than guessed at.
+const Map<String, String> _countryAliases = {
+  // Google writes a country the way a local would; the picker's list uses one
+  // spelling per country. These point from what Google may say to what the
+  // list actually holds — checked by the test, so an alias naming a country
+  // the list does not offer cannot ship.
+  'usa': 'United States',
+  'us': 'United States',
+  'united states of america': 'United States',
+  'uk': 'United Kingdom',
+  'great britain': 'United Kingdom',
+  'england': 'United Kingdom',
+  'scotland': 'United Kingdom',
+  'wales': 'United Kingdom',
+  'northern ireland': 'United Kingdom',
+  'uae': 'United Arab Emirates',
+  'korea': 'South Korea',
+  'republic of korea': 'South Korea',
+  // The list uses the modern name; Google and older data often do not.
+  'czech republic': 'Czechia',
+  'swaziland': 'Eswatini',
+  'cape verde': 'Cabo Verde',
+  'east timor': 'Timor-Leste',
+  'macedonia': 'North Macedonia',
+  'burma': 'Myanmar',
+  'holland': 'Netherlands',
+  'the netherlands': 'Netherlands',
+  'türkiye': 'Turkey',
+  'turkiye': 'Turkey',
+  'russian federation': 'Russia',
+  'viet nam': 'Vietnam',
+  'lao': 'Laos',
+  "lao people's democratic republic": 'Laos',
+  'syrian arab republic': 'Syria',
+  'brunei darussalam': 'Brunei',
+};
+
+/// The country named at the end of a place's address, or null when unclear.
+///
+/// Google formats a prediction as "Kandy" / "Sri Lanka" and a US one as
+/// "Springfield" / "IL, USA", so the country is the last comma-separated part.
+/// This is what lets a traveller who knows only a city name fill the country in
+/// by typing the city - the third way into the planner, alongside picking a
+/// country outright and searching a destination freely.
+///
+/// Null is the honest answer when the tail matches nothing: the field is left
+/// empty for the traveller rather than set to a country they did not choose.
+String? countryNameFromPlace(String? address) {
+  final text = (address ?? '').trim();
+  if (text.isEmpty) return null;
+  final parts = text.split(',').map((p) => p.trim()).where((p) => p.isNotEmpty);
+  if (parts.isEmpty) return null;
+  final tail = parts.last;
+  final direct = countryCodeFor(tail);
+  if (direct != null) {
+    // Give back the list's own spelling, not Google's.
+    for (final name in countriesList) {
+      if (name.toLowerCase() == tail.toLowerCase()) return name;
+    }
+  }
+  final alias = _countryAliases[tail.toLowerCase()];
+  if (alias != null && countryCodeFor(alias) != null) return alias;
+  return null;
+}
+
