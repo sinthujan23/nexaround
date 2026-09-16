@@ -26,10 +26,10 @@ class LocationSearchModal extends StatefulWidget {
   /// city that is not in this country sees an empty list and no reason for it.
   final String? countryLabel;
 
-  /// Offer only towns and cities. The Odyssey planner's entry and exit boxes
-  /// are asking "which city", so an attraction or a hotel is never a valid
-  /// answer there.
-  final bool citiesOnly;
+  /// Restrict the answer to a family of places — `(cities)` for towns and
+  /// cities, `(regions)` to include the countries themselves. Both keep
+  /// attractions and hotels out, which the Odyssey planner's ends require.
+  final String? placeKinds;
 
   /// What the sheet is for, when it is not the usual "where to?".
   final String? title;
@@ -41,7 +41,7 @@ class LocationSearchModal extends StatefulWidget {
     this.currentLongitude,
     this.restrictToCountryCode,
     this.countryLabel,
-    this.citiesOnly = false,
+    this.placeKinds,
     this.title,
     this.hintText,
   });
@@ -356,7 +356,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         latitude: biasLat,
         longitude: biasLng,
         countryCode: widget.restrictToCountryCode,
-        citiesOnly: widget.citiesOnly,
+        placeKinds: widget.placeKinds,
       );
 
       if (mounted) {
@@ -574,7 +574,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
                       const SizedBox(width: 5),
                       Flexible(
                         child: Text(
-                          widget.citiesOnly
+                          widget.placeKinds == '(cities)'
                               ? 'Cities in ${widget.countryLabel}'
                               : '${widget.countryLabel} only',
                           maxLines: 1,

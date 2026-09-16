@@ -594,6 +594,53 @@ class GooglePlacesService {
   static const int _maxCacheEntries = 120;
   static CancelToken? _autocompleteCancelToken;
 
+  /// Verified city lists already fetched this session, by country code. The
+  /// server caches these for 30 days; this stops a second trip to it when the
+  /// traveller changes their mind about the country and back again.
+  static final Map<String, List<Map<String, dynamic>>> _countryCityCache = {};
+
+  /// The cities a trip through [country] can start or finish in.
+  ///
+  /// Proposed by Gemini and confirmed by Google on the server — see
+  /// `country_cities_service` — so every entry carries Google's own name,
+  /// coordinates and place_id, and a city the model invented is never among
+  /// them. An empty list is a valid answer: the search box still works, so a
+  /// country the server could not build a list for is not a dead end.
+  static Future<List<Map<String, dynamic>>> getCountryCities({
+    required String country,
+    required String countryCode,
+  }) async {
+    final cc = countryCode.trim().toUpperCase();
+    if (cc.length != 2 || country.trim().isEmpty) return [];
+    final cached = _countryCityCache[cc];
+    if (cached != null) return List<Map<String, dynamic>>.from(cached);
+
+    try {
+      final response = await ApiClient.instance.get(
+        '${ApiConstants.apiVersion}/places/country-cities',
+        queryParameters: {'country': country.trim(), 'country_code': cc},
+      );
+      if (response.statusCode != 200) return [];
+      final raw = (response.data is Map ? response.data['cities'] : null) as List? ?? [];
+      final cities = raw
+          .whereType<Map>()
+          .map<Map<String, dynamic>>((c) => <String, dynamic>{
+                'name': c['name']?.toString() ?? '',
+                'place_id': c['place_id']?.toString() ?? '',
+                'latitude': (c['latitude'] as num?)?.toDouble(),
+                'longitude': (c['longitude'] as num?)?.toDouble(),
+              })
+          .where((c) => (c['name'] as String).isNotEmpty)
+          .toList();
+      _countryCityCache[cc] = cities;
+      return List<Map<String, dynamic>>.from(cities);
+    } catch (_) {
+      // A dropdown is a convenience; the box below it still accepts a typed
+      // city, so a failure here must not block the planner.
+      return [];
+    }
+  }
+
   /// High-speed place suggestions/autocomplete powered by Google Places API proxy + in-memory LRU cache.
   /// Delivers Google Maps-grade performance (< 100ms response, 0ms on cache hits).
   /// [latitude]/[longitude] bias the results towards the user and are
@@ -605,17 +652,26 @@ class GooglePlacesService {
   /// one country, rather than merely biasing it towards somewhere. Only the
   /// Odyssey planner's entry and exit boxes pass it, and only once a country
   /// has been chosen: everywhere else must keep finding places worldwide.
-  /// [citiesOnly] narrows the answer to settlements — towns and cities —
-  /// instead of every kind of place. The Odyssey planner's entry and exit
-  /// boxes ask "which city", so a temple, a hotel or a street is never a valid
-  /// answer there; without it a search for "Japan" offers Japana in Georgia
-  /// and Japanga in India, and a search for "Kinkaku-ji" offers the temple.
+  /// [placeKinds] narrows the answer to a family of places instead of every
+  /// kind. Two are useful here, and the difference matters — measured against
+  /// the live API:
+  ///
+  ///   `(cities)`  towns and cities, no countries. "Japan" returns Japana in
+  ///               Georgia; "Sri Lan" returns Panama, Sri Lanka.
+  ///   `(regions)` countries as well as cities. "Japan" returns Japan,
+  ///               "Sri Lan" returns Sri Lanka, and "Kinkaku-ji" and
+  ///               "Hilton Tokyo" return nothing at all.
+  ///
+  /// So Entry, which has to accept the country a traveller names, asks for
+  /// `(regions)`; Exit, which is only ever a city inside a country already
+  /// chosen, asks for `(cities)`. Unfiltered, both would offer temples and
+  /// hotels.
   static Future<List<Map<String, dynamic>>> getAutocompleteSuggestions({
     required String input,
     double? latitude,
     double? longitude,
     String? countryCode,
-    bool citiesOnly = false,
+    String? placeKinds,
   }) async {
     final cleanedInput = input.trim();
     if (cleanedInput.isEmpty) return [];
@@ -632,7 +688,8 @@ class GooglePlacesService {
         : 'nobias';
     // The proxy translates this to the Places API (New) spelling. Sent only
     // when asked for, so every other caller's cached answers stay valid.
-    final String? types = citiesOnly ? '(cities)' : null;
+    final String? types =
+        (placeKinds != null && placeKinds.trim().isNotEmpty) ? placeKinds.trim() : null;
     // The restriction is part of the question: a search held to Italy and one
     // searched worldwide must never share a cached answer. So is the kind of
     // place wanted — a cities-only search and an open one are different
