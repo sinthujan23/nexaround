@@ -411,7 +411,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         placeKinds: isEntry ? '(regions)' : '(cities)',
         hintText: isEntry
             ? 'Country, or the city you arrive in'
-            : 'Where does the trip finish in $_country?',
+            : 'Which city do you leave from in $_country?',
       ),
     );
     if (result is! Map || !mounted) return;
@@ -854,10 +854,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           // follows from it: the country restricts Exit, and the route planner
           // opens the trip there.
           _pickerField(
-            label: _awaitingEntryCity ? 'ENTRY — PICK A CITY' : 'ENTRY',
+            label: _awaitingEntryCity ? 'ARRIVE IN — PICK A CITY' : 'ARRIVE IN',
             value: _entryLabel,
             icon: Icons.flight_land_rounded,
-            helper: 'Country or city you arrive in',
+            helper: 'Country, or the city you arrive in',
             // Only when the entry is a city: a country needs no badge saying
             // it is itself.
             badge: _entryCity.isNotEmpty ? _country : null,
@@ -891,19 +891,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ],
           const SizedBox(height: 12),
           _pickerField(
-            label: 'EXIT',
+            label: 'LEAVE FROM',
             value: _exitCity.isEmpty ? null : _exitCity,
             icon: Icons.flight_takeoff_rounded,
             helper: _canPickExit
-                ? 'Exit (optional)'
-                : 'Exit (optional) — set entry first',
+                ? 'Optional — where the trip finishes'
+                : 'Optional — choose where you arrive first',
             onTap: _canPickExit ? () => _pickEnd(isEntry: false) : null,
           ).animate().fade(delay: 130.ms),
           const SizedBox(height: 8),
           Text(
             _canPickExit
                 ? 'Searching $_country only — a trip starts and finishes in one country.'
-                : 'Leave Exit empty and the plan finishes wherever the route ends.',
+                : 'Leave this empty and the plan finishes wherever the route ends.',
             style: const TextStyle(fontSize: 12, color: Colors.black45),
           ),
           const SizedBox(height: 28),
