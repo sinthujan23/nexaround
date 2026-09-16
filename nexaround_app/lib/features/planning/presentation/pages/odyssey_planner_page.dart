@@ -412,11 +412,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         placeKinds: isEntry ? '(regions)' : '(cities)',
         // Entry: typing a country answers with that country's cities, rather
         // than offering the country as a row that would then have to be
-        // corrected into a city. Exit: the country is already settled, so the
-        // same list is shown the moment the sheet opens, before any typing.
+        // corrected into a city. Not advertised anywhere - the behaviour
+        // explains itself the moment it happens, and both boxes ask for the
+        // thing they actually take. Exit: the country is already settled, so
+        // the same list is shown the moment the sheet opens, before any typing.
         countryOffersCities: true,
         hintText: isEntry
-            ? 'Type a city — or a country to see its cities'
+            ? 'Type a city'
             : 'Which city do you leave from in $_country?',
       ),
     );
