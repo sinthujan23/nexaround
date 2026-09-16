@@ -416,7 +416,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         // same list is shown the moment the sheet opens, before any typing.
         countryOffersCities: true,
         hintText: isEntry
-            ? 'Type a country to see its cities, or a city'
+            ? 'Type a city — or a country to see its cities'
             : 'Which city do you leave from in $_country?',
       ),
     );
@@ -851,7 +851,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
           const Text(
-            'Name the country, then pick the city you arrive in.',
+            'Pick the city you arrive in.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
@@ -863,7 +863,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             label: _awaitingEntryCity ? 'ARRIVE IN — PICK A CITY' : 'ARRIVE IN',
             value: _entryLabel,
             icon: Icons.flight_land_rounded,
-            helper: 'Type a country or a city',
+            helper: 'Type a city',
             // Only when the entry is a city: a country needs no badge saying
             // it is itself.
             badge: _entryCity.isNotEmpty ? _country : null,
