@@ -377,6 +377,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         restrictToCountryCode: code,
         countryLabel: country,
         placeKinds: '(cities)',
+        countryOffersCities: true,
         hintText: 'Which city do you arrive in?',
       ),
     );
@@ -409,10 +410,11 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         // excludes countries, and "Japan" under it returns Japana in Georgia.
         // Exit is only ever a city inside a country already fixed.
         placeKinds: isEntry ? '(regions)' : '(cities)',
-        // Typing a country answers with that country's cities, rather than
-        // offering the country as a row that then has to be corrected into a
-        // city. Exit is already inside a country, so it has nothing to swap.
-        countryOffersCities: isEntry,
+        // Entry: typing a country answers with that country's cities, rather
+        // than offering the country as a row that would then have to be
+        // corrected into a city. Exit: the country is already settled, so the
+        // same list is shown the moment the sheet opens, before any typing.
+        countryOffersCities: true,
         hintText: isEntry
             ? 'Type a country to see its cities, or a city'
             : 'Which city do you leave from in $_country?',

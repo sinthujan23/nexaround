@@ -82,6 +82,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
   void initState() {
     super.initState();
     _loadRecentSearches();
+    _preloadCountryCities();
     Future.delayed(const Duration(milliseconds: 250), () {
       if (mounted) _focusNode.requestFocus();
     });
@@ -341,6 +342,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         _citiesOfCountry = '';
         _isLoading = false;
       });
+      _preloadCountryCities();
       return;
     }
 
@@ -357,6 +359,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         _citiesOfCountry = '';
         _isLoading = false;
       });
+      _preloadCountryCities();
       return;
     }
 
@@ -402,12 +405,28 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
             });
           }
         }
+        // A country was named: go straight to its cities rather than showing
+        // the raw matches first and swapping a second later. The traveller saw
+        // Japanga and Jhapan flash past before Tokyo arrived, which reads as
+        // the search getting it wrong and then correcting itself.
+        final country =
+            widget.countryOffersCities ? _countryIn(trimmed, mapped) : null;
+        if (country != null) {
+          setState(() {
+            // Cleared, not filled: the spinner only shows while there is
+            // nothing to draw, so leaving the raw rows here would draw them.
+            _suggestions = [];
+            _citiesOfCountry = '';
+            _isLoading = true;
+          });
+          await _showCitiesOf(country.name, country.code, trimmed, mapped);
+          return;
+        }
         setState(() {
           _suggestions = mapped;
           _citiesOfCountry = '';
           _isLoading = false;
         });
-        await _maybeOfferCountryCities(trimmed, mapped);
       }
     } catch (e) {
       debugPrint('Location search error: $e');
@@ -622,7 +641,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
 
           // Content body: Recent searches & Current location OR Autocomplete Suggestions
           Expanded(
-            child: isQueryEmpty
+            child: (isQueryEmpty && _citiesOfCountry.isEmpty && !_isLoading)
                 ? _buildEmptyQueryContent()
                 : (_isLoading && _suggestions.isEmpty
                     ? _buildLoading()
@@ -774,39 +793,93 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     );
   }
 
-  /// Swap the results for a country's cities when the text named a country.
+  /// Show the country's cities before a single key is pressed.
   ///
-  /// Driven by what Google actually returned rather than by the raw text, so
-  /// a half-typed "sri lan" works the moment Google resolves it to Sri Lanka.
+  /// Only where the country is already settled - the Leave-from box, which is
+  /// held to wherever the trip starts. Opening it to a blank search asked the
+  /// traveller to guess which cities were allowed; opening it to the same
+  /// eight cities the Arrive-in box offered answers that first.
+  Future<void> _preloadCountryCities() async {
+    final country = (widget.countryLabel ?? '').trim();
+    final code = (widget.restrictToCountryCode ?? '').trim();
+    if (!widget.countryOffersCities || country.isEmpty || code.isEmpty) return;
+    if (!mounted) return;
+    // Assigned, not setState'd. This runs from initState, where the first
+    // build has not happened yet and setState asserts; on the other path a
+    // rebuild is already pending from the caller's own setState, so it picks
+    // this up either way.
+    _isLoading = true;
+    await _showCitiesOf(country, code, '', const []);
+  }
+
+  /// The country a set of suggestions names, if any, as (list name, code).
+  ///
+  /// Not just the first row: Google ranks by its own relevance and a search
+  /// for "peru" really comes back Perumbavoor, Perungalathur, Perundurai,
+  /// *then* Peru. And not `countryCodeFor` alone, which only knows the list's
+  /// own spellings - Google writes "USA", "UK", "Türkiye", and
+  /// `countryNameFromPlace` is the half that maps those onto the list.
+  ///
+  /// The match has to be tight or a city search starts hijacking itself: "san"
+  /// would otherwise find San Marino. An exact hit on either spelling always
+  /// counts; a prefix only counts from four characters, which is enough for
+  /// "sri " to reach Sri Lanka without "san" reaching San Marino.
+  ({String name, String code})? _countryIn(
+      String query, List<Map<String, dynamic>> rows) {
+    final q = query.trim().toLowerCase();
+    if (q.length < 3) return null;
+    for (final row in rows) {
+      final shown = (row['name'] ?? '').toString().trim();
+      // The row has to BE a country, not merely sit in one. Anything with a
+      // comma is an address, and resolving those by their tail made every
+      // city look like its country: "Kandy, Sri Lanka" became Sri Lanka, and
+      // "Perumbavoor, Kerala, India" turned a search for "peru" into India.
+      if (shown.isEmpty || shown.contains(',')) continue;
+      final resolved = countryNameFromPlace(shown);
+      if (resolved == null) continue;
+      final code = countryCodeFor(resolved);
+      if (code == null) continue;
+      final a = shown.toLowerCase();
+      final b = resolved.toLowerCase();
+      final exact = a == q || b == q;
+      final prefix = q.length >= 4 && (a.startsWith(q) || b.startsWith(q));
+      if (exact || prefix) return (name: resolved, code: code);
+    }
+    return null;
+  }
+
+  /// Replace the results with that country's cities.
+  ///
   /// The list comes from the server, where Gemini proposes and Google
   /// confirms, so nothing invented can appear in it.
-  Future<void> _maybeOfferCountryCities(
-      String query, List<Map<String, dynamic>> mapped) async {
-    if (!widget.countryOffersCities || mapped.isEmpty) return;
-
-    // Only when the BEST match is a country. A search for "Kandy" must stay a
-    // search for Kandy even though Sri Lanka is further down the list.
-    final topName = (mapped.first['name'] ?? '').toString();
-    final code = countryCodeFor(topName);
-    if (code == null) return;
-
+  Future<void> _showCitiesOf(String country, String code, String query,
+      List<Map<String, dynamic>> fallback) async {
     final cities = await GooglePlacesService.getCountryCities(
-      country: topName, countryCode: code,
+      country: country, countryCode: code,
     );
-    if (!mounted || cities.isEmpty) return;
+    if (!mounted) return;
     // The traveller may have typed on while we were away.
-    if (_searchController.text.trim() != query) return;
-
+    if (_searchController.text.trim() != query.trim()) return;
     setState(() {
-      _citiesOfCountry = topName;
+      _isLoading = false;
+      if (cities.isEmpty) {
+        // No list for this country - the server could not build one, or the
+        // request failed. Fall back to what the ordinary search found rather
+        // than leaving the sheet reading "No places found", which is what the
+        // first cut did on "usa".
+        _citiesOfCountry = '';
+        _suggestions = fallback;
+        return;
+      }
+      _citiesOfCountry = country;
       _suggestions = cities
           .map<Map<String, dynamic>>((c) => <String, dynamic>{
                 'place_id': c['place_id'] ?? '',
                 'name': c['name'] ?? '',
                 // The country goes in both fields the planner reads, so the
                 // city it gets back names its own country without a lookup.
-                'address': topName,
-                'district': topName,
+                'address': country,
+                'district': country,
                 'latitude': c['latitude'] ?? 0.0,
                 'longitude': c['longitude'] ?? 0.0,
               })
