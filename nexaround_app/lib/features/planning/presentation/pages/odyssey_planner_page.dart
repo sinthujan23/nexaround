@@ -246,6 +246,18 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       backgroundColor: Colors.transparent,
       builder: (context) => LocationSearchModal(
         restrictToCountryCode: isEntry ? null : _countryCode,
+        // Entry searches the world, so it has no country to name until one is
+        // picked; Exit is held to Entry's and says so.
+        countryLabel: isEntry ? null : _country,
+        // Exit only, deliberately. "(cities)" is settlements - it does NOT
+        // include countries - so turning it on for Entry would break the one
+        // thing Entry still has to accept. Worse, Entry searches the whole
+        // world: measured against the live API, "Japan" asked for cities with
+        // no country restriction returns Japana in Georgia and Japanga in
+        // India, so the traveller typing a country would get somewhere else
+        // entirely. Entry gets this the moment it stops taking countries and
+        // starts offering the verified city list instead.
+        citiesOnly: !isEntry,
         hintText: isEntry
             ? 'Country, or the city you arrive in'
             : 'Where does the trip finish in $_country?',
@@ -563,6 +575,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     required IconData icon,
     required VoidCallback? onTap,
     String? helper,
+    String? badge,
   }) {
     final enabled = onTap != null;
     final filled = (value ?? '').isNotEmpty;
@@ -605,6 +618,41 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                         style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w600),
                       ),
+                      // The country the city turned out to be in. A traveller
+                      // who typed "Kandy" never said "Sri Lanka", and it is
+                      // the country - not the city - that Exit is then held
+                      // to, so it has to be visible before they wonder why
+                      // their exit search finds nothing.
+                      if ((badge ?? '').isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppColors.brandGreen.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppColors.brandGreen.withValues(alpha: 0.28),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.public_rounded,
+                                  size: 12, color: AppColors.brandGreen),
+                              const SizedBox(width: 4),
+                              Text(
+                                badge!,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.brandGreen,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ],
                 ),
@@ -644,6 +692,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             value: _entryLabel,
             icon: Icons.flight_land_rounded,
             helper: 'Country or city you arrive in',
+            // Only when the entry is a city: a country needs no badge saying
+            // it is itself.
+            badge: _entryCity.isNotEmpty ? _country : null,
             onTap: () => _pickEnd(isEntry: true),
           ).animate().fade(delay: 100.ms),
           const SizedBox(height: 12),

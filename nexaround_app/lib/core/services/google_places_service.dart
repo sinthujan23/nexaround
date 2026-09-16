@@ -605,11 +605,17 @@ class GooglePlacesService {
   /// one country, rather than merely biasing it towards somewhere. Only the
   /// Odyssey planner's entry and exit boxes pass it, and only once a country
   /// has been chosen: everywhere else must keep finding places worldwide.
+  /// [citiesOnly] narrows the answer to settlements — towns and cities —
+  /// instead of every kind of place. The Odyssey planner's entry and exit
+  /// boxes ask "which city", so a temple, a hotel or a street is never a valid
+  /// answer there; without it a search for "Japan" offers Japana in Georgia
+  /// and Japanga in India, and a search for "Kinkaku-ji" offers the temple.
   static Future<List<Map<String, dynamic>>> getAutocompleteSuggestions({
     required String input,
     double? latitude,
     double? longitude,
     String? countryCode,
+    bool citiesOnly = false,
   }) async {
     final cleanedInput = input.trim();
     if (cleanedInput.isEmpty) return [];
@@ -624,9 +630,15 @@ class GooglePlacesService {
     final String biasKey = hasBias
         ? '${latitude!.toStringAsFixed(2)},${longitude!.toStringAsFixed(2)}'
         : 'nobias';
+    // The proxy translates this to the Places API (New) spelling. Sent only
+    // when asked for, so every other caller's cached answers stay valid.
+    final String? types = citiesOnly ? '(cities)' : null;
     // The restriction is part of the question: a search held to Italy and one
-    // searched worldwide must never share a cached answer.
-    final cacheKey = '${cleanedInput.toLowerCase()}|$biasKey|${region ?? 'any'}';
+    // searched worldwide must never share a cached answer. So is the kind of
+    // place wanted — a cities-only search and an open one are different
+    // questions about the same text.
+    final cacheKey =
+        '${cleanedInput.toLowerCase()}|$biasKey|${region ?? 'any'}|${types ?? 'all'}';
 
     // 1. Instant Cache Hit (0ms)
     if (_autocompleteMemoryCache.containsKey(cacheKey)) {
@@ -648,6 +660,7 @@ class GooglePlacesService {
           if (hasBias) 'radius': 50000,
           if (hasBias) 'origin': '$latitude,$longitude',
           if (components != null) 'components': components,
+          if (types != null) 'types': types,
           'language': 'en',
         },
         cancelToken: cancelToken,
@@ -681,6 +694,7 @@ class GooglePlacesService {
             queryParameters: {
               'input': cleanedInput,
               if (components != null) 'components': components,
+              if (types != null) 'types': types,
               'language': 'en',
             },
             cancelToken: cancelToken,

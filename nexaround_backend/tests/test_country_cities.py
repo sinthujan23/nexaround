@@ -71,6 +71,46 @@ def test_country_is_still_part_of_the_key():
     assert jp != it
 
 
+# ── what actually goes upstream ─────────────────────────────────────────────
+
+class _UpResp:
+    status_code = 200
+    def json(self): return {"suggestions": []}
+
+
+class _UpClient:
+    def __init__(self): self.sent = []
+    async def post(self, url, json=None, headers=None, timeout=None):
+        self.sent.append(json); return _UpResp()
+
+
+def _upstream(params):
+    import asyncio as _a
+    from app.api.v1 import proxy
+    client = _UpClient()
+    _a.run(proxy._google_places_new(client, "place/autocomplete/json", params, "k"))
+    return client.sent[-1]
+
+
+def test_a_cities_only_request_reaches_google_as_such():
+    body = _upstream({"input": "to", "components": "country:jp", "types": "(cities)"})
+    assert body["includedPrimaryTypes"] == ["(cities)"]
+    assert body["includedRegionCodes"] == ["JP"]
+
+
+def test_an_unfiltered_request_names_no_types_at_all():
+    """Sending an empty list would be a different question, not the old one."""
+    body = _upstream({"input": "to", "components": "country:jp"})
+    assert "includedPrimaryTypes" not in body
+
+
+def test_a_junk_type_is_dropped_rather_than_forwarded():
+    """Google refuses the whole request on an unrecognised type, which would
+    cost the caller every suggestion instead of just the filter."""
+    body = _upstream({"input": "to", "types": "restaurant"})
+    assert "includedPrimaryTypes" not in body
+
+
 # ── the verifier ────────────────────────────────────────────────────────────
 
 def test_a_name_google_knows_differently_is_kept():

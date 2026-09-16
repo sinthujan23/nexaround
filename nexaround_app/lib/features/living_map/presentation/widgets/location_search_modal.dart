@@ -21,6 +21,16 @@ class LocationSearchModal extends StatefulWidget {
   /// never a valid answer there.
   final String? restrictToCountryCode;
 
+  /// The country's readable name, shown as a badge so the restriction is
+  /// visible rather than only felt. Without it a traveller searching for a
+  /// city that is not in this country sees an empty list and no reason for it.
+  final String? countryLabel;
+
+  /// Offer only towns and cities. The Odyssey planner's entry and exit boxes
+  /// are asking "which city", so an attraction or a hotel is never a valid
+  /// answer there.
+  final bool citiesOnly;
+
   /// What the sheet is for, when it is not the usual "where to?".
   final String? title;
   final String? hintText;
@@ -30,6 +40,8 @@ class LocationSearchModal extends StatefulWidget {
     this.currentLatitude,
     this.currentLongitude,
     this.restrictToCountryCode,
+    this.countryLabel,
+    this.citiesOnly = false,
     this.title,
     this.hintText,
   });
@@ -344,6 +356,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         latitude: biasLat,
         longitude: biasLng,
         countryCode: widget.restrictToCountryCode,
+        citiesOnly: widget.citiesOnly,
       );
 
       if (mounted) {
@@ -537,6 +550,48 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
               ),
             ),
           ),
+
+          // Says what the search is held to, so an empty result reads as "not
+          // in this country" rather than as a broken search.
+          if ((widget.countryLabel ?? '').isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.brandGreen.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: AppColors.brandGreen.withValues(alpha: 0.30),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.public_rounded,
+                          size: 13, color: AppColors.brandGreen),
+                      const SizedBox(width: 5),
+                      Flexible(
+                        child: Text(
+                          widget.citiesOnly
+                              ? 'Cities in ${widget.countryLabel}'
+                              : '${widget.countryLabel} only',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
 
           const SizedBox(height: 12),
           const Divider(height: 1, color: AppColors.border),
