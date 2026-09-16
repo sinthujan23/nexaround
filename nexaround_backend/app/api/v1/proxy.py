@@ -14,6 +14,7 @@ from app.core.rate_limiter import RateLimiter, get_client_ip, get_redis_client
 from app.models.user import User
 from app.services.settings_service import SettingsService
 from app.services import telemetry, spend_guard, place_cache_service
+from app.services import country_cities_service
 
 # Public landing chatbot ("Neva") — unauthenticated, so it is rate limited per
 # client IP. Generous enough for a real conversation, tight enough that the
@@ -99,6 +100,38 @@ def _region_codes(components: str | None) -> str:
     return ",".join(out[:5])
 
 
+# The place kinds a caller may ask autocomplete to restrict itself to. An
+# allowlist, not a pass-through: `includedPrimaryTypes` rejects the whole
+# request when it does not recognise a value, so an app sending something
+# unexpected would lose its suggestions entirely rather than just its filter.
+#
+# "(cities)" is the one the Odyssey planner needs. Google's own type system is
+# not as tidy as it looks - Tokyo is an `administrative_area_level_1`, not a
+# `locality` - and the "(cities)" collection is what covers both, which is why
+# the planner asks for the collection rather than naming types itself.
+_PLACE_PRIMARY_TYPES = frozenset({
+    "(cities)", "(regions)", "locality", "administrative_area_level_1",
+    "administrative_area_level_2", "administrative_area_level_3",
+    "sublocality", "postal_town", "neighborhood",
+})
+
+
+def _primary_types(types: str | None) -> list[str]:
+    """The place kinds in a legacy `types` value, as Places API (New) wants them.
+
+    Legacy autocomplete spells this `types=(cities)`; Places API (New) takes
+    `includedPrimaryTypes: ["(cities)"]`, so the app keeps the spelling it
+    already knows and the proxy translates - the same arrangement
+    `_region_codes` makes for the country restriction.
+    """
+    out: list[str] = []
+    for part in str(types or "").replace("|", ",").split(","):
+        kind = part.strip().lower()
+        if kind and kind in _PLACE_PRIMARY_TYPES and kind not in out:
+            out.append(kind)
+    return out[:5]
+
+
 def _google_maps_cache_key(path: str, params: dict) -> str | None:
     """Normalised identity of a proxied Google Maps call.
 
@@ -134,7 +167,17 @@ def _google_maps_cache_key(path: str, params: dict) -> str | None:
         # unrestricted would share a cache entry and serve each other's
         # results — the same collision the location part above exists to stop.
         region = _region_codes(q.get("components")) or "anywhere"
-        return f"ac:{(q.get('input') or '').strip().lower()}|{loc_part}|{region}"
+        # Same reasoning as `components`: a cities-only search and an
+        # unfiltered one ask different questions about the same text, so they
+        # must not serve each other's answers out of cache.
+        #
+        # Appended only when a filter is actually in play. An unfiltered search
+        # keeps the exact key it has always had, so the entries already in
+        # Redis stay valid - changing the shape for every caller would have
+        # missed the lot and re-bought them from Google.
+        kinds = ",".join(_primary_types(q.get("types")))
+        suffix = f"|{kinds}" if kinds else ""
+        return f"ac:{(q.get('input') or '').strip().lower()}|{loc_part}|{region}{suffix}"
     if path.startswith("place/photo"):
         ref = q.get("photo_reference") or q.get("photoreference") or "?"
         return f"photo:{ref[:180]}:{q.get('maxwidth','?')}"
@@ -260,6 +303,15 @@ async def _google_places_new(
         if regions:
             body["includedRegionCodes"] = regions.split(",")
 
+        # Narrows the answer to settlements. The planner's entry and exit boxes
+        # are asking "which city", so a temple, a hotel or a street is never a
+        # valid answer there - and on a country whose name also names places
+        # elsewhere the unfiltered search is actively wrong: "Japan" with no
+        # type filter offers Japana in Georgia and Japanga in India.
+        kinds = _primary_types(params.get("types"))
+        if kinds:
+            body["includedPrimaryTypes"] = kinds
+
         # A *bias*, never a restriction: the whole point of the app's two-phase
         # search is that a destination far from the user still has to match, so
         # narrowing the search area here would reintroduce the bug the
@@ -319,6 +371,34 @@ def _classify_google_maps_path(path: str) -> tuple[str, str | None]:
     # Unknown path: still recorded, but with no SKU so it cannot silently
     # invent a cost. Shows up in the dashboard as an unpriced operation.
     return path.split("/")[0] or "unknown", None
+
+@router.get("/places/country-cities")
+async def get_country_cities(
+    country: str,
+    country_code: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The cities a trip through `country` may start or finish in.
+
+    Gemini proposes, Google decides - see `country_cities_service` for why no
+    Google API can produce this list on its own. Every city returned was
+    confirmed by Google inside this country and carries Google's own name,
+    `place_id` and coordinates, which are what the planner later hands to
+    Gemini as the trip's fixed ends.
+
+    An empty list is a valid answer, not an error: the planner's box stays a
+    search either way, so a country with no dropdown still accepts a typed
+    city. Authenticated because it spends a Gemini call on a cache miss.
+    """
+    settings = SettingsService(db)
+    gemini_key = await settings.get_setting("gemini_api_key")
+    maps_key = await settings.get_setting("google_maps_api_key")
+    cities = await country_cities_service.main_cities(
+        country, country_code, gemini_key=gemini_key, maps_key=maps_key,
+    )
+    return {"country": country, "country_code": country_code.upper(), "cities": cities}
+
 
 @router.get("/config/keys")
 async def get_config_keys(
