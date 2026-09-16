@@ -14,7 +14,10 @@ import re
 from dataclasses import dataclass, field
 import urllib.parse
 import httpx
-from app.services import cover_photo_service, geo_resolver, place_cache_service, telemetry, trip_cost_floor
+from app.services import (
+    cover_photo_service, geo_resolver, place_cache_service, telemetry,
+    trip_cost_floor, venue_facts_service,
+)
 from app.services.serpapi_service import (
     SerpApiService,
     _MIN_GOOGLE_HOTEL_CLASS,
@@ -3903,6 +3906,7 @@ def _route_prompt(
     exit_city: str = "",
     entry_latlng: tuple[float | None, float | None] = (None, None),
     exit_latlng: tuple[float | None, float | None] = (None, None),
+    exclude_cities: list[str] | None = None,
 ) -> str:
     # This call is where the hotel search's city strings come from, so an
     # invented country here is expensive: it books rooms in the wrong place.
@@ -3937,6 +3941,21 @@ def _route_prompt(
         f"- If {destination} is a single city, return exactly one leg for it, and its own "
         f"(or nearest) airport as both arrival_airport and departure_airport.\n"
     )
+
+    # "Show me somewhere else." The traveller has seen a route and asked for a
+    # different one, so the cities they were already offered are named back to
+    # the planner as places to avoid. Only the cities: naming the region would
+    # need the planner to agree with us about where one region ends, and it is
+    # the cities the traveller actually saw and rejected.
+    avoid_rule = ""
+    avoid = [c.strip() for c in (exclude_cities or []) if str(c or "").strip()]
+    if avoid:
+        avoid_rule = (
+            f"- The traveller has already been shown {', '.join(avoid)} and asked for "
+            f"somewhere else. Do NOT use any of those cities, and do not simply pick "
+            f"their neighbours: choose a genuinely different part of {destination} that "
+            f"still suits the travel style.\n"
+        )
 
     # Where the traveller asked to start and finish. Optional and independent:
     # either may be given alone, and the planner chooses the other end.
@@ -4024,7 +4043,7 @@ Rules:
   day in the smaller town, name the smaller town.
 - Prefer fewer, longer legs. Do not move city more often than every 2 days
   unless {destination} is small enough that it makes sense.
-{ends_rule}{region_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
+{ends_rule}{region_rule}{avoid_rule}- CLUSTER THE ROUTE: order the legs so the trip never backtracks, and keep each
   leg within about {_LEG_HOP_MAX_KM:.0f} km by road of the previous one unless "arrive_by"
   for that leg is "flight" or "train".
 - "latitude"/"longitude": the city's coordinates to 2 decimal places.
@@ -4067,6 +4086,8 @@ async def plan_route(
     exit_city: str = "",
     entry_latlng: tuple[float | None, float | None] = (None, None),
     exit_latlng: tuple[float | None, float | None] = (None, None),
+    preset: dict | None = None,
+    exclude_cities: list[str] | None = None,
 ) -> RoutePlan:
     """Decide the cities the trip sleeps in and the airports it uses, in one call.
 
@@ -4082,6 +4103,15 @@ async def plan_route(
     search tool is attached, and a reliable machine-readable answer matters
     more here than live facts — the grounded itinerary pass still checks the
     places themselves.
+
+    `preset` is a route the traveller has already been shown and accepted (see
+    the route-preview endpoint), in the same shape the planner itself returns.
+    It is put through `_validate_route` like any other answer rather than
+    trusted: it arrives from the client, where it may have been edited, and a
+    route that fails the same coherence checks is discarded and planned afresh
+    instead of booking rooms 2,000 km apart. A preset that passes skips the
+    Gemini call entirely — which is the point, since the traveller has already
+    seen and approved this exact route.
     """
     days = max(int(days or 1), 1)
     if not api_key or days < 2:
@@ -4100,18 +4130,26 @@ async def plan_route(
             where += f" (coordinates {departure_latitude:.4f}, {departure_longitude:.4f})"
         origin_line = f"The traveller starts from {where} and flies in.\n"
 
-    async def _attempt(correction: str) -> tuple[RoutePlan, list[str]]:
-        prompt = _route_prompt(
-            entry_city=entry_city, exit_city=exit_city,
-            entry_latlng=entry_latlng, exit_latlng=exit_latlng,
-            destination=destination, days=days, mood=mood, travelers=travelers,
-            geo=geo, origin_line=origin_line, correction=correction,
-        )
-        raw, _ = await _call_gemini(
-            prompt, api_key, max_tokens=3072, thinking_budget=1024,
-            use_grounding=False, response_schema=_ROUTE_SCHEMA, operation="odyssey_route",
-        )
-        plan, reasons = _validate_route(_parse_json(raw), destination, days, start_date, geo)
+    async def _attempt(
+        correction: str, parsed: dict | None = None,
+    ) -> tuple[RoutePlan, list[str]]:
+        # `parsed` short-circuits the model: a route the traveller already
+        # approved still has to clear every check below, but does not have to
+        # be invented again to do so.
+        if parsed is None:
+            prompt = _route_prompt(
+                entry_city=entry_city, exit_city=exit_city,
+                entry_latlng=entry_latlng, exit_latlng=exit_latlng,
+                destination=destination, days=days, mood=mood, travelers=travelers,
+                geo=geo, origin_line=origin_line, correction=correction,
+                exclude_cities=exclude_cities,
+            )
+            raw, _ = await _call_gemini(
+                prompt, api_key, max_tokens=3072, thinking_budget=1024,
+                use_grounding=False, response_schema=_ROUTE_SCHEMA, operation="odyssey_route",
+            )
+            parsed = _parse_json(raw)
+        plan, reasons = _validate_route(parsed, destination, days, start_date, geo)
 
         # Locate the gateways (Places, budgeted, cached) and judge their distance
         # from the legs they serve. Only worth paying for when a flight will be
@@ -4134,11 +4172,47 @@ async def plan_route(
                     reasons.append(why)
         return plan, reasons
 
-    try:
-        plan, reasons = await _attempt("")
-    except Exception as e:
-        logger.warning(f"Route planning failed, using a single leg: {e}")
-        return RoutePlan(legs=_single_leg(destination, days, start_date, geo))
+    plan: RoutePlan | None = None
+    reasons: list[str] = []
+    from_preset = False
+    if preset:
+        try:
+            plan, reasons = await _attempt("", parsed=preset)
+            # `_validate_legs` degrades an unusable leg list to a single leg
+            # rather than reporting it, so a preset whose days no longer tile
+            # 1..N — which is exactly what editing the city list can produce —
+            # would otherwise sail through as a one-city trip the traveller
+            # never asked for. Compare what came back with what was sent.
+            wanted = [
+                str((leg or {}).get("city") or "").strip().lower()
+                for leg in (preset.get("legs") or []) if isinstance(leg, dict)
+            ]
+            got = [str(leg.get("city") or "").strip().lower() for leg in plan.legs]
+            if wanted and got != wanted:
+                reasons = [*reasons, (
+                    f"the approved cities ({', '.join(wanted)}) did not survive validation "
+                    f"as sent — days must cover 1..{days} with no gaps"
+                )]
+            from_preset = not reasons
+            if reasons:
+                # Discarded rather than corrected: a re-plan built from a bad
+                # preset is no longer the route the traveller approved, so the
+                # honest move is to plan the trip the ordinary way.
+                logger.warning(
+                    "Preset route for %s rejected (%s) — planning afresh",
+                    destination, " | ".join(reasons),
+                )
+                plan, reasons = None, []
+        except Exception as e:
+            logger.warning("Preset route for %s unusable (%s) — planning afresh", destination, e)
+            plan, reasons = None, []
+
+    if plan is None:
+        try:
+            plan, reasons = await _attempt("")
+        except Exception as e:
+            logger.warning(f"Route planning failed, using a single leg: {e}")
+            return RoutePlan(legs=_single_leg(destination, days, start_date, geo))
 
     if reasons:
         logger.warning(
@@ -4160,6 +4234,8 @@ async def plan_route(
                 destination, " | ".join(reasons),
             )
     plan.reasons = list(reasons)
+    if from_preset:
+        plan.source = "preset"
 
     # A gateway the planner got wrong is replaced by the resolver's answer for
     # the leg it should serve — the same lookup the destination used to get,
@@ -4187,12 +4263,115 @@ async def plan_route(
                 airport.pop("_codes", None)
 
     logger.info(
-        "Planned %d city leg(s) for %s: %s | in via %s, out via %s (%s)",
+        "%s %d city leg(s) for %s: %s | in via %s, out via %s (%s)",
+        "Reused the traveller's approved" if from_preset else "Planned",
         len(plan.legs), destination,
         ", ".join(f"{l['city']} d{l['start_day']}-{l['end_day']}" for l in plan.legs),
         plan.arrival_code or "?", plan.departure_code or "?", plan.trip_type or "no flights",
     )
     return plan
+
+
+async def preview_route(
+    *,
+    destination: str,
+    days: int,
+    mood: str,
+    travelers: int,
+    api_key: str,
+    include_flights: bool = False,
+    departure_city: str = "",
+    departure_country: str = "",
+    departure_latitude: float | None = None,
+    departure_longitude: float | None = None,
+    start_date: str = "",
+    destination_place_id: str = "",
+    destination_latitude: float | None = None,
+    destination_longitude: float | None = None,
+    destination_address: str = "",
+    entry_city: str = "",
+    exit_city: str = "",
+    entry_latitude: float | None = None,
+    entry_longitude: float | None = None,
+    exit_latitude: float | None = None,
+    exit_longitude: float | None = None,
+    exclude_cities: list[str] | None = None,
+) -> tuple[dict, str]:
+    """The cities a trip would visit, decided but not yet planned.
+
+    Returns (route payload, notice). This is the same `plan_route` call that
+    generation makes as its first step, run early so the traveller can see and
+    change the route before the expensive grounded itinerary pass is paid for
+    — for a country like India or China the region chosen is the single biggest
+    decision in the plan, and until now it was made silently.
+
+    Cheap on purpose: one ungrounded JSON-mode Gemini call plus, when flights
+    are wanted, the two cached gateway lookups. Nothing is priced here, so a
+    traveller who shuffles twice has cost two route calls, not two Odysseys.
+    """
+    geo_budget = geo_resolver.GeoBudget()
+    geo = await geo_resolver.resolve_destination(
+        str(destination),
+        place_id=destination_place_id,
+        latitude=destination_latitude,
+        longitude=destination_longitude,
+        address_hint=destination_address,
+        budget=geo_budget,
+    )
+    route = await plan_route(
+        destination=str(destination),
+        days=days,
+        mood=mood,
+        travelers=travelers,
+        api_key=api_key,
+        start_date=start_date,
+        geo=geo,
+        departure_city=departure_city,
+        departure_country=departure_country,
+        departure_latitude=departure_latitude,
+        departure_longitude=departure_longitude,
+        include_flights=include_flights,
+        geo_budget=geo_budget,
+        entry_city=entry_city,
+        exit_city=exit_city,
+        entry_latlng=(entry_latitude, entry_longitude),
+        exit_latlng=(exit_latitude, exit_longitude),
+        exclude_cities=exclude_cities,
+    )
+    return route_preview_payload(route), stretched_route_notice(
+        route, days, entry_city, exit_city,
+    )
+
+
+def route_preview_payload(plan: "RoutePlan") -> dict:
+    """A planned route in the shape the planner itself speaks.
+
+    Deliberately the same keys `_validate_route` reads, so what the traveller
+    is shown can be handed straight back as `preset_route` and re-checked by
+    the identical code path. Anything the backend derives — nights, dates — is
+    left out: it is recomputed from the days on the way back in, so an app that
+    edits the city list cannot put the stay budget out of step with the route.
+    """
+    return {
+        "legs": [
+            {
+                "city": leg.get("city", ""),
+                "country": leg.get("country", ""),
+                "start_day": leg.get("start_day"),
+                "end_day": leg.get("end_day"),
+                "nights": leg.get("nights"),
+                "latitude": leg.get("latitude"),
+                "longitude": leg.get("longitude"),
+                "arrive_by": leg.get("arrive_by", ""),
+                "from_previous_km": leg.get("from_previous_km", 0),
+            }
+            for leg in (plan.legs or [])
+        ],
+        "arrival_airport": plan.arrival,
+        "departure_airport": plan.departure,
+        "region": plan.region,
+        "source": plan.source,
+    }
 
 
 async def plan_city_legs(
@@ -4300,6 +4479,9 @@ async def generate_odyssey(
     api_key: str,
     unsplash_api_key: str = "",
     serpapi_key: str = "",
+    # Google Maps. Empty is a valid state — it means ratings and opening hours
+    # cannot be checked, so they are dropped rather than guessed.
+    maps_key: str = "",
     include_flights: bool = False,
     departure_city: str = "",
     departure_country: str = "",
@@ -4324,8 +4506,14 @@ async def generate_odyssey(
     exit_longitude: float | None = None,
     departure_latitude: float | None = None,
     departure_longitude: float | None = None,
+    preset_route: dict | None = None,
 ) -> tuple[str, list[dict]]:
-    """Generate the plan. Returns (title, items) ready to store on an Itinerary."""
+    """Generate the plan. Returns (title, items) ready to store on an Itinerary.
+
+    `preset_route` is the route the traveller was shown and accepted before
+    generation started. It is re-validated inside `plan_route`, never trusted
+    on arrival.
+    """
     final_destination = str(destination)
 
     # Resolve WHERE this trip is before anything reads the destination string.
@@ -4402,6 +4590,7 @@ async def generate_odyssey(
             exit_city=exit_city,
             entry_latlng=(entry_latitude, entry_longitude),
             exit_latlng=(exit_latitude, exit_longitude),
+            preset=preset_route,
         )
     except BaseException:
         # plan_route has its own fallback and should not raise, but if it
@@ -4545,25 +4734,29 @@ async def generate_odyssey(
         ) or 0.0,
     )
 
-    prompt = _build_prompt(
-        destination=final_destination,
-        mood=mood,
-        budget=budget,
-        days=days,
-        currency=currency,
-        travelers=travelers,
-        hotel_price_range=hotel_price_range,
-        confirmed_flight=primary_flight,
-        departure_city=departure_city,
-        departure_country=departure_country,
-        nationality=nationality,
-        has_visa=has_visa,
-        legs=city_legs,
-        geo=geo,
-        route_plan=route,
-        inter_city_flights=inter_city_flights,
-        spend_room=spend_room,
-    )
+    def _prompt_for(grounded: bool) -> str:
+        return _build_prompt(
+            grounded=grounded,
+            destination=final_destination,
+            mood=mood,
+            budget=budget,
+            days=days,
+            currency=currency,
+            travelers=travelers,
+            hotel_price_range=hotel_price_range,
+            confirmed_flight=primary_flight,
+            departure_city=departure_city,
+            departure_country=departure_country,
+            nationality=nationality,
+            has_visa=has_visa,
+            legs=city_legs,
+            geo=geo,
+            route_plan=route,
+            inter_city_flights=inter_city_flights,
+            spend_room=spend_room,
+        )
+
+    prompt = _prompt_for(True)
     plan_tokens = _itinerary_token_budget(days)
     plan_timeout = _itinerary_timeout_s(days)
     try:
@@ -4583,9 +4776,12 @@ async def generate_odyssey(
             "Grounded Gemini generation/parsing failed (%s) — falling back to standard ungrounded generation",
             e,
         )
+        # A different prompt, not the same one with the tool removed: the
+        # grounded text instructs the model to search, and a model told to
+        # search with no tool writes what a search would plausibly have said.
         text, grounding_chunks = await _call_gemini(
-            prompt, api_key, max_tokens=plan_tokens, thinking_budget=0, use_grounding=False,
-            timeout_s=plan_timeout,
+            _prompt_for(False), api_key, max_tokens=plan_tokens, thinking_budget=0,
+            use_grounding=False, timeout_s=plan_timeout,
         )
         plan = _parse_json(text)
         # Empty still fails. Short does not: two of three days beats no plan at
@@ -5219,6 +5415,24 @@ async def generate_odyssey(
             fixed, len(inter_city_flights),
         )
 
+    # Ratings and opening hours come from Google or they do not appear. The
+    # model's own are discarded first, so this cannot be a partial improvement
+    # that leaves some invented numbers behind — see `verify_venue_facts`.
+    try:
+        checked = await verify_venue_facts(day_items, city_legs, maps_key)
+        if checked.get("checked"):
+            logger.info(
+                "Venue facts: %d checked, %d rated by Google, %d hours set, "
+                "%d unverifiable claim(s) dropped, %d closed venue(s) removed.",
+                checked["checked"], checked["rated"], checked["hours"],
+                checked["stripped"], checked.get("dropped", 0),
+            )
+    except Exception as exc:
+        # The plan is finished and correct apart from these fields; losing them
+        # is not worth losing the plan.
+        logger.warning("Venue verification failed (%s) — stripping unchecked claims", exc)
+        _strip_unverified_venue_claims(day_items)
+
     return title, [meta] + day_items
 
 
@@ -5356,6 +5570,41 @@ Return ONLY a JSON object with this exact shape (no markdown, no commentary):
 
 
 
+# What the model is told about checking its own facts. Two versions, because
+# generation has two paths: the grounded pass has the `google_search` tool
+# attached, and the ungrounded retry — which roughly one plan in nine falls
+# back to — has no tool at all.
+#
+# Sending the grounded text down the ungrounded path is what produced
+# citations to named websites on plans where no search ever ran: measured on
+# stored September plans, 27 priced items on ungrounded plans named a source
+# like "Tripoto" or "Eating Europe", which cannot have been read. Asked to
+# search with no way to search, a model does not refuse — it writes what a
+# search would plausibly have returned. So the retry is told the truth about
+# what it has, and asked to be visibly unsure instead.
+_GROUNDED_RULES = """CRITICAL — LIVE SEARCH GROUNDING RULES:
+1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
+2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost. Do not estimate from memory if a search is possible.
+3. If a search genuinely returns no usable price for an item, do NOT invent one. Set "price_confidence": "Estimated" and state in "price_basis": "No current search result found; figure is a general regional estimate, not sourced."
+4. "price_source" must name the actual source you found via search (the site, publisher, or official page name) — never a generic label like "Official Ticket" or "Menu Avg" with no real anchor behind it.
+5. Do not fabricate deep links to specific hotels, restaurants, or attractions anywhere in the output. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged. If you don't have a verified link, omit it — never guess one.
+6. Prefer official/primary sources (venue's own site, government tourism site, transit authority) over blogs or aggregators when search results offer a choice.
+7. For "attraction", "dining", and "accommodation" activities only, search for the venue's real opening hours and put them in "hours" (e.g. "9:00 AM – 6:00 PM" or "Open until 9:00 PM today"). If search doesn't confidently confirm real hours, leave "hours" as an empty string — never guess or invent them. Leave "hours" empty for "transport"/"exploration"/"other" activities, which aren't a single bookable venue.
+"""
+
+_UNGROUNDED_RULES = """CRITICAL — YOU HAVE NO SEARCH ACCESS ON THIS REQUEST:
+1. There is NO search tool attached to this request. You cannot look anything up. Everything you write comes from training data that is out of date, and you must say so rather than dress it up.
+2. Do NOT name a website, blog, publisher, aggregator or official page as a "price_source". You have not read any of them. Naming one is a fabricated citation.
+3. "price_source" must be exactly one of: "Estimate" or "Typical local rate". Nothing else is permitted on this request.
+4. "price_confidence" must be "Estimated" for every costed activity. Do not use "Fixed" — you have no current figure to fix it to.
+5. "price_basis" must say plainly what the figure is, e.g. "General regional estimate from training data; not checked against a current source."
+6. Leave "hours" as an empty string for EVERY activity. You cannot confirm opening hours without a search, and invented hours send a traveller to a closed door.
+7. Omit the "rating" field from every restaurant. You cannot know a venue's current rating; a plausible-looking number is worse than none.
+8. Name a restaurant only if you are confident it genuinely exists and is still open. If you are not, describe the kind of place instead ("a family-run trattoria near the market") and leave the name out.
+9. Do not fabricate deep links. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged.
+"""
+
+
 def _build_prompt(
     destination: str,
     mood: str,
@@ -5375,8 +5624,12 @@ def _build_prompt(
     route_plan: "RoutePlan | None" = None,
     inter_city_flights: list[dict] | None = None,
     spend_room: float = 0.0,
+    grounded: bool = True,
 ) -> str:
     nights = days - 1 if days > 1 else 0
+    # The rules have to match the tools actually attached to the call this
+    # prompt is about to be sent on — see `_GROUNDED_RULES`.
+    grounding_rules = _GROUNDED_RULES if grounded else _UNGROUNDED_RULES
     # What the day plan may actually spend. The percentage split below is a
     # guess; this is the real one, from the fares and room rates already
     # searched. Stated only when there is something behind it — the estimate
@@ -5466,6 +5719,21 @@ def _build_prompt(
                 f"Everything you name must be within roughly {radius_km} km of there.\n"
             )
         country = geo.country or geo.country_code
+        # Both passes must check their places; only one of them can look
+        # anything up. Telling the ungrounded retry to "search" is what makes
+        # it narrate a search it never ran.
+        find_equivalent = (
+            "use the google_search tool to find a real equivalent that is"
+            if grounded else "replace it with a real equivalent that is"
+        )
+        confirm_place = (
+            "confirm with the google_search tool"
+            if grounded else "be certain from your own knowledge"
+        )
+        instead_name = (
+            "search for a real place that does"
+            if grounded else "name instead a place you are certain of"
+        )
         geo_rules = f"""
 CRITICAL - DESTINATION IDENTITY (this overrides your prior knowledge):
 - This trip is to {geo.label()}. It is in {country}. It is NOT in any other country.
@@ -5475,15 +5743,14 @@ CRITICAL - DESTINATION IDENTITY (this overrides your prior knowledge):
   resemblance completely. The country stated above is authoritative.
 - Never substitute a similarly-named or culturally-adjacent place from a
   neighbouring country. If a name you are about to write is not in {country},
-  it is wrong - use the google_search tool to find a real equivalent that is.
+  it is wrong - {find_equivalent}.
 - CHECK EVERY PLACE BEFORE YOU WRITE IT. Many place names exist in more than
   one country - Saint Petersburg, Moscow, Birmingham, Cambridge, Odessa,
   Naples and Athens all name somewhere in the United States as well. For each
   attraction, restaurant, market, station and neighbourhood you are about to
-  name, confirm with the google_search tool that it is the one near that day's
+  name, {confirm_place} that it is the one near that day's
   coordinates listed above, not a namesake elsewhere. If you cannot confirm it
-  sits near those coordinates, do not write it - search for a real place that
-  does.
+  sits near those coordinates, do not write it - {instead_name}.
 - Unless the plan explicitly crosses a border for a named day trip that returns
   the same day, every overnight stay is in {country}.
 """
@@ -5723,12 +5990,26 @@ The traveler ALREADY holds a valid visa for this trip.
 Set "visa".status to "already_have", "visa".processing_days_min to 0, "visa".processing_days_max to 0, and "visa".note to "Visa already acquired — you are ready to travel!".
 Do NOT output any visa application procedures, application steps, or visa warnings."""
     else:
+        visa_lookup = (
+            "Use the google_search tool to check the actual, current visa requirements, "
+            "application procedure (e.g. online eVisa portal, embassy application, visa on "
+            "arrival), and estimated processing time in business days."
+            if grounded else
+            "You have NO search access on this request, so you cannot check current visa "
+            "rules. Give only the general shape of the requirement from training data, say "
+            "in \"visa\".note that it must be confirmed with the embassy or official portal "
+            "before booking, and never state a fee or a processing time as a current fact."
+        )
+        processing_source = (
+            " — found via search, not invented" if grounded
+            else " — and set \"visa\".confidence to \"Estimated\", since you could not check it"
+        )
         visa_rules = f"""CRITICAL — VISA GUIDANCE RULES:
 1. The traveler needs visa guidance holding a "{nationality or 'not provided'}" passport for "{destination}".
-2. Use the google_search tool to check the actual, current visa requirements, application procedure (e.g. online eVisa portal, embassy application, visa on arrival), and estimated processing time in business days.
+2. {visa_lookup}
 3. If nationality is "not provided", set "visa".status to "unknown" and "visa".note to "Add your nationality in your profile to get visa guidance for this trip." — do not guess a nationality.
 4. "visa".status must be exactly one of: "needed" (an advance visa application is required — e-visas that still take real processing time count as "needed"), "available" (visa on arrival, or an e-visa/ETA that is normally issued within a day or two), "not_needed" (visa-free entry, or the trip is domestic).
-5. Only when status is "needed", set "visa".processing_days_min/processing_days_max to a realistic real-world range for that nationality/destination pair (e.g. 15-20 business days) — found via search, not invented. Leave both at 0 for "available"/"not_needed"/"unknown".
+5. Only when status is "needed", set "visa".processing_days_min/processing_days_max to a realistic real-world range for that nationality/destination pair (e.g. 15-20 business days){processing_source}. Leave both at 0 for "available"/"not_needed"/"unknown".
 6. In "visa".note, provide clear, step-by-step application guidance, required documents, and where to apply.
 7. "visa".confidence follows the same Fixed/Typical/Estimated scale used for prices below."""
 
@@ -5767,15 +6048,7 @@ Trip brief:
 {ground_transport_rules}
 {visa_rules}
 
-CRITICAL — LIVE SEARCH GROUNDING RULES:
-1. You have been given live Google Search access via the google_search tool for this request. You MUST use it to find current prices — do not recall prices from memory/training data.
-2. For EVERY costed activity (attraction tickets, transit fares, typical meal prices, hotel/night rates), search for that specific item before writing its cost. Do not estimate from memory if a search is possible.
-3. If a search genuinely returns no usable price for an item, do NOT invent one. Set "price_confidence": "Estimated" and state in "price_basis": "No current search result found; figure is a general regional estimate, not sourced."
-4. "price_source" must name the actual source you found via search (the site, publisher, or official page name) — never a generic label like "Official Ticket" or "Menu Avg" with no real anchor behind it.
-5. Do not fabricate deep links to specific hotels, restaurants, or attractions anywhere in the output. The ONLY links allowed anywhere in this JSON are the three fixed "booking_partners" URLs given below, unchanged. If you don't have a verified link, omit it — never guess one.
-6. Prefer official/primary sources (venue's own site, government tourism site, transit authority) over blogs or aggregators when search results offer a choice.
-7. For "attraction", "dining", and "accommodation" activities only, search for the venue's real opening hours and put them in "hours" (e.g. "9:00 AM – 6:00 PM" or "Open until 9:00 PM today"). If search doesn't confidently confirm real hours, leave "hours" as an empty string — never guess or invent them. Leave "hours" empty for "transport"/"exploration"/"other" activities, which aren't a single bookable venue.
-
+{grounding_rules}
 CRITICAL BUDGET PRIORITY RULES:
 1. Flights & Transit (Priority 1) and Stay & Accommodation (Priority 2) MUST BE ALLOCATED FIRST!
 2. Allocate realistic funds for Flights (~40-50%) and Stay (~30-35%).
@@ -6272,6 +6545,145 @@ def stay_cost_row(rng: str, city: str) -> tuple[str, str]:
         return "See Stays tab", "See the Stays tab for hotel pricing options."
     where = f"in {city}" if city else "found for this trip"
     return f"{rng} / night", f"Nightly rate range across hotel options {where}: {rng}."
+
+
+async def verify_venue_facts(
+    day_items: list[dict], city_legs: list[dict], maps_key: str,
+) -> dict:
+    """Replace the model's star ratings and opening hours with Google's.
+
+    The plan keeps its venues — those check out, 69 of 70 in the audit — but
+    stops speaking for them. Every rating the model wrote is discarded: what
+    Google returns takes its place, and a venue Google will not confirm ends up
+    with no rating at all rather than a plausible invented one.
+
+    Returns a count of what changed, for the log. Never raises: a plan that
+    cannot reach Places keeps its venues and loses only the claims it could not
+    stand behind, which is the honest failure.
+    """
+    if not maps_key:
+        # Nothing can be checked, so nothing may be asserted.
+        stripped = _strip_unverified_venue_claims(day_items)
+        return {"checked": 0, "rated": 0, "hours": 0, "stripped": stripped}
+
+    day_city = _day_to_city(city_legs)
+    counts = {"checked": 0, "rated": 0, "hours": 0, "stripped": 0, "dropped": 0}
+
+    async with httpx.AsyncClient() as client:
+        for day in day_items:
+            if not isinstance(day, dict) or day.get("kind") != "day":
+                continue
+            leg = day_city.get(day.get("day"))
+            if not leg:
+                continue
+            city = str(leg.get("city") or "")
+            lat, lng = leg.get("latitude"), leg.get("longitude")
+
+            for activity in day.get("activities") or []:
+                if not isinstance(activity, dict):
+                    continue
+
+                # The venue the activity itself is: its hours are a claim too.
+                if normalise_activity_type(activity.get("type")) in ("attraction", "dining"):
+                    if str(activity.get("hours") or "").strip():
+                        counts["checked"] += 1
+                        fact = await venue_facts_service.lookup(
+                            client, str(activity.get("name") or ""), city,
+                            latitude=lat, longitude=lng, api_key=maps_key,
+                        )
+                        hours = (fact or {}).get("hours") or ""
+                        if hours:
+                            activity["hours"] = hours
+                            counts["hours"] += 1
+                        else:
+                            activity.pop("hours", None)
+                            counts["stripped"] += 1
+
+                kept: list[dict] = []
+                for restaurant in activity.get("restaurants") or []:
+                    if not isinstance(restaurant, dict):
+                        continue
+                    name = str(restaurant.get("name") or "").strip()
+                    if not name:
+                        continue
+                    counts["checked"] += 1
+                    fact = await venue_facts_service.lookup(
+                        client, name, city, latitude=lat, longitude=lng, api_key=maps_key,
+                    )
+                    if fact is None:
+                        # Unconfirmed: the suggestion survives, the numbers do
+                        # not. Dropping the venue outright would delete real
+                        # places over one failed lookup.
+                        restaurant.pop("rating", None)
+                        counts["stripped"] += 1
+                        kept.append(restaurant)
+                        continue
+                    if not fact.get("open", True):
+                        counts["dropped"] += 1
+                        continue
+                    if fact.get("name"):
+                        restaurant["name"] = fact["name"]
+                    rating = fact.get("rating")
+                    if isinstance(rating, (int, float)) and rating > 0:
+                        # A bare number: the card draws its own star icon, so
+                        # a "\u2605" in the value renders as two of them. The
+                        # model's own ratings arrived both ways.
+                        restaurant["rating"] = f"{float(rating):.1f}"
+                        reviews = fact.get("review_count")
+                        if isinstance(reviews, int) and reviews > 0:
+                            restaurant["review_count"] = reviews
+                        restaurant["rating_source"] = "Google"
+                        counts["rated"] += 1
+                    else:
+                        restaurant.pop("rating", None)
+                        counts["stripped"] += 1
+                    if fact.get("hours"):
+                        restaurant["hours"] = fact["hours"]
+                        counts["hours"] += 1
+                    kept.append(restaurant)
+
+                if activity.get("restaurants") is not None:
+                    activity["restaurants"] = kept
+
+    return counts
+
+
+def _day_to_city(city_legs: list[dict]) -> dict[int, dict]:
+    """Which leg each day belongs to, so a venue is checked against its own city."""
+    mapping: dict[int, dict] = {}
+    for leg in city_legs or []:
+        if not isinstance(leg, dict):
+            continue
+        try:
+            start, end = int(leg.get("start_day")), int(leg.get("end_day"))
+        except (TypeError, ValueError):
+            continue
+        for day in range(start, end + 1):
+            mapping[day] = leg
+    return mapping
+
+
+def _strip_unverified_venue_claims(day_items: list[dict]) -> int:
+    """Drop every rating and opening-hours line we have no way to check.
+
+    Used when Places is unavailable. An unchecked rating is not a lesser fact
+    than a checked one, it is a different kind of thing: the model's impression
+    of a number, printed next to a real restaurant as though it were the
+    venue's own.
+    """
+    stripped = 0
+    for day in day_items:
+        if not isinstance(day, dict) or day.get("kind") != "day":
+            continue
+        for activity in day.get("activities") or []:
+            if not isinstance(activity, dict):
+                continue
+            if activity.pop("hours", None):
+                stripped += 1
+            for restaurant in activity.get("restaurants") or []:
+                if isinstance(restaurant, dict) and restaurant.pop("rating", None):
+                    stripped += 1
+    return stripped
 
 
 def usable_hours(raw) -> str:

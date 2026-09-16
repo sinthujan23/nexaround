@@ -63,6 +63,10 @@ class OdysseyRepository {
     // is not always usable, so the point itself travels alongside it.
     double? departureLatitude,
     double? departureLongitude,
+    // The route the traveller was shown and accepted, exactly as
+    // [previewRoute] returned it. Null means "decide it during generation",
+    // which is what every older build does and still works.
+    Map<String, dynamic>? presetRoute,
   }) async {
     final response = await _dio.post(
       '${ApiConstants.itineraries}/odyssey/generate',
@@ -97,11 +101,83 @@ class OdysseyRepository {
         'destination_address': destinationAddress,
         'departure_latitude': departureLatitude,
         'departure_longitude': departureLongitude,
+        if (presetRoute != null) 'preset_route': presetRoute,
       },
     );
     revision.value++;
     final json = (response.data as Map).cast<String, dynamic>();
     return Odyssey.fromItinerary(json);
+  }
+
+  /// The cities a trip would visit, before committing to generating it.
+  ///
+  /// Generation plans this route anyway as its first step; asking for it here
+  /// lets the traveller see and change it first. Whatever comes back is handed
+  /// straight to [requestGeneration] as `presetRoute` if they accept it, so
+  /// approving a preview costs no extra planning call.
+  ///
+  /// [excludeCities] asks for a different region: the cities already turned
+  /// down. Returns null when the route could not be planned — the caller
+  /// generates without a preview rather than blocking the trip on it.
+  Future<Map<String, dynamic>?> previewRoute({
+    required String destination,
+    required String mood,
+    required int days,
+    int travelers = 1,
+    bool includeFlights = false,
+    String departureCity = '',
+    String departureCountry = '',
+    double? departureLatitude,
+    double? departureLongitude,
+    String? startDate,
+    String? hotelCheckInDate,
+    String entryCity = '',
+    String exitCity = '',
+    double? entryLatitude,
+    double? entryLongitude,
+    double? exitLatitude,
+    double? exitLongitude,
+    String destinationPlaceId = '',
+    double? destinationLatitude,
+    double? destinationLongitude,
+    String destinationAddress = '',
+    List<String> excludeCities = const [],
+  }) async {
+    try {
+      final response = await _dio.post(
+        '${ApiConstants.itineraries}/odyssey/route-preview',
+        data: {
+          'destination': destination,
+          'mood': mood,
+          'days': days,
+          'travelers': travelers,
+          'include_flights': includeFlights,
+          'departure_city': departureCity,
+          'departure_country': departureCountry,
+          'departure_latitude': departureLatitude,
+          'departure_longitude': departureLongitude,
+          'start_date': startDate,
+          'hotel_check_in_date': hotelCheckInDate,
+          'entry_city': entryCity,
+          'exit_city': exitCity,
+          'entry_latitude': entryLatitude,
+          'entry_longitude': entryLongitude,
+          'exit_latitude': exitLatitude,
+          'exit_longitude': exitLongitude,
+          'destination_place_id': destinationPlaceId,
+          'destination_latitude': destinationLatitude,
+          'destination_longitude': destinationLongitude,
+          'destination_address': destinationAddress,
+          'exclude_cities': excludeCities,
+        },
+      );
+      if (response.statusCode != 200 || response.data is! Map) return null;
+      return (response.data as Map).cast<String, dynamic>();
+    } catch (_) {
+      // A preview is a convenience. Generation still plans its own route, so
+      // a failure here must never stop the traveller creating a trip.
+      return null;
+    }
   }
 
   /// Re-trigger generation for a failed Odyssey.

@@ -25,7 +25,13 @@ class RestaurantOption {
   final String name;
   final String cuisine;
   final String priceRange; // e.g. "INR 1,500 – 3,000"
-  final String rating;     // e.g. "4.5"
+  /// e.g. "4.5". Empty when Google would not confirm the venue — the backend
+  /// no longer lets the model write this field, so an absent rating means
+  /// "not checkable", never "badly rated".
+  final String rating;
+
+  /// How many Google reviews the rating is built on. Zero when unknown.
+  final int reviewCount;
   final String tip;
 
   const RestaurantOption({
@@ -33,6 +39,7 @@ class RestaurantOption {
     this.cuisine = '',
     this.priceRange = '',
     this.rating = '',
+    this.reviewCount = 0,
     this.tip = '',
   });
 
@@ -41,6 +48,12 @@ class RestaurantOption {
         cuisine: (json['cuisine'] ?? '').toString(),
         priceRange: (json['price_range'] ?? '').toString(),
         rating: (json['rating'] ?? '').toString(),
+        reviewCount: switch (json['review_count']) {
+          final int n => n,
+          final num n => n.toInt(),
+          final String s => int.tryParse(s) ?? 0,
+          _ => 0,
+        },
         tip: (json['tip'] ?? '').toString(),
       );
 
@@ -49,6 +62,7 @@ class RestaurantOption {
         'cuisine': cuisine,
         'price_range': priceRange,
         'rating': rating,
+        if (reviewCount > 0) 'review_count': reviewCount,
         'tip': tip,
       };
 }

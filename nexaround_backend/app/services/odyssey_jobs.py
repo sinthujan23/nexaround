@@ -83,6 +83,10 @@ async def run_generation(
     destination_address: str = "",
     departure_latitude: Optional[float] = None,
     departure_longitude: Optional[float] = None,
+    # A plain dict, not the pydantic model: job payloads are serialised to
+    # JSON on the way to the worker, so anything here has to survive a
+    # round-trip through it. Re-validated by `plan_route` at the other end.
+    preset_route: Optional[dict] = None,
 ) -> None:
     """The generation itself.
 
@@ -109,12 +113,14 @@ async def run_generation(
 
         unsplash_api_key = await svc.get_setting("unsplash_api_key")
         serpapi_key = await svc.get_setting("serpapi_key")
+        maps_key = await svc.get_setting("google_maps_api_key")
 
     # No session is open across this await.
     error: Optional[str] = None
     title = items = None
     try:
         title, items = await odyssey_ai_service.generate_odyssey(
+            preset_route=preset_route,
             destination=destination,
             mood=mood,
             budget=budget,
@@ -123,6 +129,7 @@ async def run_generation(
             travelers=travelers,
             api_key=api_key,
             unsplash_api_key=unsplash_api_key,
+            maps_key=maps_key,
             serpapi_key=serpapi_key or "",
             include_flights=include_flights,
             departure_city=departure_city,

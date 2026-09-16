@@ -24,6 +24,8 @@ from app.schemas.itinerary import (
     ItineraryResponse,
     MOOD_MAX,
     OdysseyGenerateRequest,
+    OdysseyRoutePreviewRequest,
+    OdysseyRoutePreviewResponse,
     OdysseySwapRequest,
     OdysseyPartnerSwapRequest,
     TRAVELERS_RANGE,
@@ -32,6 +34,66 @@ from app.schemas.itinerary import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/itineraries", tags=["itineraries"])
+
+
+@router.post("/odyssey/route-preview", response_model=OdysseyRoutePreviewResponse)
+async def preview_odyssey_route(
+    data: OdysseyRoutePreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The cities a trip would visit, before committing to generating it.
+
+    Generation already begins by planning this route; running it here lets the
+    traveller see and change it first. The route that comes back is handed to
+    POST /odyssey/generate unchanged as `preset_route`, so accepting a preview
+    costs nothing extra — the planning call is not repeated.
+
+    Authenticated and rate-limited by the same middleware as generation: it
+    spends a Gemini call, and `exclude_cities` lets a client ask for another
+    region as often as it likes.
+    """
+    settings = SettingsService(db)
+    api_key = await settings.get_setting("gemini_api_key")
+    if not api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Route planning is unavailable right now.",
+        )
+    try:
+        route, notice = await odyssey_ai_service.preview_route(
+            destination=data.destination,
+            days=data.days,
+            mood=data.mood,
+            travelers=data.travelers,
+            api_key=api_key,
+            include_flights=data.include_flights,
+            departure_city=data.departure_city or "",
+            departure_country=data.departure_country or "",
+            departure_latitude=data.departure_latitude,
+            departure_longitude=data.departure_longitude,
+            start_date=data.hotel_check_in_date or data.start_date or "",
+            destination_place_id=data.destination_place_id or "",
+            destination_latitude=data.destination_latitude,
+            destination_longitude=data.destination_longitude,
+            destination_address=data.destination_address or "",
+            entry_city=data.entry_city or "",
+            exit_city=data.exit_city or "",
+            entry_latitude=data.entry_latitude,
+            entry_longitude=data.entry_longitude,
+            exit_latitude=data.exit_latitude,
+            exit_longitude=data.exit_longitude,
+            exclude_cities=list(data.exclude_cities or []),
+        )
+    except Exception as e:
+        # A preview that fails must not block the trip: the app falls back to
+        # generating without one, which is exactly what it did before.
+        logger.warning("Route preview for %r failed: %s", data.destination, e)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Could not plan a route just now.",
+        )
+    return OdysseyRoutePreviewResponse(route=route, notice=notice)
 
 
 @router.post("/odyssey/generate", response_model=ItineraryResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -155,6 +217,11 @@ async def generate_odyssey(
         destination_address=data.destination_address or "",
         departure_latitude=data.departure_latitude,
         departure_longitude=data.departure_longitude,
+        # Dumped to a plain dict here rather than in the worker: the job
+        # payload is JSON, and a pydantic model is not.
+        preset_route=(
+            data.preset_route.model_dump() if data.preset_route is not None else None
+        ),
     )
     return saved
 

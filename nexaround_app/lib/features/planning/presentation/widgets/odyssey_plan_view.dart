@@ -4553,6 +4553,17 @@ class _RestaurantListBottomSheetState extends State<_RestaurantListBottomSheet> 
                                     const Icon(Icons.star_rounded, size: 14, color: AppColors.ratingGold),
                                     const SizedBox(width: 2),
                                     Text(r.rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                                    // The rating is Google's, so the count it
+                                    // rests on is worth showing: it is the
+                                    // difference between a venue thousands
+                                    // rated and one three people did.
+                                    if (r.reviewCount > 0) ...[
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        '(${formatAmount(r.reviewCount)})',
+                                        style: const TextStyle(fontSize: 11, color: Colors.black45),
+                                      ),
+                                    ],
                                   ],
                                   const SizedBox(width: 6),
                                   const Icon(Icons.map_outlined, size: 16, color: AppColors.actionTeal),

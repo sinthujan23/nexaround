@@ -43,6 +43,37 @@ DESTINATION_MAX = 200
 MOOD_MAX = 60
 
 
+class OdysseyRouteLeg(BaseModel):
+    """One city the trip sleeps in, as the planner describes it."""
+    city: str = Field(min_length=1, max_length=DESTINATION_MAX)
+    country: str = Field(default="", max_length=64)
+    start_day: int = Field(ge=1, le=DAYS_RANGE[1])
+    end_day: int = Field(ge=1, le=DAYS_RANGE[1])
+    nights: Optional[int] = Field(default=None, ge=0, le=DAYS_RANGE[1])
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    arrive_by: str = Field(default="", max_length=16)
+    from_previous_km: float = Field(default=0, ge=0, le=40_000)
+
+
+class OdysseyRouteAirport(BaseModel):
+    iata: str = Field(default="", max_length=3)
+    city: str = Field(default="", max_length=DESTINATION_MAX)
+    name: str = Field(default="", max_length=DESTINATION_MAX)
+
+
+class OdysseyRoute(BaseModel):
+    """A whole route, in the shape the route planner both emits and re-reads."""
+    # Capped at the trip length: one leg per day is already more moving than
+    # any plan should do, and an unbounded list is a free hotel search per
+    # entry on a paid API.
+    legs: List[OdysseyRouteLeg] = Field(default_factory=list, max_length=DAYS_RANGE[1])
+    arrival_airport: Optional[OdysseyRouteAirport] = None
+    departure_airport: Optional[OdysseyRouteAirport] = None
+    region: str = Field(default="", max_length=128)
+    source: str = Field(default="", max_length=16)
+
+
 class OdysseyGenerateRequest(BaseModel):
     """Request body for kicking off a server-side AI Odyssey generation."""
     # Both are interpolated into the Gemini prompt, so their length is billed
@@ -108,6 +139,55 @@ class OdysseyGenerateRequest(BaseModel):
     # lets the backend recover the country when the name is unusable.
     departure_latitude: Optional[float] = None
     departure_longitude: Optional[float] = None
+    # The route the traveller was shown by /odyssey/route-preview and accepted.
+    # Optional: an app that does not preview still generates exactly as before,
+    # and a route that fails the planner's own coherence checks is discarded
+    # server-side rather than believed — see `plan_route(preset=...)`.
+    preset_route: Optional[OdysseyRoute] = None
+
+
+class OdysseyRoutePreviewRequest(BaseModel):
+    """What the route preview needs: the trip's shape, not its money.
+
+    A subset of `OdysseyGenerateRequest` — budget and currency are absent
+    because the route is decided before anything is priced, and asking for
+    them would imply the preview honours them.
+    """
+    destination: str = Field(min_length=1, max_length=DESTINATION_MAX)
+    mood: str = Field(default="Adventurous", max_length=MOOD_MAX)
+    days: int = Field(default=3, ge=DAYS_RANGE[0], le=DAYS_RANGE[1])
+    travelers: int = Field(default=1, ge=TRAVELERS_RANGE[0], le=TRAVELERS_RANGE[1])
+    include_flights: bool = False
+    departure_city: str = ""
+    departure_country: str = ""
+    departure_latitude: Optional[float] = None
+    departure_longitude: Optional[float] = None
+    start_date: Optional[str] = None
+    hotel_check_in_date: Optional[str] = None
+    entry_city: str = Field(default="", max_length=DESTINATION_MAX)
+    exit_city: str = Field(default="", max_length=DESTINATION_MAX)
+    entry_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    entry_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    exit_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    exit_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+    destination_place_id: str = ""
+    destination_latitude: Optional[float] = None
+    destination_longitude: Optional[float] = None
+    destination_address: str = ""
+    # "Show me a different region." The cities already offered, sent back so
+    # the planner can avoid them. Capped for the same reason as `legs`: this
+    # text is interpolated into a billed prompt.
+    exclude_cities: List[str] = Field(default_factory=list, max_length=24)
+
+
+class OdysseyRoutePreviewResponse(BaseModel):
+    """The route to show before a plan is paid for.
+
+    `route` is handed back to /odyssey/generate untouched as `preset_route`
+    when the traveller accepts it.
+    """
+    route: OdysseyRoute
+    notice: str = ""
 
 
 class OdysseySwapRequest(BaseModel):
