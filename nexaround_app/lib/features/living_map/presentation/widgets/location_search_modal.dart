@@ -382,24 +382,27 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
         if (_searchController.text.trim() != trimmed) {
           return;
         }
-        setState(() {
-          final Set<String> seenKeys = {};
-          final List<Map<String, dynamic>> mapped = [];
-          for (final item in results) {
-            final placeId = (item['place_id'] ?? '').toString().trim().toLowerCase();
-            final name = (item['main_text'] ?? item['description'] ?? '').toString().trim();
-            final key = placeId.isNotEmpty ? placeId : name.toLowerCase();
-            if (key.isNotEmpty && seenKeys.add(key)) {
-              mapped.add({
-                'place_id': item['place_id'] ?? '',
-                'name': name,
-                'address': item['secondary_text'] ?? item['description'] ?? '',
-                'district': item['secondary_text'] ?? 'Nearby',
-                'latitude': 0.0,
-                'longitude': 0.0,
-              });
-            }
+        // Built before setState rather than inside it: the country swap below
+        // needs this list too, and a variable declared in the closure does not
+        // outlive it.
+        final Set<String> seenKeys = {};
+        final List<Map<String, dynamic>> mapped = [];
+        for (final item in results) {
+          final placeId = (item['place_id'] ?? '').toString().trim().toLowerCase();
+          final name = (item['main_text'] ?? item['description'] ?? '').toString().trim();
+          final key = placeId.isNotEmpty ? placeId : name.toLowerCase();
+          if (key.isNotEmpty && seenKeys.add(key)) {
+            mapped.add({
+              'place_id': item['place_id'] ?? '',
+              'name': name,
+              'address': item['secondary_text'] ?? item['description'] ?? '',
+              'district': item['secondary_text'] ?? 'Nearby',
+              'latitude': 0.0,
+              'longitude': 0.0,
+            });
           }
+        }
+        setState(() {
           _suggestions = mapped;
           _citiesOfCountry = '';
           _isLoading = false;
