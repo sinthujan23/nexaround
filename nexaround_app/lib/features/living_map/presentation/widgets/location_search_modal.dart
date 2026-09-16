@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/constants/api_constants.dart';
+import 'package:nexaround_app/core/constants/countries.dart';
 import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
@@ -31,6 +32,16 @@ class LocationSearchModal extends StatefulWidget {
   /// attractions and hotels out, which the Odyssey planner's ends require.
   final String? placeKinds;
 
+  /// When the text typed turns out to name a country, answer with that
+  /// country's cities instead of the country itself.
+  ///
+  /// The planner needs a city, so offering "Japan" as a tappable row only ever
+  /// led somewhere that had to be corrected. Worse, the raw matches around it
+  /// are noise: typing "japan" really returns Japanga in Odisha, Japana in
+  /// Georgia, Japani in Jharkhand and Jhapan in Madhya Pradesh. Replacing the
+  /// lot with Tokyo, Kyoto, Osaka is both the shorter path and the honest one.
+  final bool countryOffersCities;
+
   /// What the sheet is for, when it is not the usual "where to?".
   final String? title;
   final String? hintText;
@@ -42,6 +53,7 @@ class LocationSearchModal extends StatefulWidget {
     this.restrictToCountryCode,
     this.countryLabel,
     this.placeKinds,
+    this.countryOffersCities = false,
     this.title,
     this.hintText,
   });
@@ -58,6 +70,10 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
   final FocusNode _focusNode = FocusNode();
   Timer? _debounce;
   List<Map<String, dynamic>> _suggestions = [];
+
+  /// The country whose cities `_suggestions` currently holds, or '' when the
+  /// list is ordinary search results.
+  String _citiesOfCountry = '';
   List<Map<String, dynamic>> _recentSearches = [];
   bool _isLoading = false;
   bool _isLocating = false;
@@ -322,6 +338,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     if (query.trim().isEmpty) {
       setState(() {
         _suggestions = [];
+        _citiesOfCountry = '';
         _isLoading = false;
       });
       return;
@@ -337,6 +354,7 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     if (trimmed.isEmpty) {
       setState(() {
         _suggestions = [];
+        _citiesOfCountry = '';
         _isLoading = false;
       });
       return;
@@ -383,14 +401,17 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
             }
           }
           _suggestions = mapped;
+          _citiesOfCountry = '';
           _isLoading = false;
         });
+        await _maybeOfferCountryCities(trimmed, mapped);
       }
     } catch (e) {
       debugPrint('Location search error: $e');
       if (mounted && _searchController.text.trim() == trimmed) {
         setState(() {
           _suggestions = [];
+          _citiesOfCountry = '';
           _isLoading = false;
         });
       }
@@ -750,12 +771,75 @@ class _LocationSearchModalState extends State<LocationSearchModal> {
     );
   }
 
+  /// Swap the results for a country's cities when the text named a country.
+  ///
+  /// Driven by what Google actually returned rather than by the raw text, so
+  /// a half-typed "sri lan" works the moment Google resolves it to Sri Lanka.
+  /// The list comes from the server, where Gemini proposes and Google
+  /// confirms, so nothing invented can appear in it.
+  Future<void> _maybeOfferCountryCities(
+      String query, List<Map<String, dynamic>> mapped) async {
+    if (!widget.countryOffersCities || mapped.isEmpty) return;
+
+    // Only when the BEST match is a country. A search for "Kandy" must stay a
+    // search for Kandy even though Sri Lanka is further down the list.
+    final topName = (mapped.first['name'] ?? '').toString();
+    final code = countryCodeFor(topName);
+    if (code == null) return;
+
+    final cities = await GooglePlacesService.getCountryCities(
+      country: topName, countryCode: code,
+    );
+    if (!mounted || cities.isEmpty) return;
+    // The traveller may have typed on while we were away.
+    if (_searchController.text.trim() != query) return;
+
+    setState(() {
+      _citiesOfCountry = topName;
+      _suggestions = cities
+          .map<Map<String, dynamic>>((c) => <String, dynamic>{
+                'place_id': c['place_id'] ?? '',
+                'name': c['name'] ?? '',
+                // The country goes in both fields the planner reads, so the
+                // city it gets back names its own country without a lookup.
+                'address': topName,
+                'district': topName,
+                'latitude': c['latitude'] ?? 0.0,
+                'longitude': c['longitude'] ?? 0.0,
+              })
+          .toList();
+    });
+  }
+
   Widget _buildSuggestionsList() {
+    final showingCities = _citiesOfCountry.isNotEmpty;
     return ListView.builder(
-      itemCount: _suggestions.length,
+      itemCount: _suggestions.length + (showingCities ? 1 : 0),
       padding: const EdgeInsets.symmetric(vertical: 4),
       itemBuilder: (context, index) {
-        final suggestion = _suggestions[index];
+        if (showingCities && index == 0) {
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+            child: Row(
+              children: [
+                const Icon(Icons.location_city_rounded,
+                    size: 15, color: AppColors.brandGreen),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Cities in $_citiesOfCountry — pick where you arrive',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.brandGreen,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        final suggestion = _suggestions[index - (showingCities ? 1 : 0)];
         return ListTile(
           leading: Container(
             width: 36,

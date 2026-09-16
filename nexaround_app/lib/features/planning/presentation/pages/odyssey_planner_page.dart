@@ -409,8 +409,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         // excludes countries, and "Japan" under it returns Japana in Georgia.
         // Exit is only ever a city inside a country already fixed.
         placeKinds: isEntry ? '(regions)' : '(cities)',
+        // Typing a country answers with that country's cities, rather than
+        // offering the country as a row that then has to be corrected into a
+        // city. Exit is already inside a country, so it has nothing to swap.
+        countryOffersCities: isEntry,
         hintText: isEntry
-            ? 'Country, or the city you arrive in'
+            ? 'Type a country to see its cities, or a city'
             : 'Which city do you leave from in $_country?',
       ),
     );
@@ -845,7 +849,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
           const Text(
-            'Name the country, or the city you fly into.',
+            'Name the country, then pick the city you arrive in.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
@@ -857,7 +861,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             label: _awaitingEntryCity ? 'ARRIVE IN — PICK A CITY' : 'ARRIVE IN',
             value: _entryLabel,
             icon: Icons.flight_land_rounded,
-            helper: 'Country, or the city you arrive in',
+            helper: 'Type a country or a city',
             // Only when the entry is a city: a country needs no badge saying
             // it is itself.
             badge: _entryCity.isNotEmpty ? _country : null,
