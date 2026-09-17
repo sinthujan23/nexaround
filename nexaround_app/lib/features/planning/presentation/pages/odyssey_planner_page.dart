@@ -1111,7 +1111,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             label: 'ENTRY',
             value: _entryCity.isEmpty ? null : _entryCity,
             icon: Icons.flight_land_rounded,
-            helper: 'Optional - where the trip starts',
+            helper: 'Entry city (optional)',
             busy: _loadingEntryCities,
             // Opens the cities Google confirmed for the country, and falls
             // through to a search inside it when the list comes back empty.
@@ -1130,7 +1130,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             label: 'EXIT',
             value: _exitCity.isEmpty ? null : _exitCity,
             icon: Icons.flight_takeoff_rounded,
-            helper: 'Optional - where the trip finishes',
+            helper: 'Exit city (optional)',
             onTap: () {
               if (!_canPickEnds) {
                 _pickDestination();
