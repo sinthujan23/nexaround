@@ -1266,6 +1266,22 @@ class _ArCameraPageState extends State<ArCameraPage>
               _checkRouteStepAdvancement(pos);
             }
           });
+
+          // Auto re-fetch nearby places once the user has moved more than
+          // 100m from where AR last successfully fetched places, so results
+          // stay relevant as the user walks/drives instead of only ever
+          // reflecting wherever AR happened to be opened.
+          if (!_isFetchingPlaces && _lastFetchPosition != null) {
+            final double distanceSinceLastFetch = geo.Geolocator.distanceBetween(
+              _lastFetchPosition!.latitude,
+              _lastFetchPosition!.longitude,
+              pos.latitude,
+              pos.longitude,
+            );
+            if (distanceSinceLastFetch > 100.0) {
+              _fetchLivePlaces();
+            }
+          }
         });
 
     // If launched with an initial place (e.g. from Attraction Details AR button), auto-start route navigation
