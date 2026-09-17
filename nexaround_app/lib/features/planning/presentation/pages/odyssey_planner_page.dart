@@ -1089,7 +1089,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
           const Text(
-            'Choose the country. Arrival and departure cities are optional.',
+            'Choose the country. Entry and exit cities are optional.',
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
@@ -1108,34 +1108,42 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ).animate().fade(delay: 100.ms),
           const SizedBox(height: 12),
           _pickerField(
-            label: 'ARRIVE IN',
+            label: 'ENTRY',
             value: _entryCity.isEmpty ? null : _entryCity,
             icon: Icons.flight_land_rounded,
-            helper: _canPickEnds
-                ? 'Optional — where the trip starts'
-                : 'Optional — choose a destination first',
+            helper: 'Optional - where the trip starts',
             busy: _loadingEntryCities,
             // Opens the cities Google confirmed for the country, and falls
             // through to a search inside it when the list comes back empty.
-            onTap: !_canPickEnds || _loadingEntryCities
+            onTap: _loadingEntryCities
                 ? null
-                : _offerEntryCities,
+                : () {
+                    if (!_canPickEnds) {
+                      _pickDestination();
+                    } else {
+                      _offerEntryCities();
+                    }
+                  },
           ).animate().fade(delay: 130.ms),
           const SizedBox(height: 12),
           _pickerField(
-            label: 'LEAVE FROM',
+            label: 'EXIT',
             value: _exitCity.isEmpty ? null : _exitCity,
             icon: Icons.flight_takeoff_rounded,
-            helper: _canPickEnds
-                ? 'Optional — where the trip finishes'
-                : 'Optional — choose a destination first',
-            onTap: _canPickEnds ? () => _pickEnd(isEntry: false) : null,
+            helper: 'Optional - where the trip finishes',
+            onTap: () {
+              if (!_canPickEnds) {
+                _pickDestination();
+              } else {
+                _pickEnd(isEntry: false);
+              }
+            },
           ).animate().fade(delay: 160.ms),
           const SizedBox(height: 8),
           Text(
             _canPickEnds
-                ? 'Both optional, and both searched in $_country only — a trip '
-                    'starts and finishes in one country. Leave them empty and '
+                ? 'Both optional, and both searched in $_country only — entry '
+                    'and exit in one country. Leave them empty and '
                     'the route is proposed for you to confirm.'
                 : 'Leave these empty and the route is proposed for you to confirm.',
             style: const TextStyle(fontSize: 12, color: Colors.black45),
