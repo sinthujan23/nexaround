@@ -36,7 +36,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   final TextEditingController _budgetController = TextEditingController();
   final TextEditingController _travelersController = TextEditingController();
 
-  int _currentStep = 0; // 0 destination, 1 flights & hotels, 2 budget
+  int _currentStep = 0; // 0 destination, 1 dates & travelers, 2 flights & hotels, 3 budget
   int _days = 3;
   double _budget = 50000;
   int _travelers = 1;
@@ -61,6 +61,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   double? _departureLat;
   double? _departureLng;
   String? _nationality;
+  bool _isCustomDeparture = false;
 
   // What the place picker knew when the user tapped a destination. The picker
   // has always returned these; they were dropped on the floor, and the backend
@@ -83,6 +84,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   double? _entryLng;
   double? _exitLat;
   double? _exitLng;
+  bool _onlyThisCity = false;
+
+  bool get _isSameCity =>
+      _entryCity.isNotEmpty &&
+      _exitCity.isNotEmpty &&
+      _entryCity.trim().toLowerCase() == _exitCity.trim().toLowerCase();
 
   String get _countryCode => countryCodeFor(_country) ?? '';
 
@@ -178,6 +185,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   /// Best-effort reverse-geocode of the current location into the destination
   /// field. Never prompts for permission and never blocks the UI.
   Future<void> _prefillDestination() async {
+    if (_isCustomDeparture) return;
     try {
       final perm = await geo.Geolocator.checkPermission();
       if (perm == geo.LocationPermission.denied ||
@@ -220,6 +228,49 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     } catch (_) {
       // Location unavailable — the user can type a destination instead.
     }
+  }
+
+  String? get _departureDisplayValue {
+    if (_departureCity.isEmpty && _departureCountry.isEmpty) return null;
+    if (_departureCity.isNotEmpty && _departureCountry.isNotEmpty) {
+      return '$_departureCity, $_departureCountry';
+    }
+    return _departureCity.isNotEmpty ? _departureCity : _departureCountry;
+  }
+
+  Future<void> _pickDepartureLocation() async {
+    final result = await showModalBottomSheet<dynamic>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: false,
+      backgroundColor: Colors.transparent,
+      builder: (context) => const LocationSearchModal(
+        placeKinds: '(cities)',
+        title: 'Travelling From',
+        hintText: 'Search city or airport...',
+      ),
+    );
+    if (result is! Map || !mounted) return;
+    final name = result['name']?.toString() ?? '';
+    if (name.isEmpty) return;
+    final country = result['country']?.toString() ?? '';
+    final lat = (result['latitude'] as num?)?.toDouble();
+    final lng = (result['longitude'] as num?)?.toDouble();
+
+    setState(() {
+      _departureCity = name;
+      _departureCountry = country;
+      _departureLat = lat;
+      _departureLng = lng;
+      _isCustomDeparture = true;
+    });
+  }
+
+  Future<void> _resetDepartureToCurrentLocation() async {
+    setState(() {
+      _isCustomDeparture = false;
+    });
+    await _prefillDestination();
   }
 
   /// Offer the cities Google confirmed for the chosen country.
@@ -400,6 +451,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _exitCity = '';
       _exitLat = null;
       _exitLng = null;
+      _onlyThisCity = false;
     });
   }
 
@@ -441,6 +493,9 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         _exitLat = lat;
         _exitLng = lng;
       }
+      if (!_isSameCity) {
+        _onlyThisCity = false;
+      }
     });
   }
 
@@ -459,6 +514,8 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         );
         return;
       }
+    }
+    if (_currentStep == 1) {
       if (_startDate == null || _endDate == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -469,7 +526,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         return;
       }
     }
-    if (_currentStep == 1) {
+    if (_currentStep == 2) {
       if (_includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Please select Departure Date and Return Date for flights.')),
@@ -489,7 +546,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         return;
       }
     }
-    if (_currentStep < 2) {
+    if (_currentStep < 3) {
       setState(() => _currentStep++);
     } else {
       _submit();
@@ -529,6 +586,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           hotelCheckInDate: _formatDate(_hotelCheckInDate),
           entryCity: _entryCity,
           exitCity: _exitCity,
+          onlyThisCity: _isSameCity && _onlyThisCity,
           entryLatitude: _entryLat,
           entryLongitude: _entryLng,
           exitLatitude: _exitLat,
@@ -812,6 +870,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         destination: _destinationController.text.trim(),
         entryCity: _entryCity,
         exitCity: _exitCity,
+        onlyThisCity: _isSameCity && _onlyThisCity,
         entryLatitude: _entryLat,
         entryLongitude: _entryLng,
         exitLatitude: _exitLat,
@@ -939,7 +998,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 12),
       child: Row(
-        children: List.generate(3, (index) {
+        children: List.generate(4, (index) {
           final isActive = index <= _currentStep;
           return Expanded(
             child: AnimatedContainer(
@@ -962,8 +1021,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       case 0:
         return _buildDestinationStep();
       case 1:
-        return _buildFlightsAndHotelsStep();
+        return _buildDatesAndTravelersStep();
       case 2:
+        return _buildFlightsAndHotelsStep();
+      case 3:
         return _buildBudgetStep();
       default:
         return const SizedBox();
@@ -1084,7 +1145,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Where to, and\nfor how long?',
+            'Where do you\nwant to go?',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
           ).animate().fade().slideY(begin: 0.1, end: 0),
           const SizedBox(height: 8),
@@ -1093,6 +1154,44 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
+          // Departure origin: defaults to the traveller's auto-detected location,
+          // but can be changed to any city worldwide.
+          _pickerField(
+            label: 'TRAVELLING FROM',
+            value: _departureDisplayValue,
+            icon: Icons.my_location_rounded,
+            helper: 'Where will you be travelling from?',
+            badge: _isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null),
+            onTap: _pickDepartureLocation,
+          ).animate().fade(delay: 80.ms),
+          if (_isCustomDeparture) ...[
+            const SizedBox(height: 6),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: _resetDepartureToCurrentLocation,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.my_location_rounded, size: 12, color: AppColors.brandGreen),
+                      SizedBox(width: 4),
+                      Text(
+                        'Reset to current location',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.brandGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
           // Three fields, in the order the decisions are actually made: where
           // the trip is, then — only if the traveller cares — which city it
           // opens and closes in. Leaving both empty is the normal case: the
@@ -1139,6 +1238,86 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               }
             },
           ).animate().fade(delay: 160.ms),
+          if (_entryCity.isNotEmpty && _exitCity.isEmpty) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _exitCity = _entryCity;
+                    _exitLat = _entryLat;
+                    _exitLng = _entryLng;
+                    _onlyThisCity = true;
+                  });
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.black12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.sync_rounded, size: 13, color: Colors.black54),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Depart from same city ($_entryCity)',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (_isSameCity) ...[
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black12),
+              ),
+              child: SwitchListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.brandGreen,
+                inactiveThumbColor: Colors.grey.shade400,
+                inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
+                title: const Row(
+                  children: [
+                    Icon(Icons.location_city_rounded, color: Colors.black87, size: 20),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Only Visit This City',
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(left: 30, top: 2),
+                  child: Text(
+                    _onlyThisCity
+                        ? 'Trip will focus exclusively on $_entryCity'
+                        : 'Trip will explore $_entryCity and other regions',
+                    style: const TextStyle(fontSize: 11.5, color: Colors.black54),
+                  ),
+                ),
+                value: _onlyThisCity,
+                onChanged: (bool val) {
+                  setState(() => _onlyThisCity = val);
+                },
+              ),
+            ).animate().fade().slideY(begin: 0.08, end: 0),
+          ],
           const SizedBox(height: 8),
           Text(
             _canPickEnds
@@ -1147,6 +1326,27 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     'the route is proposed for you to confirm.'
                 : 'Leave these empty and the route is proposed for you to confirm.',
             style: const TextStyle(fontSize: 12, color: Colors.black45),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDatesAndTravelersStep() {
+    return SingleChildScrollView(
+      key: const ValueKey('dates_and_travelers'),
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'When, and who\nis joining?',
+            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
+          ).animate().fade().slideY(begin: 0.1, end: 0),
+          const SizedBox(height: 8),
+          const Text(
+            'Select your travel dates and group size.',
+            style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
           const Text(
@@ -1201,7 +1401,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ],
               ),
             ),
-          ).animate().fade(delay: 250.ms),
+          ).animate().fade(delay: 150.ms),
           const SizedBox(height: 32),
           const Text(
             'NUMBER OF TRAVELERS',
@@ -1303,7 +1503,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 ),
               ],
             ),
-          ).animate().fade(delay: 350.ms),
+          ).animate().fade(delay: 250.ms),
         ],
       ),
     );
@@ -1947,10 +2147,12 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
 
   bool get _isCurrentStepValid {
     if (_currentStep == 0) {
-      // A destination and dates. Arrive/leave are refinements, never gates.
-      return _hasDestination && _startDate != null && _endDate != null;
+      return _hasDestination;
     }
     if (_currentStep == 1) {
+      return _startDate != null && _endDate != null;
+    }
+    if (_currentStep == 2) {
       if (_includeFlights && (_flightStartDate == null || _flightEndDate == null)) {
         return false;
       }
@@ -1962,14 +2164,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       }
       return true;
     }
-    if (_currentStep == 2) {
+    if (_currentStep == 3) {
       return true;
     }
     return true;
   }
 
   Widget _buildBottomAction() {
-    final String label = _currentStep == 2 ? 'GENERATE ODYSSEY' : 'CONTINUE';
+    final String label = _currentStep == 3 ? 'GENERATE ODYSSEY' : 'CONTINUE';
     final blocked = !_isCurrentStepValid;
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
