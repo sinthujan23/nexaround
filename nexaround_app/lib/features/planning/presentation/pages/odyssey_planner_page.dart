@@ -566,8 +566,23 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   /// backing out, which must not start a generation at all.
   bool _routePreviewCancelled = false;
 
+  static Map<String, dynamic> _routeOf(Map<String, dynamic> preview) =>
+      (preview['route'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+  static List<Map<String, dynamic>> _legsOf(Map<String, dynamic> preview) =>
+      ((_routeOf(preview)['legs'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((l) => l.cast<String, dynamic>())
+          .toList();
+
   Future<Map<String, dynamic>?> _confirmRoute() async {
     _routePreviewCancelled = false;
+
+    // For a single-city trip explicitly requested by the traveller, skip preview
+    // and modal completely — avoids consuming Gemini and Maps API quota.
+    if (_isSameCity && _onlyThisCity) {
+      return null;
+    }
 
     Future<Map<String, dynamic>?> fetch(List<String> exclude) => _repository.previewRoute(
           destination: _destinationController.text.trim(),
@@ -598,6 +613,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     final first = await fetch(const []);
     // No preview, no obstacle: generation plans its own route, as it always did.
     if (first == null || !mounted) return null;
+
+    final legs = _legsOf(first);
+    // If the planned itinerary stays in a single city (1 leg or fewer),
+    // the route confirmation modal is not needed at all. Proceed directly.
+    if (legs.length <= 1) {
+      return _routeOf(first);
+    }
 
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
@@ -2133,6 +2155,7 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
   /// Plan a route unlike every one already offered and open it as a new tab.
   Future<void> _suggestAnother() async {
     if (_previews.length >= _RoutePreviewSheet.maxRoutes) return;
+    if (_legsOf(_previews[_current]).length <= 1) return;
     final from = _current;
     final next = await _plan(_exclusionsFor(null));
     if (next == null || !mounted) return;
@@ -2292,40 +2315,42 @@ class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
-                  Expanded(
-                    flex: 11,
-                    child: OutlinedButton(
-                      onPressed: (_busy || atLimit) ? null : _suggestAnother,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(Icons.alt_route_rounded, size: 16),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                atLimit ? 'Max 4 routes' : 'Suggest another route',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
+                  if (legs.length > 1) ...[
+                    Expanded(
+                      flex: 11,
+                      child: OutlinedButton(
+                        onPressed: (_busy || atLimit) ? null : _suggestAnother,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                          side: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.alt_route_rounded, size: 16),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  atLimit ? 'Max 4 routes' : 'Suggest another route',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
+                    const SizedBox(width: 10),
+                  ],
                   Expanded(
-                    flex: 9,
+                    flex: legs.length > 1 ? 9 : 1,
                     child: FilledButton(
                       onPressed: _busy
                           ? null

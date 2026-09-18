@@ -5,6 +5,12 @@ Usage on VPS:
 """
 import asyncio
 import logging
+import sys
+from pathlib import Path
+
+# Ensure project root is in sys.path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from sqlalchemy import select
 from app.core.database import async_session_maker
 from app.models.country_city import CountryCity

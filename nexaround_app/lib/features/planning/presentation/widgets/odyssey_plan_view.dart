@@ -453,7 +453,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildCinematicHeroCard(context),
-          if (widget.odyssey.verdict != null) _verdictBanner(widget.odyssey.verdict!),
           if (widget.odyssey.formattedDateRange.isNotEmpty) ...[
             _infoCard(
               'Trip Dates',
