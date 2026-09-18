@@ -1,4 +1,6 @@
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:geolocator/geolocator.dart' as geo;
@@ -602,229 +604,19 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     // No preview, no obstacle: generation plans its own route, as it always did.
     if (first == null || !mounted) return null;
 
-    // Cities the traveller has turned down, carried across re-previews so the
-    // planner cannot offer the same place back one shuffle later.
-    final turnedDown = <String>[];
-
-    // Held outside the modal's builder on purpose: `showModalBottomSheet`
-    // re-invokes that builder when the route rebuilds (a keyboard or a metrics
-    // change is enough), which would put a reshuffled route back to the first
-    // one it was given.
-    var preview = first;
-    var busy = false;
-
     return showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       isDismissible: false,
       enableDrag: false,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            final route = (preview['route'] as Map?)?.cast<String, dynamic>() ?? {};
-            final legs = ((route['legs'] as List?) ?? const [])
-                .whereType<Map>()
-                .map((l) => l.cast<String, dynamic>())
-                .toList();
-            final notice = preview['notice']?.toString() ?? '';
-            final region = route['region']?.toString() ?? '';
-
-            Future<void> reload(List<String> exclude) async {
-              setSheetState(() => busy = true);
-              final next = await fetch(exclude);
-              if (!sheetContext.mounted) return;
-              setSheetState(() {
-                busy = false;
-                // A failed reshuffle keeps what is on screen rather than
-                // emptying the sheet: the traveller can still accept it.
-                if (next != null) preview = next;
-              });
-              if (next == null && sheetContext.mounted) {
-                ScaffoldMessenger.of(sheetContext).showSnackBar(
-                  const SnackBar(content: Text('Could not find another route just now.')),
-                );
-              }
-            }
-
-            return Container(
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 10),
-                    Center(
-                      child: Container(
-                        width: 40, height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.black12,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 18, 20, 2),
-                      child: Text(
-                        legs.length == 1
-                            ? 'Your trip stays in ${legs.first['city'] ?? ''}'
-                            : 'Your trip visits ${legs.length} cities',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                      child: Text(
-                        region.isNotEmpty
-                            ? '$region · $_days days'
-                            : 'Nothing is booked yet — change it before we build the plan.',
-                        style: const TextStyle(fontSize: 13, color: Colors.black54),
-                      ),
-                    ),
-                    if (notice.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.info_outline_rounded,
-                                size: 16, color: Colors.orange),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                notice,
-                                style: const TextStyle(fontSize: 12, color: Colors.black87),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    Flexible(
-                      child: ListView.separated(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: legs.length,
-                        separatorBuilder: (_, __) => const Divider(
-                            height: 1, indent: 56, color: Color(0xFFEEF1F5)),
-                        itemBuilder: (_, i) {
-                          final leg = legs[i];
-                          final city = leg['city']?.toString() ?? '';
-                          final start = leg['start_day'];
-                          final end = leg['end_day'];
-                          final nights = leg['nights'];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              radius: 14,
-                              backgroundColor: AppColors.brandGreen.withValues(alpha: 0.12),
-                              child: Text(
-                                '${i + 1}',
-                                style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.brandGreen),
-                              ),
-                            ),
-                            title: Text(city,
-                                style: const TextStyle(fontWeight: FontWeight.w600)),
-                            subtitle: Text(
-                              start == end
-                                  ? 'Day $start'
-                                  : 'Days $start–$end · $nights ${nights == 1 ? 'night' : 'nights'}',
-                              style: const TextStyle(fontSize: 12, color: Colors.black45),
-                            ),
-                            // Removing a city re-plans around it rather than
-                            // editing the days here: the server decides the
-                            // route, so what comes back is always coherent.
-                            trailing: (legs.length > 1 && !busy)
-                                ? IconButton(
-                                    icon: const Icon(Icons.close_rounded,
-                                        size: 18, color: Colors.black38),
-                                    tooltip: 'Not this city',
-                                    onPressed: () {
-                                      if (city.isNotEmpty) turnedDown.add(city);
-                                      reload(List<String>.from(turnedDown));
-                                    },
-                                  )
-                                : null,
-                          );
-                        },
-                      ),
-                    ),
-                    if (busy)
-                      const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 12),
-                        child: Center(
-                          child: SizedBox(
-                            width: 20, height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        ),
-                      ),
-                    const Divider(height: 1, color: Color(0xFFEEF1F5)),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: busy
-                                  ? null
-                                  : () {
-                                      // Everything on screen was turned down,
-                                      // so none of it may come back.
-                                      for (final leg in legs) {
-                                        final city = leg['city']?.toString() ?? '';
-                                        if (city.isNotEmpty) turnedDown.add(city);
-                                      }
-                                      reload(List<String>.from(turnedDown));
-                                    },
-                              icon: const Icon(Icons.shuffle_rounded, size: 18),
-                              label: const Text('Somewhere else'),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: FilledButton(
-                              onPressed: busy
-                                  ? null
-                                  : () => Navigator.of(sheetContext).pop(route),
-                              child: const Text('Use this route'),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Centred under the two actions rather than inheriting the
-                    // column's left edge, and set apart from them: it leaves
-                    // the sheet without generating, so it should not read as a
-                    // third button in the same row.
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: TextButton(
-                          onPressed: busy
-                              ? null
-                              : () {
-                                  _routePreviewCancelled = true;
-                                  Navigator.of(sheetContext).pop();
-                                },
-                          child: const Text('Back', style: TextStyle(color: Colors.black54)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => _RoutePreviewSheet(
+        first: first,
+        days: _days,
+        fetch: fetch,
+        fixedEnds: {_entryCity, _exitCity},
+        onBack: () => _routePreviewCancelled = true,
+      ),
     );
   }
 
@@ -1049,10 +841,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.black12),
           ),
           child: Row(
@@ -1140,20 +932,21 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   Widget _buildDestinationStep() {
     return SingleChildScrollView(
       key: const ValueKey('destination'),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 140),
+      physics: const ClampingScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Where do you\nwant to go?',
-            style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.1),
+            'Where do you want to go?',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ).animate().fade().slideY(begin: 0.1, end: 0),
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
           const Text(
             'Choose the country. Entry and exit cities are optional.',
-            style: TextStyle(color: Colors.black54),
+            style: TextStyle(color: Colors.black54, fontSize: 12),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: 12),
           // Departure origin: defaults to the traveller's auto-detected location,
           // but can be changed to any city worldwide.
           _pickerField(
@@ -1165,7 +958,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             onTap: _pickDepartureLocation,
           ).animate().fade(delay: 80.ms),
           if (_isCustomDeparture) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 4),
             Align(
               alignment: Alignment.centerRight,
               child: GestureDetector(
@@ -1191,7 +984,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           // Three fields, in the order the decisions are actually made: where
           // the trip is, then — only if the traveller cares — which city it
           // opens and closes in. Leaving both empty is the normal case: the
@@ -1205,7 +998,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             helper: 'Pick the country you are travelling to',
             onTap: _pickDestination,
           ).animate().fade(delay: 100.ms),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _pickerField(
             label: 'ENTRY',
             value: _entryCity.isEmpty ? null : _entryCity,
@@ -1224,7 +1017,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     }
                   },
           ).animate().fade(delay: 130.ms),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _pickerField(
             label: 'EXIT',
             value: _exitCity.isEmpty ? null : _exitCity,
@@ -1275,7 +1068,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             ),
           ],
           if (_isSameCity) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -1285,7 +1078,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               child: SwitchListTile(
                 dense: true,
                 visualDensity: VisualDensity.compact,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
                 activeThumbColor: Colors.white,
                 activeTrackColor: AppColors.brandGreen,
                 inactiveThumbColor: Colors.grey.shade400,
@@ -1297,7 +1090,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     Expanded(
                       child: Text(
                         'Only Visit This City',
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ],
@@ -1308,7 +1101,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                     _onlyThisCity
                         ? 'Trip will focus exclusively on $_entryCity'
                         : 'Trip will explore $_entryCity and other regions',
-                    style: const TextStyle(fontSize: 11.5, color: Colors.black54),
+                    style: const TextStyle(fontSize: 11, color: Colors.black54),
                   ),
                 ),
                 value: _onlyThisCity,
@@ -1318,14 +1111,14 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ).animate().fade().slideY(begin: 0.08, end: 0),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
             _canPickEnds
                 ? 'Both optional, and both searched in $_country only — entry '
                     'and exit in one country. Leave them empty and '
                     'the route is proposed for you to confirm.'
                 : 'Leave these empty and the route is proposed for you to confirm.',
-            style: const TextStyle(fontSize: 12, color: Colors.black45),
+            style: const TextStyle(fontSize: 11, color: Colors.black45, height: 1.2),
           ),
         ],
       ),
@@ -2210,6 +2003,434 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The route preview: every route the planner has offered for this trip, one
+/// per tab, with the tab on screen being the one "Use this route" accepts.
+///
+/// A State of its own rather than a StatefulBuilder inside `_confirmRoute`:
+/// `showModalBottomSheet` re-invokes its builder when the route rebuilds (a
+/// keyboard or a metrics change is enough), and the PageController driving
+/// the tabs has to survive those rebuilds and be disposed only once the sheet
+/// has actually left the screen — after its exit animation, not the moment
+/// its future resolves.
+class _RoutePreviewSheet extends StatefulWidget {
+  const _RoutePreviewSheet({
+    required this.first,
+    required this.days,
+    required this.fetch,
+    required this.fixedEnds,
+    required this.onBack,
+  });
+
+  /// The route fetched before the sheet opened; the first tab.
+  final Map<String, dynamic> first;
+  final int days;
+
+  /// Plan a route that avoids the given cities. Null when it could not be.
+  final Future<Map<String, dynamic>?> Function(List<String> exclude) fetch;
+
+  /// The entry and exit city the traveller chose themselves, if any. The
+  /// planner must keep both on every route, so removing a city in between
+  /// cannot accidentally ask the server to replan around an airport.
+  final Set<String> fixedEnds;
+
+  /// The traveller left without choosing a route.
+  final VoidCallback onBack;
+
+  /// How many routes one trip may be offered. Every extra one is a billed
+  /// planner call, and each is planned around all the cities already shown,
+  /// so past a few the exclusion list outgrows what the server accepts.
+  static const int maxRoutes = 4;
+
+  /// Mirrors `exclude_cities: max_length=24` on OdysseyRoutePreviewRequest.
+  /// A longer list is refused outright rather than trimmed, which the app
+  /// would see as "no route".
+  static const int maxExclusions = 24;
+
+  @override
+  State<_RoutePreviewSheet> createState() => _RoutePreviewSheetState();
+}
+
+class _RoutePreviewSheetState extends State<_RoutePreviewSheet> {
+  /// One preview per tab, in the order they were offered.
+  late final List<Map<String, dynamic>> _previews = [widget.first];
+
+  /// Cities the traveller crossed out one by one. Kept across every tab so
+  /// the planner cannot hand one back on the next route.
+  final List<String> _turnedDown = [];
+
+  final PageController _pager = PageController();
+  int _current = 0;
+  bool _busy = false;
+
+  /// A two-line ListTile plus the divider under it.
+  static const double _legRowHeight = 73;
+
+  @override
+  void dispose() {
+    _pager.dispose();
+    super.dispose();
+  }
+
+  Map<String, dynamic> _routeOf(Map<String, dynamic> preview) =>
+      (preview['route'] as Map?)?.cast<String, dynamic>() ?? const {};
+
+  List<Map<String, dynamic>> _legsOf(Map<String, dynamic> preview) =>
+      ((_routeOf(preview)['legs'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((l) => l.cast<String, dynamic>())
+          .toList();
+
+  Iterable<String> _citiesOf(Map<String, dynamic> preview) => _legsOf(preview)
+      .map((l) => l['city']?.toString() ?? '')
+      .where((c) => c.isNotEmpty);
+
+  bool _isFixedEnd(String city) =>
+      widget.fixedEnds.any((f) => f.isNotEmpty && f.toLowerCase() == city.toLowerCase());
+
+  /// The cities the next planner call must avoid.
+  ///
+  /// For "Suggest another route" ([tab] is null) this avoids every city shown so
+  /// far, giving a different region. For removing a city ([tab] given) it
+  /// avoids only that city plus the other tabs, allowing other cities on the
+  /// one reshuffled. The cross-outs go first because they are what the
+  /// traveller actually rejected, so they are the ones kept if the list has
+  /// to be cut down to what the server accepts.
+  List<String> _exclusionsFor(int? tab) {
+    final seen = <String>{};
+    final out = <String>[];
+    void add(String city) {
+      if (city.isEmpty || _isFixedEnd(city) || !seen.add(city.toLowerCase())) return;
+      out.add(city);
+    }
+
+    _turnedDown.forEach(add);
+    for (var i = 0; i < _previews.length; i++) {
+      if (i != tab) _citiesOf(_previews[i]).forEach(add);
+    }
+    return out.take(_RoutePreviewSheet.maxExclusions).toList();
+  }
+
+  /// One planner call, with the sheet locked while it runs. A failure keeps
+  /// whatever is on screen rather than emptying it: every tab shown is still
+  /// a route the traveller can accept.
+  Future<Map<String, dynamic>?> _plan(List<String> exclude) async {
+    setState(() => _busy = true);
+    final next = await widget.fetch(exclude);
+    if (!mounted) return null;
+    setState(() => _busy = false);
+    if (next == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not find another route just now.')),
+      );
+    }
+    return next;
+  }
+
+  /// Re-plan the tab on screen without [city]. The tab is pinned before the
+  /// call so the answer lands on the route it was asked about, whatever is
+  /// on screen by the time it arrives.
+  Future<void> _dropCity(String city) async {
+    final tab = _current;
+    _turnedDown.add(city);
+    final next = await _plan(_exclusionsFor(tab));
+    if (next == null || !mounted) return;
+    setState(() => _previews[tab] = next);
+  }
+
+  /// Plan a route unlike every one already offered and open it as a new tab.
+  Future<void> _suggestAnother() async {
+    if (_previews.length >= _RoutePreviewSheet.maxRoutes) return;
+    final from = _current;
+    final next = await _plan(_exclusionsFor(null));
+    if (next == null || !mounted) return;
+    setState(() {
+      _previews.add(next);
+      _current = _previews.length - 1;
+    });
+    // The new page exists only once this frame has built it.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _goTo(_current, from: from);
+    });
+  }
+
+  /// Slide to a neighbouring tab; jump to a farther one, so the tabs in
+  /// between do not flash past on the way.
+  void _goTo(int tab, {required int from}) {
+    if (!_pager.hasClients) return;
+    if ((tab - from).abs() > 1) {
+      _pager.jumpToPage(tab);
+    } else {
+      _pager.animateToPage(
+        tab,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = _previews[_current];
+    final legs = _legsOf(preview);
+    final notice = preview['notice']?.toString() ?? '';
+    final region = _routeOf(preview)['region']?.toString() ?? '';
+    final tabbed = _previews.length > 1;
+    final atLimit = _previews.length >= _RoutePreviewSheet.maxRoutes;
+
+    // A PageView needs one height for every page. Sized to the longest route
+    // so no tab has to scroll, and capped so the actions stay on screen on a
+    // short phone — a longer list scrolls inside its page.
+    final longest = _previews.fold<int>(1, (n, p) => math.max(n, _legsOf(p).length));
+    final listHeight = math.min(
+      longest * _legRowHeight + 8,
+      MediaQuery.sizeOf(context).height * 0.45,
+    );
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 10),
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.black12,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+            ),
+            // One chip per route offered. Absent until there is a second, so
+            // the first preview looks as it always has.
+            if (tabbed)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    for (var i = 0; i < _previews.length; i++)
+                      ChoiceChip(
+                        label: Text('Route ${i + 1}'),
+                        selected: i == _current,
+                        onSelected: _busy ? null : (_) => _goTo(i, from: _current),
+                        showCheckmark: false,
+                        selectedColor: AppColors.brandGreen,
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: i == _current ? Colors.white : AppColors.textSecondary,
+                          fontWeight: i == _current ? FontWeight.w700 : FontWeight.w500,
+                        ),
+                        backgroundColor: AppColors.surface,
+                        side: BorderSide.none,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        visualDensity: VisualDensity.compact,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                  ],
+                ),
+              ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(20, tabbed ? 12 : 18, 20, 2),
+              child: Text(
+                legs.length == 1
+                    ? 'Your trip stays in ${legs.first['city'] ?? ''}'
+                    : 'Your trip visits ${legs.length} cities',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+              child: Text(
+                region.isNotEmpty
+                    ? '$region · ${widget.days} days'
+                    : 'Nothing is booked yet — change it before we build the plan.',
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ),
+            if (notice.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.info_outline_rounded,
+                        size: 16, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        notice,
+                        style: const TextStyle(fontSize: 12, color: Colors.black87),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            SizedBox(
+              height: listHeight,
+              child: PageView.builder(
+                controller: _pager,
+                // Locked while planning, so what comes back replaces the tab
+                // it was asked for — the one the traveller is looking at.
+                physics: _busy ? const NeverScrollableScrollPhysics() : const BouncingScrollPhysics(),
+                onPageChanged: (i) => setState(() => _current = i),
+                itemCount: _previews.length,
+                itemBuilder: (_, page) => _legList(_legsOf(_previews[page])),
+              ),
+            ),
+            if (_busy)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(
+                  child: SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
+            const Divider(height: 1, color: Color(0xFFEEF1F5)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 11,
+                    child: OutlinedButton(
+                      onPressed: (_busy || atLimit) ? null : _suggestAnother,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        side: const BorderSide(color: Color(0xFFE2E8F0)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.alt_route_rounded, size: 16),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                atLimit ? 'Max 4 routes' : 'Suggest another route',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 9,
+                    child: FilledButton(
+                      onPressed: _busy
+                          ? null
+                          : () => Navigator.of(context).pop(_routeOf(_previews[_current])),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                      ),
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Use this route',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Centred under the two actions rather than inheriting the
+            // column's left edge, and set apart from them: it leaves the
+            // sheet without generating, so it should not read as a third
+            // button in the same row.
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () {
+                          widget.onBack();
+                          Navigator.of(context).pop();
+                        },
+                  child: const Text('Back', style: TextStyle(color: Colors.black54)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _legList(List<Map<String, dynamic>> legs) {
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      itemCount: legs.length,
+      separatorBuilder: (context, index) => const Divider(
+          height: 1, indent: 56, color: Color(0xFFEEF1F5)),
+      itemBuilder: (_, i) {
+        final leg = legs[i];
+        final city = leg['city']?.toString() ?? '';
+        final start = leg['start_day'];
+        final end = leg['end_day'];
+        final nights = leg['nights'];
+        return ListTile(
+          leading: CircleAvatar(
+            radius: 14,
+            backgroundColor: AppColors.brandGreen.withValues(alpha: 0.12),
+            child: Text(
+              '${i + 1}',
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.brandGreen),
+            ),
+          ),
+          title: Text(city,
+              style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text(
+            start == end
+                ? 'Day $start'
+                : 'Days $start–$end · $nights ${nights == 1 ? 'night' : 'nights'}',
+            style: const TextStyle(fontSize: 12, color: Colors.black45),
+          ),
+          // Removing a city re-plans around it rather than editing the days
+          // here: the server decides the route, so what comes back is always
+          // coherent.
+          trailing: (legs.length > 1 && !_busy && city.isNotEmpty && !_isFixedEnd(city))
+              ? IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: Colors.black38),
+                  tooltip: 'Not this city',
+                  onPressed: () => _dropCity(city),
+                )
+              : null,
+        );
+      },
     );
   }
 }
