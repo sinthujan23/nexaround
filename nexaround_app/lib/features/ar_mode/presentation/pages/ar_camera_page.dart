@@ -9906,26 +9906,6 @@ HOW TO FORMAT EVERY REPLY:
           if (_hasArrivedAtDestination)
             Positioned.fill(child: _buildArrivalCelebration()),
 
-          // FLOATING AR MARKER ON TARGET (when in view)
-          if (isTargetInView && !_hasArrivedAtDestination)
-            () {
-              final angle = _signedAngleDelta(
-                _heading,
-                _navigationTarget!.bearing,
-              );
-              final dx = _projectAngleToScreenX(angle);
-              if (dx != null) {
-                final screenW = MediaQuery.of(context).size.width;
-                final screenH = MediaQuery.of(context).size.height;
-                return Positioned(
-                  left: (screenW * dx) - 80,
-                  top: screenH * 0.35,
-                  child: _buildNavigationBubble(_navigationTarget!),
-                );
-              }
-              return const SizedBox.shrink();
-            }(),
-
           // DISTANCE HUD (Elevated to fit perfectly above the bottom merged card)
           if (!_hasArrivedAtDestination)
             Positioned(
@@ -9952,13 +9932,7 @@ HOW TO FORMAT EVERY REPLY:
                             ? '${dM.round()} M'
                             : '${(dM / 1000).toStringAsFixed(1)} KM';
                       }
-                      // isTargetInView is also what puts the small navigation
-                      // bubble on screen, positioned close enough above this
-                      // HUD that a wrapped (two-line) place name can run into
-                      // it — cyan-on-cyan made the overlap unreadable.
-                      // Switching to the brand green here only while that
-                      // bubble is up keeps the two visually distinct.
-                      final hudColor = isTargetInView ? AppColors.brandGreen : cyan;
+                      const hudColor = cyan;
                       return Text(
                             displayDist.toUpperCase(),
                             style: TextStyle(
@@ -10013,16 +9987,17 @@ HOW TO FORMAT EVERY REPLY:
         ? 0.0
         : (bearingDiff.clamp(-60, 60) / 60) * (screenW * 0.25);
 
-    // Opacity: brighter when target is ahead
+    // Opacity: high base visibility so arrows are immediately clear
     final baseOpacity = isAhead
-        ? 0.9
-        : (0.5 + (1 - bearingDiff.abs() / 90).clamp(0, 1) * 0.4);
+        ? 1.0
+        : (0.75 + (1 - bearingDiff.abs() / 90).clamp(0, 1) * 0.25);
 
     return Stack(
       children: List.generate(3, (i) {
-        // Stagger each chevron vertically
-        final yPos = screenH * 0.55 - (i * 65);
-        final chevronOpacity = (baseOpacity - i * 0.2).clamp(0.15, 0.9);
+        // Stagger each chevron vertically in the upper camera viewport so it never
+        // collides with the distance HUD, location pill, or bottom navigation card.
+        final yPos = screenH * 0.25 - (i * 50);
+        final chevronOpacity = (baseOpacity - i * 0.15).clamp(0.65, 1.0);
         final chevronScale = 1.0 - (i * 0.1);
 
         return Positioned(
@@ -10041,7 +10016,7 @@ HOW TO FORMAT EVERY REPLY:
                           child: CustomPaint(
                             painter: _ChevronPainter(
                               color: cyan,
-                              glowIntensity: i == 0 ? 1.0 : 0.4,
+                              glowIntensity: i == 0 ? 1.0 : 0.7,
                             ),
                           ),
                         ),
@@ -10050,21 +10025,21 @@ HOW TO FORMAT EVERY REPLY:
                   )
                   .animate(onPlay: (c) => c.repeat())
                   .moveY(
-                    begin: 20,
-                    end: -20,
+                    begin: 12,
+                    end: -12,
                     duration: Duration(milliseconds: 1200 + i * 200),
                     curve: Curves.easeInOut,
                   )
                   .then()
                   .moveY(
-                    begin: -20,
-                    end: 20,
+                    begin: -12,
+                    end: 12,
                     duration: Duration(milliseconds: 1200 + i * 200),
                     curve: Curves.easeInOut,
                   )
                   .animate(onPlay: (c) => c.repeat(reverse: true))
                   .fade(
-                    begin: chevronOpacity * 0.6,
+                    begin: chevronOpacity * 0.85,
                     end: chevronOpacity,
                     duration: Duration(milliseconds: 800 + i * 300),
                   ),
@@ -10950,30 +10925,41 @@ class _ChevronPainter extends CustomPainter {
       ..lineTo(w * 0.25, h * 0.85) // inner-left
       ..close();
 
-    // Glow shadow
-    if (glowIntensity > 0.5) {
+    // Dark backdrop shadow for maximum contrast against bright backgrounds
+    final backdropShadowPaint = Paint()
+      ..color = Colors.black.withOpacity(0.55 * glowIntensity)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
+    canvas.drawPath(path, backdropShadowPaint);
+
+    // Neon glow bloom
+    if (glowIntensity > 0.3) {
       final glowPaint = Paint()
-        ..color = color.withOpacity(0.3 * glowIntensity)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 16);
+        ..color = color.withOpacity(0.65 * glowIntensity)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
       canvas.drawPath(path, glowPaint);
     }
 
-    // Main fill with gradient
+    // High-vibrancy gradient fill: pure white tip transitioning into electric cyan
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: [color.withOpacity(0.95), color.withOpacity(0.4)],
+      colors: [
+        Colors.white,
+        color,
+        color.withOpacity(0.85),
+      ],
+      stops: const [0.0, 0.45, 1.0],
     );
     final fillPaint = Paint()
       ..shader = gradient.createShader(Rect.fromLTWH(0, 0, w, h))
       ..style = PaintingStyle.fill;
     canvas.drawPath(path, fillPaint);
 
-    // White edge highlight
+    // Crisp white edge highlight for pop
     final edgePaint = Paint()
-      ..color = Colors.white.withOpacity(0.5 * glowIntensity)
+      ..color = Colors.white.withOpacity(0.9 * glowIntensity)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
+      ..strokeWidth = 2.5;
     canvas.drawPath(path, edgePaint);
   }
 
@@ -11544,79 +11530,7 @@ extension _ArCameraNavigation on _ArCameraPageState {
     }
   }
 
-  Widget _buildNavigationBubble(_ArLandmark landmark) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-              width: 160,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF00E5FF).withOpacity(0.9),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00E5FF).withOpacity(0.5),
-                    blurRadius: 20,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  const Icon(
-                    Icons.gps_fixed_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    landmark.name.toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 1,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    landmark.distance,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            )
-            .animate(onPlay: (c) => c.repeat(reverse: true))
-            .moveY(
-              begin: -10,
-              end: 10,
-              duration: 2.seconds,
-              curve: Curves.easeInOut,
-            ),
 
-        // Animated line to ground
-        Container(
-          width: 2,
-          height: 100,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                const Color(0xFF00E5FF),
-                const Color(0xFF00E5FF).withOpacity(0),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   Widget _buildBottomNavigationRow() {
     final name = _resolveDisplayLocation();
