@@ -3907,7 +3907,6 @@ def _route_prompt(
     entry_latlng: tuple[float | None, float | None] = (None, None),
     exit_latlng: tuple[float | None, float | None] = (None, None),
     exclude_cities: list[str] | None = None,
-    single_city: bool = False,
 ) -> str:
     # This call is where the hotel search's city strings come from, so an
     # invented country here is expensive: it books rooms in the wrong place.
@@ -4000,29 +3999,7 @@ def _route_prompt(
             f'- THE TRAVELLER FINISHES AT {exit_city}{exit_at}. The LAST leg\'s "city" MUST be '
             f'"{exit_city}"{", with exactly those coordinates" if exit_at else ""}, and "departure_airport" MUST be the airport nearest it.'
         )
-    # The traveller was asked, and said they want to stay put. Entry and exit
-    # already pin the first and last legs, but they do not cap the count — the
-    # planner is free to put three cities between them — so staying in one
-    # place has to be said outright. Gated on an entry city because the rule
-    # needs one to name: a flag arriving without one is not trusted.
-    if single_city and entry_city:
-        ends.append(
-            f'- THE TRAVELLER ASKED TO STAY IN {entry_city} FOR THE WHOLE TRIP. Return '
-            f'EXACTLY ONE leg: "{entry_city}", start_day 1, end_day {days}. This '
-            f'outranks the region and clustering rules below. Day trips out and back '
-            f'belong in the itinerary, not as extra legs. Both airports are the ones '
-            f'nearest {entry_city}.'
-        )
-    # Suppressed when staying put: ordering cities "between" the two ends
-    # would contradict the one-leg rule above. Unreachable from the app, which
-    # only offers the question when the ends match, but the API can be called
-    # directly and the two rules must not both fire.
-    if (
-        not single_city
-        and entry_city
-        and exit_city
-        and entry_city.strip().lower() != exit_city.strip().lower()
-    ):
+    if entry_city and exit_city and entry_city.strip().lower() != exit_city.strip().lower():
         ends.append(
             f'- Order the cities between {entry_city} and {exit_city} so the route runs '
             f'from one to the other without backtracking. If the two are far apart for '
@@ -4111,7 +4088,6 @@ async def plan_route(
     exit_latlng: tuple[float | None, float | None] = (None, None),
     preset: dict | None = None,
     exclude_cities: list[str] | None = None,
-    only_this_city: bool = False,
 ) -> RoutePlan:
     """Decide the cities the trip sleeps in and the airports it uses, in one call.
 
@@ -4166,7 +4142,7 @@ async def plan_route(
                 entry_latlng=entry_latlng, exit_latlng=exit_latlng,
                 destination=destination, days=days, mood=mood, travelers=travelers,
                 geo=geo, origin_line=origin_line, correction=correction,
-                exclude_cities=exclude_cities, single_city=only_this_city,
+                exclude_cities=exclude_cities,
             )
             raw, _ = await _call_gemini(
                 prompt, api_key, max_tokens=3072, thinking_budget=1024,
@@ -4315,7 +4291,6 @@ async def preview_route(
     destination_address: str = "",
     entry_city: str = "",
     exit_city: str = "",
-    only_this_city: bool = False,
     entry_latitude: float | None = None,
     entry_longitude: float | None = None,
     exit_latitude: float | None = None,
@@ -4359,7 +4334,6 @@ async def preview_route(
         geo_budget=geo_budget,
         entry_city=entry_city,
         exit_city=exit_city,
-        only_this_city=only_this_city,
         entry_latlng=(entry_latitude, entry_longitude),
         exit_latlng=(exit_latitude, exit_longitude),
         exclude_cities=exclude_cities,
@@ -4526,7 +4500,6 @@ async def generate_odyssey(
     destination_address: str = "",
     entry_city: str = "",
     exit_city: str = "",
-    only_this_city: bool = False,
     entry_latitude: float | None = None,
     entry_longitude: float | None = None,
     exit_latitude: float | None = None,
@@ -4615,7 +4588,6 @@ async def generate_odyssey(
             geo_budget=geo_budget,
             entry_city=entry_city,
             exit_city=exit_city,
-            only_this_city=only_this_city,
             entry_latlng=(entry_latitude, entry_longitude),
             exit_latlng=(exit_latitude, exit_longitude),
             preset=preset_route,
