@@ -84,7 +84,37 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
   double? _exitLat;
   double? _exitLng;
 
+  /// Whether the traveller asked to stay put for the whole trip. Only ever
+  /// answered while [_entryAndExitAreSameCity] holds, and retired the moment
+  /// either end moves — see [_clearOneCityAnswer].
+  bool _onlyVisitEntryCity = false;
+
   String get _countryCode => countryCodeFor(_country) ?? '';
+
+  /// The question "only visit this city?" only means something once the trip
+  /// opens and closes in the same place. With both ends blank — the normal
+  /// case — there is no "this city" to refer to, so asking would be asking
+  /// about nothing.
+  ///
+  /// Trimmed and lowercased to match how the backend compares the same pair
+  /// (`entry_city.strip().lower() == exit_city.strip().lower()`), so the two
+  /// sides cannot disagree about what "the same city" means.
+  bool get _entryAndExitAreSameCity {
+    final entry = _entryCity.trim().toLowerCase();
+    return entry.isNotEmpty && entry == _exitCity.trim().toLowerCase();
+  }
+
+  /// What actually travels to the server. The answer is ANDed with the
+  /// condition that raised the question, so a "yes" given for Colombo/Colombo
+  /// can never be sent for Colombo/Jaffna even if a reset is ever missed.
+  bool get _tripStaysInOneCity =>
+      _entryAndExitAreSameCity && _onlyVisitEntryCity;
+
+  /// The answer belongs to one specific pair of cities, so changing either end
+  /// retires it rather than letting it quietly survive into a pair the
+  /// question was never asked about. Call inside the setState that moves an
+  /// end, never after it.
+  void _clearOneCityAnswer() => _onlyVisitEntryCity = false;
 
   /// Entry and exit are both cities inside the trip's country, so neither can
   /// be offered until that country is known. Restricting the search is how a
@@ -336,6 +366,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _entryCity = picked['name']?.toString() ?? '';
       _entryLat = (picked['latitude'] as num?)?.toDouble();
       _entryLng = (picked['longitude'] as num?)?.toDouble();
+      _clearOneCityAnswer();
     });
   }
 
@@ -364,6 +395,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _entryCity = name;
       _entryLat = (result['latitude'] as num?)?.toDouble();
       _entryLng = (result['longitude'] as num?)?.toDouble();
+      _clearOneCityAnswer();
     });
   }
 
@@ -400,6 +432,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _exitCity = '';
       _exitLat = null;
       _exitLng = null;
+      _clearOneCityAnswer();
     });
   }
 
@@ -441,6 +474,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         _exitLat = lat;
         _exitLng = lng;
       }
+      _clearOneCityAnswer();
     });
   }
 
@@ -529,6 +563,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
           hotelCheckInDate: _formatDate(_hotelCheckInDate),
           entryCity: _entryCity,
           exitCity: _exitCity,
+          // The derived value, never the raw field: the preview and the
+          // generation must agree, and an approved preview comes back as a
+          // preset that skips planning entirely.
+          onlyThisCity: _tripStaysInOneCity,
           entryLatitude: _entryLat,
           entryLongitude: _entryLng,
           exitLatitude: _exitLat,
@@ -812,6 +850,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
         destination: _destinationController.text.trim(),
         entryCity: _entryCity,
         exitCity: _exitCity,
+        onlyThisCity: _tripStaysInOneCity,
         entryLatitude: _entryLat,
         entryLongitude: _entryLng,
         exitLatitude: _exitLat,
@@ -1093,12 +1132,17 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 28),
+          const Text(
+            'DESTINATION',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 2),
+          ),
+          const SizedBox(height: 12),
           // Three fields, in the order the decisions are actually made: where
           // the trip is, then — only if the traveller cares — which city it
           // opens and closes in. Leaving both empty is the normal case: the
           // route preview proposes them and asks before anything is built.
           _pickerField(
-            label: 'DESTINATION',
+            label: 'COUNTRY',
             value: _destinationController.text.trim().isEmpty
                 ? null
                 : _destinationController.text.trim(),
@@ -1139,6 +1183,52 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               }
             },
           ).animate().fade(delay: 160.ms),
+          // Asked only when the trip opens and closes in the same city. With
+          // both ends blank — the normal case — there is no "this city" for
+          // the question to be about, so it stays out of the way. The gap
+          // lives inside the block so hiding the question hides its spacing
+          // too, matching the switch blocks in step 2.
+          if (_entryAndExitAreSameCity) ...[
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.black12),
+              ),
+              child: SwitchListTile(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 0),
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.brandGreen,
+                inactiveThumbColor: Colors.grey.shade400,
+                inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
+                title: Row(
+                  children: [
+                    const Icon(Icons.location_city_rounded,
+                        color: Colors.black87, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Only visit $_entryCity',
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Text(
+                  'Stay in $_entryCity for the whole trip, '
+                  'instead of touring $_country.',
+                  style: const TextStyle(fontSize: 11.5, color: Colors.black45),
+                ),
+                value: _onlyVisitEntryCity,
+                onChanged: (bool val) =>
+                    setState(() => _onlyVisitEntryCity = val),
+              ),
+            ).animate().fade(delay: 190.ms),
+          ],
           const SizedBox(height: 8),
           Text(
             _canPickEnds

@@ -79,6 +79,7 @@ async def preview_odyssey_route(
             destination_address=data.destination_address or "",
             entry_city=data.entry_city or "",
             exit_city=data.exit_city or "",
+            only_this_city=data.only_this_city,
             entry_latitude=data.entry_latitude,
             entry_longitude=data.entry_longitude,
             exit_latitude=data.exit_latitude,
@@ -144,6 +145,17 @@ async def generate_odyssey(
         "hotel_check_out_date": data.hotel_check_out_date,
         "start_date": data.start_date,
         "end_date": data.end_date,
+        # The retry endpoint reads all three of these back out (see the
+        # rebuild below). Entry and exit were being read there and never
+        # written here, so a retried Odyssey silently lost the cities the
+        # traveller had chosen — fixed by storing them alongside the rest.
+        "entry_city": data.entry_city or "",
+        "exit_city": data.exit_city or "",
+        "only_this_city": data.only_this_city,
+        "entry_latitude": data.entry_latitude,
+        "entry_longitude": data.entry_longitude,
+        "exit_latitude": data.exit_latitude,
+        "exit_longitude": data.exit_longitude,
         # Stored, not just forwarded: the retry endpoint rebuilds its call from
         # these, so leaving them out would make a retried Odyssey lose the
         # grounding the first attempt had.
@@ -207,6 +219,7 @@ async def generate_odyssey(
         end_date=data.end_date,
         entry_city=data.entry_city or "",
         exit_city=data.exit_city or "",
+        only_this_city=data.only_this_city,
         entry_latitude=data.entry_latitude,
         entry_longitude=data.entry_longitude,
         exit_latitude=data.exit_latitude,
@@ -433,6 +446,7 @@ async def retry_odyssey_generation(
 
     entry_city = str(gen_params.get("entry_city") or "")[:DESTINATION_MAX]
     exit_city = str(gen_params.get("exit_city") or "")[:DESTINATION_MAX]
+    only_this_city = bool(gen_params.get("only_this_city") or False)
     mood = str(gen_params.get("mood") or meta.get("mood") or "balanced")[:MOOD_MAX]
     budget = _clamp(
         gen_params.get("budget") or meta.get("budget") or 1000.0, BUDGET_RANGE, 1000.0,
@@ -496,6 +510,7 @@ async def retry_odyssey_generation(
         end_date=end_date,
         entry_city=entry_city,
         exit_city=exit_city,
+        only_this_city=only_this_city,
         entry_latitude=_coord_or_none(gen_params.get("entry_latitude")),
         entry_longitude=_coord_or_none(gen_params.get("entry_longitude")),
         exit_latitude=_coord_or_none(gen_params.get("exit_latitude")),

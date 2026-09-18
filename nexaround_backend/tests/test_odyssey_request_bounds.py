@@ -150,3 +150,85 @@ def test_they_are_capped_like_every_other_free_text_field():
     with pytest.raises(ValidationError):
         _req(exit_city="G" * 201)
     assert _req(entry_city="Saint-Denis, La Reunion").entry_city
+
+
+# ── "Only visit this city" ─────────────────────────────────────────────────
+
+def test_only_this_city_defaults_to_off():
+    """App builds that predate the question send nothing and must be unaffected."""
+    assert _req().only_this_city is False
+
+
+def test_only_this_city_is_accepted():
+    assert _req(only_this_city=True).only_this_city is True
+
+
+def test_the_preview_request_carries_it_too():
+    """The preview and the generation must agree: an approved preview comes
+    back as a preset that skips route planning entirely, so a flag on only one
+    of the two would be bypassed."""
+    from app.schemas.itinerary import OdysseyRoutePreviewRequest
+
+    r = OdysseyRoutePreviewRequest(
+        destination="Sri Lanka", entry_city="Colombo", exit_city="Colombo",
+        only_this_city=True,
+    )
+    assert r.only_this_city is True
+    assert OdysseyRoutePreviewRequest(destination="Sri Lanka").only_this_city is False
+
+
+# ── Retry keeps what the traveller chose ───────────────────────────────────
+
+def test_every_parameter_the_retry_reads_is_one_the_generate_stored():
+    """A key read on retry but never written is a silent loss, not an error.
+
+    `entry_city` and `exit_city` were exactly that: the retry endpoint read
+    both out of `generation_params`, nothing ever put them in, and a retried
+    Odyssey quietly dropped the cities the traveller had chosen. Nothing
+    failed, so nothing surfaced it.
+
+    Asserted against the source rather than by exercising the endpoint,
+    because the loss is invisible at runtime — the reader just gets its
+    default and carries on.
+    """
+    import ast
+    import pathlib
+
+    src = pathlib.Path("app/api/v1/itineraries.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    written: set[str] = set()
+    read: set[str] = set()
+
+    for node in ast.walk(tree):
+        # generation_params = { "...": ... }
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict):
+            names = [
+                t.id for t in node.targets if isinstance(t, ast.Name)
+            ]
+            if "generation_params" in names:
+                written |= {
+                    k.value for k in node.value.keys
+                    if isinstance(k, ast.Constant) and isinstance(k.value, str)
+                }
+        # gen_params.get("...")
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get"
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "gen_params"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            read.add(node.args[0].value)
+
+    assert written, "generation_params dict not found — has it been renamed?"
+    assert read, "no gen_params.get(...) calls found — has the retry moved?"
+
+    missing = sorted(read - written)
+    assert not missing, (
+        f"retry reads {missing} out of generation_params, but generate never "
+        f"stores them — those choices are silently lost on every retry"
+    )

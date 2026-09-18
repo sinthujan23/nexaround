@@ -120,6 +120,12 @@ class OdysseyGenerateRequest(BaseModel):
     # planner treats them as a request rather than a guarantee either way.
     entry_city: str = Field(default="", max_length=DESTINATION_MAX)
     exit_city: str = Field(default="", max_length=DESTINATION_MAX)
+    # The traveller asked to stay in the entry city rather than tour the
+    # country. Only meaningful alongside an entry city, and the planner checks
+    # for one before honouring it. Defaults False so app builds that predate
+    # the question behave exactly as they do today; these models do not set
+    # extra="allow", so without this field the key would be dropped in silence.
+    only_this_city: bool = False
     # Where those two places actually are. The app picks them from Google, so
     # it knows to the metre; without these the route planner has to guess from
     # the name, and its guess becomes the leg coordinates that the hotel search
@@ -166,6 +172,12 @@ class OdysseyRoutePreviewRequest(BaseModel):
     hotel_check_in_date: Optional[str] = None
     entry_city: str = Field(default="", max_length=DESTINATION_MAX)
     exit_city: str = Field(default="", max_length=DESTINATION_MAX)
+    # The traveller asked to stay in the entry city rather than tour the
+    # country. Only meaningful alongside an entry city, and the planner checks
+    # for one before honouring it. Defaults False so app builds that predate
+    # the question behave exactly as they do today; these models do not set
+    # extra="allow", so without this field the key would be dropped in silence.
+    only_this_city: bool = False
     entry_latitude: Optional[float] = Field(default=None, ge=-90, le=90)
     entry_longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     exit_latitude: Optional[float] = Field(default=None, ge=-90, le=90)

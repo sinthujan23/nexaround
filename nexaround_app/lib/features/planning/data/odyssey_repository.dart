@@ -48,6 +48,9 @@ class OdysseyRepository {
     // Both optional and independent: a blank end means the planner chooses it.
     String entryCity = '',
     String exitCity = '',
+    // The traveller asked to stay in the entry city for the whole trip. Only
+    // ever true when entry and exit are the same place.
+    bool onlyThisCity = false,
     // Where those two places are. The picker knows to the metre; sending only
     // the name makes the route planner infer it, and its inference becomes the
     // leg coordinates the hotel search then uses.
@@ -91,6 +94,7 @@ class OdysseyRepository {
         'end_date': endDate,
         'entry_city': entryCity,
         'exit_city': exitCity,
+        'only_this_city': onlyThisCity,
         'entry_latitude': entryLatitude,
         'entry_longitude': entryLongitude,
         'exit_latitude': exitLatitude,
@@ -133,6 +137,9 @@ class OdysseyRepository {
     String? hotelCheckInDate,
     String entryCity = '',
     String exitCity = '',
+    // The traveller asked to stay in the entry city for the whole trip. Only
+    // ever true when entry and exit are the same place.
+    bool onlyThisCity = false,
     double? entryLatitude,
     double? entryLongitude,
     double? exitLatitude,
@@ -160,6 +167,7 @@ class OdysseyRepository {
           'hotel_check_in_date': hotelCheckInDate,
           'entry_city': entryCity,
           'exit_city': exitCity,
+          'only_this_city': onlyThisCity,
           'entry_latitude': entryLatitude,
           'entry_longitude': entryLongitude,
           'exit_latitude': exitLatitude,

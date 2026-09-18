@@ -217,3 +217,56 @@ def test_an_unusable_pair_is_ignored_rather_than_printed(bad):
     p = _prompt(entry_city="Kandy", entry_latlng=bad)
     assert "STARTS AT Kandy." in p
     assert "with exactly those coordinates" not in p
+
+
+# ── "Only visit this city" ─────────────────────────────────────────────────
+#
+# Client request: ask whether the traveller wants to stay put, and only ask it
+# when the trip opens and closes in the same city. Entry and exit already pin
+# the first and last legs, but they do not cap the count — the planner is free
+# to put three cities between two ends that happen to match — so staying in one
+# place has to be said outright.
+
+def test_staying_in_one_city_is_asked_for_outright():
+    p = _prompt(entry_city="Delhi", exit_city="Delhi", single_city=True)
+    assert "THE TRAVELLER ASKED TO STAY IN Delhi FOR THE WHOLE TRIP" in p
+    assert 'EXACTLY ONE leg: "Delhi", start_day 1, end_day 5' in p
+
+
+def test_nothing_is_said_when_the_traveller_did_not_ask_to_stay_put():
+    p = _prompt(entry_city="Delhi", exit_city="Delhi", single_city=False)
+    assert "FOR THE WHOLE TRIP" not in p
+
+
+def test_the_flag_is_not_trusted_without_a_city_to_name():
+    """The rule has to name a city, so a flag arriving alone is ignored."""
+    p = _prompt(entry_city="", exit_city="", single_city=True)
+    assert "FOR THE WHOLE TRIP" not in p
+
+
+def test_staying_put_outranks_the_region_and_clustering_rules():
+    """Said in the prompt: both of those rules argue for more than one city."""
+    p = _prompt(entry_city="Delhi", exit_city="Delhi", single_city=True)
+    assert "outranks the region and clustering rules below" in p
+    assert p.index("FOR THE WHOLE TRIP") < p.index("CLUSTER THE ROUTE")
+
+
+def test_day_trips_are_not_extra_legs():
+    """Otherwise a day out and back would be planned as a second stay."""
+    p = _prompt(entry_city="Delhi", exit_city="Delhi", single_city=True)
+    assert "Day trips out and back belong in the itinerary, not as extra legs" in p
+
+
+def test_ordering_is_suppressed_when_the_trip_stays_in_one_city():
+    """Unreachable from the app, which only asks when the ends match — but the
+    API can be called directly, and the two rules must not both fire."""
+    p = _prompt(entry_city="Delhi", exit_city="Chennai", single_city=True)
+    assert "Order the cities between" not in p
+    assert "THE TRAVELLER ASKED TO STAY IN Delhi" in p
+
+
+def test_a_normal_two_ended_route_is_unchanged():
+    """Pins the default: the flag off must read exactly as it did before."""
+    assert _prompt(entry_city="Delhi", exit_city="Chennai") == _prompt(
+        entry_city="Delhi", exit_city="Chennai", single_city=False
+    )
