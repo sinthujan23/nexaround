@@ -2342,47 +2342,6 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     // A builder that opted out renders nothing at all, badge included.
     if (btn is SizedBox) return btn;
 
-    final lowerCost = act.cost.trim().toLowerCase();
-    final bool isFree = lowerCost.isEmpty ||
-        lowerCost == 'free' ||
-        lowerCost == '0' ||
-        lowerCost == '\$0' ||
-        lowerCost.endsWith(' 0') ||
-        lowerCost.endsWith(' 0.00');
-
-    // The plan lists no cost, but the activity is not actually free — flag it
-    // with a [Paid] chip so the traveller budgets for it. Shown beside the
-    // platform button where one still exists, and on its own where it does not
-    // (except for the LIST restaurant sheet).
-    if (isFree && act.type != ActivityType.dining) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: const Color(0xFFFCA5A5)),
-            ),
-            child: const Text(
-              'Paid',
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFDC2626),
-              ),
-            ),
-          ),
-          if (btn != null) ...[
-            const SizedBox(width: 5),
-            btn,
-          ],
-        ],
-      );
-    }
-
     return btn ?? const SizedBox.shrink();
   }
 
@@ -2781,6 +2740,28 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final isFree = ctx.$4;
     final displayCost = ctx.$7;
 
+    if (isFree) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: const Color(0xFFBBF7D0),
+            width: 0.8,
+          ),
+        ),
+        child: const Text(
+          'Free',
+          style: TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF166534),
+          ),
+        ),
+      );
+    }
+
     final screenWidth = MediaQuery.of(context).size.width;
     final maxPillWidth = screenWidth > 120 ? screenWidth - 120 : 220.0;
 
@@ -2791,10 +2772,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
         constraints: BoxConstraints(maxWidth: maxPillWidth),
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
         decoration: BoxDecoration(
-          color: isFree ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+          color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
-            color: isFree ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+            color: const Color(0xFFE2E8F0),
             width: 0.8,
           ),
         ),
@@ -2804,17 +2785,17 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           children: [
             Text(
               displayCost,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: isFree ? const Color(0xFF166534) : Colors.black87,
+                color: Colors.black87,
               ),
             ),
             const SizedBox(width: 4),
             Container(
               width: 1,
               height: 9,
-              color: isFree ? const Color(0xFF86EFAC) : const Color(0xFFCBD5E1),
+              color: const Color(0xFFCBD5E1),
             ),
             const SizedBox(width: 4),
             Flexible(
@@ -2822,18 +2803,18 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                 sourceTag,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: isFree ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                  color: Color(0xFF64748B),
                 ),
               ),
             ),
             const SizedBox(width: 3),
-            Icon(
+            const Icon(
               Icons.info_outline_rounded,
               size: 10.5,
-              color: isFree ? const Color(0xFF15803D) : const Color(0xFF94A3B8),
+              color: Color(0xFF94A3B8),
             ),
           ],
         ),

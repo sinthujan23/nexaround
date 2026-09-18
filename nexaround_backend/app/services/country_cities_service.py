@@ -39,6 +39,7 @@ import logging
 import re
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import place_cache_service
 
@@ -163,6 +164,7 @@ async def _confirm(
 async def main_cities(
     country: str, country_code: str, *, gemini_key: str, maps_key: str,
     use_cache: bool = True,
+    db: AsyncSession | None = None,
 ) -> list[dict]:
     """Verified cities for one country, newest-known first. Never raises."""
     cc = (country_code or "").strip().upper()
@@ -177,6 +179,21 @@ async def main_cities(
                 return json.loads(cached)
             except ValueError:
                 pass
+
+    # 1. Database check: if saved in PostgreSQL, return immediately without Gemini or Google Maps API calls
+    if db is not None:
+        try:
+            from sqlalchemy import select
+            from app.models.country_city import CountryCity
+            stmt = select(CountryCity).where(CountryCity.country_code == cc)
+            res = await db.execute(stmt)
+            record = res.scalars().first()
+            if record and record.cities:
+                if use_cache:
+                    await place_cache_service.set_raw(key, json.dumps(record.cities), ttl=_CACHE_TTL)
+                return record.cities
+        except Exception as exc:
+            logger.warning("Country cities: DB read failed for %s: %s", cc, exc)
 
     if not gemini_key or not maps_key:
         return []
@@ -210,6 +227,25 @@ async def main_cities(
             continue
         seen.add(outcome["place_id"])
         cities.append(outcome)
+
+    # 2. Database persistence: save verified cities to PostgreSQL
+    if cities and db is not None:
+        try:
+            from sqlalchemy import select
+            from app.models.country_city import CountryCity
+            stmt = select(CountryCity).where(CountryCity.country_code == cc)
+            res = await db.execute(stmt)
+            record = res.scalars().first()
+            if record:
+                record.cities = cities
+                record.country = country
+            else:
+                db.add(CountryCity(country_code=cc, country=country, cities=cities))
+            await db.commit()
+            logger.info("Country cities: saved %d cities for %s (%s) to DB", len(cities), country, cc)
+        except Exception as exc:
+            logger.warning("Country cities: DB write failed for %s: %s", cc, exc)
+            await db.rollback()
 
     if cities and use_cache:
         await place_cache_service.set_raw(key, json.dumps(cities), ttl=_CACHE_TTL)

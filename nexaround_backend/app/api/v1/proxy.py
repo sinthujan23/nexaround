@@ -396,6 +396,7 @@ async def get_country_cities(
     maps_key = await settings.get_setting("google_maps_api_key")
     cities = await country_cities_service.main_cities(
         country, country_code, gemini_key=gemini_key, maps_key=maps_key,
+        db=db,
     )
     return {"country": country, "country_code": country_code.upper(), "cities": cities}
 

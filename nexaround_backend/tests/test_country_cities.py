@@ -289,3 +289,34 @@ def test_a_corrupt_cache_entry_is_rebuilt_not_raised(monkeypatch, patched):
     async def bad(key): return "{not json"
     monkeypatch.setattr(CC.place_cache_service, "get_raw", bad)
     assert [c["name"] for c in asyncio.run(_run())] == ["Tokyo"]
+
+
+def test_database_hit_answers_without_gemini(monkeypatch):
+    stored = [{"name": "Luanda", "place_id": "ao_luanda", "latitude": -8.8,
+               "longitude": 13.2, "country_code": "AO"}]
+    async def no_redis(key): return None
+    monkeypatch.setattr(CC.place_cache_service, "get_raw", no_redis)
+
+    class FakeRecord:
+        cities = stored
+        country = "Angola"
+        country_code = "AO"
+
+    class FakeScalar:
+        def first(self): return FakeRecord()
+
+    class FakeResult:
+        def scalars(self): return FakeScalar()
+
+    class FakeSession:
+        async def execute(self, stmt): return FakeResult()
+        async def commit(self): pass
+        async def rollback(self): pass
+        def add(self, obj): pass
+
+    async def boom(*a, **k): raise AssertionError("Gemini should not be called when DB has data")
+    monkeypatch.setattr(CC, "_propose", boom)
+
+    result = asyncio.run(CC.main_cities("Angola", "ao", gemini_key="g", maps_key="m", db=FakeSession()))
+    assert result == stored
+

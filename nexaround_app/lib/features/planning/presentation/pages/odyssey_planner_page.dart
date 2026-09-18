@@ -305,6 +305,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     final picked = await showModalBottomSheet<Map<String, dynamic>>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: false,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => Container(
         decoration: const BoxDecoration(
@@ -320,28 +321,22 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 40, height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.black12,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
-                child: Text(
-                  'Where does the trip start in $country?',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-              ),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Text(
-                  'Pick the city you arrive in. The plan is built around it.',
-                  style: TextStyle(fontSize: 13, color: Colors.black54),
+                padding: const EdgeInsets.fromLTRB(20, 14, 10, 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Where will the trip start in $country?',
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.black87, size: 22),
+                      tooltip: 'Close',
+                      onPressed: () => Navigator.of(sheetContext).pop(),
+                    ),
+                  ],
                 ),
               ),
               Flexible(
@@ -941,50 +936,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             'Where do you want to go?',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ).animate().fade().slideY(begin: 0.1, end: 0),
-          const SizedBox(height: 4),
-          const Text(
-            'Choose the country. Entry and exit cities are optional.',
-            style: TextStyle(color: Colors.black54, fontSize: 12),
-          ),
           const SizedBox(height: 12),
-          // Departure origin: defaults to the traveller's auto-detected location,
-          // but can be changed to any city worldwide.
-          _pickerField(
-            label: 'TRAVELLING FROM',
-            value: _departureDisplayValue,
-            icon: Icons.my_location_rounded,
-            helper: 'Where will you be travelling from?',
-            badge: _isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null),
-            onTap: _pickDepartureLocation,
-          ).animate().fade(delay: 80.ms),
-          if (_isCustomDeparture) ...[
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: _resetDepartureToCurrentLocation,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.my_location_rounded, size: 12, color: AppColors.brandGreen),
-                      SizedBox(width: 4),
-                      Text(
-                        'Reset to current location',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.brandGreen,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
           // Three fields, in the order the decisions are actually made: where
           // the trip is, then — only if the traveller cares — which city it
           // opens and closes in. Leaving both empty is the normal case: the
@@ -997,7 +949,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             icon: Icons.public_rounded,
             helper: 'Pick the country you are travelling to',
             onTap: _pickDestination,
-          ).animate().fade(delay: 100.ms),
+          ).animate().fade(delay: 80.ms),
           const SizedBox(height: 8),
           _pickerField(
             label: 'ENTRY',
@@ -1016,7 +968,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                       _offerEntryCities();
                     }
                   },
-          ).animate().fade(delay: 130.ms),
+          ).animate().fade(delay: 110.ms),
           const SizedBox(height: 8),
           _pickerField(
             label: 'EXIT',
@@ -1030,7 +982,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 _pickEnd(isEntry: false);
               }
             },
-          ).animate().fade(delay: 160.ms),
+          ).animate().fade(delay: 140.ms),
           if (_entryCity.isNotEmpty && _exitCity.isEmpty) ...[
             const SizedBox(height: 8),
             Align(
@@ -1083,14 +1035,22 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 activeTrackColor: AppColors.brandGreen,
                 inactiveThumbColor: Colors.grey.shade400,
                 inactiveTrackColor: Colors.black.withValues(alpha: 0.12),
-                title: const Row(
+                title: Row(
                   children: [
-                    Icon(Icons.location_city_rounded, color: Colors.black87, size: 20),
-                    SizedBox(width: 10),
-                    Expanded(
+                    const Icon(Icons.location_city_rounded, color: Colors.black87, size: 20),
+                    const SizedBox(width: 10),
+                    const Expanded(
                       child: Text(
-                        'Only Visit This City',
+                        'Visit Only This City?',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Tooltip(
+                      message: 'Focus entire itinerary on $_entryCity without visiting other regions',
+                      triggerMode: TooltipTriggerMode.tap,
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 4),
+                        child: Icon(Icons.help_outline_rounded, size: 16, color: Colors.black38),
                       ),
                     ),
                   ],
@@ -1111,15 +1071,44 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ).animate().fade().slideY(begin: 0.08, end: 0),
           ],
-          const SizedBox(height: 6),
-          Text(
-            _canPickEnds
-                ? 'Both optional, and both searched in $_country only — entry '
-                    'and exit in one country. Leave them empty and '
-                    'the route is proposed for you to confirm.'
-                : 'Leave these empty and the route is proposed for you to confirm.',
-            style: const TextStyle(fontSize: 11, color: Colors.black45, height: 1.2),
-          ),
+          const SizedBox(height: 8),
+          // Departure origin: defaults to the traveller's auto-detected location,
+          // but can be changed to any city worldwide.
+          _pickerField(
+            label: 'TRAVELLING FROM',
+            value: _departureDisplayValue,
+            icon: Icons.my_location_rounded,
+            helper: 'Where will you be travelling from?',
+            badge: _isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null),
+            onTap: _pickDepartureLocation,
+          ).animate().fade(delay: 170.ms),
+          if (_isCustomDeparture) ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: GestureDetector(
+                onTap: _resetDepartureToCurrentLocation,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.my_location_rounded, size: 12, color: AppColors.brandGreen),
+                      SizedBox(width: 4),
+                      Text(
+                        'Reset to current location',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.brandGreen,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
