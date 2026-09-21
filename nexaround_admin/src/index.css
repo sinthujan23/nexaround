@@ -697,6 +697,9 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   justify-content: center;
   z-index: 9999;
   animation: modalFadeIn 0.2s ease-out;
+  /* Room for the dialog to stop short of the screen edges. Pairs with the
+     max-height below, which subtracts exactly this much. */
+  padding: 24px 16px;
 }
 
 .modal-content {
@@ -709,6 +712,17 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   padding: 24px;
   position: relative;
   animation: modalSlideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* A dialog taller than the screen used to be clipped at BOTH ends and there
+     was no way to reach either: the overlay is fixed and centres its child, so
+     the overflow went half above the viewport and half below with nothing to
+     scroll. The package form is the tallest in the panel - fifteen fields, an
+     uploader and a map - so it lost its title at the top and its Save button
+     at the bottom. */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  /* Scrolling past the end of the dialog must not start scrolling the page
+     behind it. */
+  overscroll-behavior: contain;
 }
 
 @keyframes modalFadeIn {
