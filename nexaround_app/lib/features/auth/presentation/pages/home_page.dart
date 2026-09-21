@@ -458,7 +458,13 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     final isActive = _selectedIndex == index;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () {
+        if (index == 3) {
+          switchToDiscover(initialTab: 0);
+        } else {
+          setState(() => _selectedIndex = index);
+        }
+      },
       child: AnimatedContainer(
         duration: AppDurations.normal,
         curve: AppCurves.standard,

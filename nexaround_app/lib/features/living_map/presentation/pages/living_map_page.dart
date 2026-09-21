@@ -6061,7 +6061,7 @@ class _LivingMapPageState extends State<LivingMapPage>
 
     final double cardHeight = effectiveMaxPlaces == 0
         ? 180.0
-        : (78.0 + effectiveMaxPlaces * 40.5).clamp(180.0, 495.0);
+        : (86.0 + effectiveMaxPlaces * 43.0).clamp(180.0, 525.0);
 
     // Six streamlined cards, in the order PlaceBands.sections declares.
     return SizedBox(
@@ -6231,7 +6231,7 @@ class _LivingMapPageState extends State<LivingMapPage>
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -6364,7 +6364,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                               );
                             },
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6.5),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [

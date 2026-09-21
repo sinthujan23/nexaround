@@ -454,6 +454,7 @@ async def nearby_search(
 
     body = {
         "maxResultCount": max_results,
+        "languageCode": "en",
         "locationRestriction": {
             "circle": {
                 "center": {
@@ -554,6 +555,7 @@ async def text_search(
     bias_radius = float(min(max(radius_m, 500.0), 50000.0)) if radius_m else 50000.0
     body = {
         "textQuery": query,
+        "languageCode": "en",
         "locationBias": {
             "circle": {
                 "center": {
@@ -618,6 +620,7 @@ async def nearby_search_typed(
     }
     body = {
         "maxResultCount": 20,
+        "languageCode": "en",
         "includedTypes": [place_type],
         "locationRestriction": {
             "circle": {
@@ -816,6 +819,7 @@ async def nearby_search_legacy(
         "location": f"{latitude},{longitude}",
         "radius": eff_radius,
         "key": google_maps_key,
+        "language": "en",
     }
 
     if legacy_type:
@@ -1008,7 +1012,7 @@ async def find_place_id_legacy(
     # back to the sparse local row for every attraction predating
     # `google_place_id`. One result is all this needs: it is resolving an
     # identifier, not offering a choice.
-    body: dict = {"textQuery": clean_name, "maxResultCount": 1}
+    body: dict = {"textQuery": clean_name, "maxResultCount": 1, "languageCode": "en"}
     if latitude is not None and longitude is not None:
         # Same tight circle as before, and for the same reason: the stored names
         # are generic enough that a wide bias matches the wrong branch.
@@ -1119,7 +1123,7 @@ async def resolve_place_geo(
         print("⚠️ google_maps_api_key not set in admin settings — cannot resolve destination")
         return None
 
-    body: dict = {"textQuery": clean_name, "maxResultCount": 1}
+    body: dict = {"textQuery": clean_name, "maxResultCount": 1, "languageCode": "en"}
     if bias_lat is not None and bias_lng is not None:
         body["locationBias"] = {"circle": {
             "center": {"latitude": bias_lat, "longitude": bias_lng},
