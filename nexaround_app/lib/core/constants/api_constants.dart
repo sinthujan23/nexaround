@@ -46,6 +46,12 @@ class ApiConstants {
   
   // Discovery endpoints
   static const String discoveryHistory = '$apiVersion/discovery/history';
+
+  // Experiences (vendor marketplace)
+  static const String experiencesNearby = '$apiVersion/experiences/nearby';
+  static const String experiencePackages = '$apiVersion/experiences/packages';
+  static const String experienceVendors = '$apiVersion/experiences/vendors';
+  static const String experienceEnquiries = '$apiVersion/experiences/enquiries';
   static const String discoveryGenerate = '$apiVersion/discovery/generate';
   
   // Mapbox Configuration

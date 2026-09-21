@@ -26,6 +26,7 @@ import 'package:nexaround_app/features/attractions/data/models/attraction_model.
 import 'package:nexaround_app/features/attractions/domain/entities/attraction.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nexaround_app/core/utils/place_sections.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experiences_tab.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_bloc.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_event.dart';
 import 'package:nexaround_app/features/manual_mode/presentation/bloc/map_state.dart';
@@ -51,9 +52,12 @@ class DiscoverPage extends StatefulWidget {
     this.requestCount = 0,
   });
 
-  /// The Discovery tabs, in order. The six place sections come first and
-  /// Emergency sits apart at the end — it is the panic surface, not a category.
+  /// The Discovery tabs, in order. Experiences leads — it is the vendor
+  /// marketplace, the only section selling something, so it goes ahead of the
+  /// Google-sourced place sections. Emergency sits apart at the end: it is the
+  /// panic surface, not a category.
   static const List<String> tabs = [
+    'Experiences',
     'POI',
     'Nature',
     'Food',
@@ -77,6 +81,9 @@ class DiscoverPage extends StatefulWidget {
         return tabs.indexOf('Food');
       case 'POI':
       case 'Attractions':
+      // 'Experiences' here is Around You's name for Google-sourced attractions,
+      // which POI absorbed — NOT the vendor marketplace tab. Around You is out
+      // of scope for the marketplace, so this deliberately still routes to POI.
       case 'Experiences':
         return tabs.indexOf('POI');
       case 'Nature':
@@ -89,7 +96,9 @@ class DiscoverPage extends StatefulWidget {
       case 'Hospital':
         return tabs.indexOf('Hospital');
       default:
-        return 0;
+        // POI, not index 0: index 0 is the vendor marketplace now, and an
+        // unmapped Around You category is a place, not a package.
+        return tabs.indexOf('POI');
     }
   }
 
@@ -103,6 +112,14 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
   late AnimationController _radarController;
   final ScrollController _tabScrollController = ScrollController();
   final ScrollController _contentScrollController = ScrollController();
+
+  // The Experiences tab owns its own fetching and paging. The BlocBuilder
+  // wrapping the PageView rebuilds on every unrelated MapBloc emit, so a
+  // GlobalKey is what guarantees that tab keeps its State — and its scroll
+  // position and loaded pages — across those rebuilds, as well as giving
+  // _fetchForTab a handle to call refresh() on.
+  final GlobalKey<ExperiencesTabState> _experiencesKey =
+      GlobalKey<ExperiencesTabState>();
   Position? _currentPosition;
 
   // Coordinates the banded fetch was last dispatched for. FetchBandedPlaces
@@ -260,6 +277,14 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
       'Medical': 'Medical',
       'Hospital': 'Hospital',
     };
+    // Experiences is first-party data on its own endpoint — no MapBloc, no
+    // banded Google fetch. It is absent from tabCategories for the same reason
+    // Emergency is.
+    if (_tabs[index] == 'Experiences') {
+      _experiencesKey.currentState?.refresh(lat, lng);
+      return;
+    }
+
     final String? category = tabCategories[_tabs[index]];
 
     if (category != null) {
@@ -542,9 +567,28 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
                         final isCategoryLoading =
                             state.loadingBandCategories.contains(activeSectionKey) ||
                             state.enrichingCategories.contains(activeSectionKey);
+                        // Experiences is excluded alongside Emergency: it
+                        // consumes no MapBloc state, so sections[...] is always
+                        // empty for it and this would otherwise pin a skeleton
+                        // on the tab forever.
                         final isLoading = pageTab != 'Emergency' &&
+                            pageTab != 'Experiences' &&
                             (state.status == MapStatus.loading || state.status == MapStatus.initial || isCategoryLoading) &&
                             (sections[activeSectionKey] ?? []).isEmpty;
+
+                        // Returned before the shared scroll wrapper: the
+                        // Experiences tab has its own ListView, RefreshIndicator
+                        // and infinite scroll, which cannot be nested inside a
+                        // SingleChildScrollView.
+                        if (pageTab == 'Experiences') {
+                          return ExperiencesTab(
+                            key: _experiencesKey,
+                            latitude: _currentPosition?.latitude ??
+                                CacheService.getLastFetchLat(),
+                            longitude: _currentPosition?.longitude ??
+                                CacheService.getLastFetchLng(),
+                          );
+                        }
 
                         return SingleChildScrollView(
                           key: ValueKey('discover_content_tab_$pageIndex'),
@@ -588,6 +632,9 @@ class _DiscoverPageState extends State<DiscoverPage> with SingleTickerProviderSt
 
   Widget _buildTabContentForIndex(int tabIndex, bool isLoading) {
     switch (_tabs[tabIndex]) {
+      // Built by the early return in the PageView itemBuilder, which bypasses
+      // the shared SingleChildScrollView wrapper.
+      case 'Experiences': return const SizedBox.shrink();
       case 'POI': return _buildPoiTab(isLoading);
       case 'Nature': return _buildNatureTab(isLoading);
       case 'Food': return _buildFoodTab(isLoading);

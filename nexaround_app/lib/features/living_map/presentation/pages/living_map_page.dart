@@ -684,7 +684,10 @@ class _LivingMapPageState extends State<LivingMapPage>
       onTap: () {
         final homeState = context.findAncestorStateOfType<HomePageState>();
         if (homeState != null) {
-          homeState.switchToDiscover();
+          // switchToDiscover()'s default is index 0, which is the Experiences
+          // marketplace now. This entry point is the Around You refresh, which
+          // is about places — so name the tab rather than inherit the default.
+          homeState.switchToDiscover(initialTab: DiscoverPage.tabIndexFor('POI'));
         } else {
           _showDiscoveryEngineSheet(context);
         }

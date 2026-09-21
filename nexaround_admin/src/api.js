@@ -65,6 +65,49 @@ export async function apiDelete(endpoint) {
   return apiFetch(endpoint, { method: 'DELETE' });
 }
 
+export async function apiPatch(endpoint, body) {
+  return apiFetch(endpoint, {
+    method: 'PATCH',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+// Multipart uploads cannot go through apiFetch: it hard-sets
+// 'Content-Type: application/json', which overwrites the multipart boundary
+// the browser needs to generate. The CSV importer in ApiUsage.jsx already
+// works around this with a raw fetch; this is that workaround, once, with the
+// 401 handling kept consistent with apiFetch.
+export async function apiUpload(endpoint, files) {
+  const body = new FormData();
+  Array.from(files).forEach((file) => body.append('files', file));
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    body,
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token')}` },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('admin_token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+        detail: { message: 'Session expired. Please sign in again.' },
+      }));
+    }
+    let errorMsg = response.statusText;
+    try {
+      const errData = await response.json();
+      if (errData && errData.detail) {
+        errorMsg = typeof errData.detail === 'string'
+          ? errData.detail : JSON.stringify(errData.detail);
+      }
+    } catch { /* Ignore error parsing */ }
+    throw new Error(errorMsg || 'Upload failed');
+  }
+
+  return response.json();
+}
+
 export function useApi(endpoint, options = {}) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -111,4 +154,8 @@ export function useApi(endpoint, options = {}) {
   return { data, loading, error, refetch };
 }
 
-export { API_BASE };
+// Uploaded media is served from /static/..., which is NOT under /api/v1 —
+// prefixing an image src with API_BASE would 404.
+const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, '');
+
+export { API_BASE, API_ORIGIN };

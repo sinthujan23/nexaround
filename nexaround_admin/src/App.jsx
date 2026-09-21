@@ -12,7 +12,9 @@ import ExcludeKeywords from './pages/ExcludeKeywords';
 import Media from './pages/Media';
 import Settings from './pages/Settings';
 import ApiUsage from './pages/ApiUsage';
-import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon } from './components/Icons';
+import Experiences from './pages/Experiences';
+import ExperienceEnquiries from './pages/ExperienceEnquiries';
+import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon } from './components/Icons';
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem('admin_token'));
@@ -122,6 +124,10 @@ function App() {
         return <Engagement />;
       case 'apiusage':
         return <ApiUsage />;
+      case 'experiences':
+        return <Experiences />;
+      case 'experienceenquiries':
+        return <ExperienceEnquiries />;
       case 'settings':
         return <Settings />;
       default:
@@ -151,6 +157,10 @@ function App() {
         return 'Engagement & Broadcasting';
       case 'apiusage':
         return 'API Usage & Cost';
+      case 'experiences':
+        return 'Experiences & Vendors';
+      case 'experienceenquiries':
+        return 'Experience Enquiries';
       case 'settings':
         return 'General Settings';
       default:
@@ -188,6 +198,12 @@ function App() {
           </div>
           
           <div className="nav-section-label" style={{ marginTop: '8px' }}>Business</div>
+          <div className={`nav-item ${activePage === 'experiences' ? 'active' : ''}`} onClick={() => setActivePage('experiences')}>
+            <TicketIcon className="icon" /> Experiences
+          </div>
+          <div className={`nav-item ${activePage === 'experienceenquiries' ? 'active' : ''}`} onClick={() => setActivePage('experienceenquiries')}>
+            <InboxIcon className="icon" /> Enquiries
+          </div>
           <div className={`nav-item ${activePage === 'payments' ? 'active' : ''}`} onClick={() => setActivePage('payments')}>
             <CreditCardIcon className="icon" /> Payments & Plans
           </div>

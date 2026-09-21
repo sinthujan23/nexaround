@@ -12,3 +12,20 @@ String formatDistance(double? distanceM) {
   final km = m / 1000;
   return km < 1 ? '${m.toInt()} m' : '${km.toStringAsFixed(1)} km';
 }
+
+/// Formats a long distance for the Experiences "nothing nearby" banner.
+///
+/// [formatDistance] renders 340 km as "340.0 km", and a trailing ".0" on a
+/// number that large reads as false precision. Above 10 km this drops the
+/// decimal; below that it defers to [formatDistance] so short distances keep
+/// their resolution.
+///
+/// Deliberately a separate function rather than a change to [formatDistance],
+/// which is used by living_map_page, ar_camera_page and discover_page — all of
+/// them showing distances where the decimal matters.
+String formatDistanceCoarse(double? distanceM) {
+  final m = distanceM ?? 0;
+  final km = m / 1000;
+  if (km < 10) return formatDistance(distanceM);
+  return '${km.round()} km';
+}

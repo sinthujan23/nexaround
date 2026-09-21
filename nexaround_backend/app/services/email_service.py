@@ -114,3 +114,77 @@ async def send_password_reset_email(to_email: str, otp_code: str) -> bool:
         print(f"🔑 [DEV FALLBACK] Reset OTP code for {to_email} is: {otp_code}")
         return False
 
+
+
+async def send_vendor_enquiry_email(
+    to_email: str,
+    *,
+    vendor_name: str,
+    package_title: str,
+    contact_name: str,
+    contact_phone: str,
+    contact_email: str = "",
+    preferred_date: str = "",
+    party_size: str = "",
+    message: str = "",
+) -> bool:
+    """Notify a vendor that a traveller enquired about one of their packages."""
+    subject = f"New NexAround enquiry: {package_title}"
+
+    def _row(label: str, value: str) -> str:
+        if not value:
+            return ""
+        return (
+            f'<tr><td style="padding:6px 12px 6px 0;color:#78909C;">{label}</td>'
+            f'<td style="padding:6px 0;color:#263238;"><strong>{value}</strong></td></tr>'
+        )
+
+    html_body = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }}
+        .card {{ max-width: 540px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }}
+        .logo {{ color: #00897B; font-size: 24px; font-weight: bold; text-align: center; margin-bottom: 20px; }}
+        .package {{ background: #E0F2F1; border-radius: 8px; padding: 14px 16px; margin: 20px 0; color: #004D40; font-size: 18px; font-weight: bold; }}
+        .message {{ background: #FAFAFA; border-left: 3px solid #00897B; padding: 12px 16px; margin: 16px 0; color: #37474F; }}
+        .footer {{ font-size: 12px; color: #78909C; text-align: center; margin-top: 24px; }}
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="logo">nexaround</div>
+        <h2>New enquiry for {vendor_name}</h2>
+        <p>A traveller has asked about one of your experiences:</p>
+        <div class="package">{package_title}</div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          {_row("Name", contact_name)}
+          {_row("Phone", contact_phone)}
+          {_row("Email", contact_email)}
+          {_row("Preferred date", preferred_date)}
+          {_row("Party size", party_size)}
+        </table>
+        {f'<div class="message">{message}</div>' if message else ''}
+        <p style="color:#546E7A;font-size:14px;">Please contact them directly to confirm availability and pricing.</p>
+        <div class="footer">&copy; NexAround POI &amp; Discovery Platform</div>
+      </div>
+    </body>
+    </html>
+    """
+
+    print("=" * 80)
+    print(f"📧 [ENQUIRY DISPATCH] To: {to_email} | {vendor_name} | {package_title}")
+    print("=" * 80)
+
+    if not settings.SMTP_HOST or not settings.SMTP_USER:
+        print(f"ℹ️ [DEV SIMULATOR] SMTP not configured. Enquiry for {vendor_name} not emailed.")
+        return True
+
+    try:
+        await asyncio.to_thread(_send_smtp_sync, to_email, subject, html_body)
+        print(f"✅ Enquiry email sent successfully via SMTP to {to_email}")
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send enquiry email via SMTP to {to_email}: {e}")
+        return False

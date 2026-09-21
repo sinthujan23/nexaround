@@ -38,6 +38,16 @@ services:
       - ./app:/app/app
       # Persist proxied place photos across container restarts.
       - photo_cache:/app/app/static/photo_cache
+      # Vendor and package images for the Experiences marketplace. A named
+      # volume, not the bind-mounted repo directory, because these are the only
+      # user-visible images the platform itself owns — a `git clean -fdx` or a
+      # fresh clone would otherwise delete every vendor photo.
+      #
+      # Scoped to the `experiences` subdirectory rather than all of
+      # `static/uploads`: a volume mounted over the whole directory would hide
+      # the travel-story images already sitting in the bind mount, since Docker
+      # seeds a new volume from the image (which does not carry them).
+      - experience_media:/app/app/static/uploads/experiences
       # Firebase service-account credential (read-only, kept outside the repo).
       - /etc/nexaround/firebase-sa.json:/etc/nexaround/firebase-sa.json:ro
     depends_on:
@@ -175,4 +185,5 @@ services:
 volumes:
   pgdata:
   photo_cache:
+  experience_media:
   redisdata:

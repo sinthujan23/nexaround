@@ -16,6 +16,9 @@ from app.models.telemetry import (
 )
 from app.models.excluded_keyword import ExcludedKeyword
 from app.models.country_city import CountryCity
+from app.models.experience import (
+    ExperienceVendor, ExperiencePackage, ExperienceEnquiry,
+)
 
 __all__ = [
     "User", "Attraction", "Category", "Review", "Itinerary", "Media",
@@ -25,5 +28,6 @@ __all__ = [
     "Museum", "MuseumMasterpiece",
     "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate", "ApiAlert",
     "ExcludedKeyword", "CountryCity",
+    "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry",
 ]
 

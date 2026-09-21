@@ -39,7 +39,11 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
-  int _discoverInitialTab = 0;
+  // Which Discovery tab opens on the first build. Not a literal 0: index 0 is
+  // the Experiences marketplace now, and the landing tab should be a decision,
+  // not whichever section happens to be first in the list. Point this at
+  // 'Experiences' once enough vendors are live to fill it.
+  int _discoverInitialTab = DiscoverPage.tabIndexFor('POI');
   int _discoverRequestCount = 0;
   DateTime? _lastBackPressTime;
   @override
@@ -460,7 +464,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (index == 3) {
-          switchToDiscover(initialTab: 0);
+          // Explicitly POI, not index 0. Index 0 is now the Experiences
+          // marketplace; point this there once enough vendors are live that
+          // it is not the first thing a user sees empty.
+          switchToDiscover(initialTab: DiscoverPage.tabIndexFor('POI'));
         } else {
           setState(() => _selectedIndex = index);
         }
