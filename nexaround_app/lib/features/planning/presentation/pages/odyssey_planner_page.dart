@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:geolocator/geolocator.dart' as geo;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/core/utils/number_format.dart';
@@ -133,7 +132,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     _daysController.text = _days.toString();
     _budgetController.text = formatAmount(_budget.toInt());
     _travelersController.text = _travelers.toString();
-    _prefillDestination();
     _loadUserCurrency();
     _loadUserNationality();
   }
@@ -184,54 +182,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     super.dispose();
   }
 
-  /// Best-effort reverse-geocode of the current location into the destination
-  /// field. Never prompts for permission and never blocks the UI.
-  Future<void> _prefillDestination() async {
-    if (_isCustomDeparture) return;
-    try {
-      final perm = await geo.Geolocator.checkPermission();
-      if (perm == geo.LocationPermission.denied ||
-          perm == geo.LocationPermission.deniedForever) {
-        return;
-      }
-      final pos = await geo.Geolocator.getCurrentPosition(
-        desiredAccuracy: geo.LocationAccuracy.medium,
-      ).timeout(const Duration(seconds: 6));
-      
-      final details = await GooglePlacesService.reverseGeocodeDetailed(
-        pos.latitude,
-        pos.longitude,
-      );
-      
-      if (!mounted) return;
-      
-      final name = details['location_name'] ?? 'Nearby';
-      final country = details['country'] ?? 'Nearby';
-
-      // 'Nearby' is the backend's sentinel for "all three geocoders failed",
-      // not a place. Send it as empty so it reads as unknown rather than as a
-      // city somewhere for the AI to find an airport near.
-      final cityOut = name == 'Nearby' ? '' : name;
-      final countryOut = country == 'Nearby' ? '' : country;
-
-      setState(() {
-        _departureCity = cityOut;
-        _departureCountry = countryOut;
-        // Always kept, even when the name resolved — it costs nothing and is
-        // the only thing left to work from if the name turns out unusable.
-        _departureLat = pos.latitude;
-        _departureLng = pos.longitude;
-        // The destination field is left blank rather than defaulted to the
-        // current area: the location picker already offers "Use Current
-        // Location" as an explicit choice, so prefilling it here just made
-        // the field look pre-answered with no clear way to tell it apart
-        // from an intentional pick.
-      });
-    } catch (_) {
-      // Location unavailable — the user can type a destination instead.
-    }
-  }
-
   String? get _departureDisplayValue {
     if (_departureCity.isEmpty && _departureCountry.isEmpty) return null;
     if (_departureCity.isNotEmpty && _departureCountry.isNotEmpty) {
@@ -266,13 +216,6 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
       _departureLng = lng;
       _isCustomDeparture = true;
     });
-  }
-
-  Future<void> _resetDepartureToCurrentLocation() async {
-    setState(() {
-      _isCustomDeparture = false;
-    });
-    await _prefillDestination();
   }
 
   /// Offer the cities Google confirmed for the chosen country.
@@ -344,7 +287,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   itemCount: cities.length,
-                  separatorBuilder: (_, __) =>
+                  separatorBuilder: (_, _) =>
                       const Divider(height: 1, indent: 56, color: Color(0xFFEEF1F5)),
                   itemBuilder: (_, i) {
                     final city = cities[i];
@@ -366,7 +309,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ListTile(
                 leading: const Icon(Icons.search_rounded, color: Colors.black54),
                 title: const Text('Search a different city'),
-                onTap: () => Navigator.of(sheetContext).pop(),
+                onTap: () => Navigator.of(sheetContext).pop(const {'_action': 'search'}),
               ),
               const SizedBox(height: 8),
             ],
@@ -377,6 +320,10 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
 
     if (!mounted) return;
     if (picked == null) {
+      // User tapped 'X' or dismissed the bottom sheet — close without searching.
+      return;
+    }
+    if (picked['_action'] == 'search') {
       await _pickEntryCityBySearch();
       return;
     }
@@ -765,6 +712,13 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             Expanded(
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 400),
+                layoutBuilder: (currentChild, previousChildren) => Stack(
+                  alignment: Alignment.topCenter,
+                  children: [
+                    ...previousChildren,
+                    ?currentChild,
+                  ],
+                ),
                 child: _buildCurrentStep(),
               ),
             ),
@@ -846,6 +800,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     required String? value,
     required IconData icon,
     required VoidCallback? onTap,
+    VoidCallback? onClear,
     String? helper,
     String? badge,
     bool busy = false,
@@ -937,6 +892,15 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                   child: CircularProgressIndicator(
                       strokeWidth: 2, color: AppColors.brandGreen),
                 )
+              else if (onClear != null && filled)
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.cancel_rounded, color: Colors.black38, size: 20),
+                  tooltip: 'Remove',
+                  onPressed: onClear,
+                )
               else if (enabled)
                 const Icon(Icons.chevron_right_rounded, color: Colors.black26),
             ],
@@ -950,7 +914,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
     return SingleChildScrollView(
       key: const ValueKey('destination'),
       physics: const ClampingScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 6, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -958,7 +922,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             'Where do you want to go?',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
           ).animate().fade().slideY(begin: 0.1, end: 0),
-          const SizedBox(height: 12),
+          const SizedBox(height: 20),
           // Three fields, in the order the decisions are actually made: where
           // the trip is, then — only if the traveller cares — which city it
           // opens and closes in. Leaving both empty is the normal case: the
@@ -972,7 +936,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             helper: 'Pick the country you are travelling to',
             onTap: _pickDestination,
           ).animate().fade(delay: 80.ms),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           _pickerField(
             label: 'ENTRY',
             value: _entryCity.isEmpty ? null : _entryCity,
@@ -990,8 +954,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                       _offerEntryCities();
                     }
                   },
+            onClear: () {
+              setState(() {
+                _entryCity = '';
+                _entryLat = null;
+                _entryLng = null;
+                _onlyThisCity = false;
+              });
+            },
           ).animate().fade(delay: 110.ms),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           _pickerField(
             label: 'EXIT',
             value: _exitCity.isEmpty ? null : _exitCity,
@@ -1004,9 +976,17 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
                 _pickEnd(isEntry: false);
               }
             },
+            onClear: () {
+              setState(() {
+                _exitCity = '';
+                _exitLat = null;
+                _exitLng = null;
+                _onlyThisCity = false;
+              });
+            },
           ).animate().fade(delay: 140.ms),
           if (_entryCity.isNotEmpty && _exitCity.isEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Align(
               alignment: Alignment.centerLeft,
               child: InkWell(
@@ -1042,7 +1022,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             ),
           ],
           if (_isSameCity) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 14),
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -1093,7 +1073,7 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
               ),
             ).animate().fade().slideY(begin: 0.08, end: 0),
           ],
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           // Departure origin: defaults to the traveller's auto-detected location,
           // but can be changed to any city worldwide.
           _pickerField(
@@ -1103,34 +1083,16 @@ class _OdysseyPlannerPageState extends State<OdysseyPlannerPage> {
             helper: 'Where will you be travelling from?',
             badge: _isCustomDeparture ? null : (_departureCity.isNotEmpty ? 'Current Location' : null),
             onTap: _pickDepartureLocation,
+            onClear: () {
+              setState(() {
+                _departureCity = '';
+                _departureCountry = '';
+                _departureLat = null;
+                _departureLng = null;
+                _isCustomDeparture = false;
+              });
+            },
           ).animate().fade(delay: 170.ms),
-          if (_isCustomDeparture) ...[
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: GestureDetector(
-                onTap: _resetDepartureToCurrentLocation,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.my_location_rounded, size: 12, color: AppColors.brandGreen),
-                      SizedBox(width: 4),
-                      Text(
-                        'Reset to current location',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppColors.brandGreen,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
