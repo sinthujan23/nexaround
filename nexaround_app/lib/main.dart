@@ -10,6 +10,7 @@ import 'package:nexaround_app/core/services/notification_service.dart';
 import 'package:nexaround_app/core/services/session_tracker.dart';
 import 'package:nexaround_app/app/di/injection.dart';
 import 'package:nexaround_app/core/network/auth_token_cache.dart';
+import 'package:nexaround_app/core/services/meta_events_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Handles FCM messages while the app is backgrounded/terminated. Must be a
@@ -75,6 +76,9 @@ void main() async {
 
   // Start session tracking for real engagement metrics (DAU + avg session).
   SessionTracker.instance.start();
+
+  // Initialize Meta (Facebook) App Events & install tracking.
+  MetaEventsService.instance.init();
 
   // Force dark status bar for futuristic feel
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
