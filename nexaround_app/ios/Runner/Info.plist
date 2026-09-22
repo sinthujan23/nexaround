@@ -120,8 +120,6 @@
 	<string>d54e9ef571a58969de506b4edc29c58f</string>
 	<key>FacebookDisplayName</key>
 	<string>NexARound</string>
-	<key>NSUserTrackingUsageDescription</key>
-	<string>NexAround uses this data to deliver personalized travel recommendations and measure marketing effectiveness.</string>
 	<key>SKAdNetworkItems</key>
 	<array>
 		<dict>

@@ -28,9 +28,6 @@ class MetaEventsService {
       // Enable automatic app events (installs, opens, in-app purchases)
       await _facebookAppEvents.setAutoLogAppEventsEnabled(true);
 
-      // Enable advertiser tracking for iOS (works in conjunction with ATT)
-      await _facebookAppEvents.setAdvertiserTracking(enabled: true);
-
       // Notify Meta SDK that app has launched / activated
       await _facebookAppEvents.activateApp();
 
