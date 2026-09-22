@@ -31,8 +31,8 @@ class MetaEventsService {
       // Enable advertiser tracking for iOS (works in conjunction with ATT)
       await _facebookAppEvents.setAdvertiserTracking(enabled: true);
 
-      // Log app launch / activation (used by Meta for install attribution)
-      await _facebookAppEvents.logActivatedApp();
+      // Notify Meta SDK that app has launched / activated
+      await _facebookAppEvents.activateApp();
 
       _initialized = true;
       debugPrint('[MetaEventsService] Initialized and app activation logged.');
