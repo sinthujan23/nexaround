@@ -45,9 +45,14 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 UPLOAD_DIR = "app/static/uploads/experiences"
 
+# Every column create and update copy across. A field missing here is accepted
+# by the schema, sent by the form and then silently dropped - which is exactly
+# what happened to the three social links: they saved without error and came
+# back empty on the next load.
 _VENDOR_SCALARS = (
     "name", "description", "address", "google_place_id", "city", "country_code",
-    "contact_phone", "contact_whatsapp", "contact_email", "website", "logo_url",
+    "contact_phone", "contact_whatsapp", "contact_instagram", "contact_facebook",
+    "contact_x", "contact_email", "website", "logo_url",
     "photo_urls", "rating", "review_count", "internal_notes", "is_active",
     "sort_order",
 )
@@ -76,6 +81,9 @@ def _vendor_response(
         country_code=vendor.country_code,
         contact_phone=vendor.contact_phone,
         contact_whatsapp=vendor.contact_whatsapp,
+        contact_instagram=vendor.contact_instagram,
+        contact_facebook=vendor.contact_facebook,
+        contact_x=vendor.contact_x,
         contact_email=vendor.contact_email,
         website=vendor.website,
         logo_url=vendor.logo_url,
