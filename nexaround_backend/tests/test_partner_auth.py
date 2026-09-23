@@ -126,3 +126,48 @@ def test_a_link_token_is_long_enough_to_be_unguessable():
 def test_the_invite_window_outlasts_a_weekend_and_resets_do_not():
     assert PA.INVITE_TTL_SECONDS == 72 * 3600
     assert PA.RESET_TTL_SECONDS == 3600
+
+
+# ── what the router actually mints ──────────────────────────────────────────
+
+def test_a_minted_partner_token_carries_iat():
+    """The regression that locked every vendor out of their own account.
+
+    `create_access_token` injects `exp`, `type` and `jti` — but no `iat`. The
+    rules above are all satisfied without one, so the unit tests passed while
+    signing in did not: `session_is_current` saw `iat=None` against a freshly
+    set `password_changed_at` and refused every token a vendor could ever hold.
+
+    This asserts the claim exists on the real minted token rather than on a
+    dict a test wrote, which is the difference that mattered.
+    """
+    from app.api.v1.partner import _claims
+
+    class _Login:
+        id = LOGIN
+        vendor_id = VENDOR
+
+    claims = _claims(_Login())
+    assert "iat" in claims, "a partner token without iat can never be current"
+
+    token = create_access_token(claims)
+    payload = _decoded(token)
+    assert payload.get("iat"), "iat did not survive encoding"
+    assert PA.claims_ok(payload, VENDOR)
+    # The whole point: it must outlive a password change made a moment ago.
+    assert PA.session_is_current(
+        payload["iat"], datetime.now(timezone.utc) - timedelta(seconds=1),
+    )
+
+
+def test_the_minted_claims_are_the_ones_the_gate_checks():
+    from app.api.v1.partner import _claims
+
+    class _Login:
+        id = LOGIN
+        vendor_id = VENDOR
+
+    claims = _claims(_Login())
+    assert claims["role"] == "vendor"
+    assert claims["sub"] == LOGIN
+    assert claims["vendor_id"] == VENDOR
