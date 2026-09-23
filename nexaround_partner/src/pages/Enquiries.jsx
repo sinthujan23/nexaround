@@ -3,7 +3,7 @@ import { useApi, apiGet, apiPatch } from '../api';
 import {
   InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon, TicketIcon, UsersIcon, ClockIcon, EditIcon,
 } from '../components/Icons';
-import { Toast, Section, InfoTile } from '../components/Kit';
+import { Toast, Section, InfoTile, Avatar } from '../components/Kit';
 import {
   ENQUIRY_STATUSES, STATUS_LABELS, STATUS_TONES, formatDateTime, formatAge, formatDay, guestsLabel, digitsOnly,
 } from '../format';
@@ -162,6 +162,7 @@ export default function Enquiries({ vendorName, initialId }) {
                 onClick={() => open(e)}
                 style={{ alignItems: 'flex-start' }}
               >
+                <Avatar name={e.contact_name} />
                 <div className="xp-row-main">
                   <div className={`xp-row-title ${e.status === 'new' ? 'strong' : ''}`}>{e.contact_name}</div>
                   <div className="xp-row-sub" style={{ color: 'var(--text-primary)' }}>
@@ -202,6 +203,7 @@ export default function Enquiries({ vendorName, initialId }) {
           {selected && (
             <>
               <div className="xp-detail-head">
+                <Avatar name={selected.contact_name} size="lg" />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <button className="xp-back" onClick={close}>← All enquiries</button>
                   <div className="xp-detail-title">{selected.contact_name}</div>

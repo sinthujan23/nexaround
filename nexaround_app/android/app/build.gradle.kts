@@ -106,6 +106,11 @@ android {
 }
 
 dependencies {
+    // Facebook's share dialog (MainActivity.kt). Same major version as the
+    // Facebook SDK that facebook_app_events brings in.
+    implementation("com.facebook.android:facebook-share:[18.0,19.0)")
+    // FileProvider, for handing Instagram the Story image.
+    implementation("androidx.core:core-ktx:1.13.1")
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-analytics")

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { apiPost } from '../api';
+import { AuthLayout } from '../components/Kit';
 
 /**
  * Asks for a reset link.
@@ -28,47 +29,32 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-logo">
-          <img 
-            src="/logo_2.png" 
-            alt="nexARound" 
-            className="login-logo-img" 
-            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-          />
-          <div className="brand">nexARound</div>
-          <p>Partner Portal</p>
-        </div>
-
-        {sent ? (
-          <>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              If that address has a partner account, a reset link is on its way.
-              It is valid for one hour.
-            </div>
-            <a className="btn btn-ghost" href="/" style={{ width: '100%', textAlign: 'center' }}>
-              Back to sign in
-            </a>
-          </>
-        ) : (
-          <form onSubmit={submit}>
-            <div className="form-group">
-              <label className="form-label">Your email</label>
-              <input
-                type="email" required className="form-input" autoComplete="username"
-                value={email} onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>
-              {busy ? 'Sending…' : 'Send reset link'}
-            </button>
-            <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px' }}>
-              <a href="/" style={{ color: 'var(--accent)' }}>Back to sign in</a>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+    <AuthLayout title="Forgotten your password?">
+      {sent ? (
+        <>
+          <p className="auth-note">
+            If that address has a partner account, a reset link is on its way.
+            It is valid for one hour.
+          </p>
+          <a className="btn btn-ghost btn-block" href="/">Back to sign in</a>
+        </>
+      ) : (
+        <form onSubmit={submit}>
+          <div className="form-group">
+            <label className="form-label">Your email</label>
+            <input
+              type="email" required className="form-input" autoComplete="username"
+              value={email} onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? 'Sending…' : 'Send reset link'}
+          </button>
+          <div className="auth-link">
+            <a href="/">Back to sign in</a>
+          </div>
+        </form>
+      )}
+    </AuthLayout>
   );
 }

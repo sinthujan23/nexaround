@@ -79,6 +79,17 @@
         <meta-data
             android:name="com.facebook.sdk.ClientToken"
             android:value="@string/facebook_client_token" />
+        <!-- Hands Instagram the package photo for a new Story
+             (MainActivity.shareToInstagramStory). Scoped to cache/share/. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.shareprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/share_paths" />
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -106,5 +117,8 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="tel"/>
         </intent>
+        <!-- Share targets: Instagram Stories, and X's new-post link. -->
+        <package android:name="com.instagram.android" />
+        <package android:name="com.twitter.android" />
     </queries>
 </manifest>

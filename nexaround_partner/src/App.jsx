@@ -10,6 +10,7 @@ import Profile from './pages/Profile';
 import SetPassword from './pages/SetPassword';
 import ForgotPassword from './pages/ForgotPassword';
 import ErrorBoundary from './components/ErrorBoundary';
+import { AuthLayout } from './components/Kit';
 
 /**
  * The partner portal shell.
@@ -23,6 +24,7 @@ export default function App() {
   const path = window.location.pathname;
   const [token, setToken] = useState(localStorage.getItem('partner_token'));
   const [me, setMe] = useState(null);
+  const [newCount, setNewCount] = useState(0);
   const [activePage, setActivePage] = useState('dashboard');
   // An optional target on the page, e.g. the enquiry the dashboard linked to.
   const [pageTarget, setPageTarget] = useState(null);
@@ -54,6 +56,13 @@ export default function App() {
     if (!token) return;
     apiGet('/partner/me').then(setMe).catch(() => {});
   }, [token]);
+
+  // The new-enquiry count on the Enquiries menu item. Re-read on every page
+  // change, so replying to an enquiry clears it by the time you look back.
+  useEffect(() => {
+    if (!token) return;
+    apiGet('/partner/stats').then((s) => setNewCount(s.enquiries_new || 0)).catch(() => {});
+  }, [token, activePage]);
 
   // Before the gate, deliberately.
   if (path.startsWith('/set-password')) return <SetPassword />;
@@ -88,45 +97,31 @@ export default function App() {
 
   if (!token) {
     return (
-      <div className="login-page">
-        <div className="login-card">
-          <div className="login-logo">
-            <img 
-              src="/logo_2.png" 
-              alt="nexARound" 
-              className="login-logo-img" 
-              onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+      <AuthLayout title="Sign in">
+        {error && <div className="login-error">{error}</div>}
+        <form onSubmit={handleLogin}>
+          <div className="form-group">
+            <label className="form-label">Email</label>
+            <input
+              type="email" required className="form-input" autoComplete="username"
+              value={email} onChange={(e) => setEmail(e.target.value)}
             />
-            <div className="brand">nexARound</div>
-            <p>Partner Portal</p>
           </div>
-          {error && <div className="login-error">{error}</div>}
-          <form onSubmit={handleLogin}>
-            <div className="form-group">
-              <label className="form-label">Email</label>
-              <input
-                type="email" required className="form-input" autoComplete="username"
-                value={email} onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Password</label>
-              <input
-                type="password" required className="form-input" autoComplete="current-password"
-                value={password} onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
-          </form>
-          <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '13px' }}>
-            <a href="/forgot-password" style={{ color: 'var(--accent)' }}>
-              Forgotten your password?
-            </a>
+          <div className="form-group">
+            <label className="form-label">Password</label>
+            <input
+              type="password" required className="form-input" autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+        <div className="auth-link">
+          <a href="/forgot-password">Forgotten your password?</a>
         </div>
-      </div>
+      </AuthLayout>
     );
   }
 
@@ -146,7 +141,7 @@ export default function App() {
 
   const renderContent = () => {
     switch (activePage) {
-      case 'packages': return <Packages />;
+      case 'packages': return <Packages key={pageTarget || 'all'} initialTarget={pageTarget} />;
       case 'enquiries':
         return <Enquiries key={pageTarget || 'all'} initialId={pageTarget} vendorName={me?.vendor_name} />;
       case 'profile': return <Profile onSaved={setMe} />;
@@ -158,12 +153,9 @@ export default function App() {
     <div className="admin-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <img 
-            src="/logo_2.png" 
-            alt="nexARound" 
-            className="sidebar-logo-img" 
-            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-          />
+          <span className="logo-tile">
+            <img src="/logo_2.png" alt="nexARound" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          </span>
           <div>
             <div className="brand">nexARound</div>
             <div className="brand-sub">PARTNER PORTAL</div>
@@ -173,14 +165,17 @@ export default function App() {
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main Menu</div>
           {NAV.map(({ key, label, Icon }) => (
-            <div
+            <button
               key={key}
+              type="button"
               className={`nav-item ${activePage === key ? 'active' : ''}`}
+              aria-current={activePage === key ? 'page' : undefined}
               onClick={() => navigate(key)}
             >
               <span className="icon"><Icon size={18} /></span>
               {label}
-            </div>
+              {key === 'enquiries' && newCount > 0 && <span className="nav-badge">{newCount}</span>}
+            </button>
           ))}
         </nav>
 
@@ -201,10 +196,13 @@ export default function App() {
       </aside>
 
       <main className="main-content">
-        <div className="page-header">
-          <div className="page-title">{TITLES[activePage]}</div>
-        </div>
-        <div className="page-body">
+        {/* The dashboard's greeting is its title. */}
+        {activePage !== 'dashboard' && (
+          <div className="page-header">
+            <h1 className="page-title">{TITLES[activePage]}</h1>
+          </div>
+        )}
+        <div className={`page-body ${activePage === 'dashboard' ? 'dash' : ''}`}>
           {/* A suspended vendor can still sign in and see why. Every write is
               refused server-side with a 403 regardless of this banner. */}
           {me && me.vendor_is_active === false && (

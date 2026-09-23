@@ -1,0 +1,21 @@
+name: nexaround_share
+description: >-
+  Direct sharing into Facebook and Instagram Stories for the nexARound app.
+  The iOS side lives here, because it needs Facebook's share kit; the Android
+  side is in the app's MainActivity.
+version: 0.0.1
+publish_to: none
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: NexaroundSharePlugin

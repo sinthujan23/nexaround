@@ -1,10 +1,14 @@
+import 'dart:typed_data';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_share/nexaround_share.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -228,12 +232,16 @@ class _ExperienceShareSheet extends StatelessWidget {
 
   // --- Targets --------------------------------------------------------------
   //
-  // WhatsApp is the only one of the four with a public link that opens it
-  // with a message ready (wa.me/?text=), so it gets that link. Facebook,
-  // Instagram and X take a shared post only through the phone's own share
-  // menu: picking them there opens their composer with the text and link in
-  // it. Their web links (facebook.com/sharer, twitter.com/intent) just open
-  // the app's feed on a phone, and Instagram has no link at all.
+  // Each opens its app directly where the app allows it, and falls back to
+  // the phone's own share menu where it does not:
+  //   WhatsApp   wa.me/?text= opens it with the message ready.
+  //   X          twitter://post opens its new-post screen with the text.
+  //   Facebook   Facebook's own share dialog (package:nexaround_share) opens
+  //              its post screen with the link as a card. Facebook takes no
+  //              text from another app.
+  //   Instagram  Only Stories can be opened directly (with the package photo);
+  //              no link or message can be handed over, so the link goes on
+  //              the clipboard for the Link sticker.
 
   Future<void> _shareWhatsApp(Rect? origin) async {
     // No number: WhatsApp asks which chat to send it to.
@@ -243,21 +251,52 @@ class _ExperienceShareSheet extends StatelessWidget {
     if (!await _open(uri)) _copy("Couldn't open WhatsApp. Details copied instead.");
   }
 
-  /// Facebook shows the link as a card with the package photo and title
-  /// (from the share page's Open Graph tags). It drops any text by policy.
-  Future<void> _shareFacebook(Rect? origin) =>
-      _shareWithSystemSheet(experienceShareMessage(package), origin);
+  Future<void> _shareFacebook(Rect? origin) async {
+    if (await NexaroundShare.facebookLink(experienceShareLink(package))) return;
+    await _shareWithSystemSheet(experienceShareMessage(package), origin);
+  }
 
-  /// Instagram takes it as a message to send in a chat.
-  Future<void> _shareInstagram(Rect? origin) =>
-      _shareWithSystemSheet(experienceShareMessage(package), origin);
+  Future<void> _shareInstagram(Rect? origin) async {
+    final image = await _coverImageBytes();
+    if (image != null) {
+      // Before Instagram opens, so the link is ready to paste there.
+      await Clipboard.setData(ClipboardData(text: experienceShareLink(package)));
+      if (await NexaroundShare.instagramStory(image)) {
+        _toast('Link copied. Add it to your story with the Link sticker.');
+        return;
+      }
+    }
+    // Instagram not installed, or a package without a photo: send it as a
+    // message through the share menu instead.
+    await _shareWithSystemSheet(experienceShareMessage(package), origin);
+  }
 
   /// A post has a length limit, so X gets the headline and the link only.
-  Future<void> _shareX(Rect? origin) => _shareWithSystemSheet(
-        'Check out "${package.title}" by ${package.vendorName} on nexARound '
-        '${experienceShareLink(package)}',
-        origin,
-      );
+  Future<void> _shareX(Rect? origin) async {
+    final text = 'Check out "${package.title}" by ${package.vendorName} on nexARound '
+        '${experienceShareLink(package)}';
+    final opened = await _open(
+      Uri.parse('twitter://post?message=${Uri.encodeComponent(text)}'),
+    );
+    if (!opened) await _shareWithSystemSheet(text, origin);
+  }
+
+  /// The package's cover photo, for an Instagram Story. Null when there is
+  /// none or it cannot be fetched in time.
+  Future<Uint8List?> _coverImageBytes() async {
+    final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
+    if (url == null) return null;
+    try {
+      final response = await http
+          .get(Uri.parse(url), headers: PlaceImageHelper.headersFor(url))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
+      return response.bodyBytes;
+    } catch (e) {
+      debugPrint('Story image fetch failed: $e');
+      return null;
+    }
+  }
 
   /// The phone's own share menu, with the chosen app in it.
   Future<void> _shareWithSystemSheet(String text, Rect? origin) async {

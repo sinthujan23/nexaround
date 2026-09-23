@@ -69,6 +69,50 @@ export function Section({ tone = 'teal', icon: Icon, title, hint, action, childr
   );
 }
 
+/**
+ * A traveller's initials on a soft colour. The colour is picked from the name,
+ * so the same traveller looks the same on the dashboard and in Enquiries.
+ */
+export function Avatar({ name, size }) {
+  const words = (name || '?').trim().split(/\s+/);
+  const initials = (words[0][0] + (words.length > 1 ? words[words.length - 1][0] : '')).toUpperCase();
+  let hash = 0;
+  for (const ch of name || '') hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return (
+    <span className={`avatar hue-${hash % 5} ${size === 'lg' ? 'lg' : ''}`} aria-hidden="true">
+      {initials}
+    </span>
+  );
+}
+
+/**
+ * Sign-in, set-password and forgot-password share one frame: the brand on the
+ * beach photo on one side, the form on the other.
+ */
+export function AuthLayout({ title, children }) {
+  return (
+    <div className="auth-page">
+      <aside className="auth-brand">
+        <div className="auth-brand-inner">
+          <span className="logo-tile lg">
+            <img src="/logo_2.png" alt="" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+          </span>
+          <div>
+            <div className="auth-wordmark">nexARound</div>
+            <div className="auth-sub">Partner Portal</div>
+          </div>
+        </div>
+      </aside>
+      <main className="auth-main">
+        <div className="auth-card">
+          <h1 className="auth-title">{title}</h1>
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
+
 /** One read-only detail (label and value) as a coloured tile. */
 export function InfoTile({ tone = 'teal', icon: Icon, label, value, muted }) {
   return (

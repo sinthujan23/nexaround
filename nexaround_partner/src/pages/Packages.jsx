@@ -8,6 +8,7 @@ import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import {
   CATEGORIES, PRICE_BASES, categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration,
+  visibility, visibilityTone,
 } from '../format';
 
 const empty = {
@@ -32,19 +33,7 @@ const toPayload = (form) => ({
   longitude: form.uses_vendor_location ? null : Number(form.longitude),
 });
 
-// is_published is the server's word, not the form's: it also needs the whole
-// listing to be live, which only NexAround can switch.
-const visibility = (pkg) => {
-  if (!pkg.is_active) return 'Hidden';
-  return pkg.is_published ? 'Live' : 'On, not visible';
-};
-
-const visibilityTone = (pkg) => {
-  if (!pkg.is_active) return 'gray';
-  return pkg.is_published ? 'green' : 'amber';
-};
-
-export default function Packages() {
+export default function Packages({ initialTarget }) {
   const { data, error, refetch } = useApi('/partner/packages');
   const [packages, setPackages] = useState(null); // optimistic copy of data
   const list = packages ?? data?.packages ?? [];
@@ -82,6 +71,18 @@ export default function Packages() {
     });
     setDrawerOpen(true);
   };
+
+  // Opened from the dashboard: 'new' opens a blank form, a package id opens
+  // that package once the list has loaded.
+  const [pendingTarget, setPendingTarget] = useState(initialTarget || null);
+  if (pendingTarget === 'new') {
+    setPendingTarget(null);
+    openNew();
+  } else if (pendingTarget && data) {
+    const match = data.packages.find((p) => p.id === pendingTarget);
+    setPendingTarget(null);
+    if (match) openEdit(match);
+  }
 
   const save = async (e) => {
     e.preventDefault();

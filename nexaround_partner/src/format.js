@@ -40,6 +40,18 @@ export const categoryTone = (value) => CATEGORY_TONES[value] || 'teal';
 // (green).
 export const STATUS_TONES = { new: 'amber', contacted: 'blue', closed: 'green', spam: 'rose' };
 
+// is_published is the server's word, not the form's: it also needs the whole
+// listing to be live, which only NexAround can switch.
+export const visibility = (pkg) => {
+  if (!pkg.is_active) return 'Hidden';
+  return pkg.is_published ? 'Live' : 'On, not visible';
+};
+
+export const visibilityTone = (pkg) => {
+  if (!pkg.is_active) return 'gray';
+  return pkg.is_published ? 'green' : 'amber';
+};
+
 export const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';
 export const basisLabel = (value) => PRICE_BASES.find((b) => b.value === value)?.label || 'Per person';
 

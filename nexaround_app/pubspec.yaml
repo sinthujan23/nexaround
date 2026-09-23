@@ -70,6 +70,10 @@ dependencies:
   # The phone's own share menu: Facebook, Instagram and X only take a
   # shared link through it (experience_share_sheet.dart).
   share_plus: ^13.3.0
+  # Direct Facebook / Instagram Stories sharing. A local plugin because its iOS
+  # side needs Facebook's share kit (see packages/nexaround_share).
+  nexaround_share:
+    path: packages/nexaround_share
   flutter_compass: ^0.8.1
   sensors_plus: ^6.0.0
   google_generative_ai: ^0.4.5

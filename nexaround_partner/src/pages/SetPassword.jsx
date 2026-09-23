@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPost } from '../api';
+import { AuthLayout } from '../components/Kit';
 
 /**
  * Where an invite or reset link lands. Renders without a token, on purpose:
@@ -53,64 +54,47 @@ export default function SetPassword() {
   };
 
   return (
-    <div className="login-page">
-      <div className="login-card">
-        <div className="login-logo">
-          <img 
-            src="/logo_2.png" 
-            alt="nexARound" 
-            className="login-logo-img" 
-            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
-          />
-          <div className="brand">nexARound</div>
-          <p>Partner Portal</p>
-        </div>
+    <AuthLayout title="Set your password">
+      {checking && <div className="loader" />}
 
-        {checking && <div className="loader" />}
+      {!checking && linkError && (
+        <>
+          <div className="login-error">{linkError}</div>
+          <p className="auth-note">
+            Links can only be used once, and expire. Ask NexAround to send another.
+          </p>
+        </>
+      )}
 
-        {!checking && linkError && (
-          <>
-            <div className="login-error">{linkError}</div>
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '12px' }}>
-              Links can only be used once, and expire. Ask NexAround to send another.
-            </div>
-          </>
-        )}
+      {!checking && !linkError && done && (
+        <>
+          <p className="auth-note">Your password is set.</p>
+          <a className="btn btn-primary btn-block" href="/">Sign in</a>
+        </>
+      )}
 
-        {!checking && !linkError && done && (
-          <>
-            <div style={{ textAlign: 'center', marginBottom: '16px' }}>
-              Your password is set.
-            </div>
-            <a className="btn btn-primary" href="/" style={{ width: '100%', textAlign: 'center' }}>
-              Sign in
-            </a>
-          </>
-        )}
-
-        {!checking && !linkError && !done && (
-          <form onSubmit={submit}>
-            <div className="form-group">
-              <label className="form-label">New password</label>
-              <input
-                type="password" required className="form-input" autoComplete="new-password"
-                value={password} onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Confirm password</label>
-              <input
-                type="password" required className="form-input" autoComplete="new-password"
-                value={confirm} onChange={(e) => setConfirm(e.target.value)}
-              />
-            </div>
-            {error && <div className="login-error">{error}</div>}
-            <button type="submit" className="btn btn-primary" style={{ width: '100%' }} disabled={busy}>
-              {busy ? 'Saving…' : 'Set password'}
-            </button>
-          </form>
-        )}
-      </div>
-    </div>
+      {!checking && !linkError && !done && (
+        <form onSubmit={submit}>
+          <div className="form-group">
+            <label className="form-label">New password</label>
+            <input
+              type="password" required className="form-input" autoComplete="new-password"
+              value={password} onChange={(e) => setPassword(e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Confirm password</label>
+            <input
+              type="password" required className="form-input" autoComplete="new-password"
+              value={confirm} onChange={(e) => setConfirm(e.target.value)}
+            />
+          </div>
+          {error && <div className="login-error">{error}</div>}
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
+            {busy ? 'Saving…' : 'Set password'}
+          </button>
+        </form>
+      )}
+    </AuthLayout>
   );
 }
