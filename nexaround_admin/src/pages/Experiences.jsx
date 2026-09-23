@@ -25,7 +25,8 @@ const PRICE_BASES = [
 const emptyVendor = {
   name: '', description: '', latitude: '', longitude: '', address: '',
   google_place_id: '', city: '', country_code: '', contact_phone: '',
-  contact_whatsapp: '', contact_email: '', website: '', logo_url: '',
+  contact_whatsapp: '', contact_instagram: '', contact_facebook: '',
+  contact_x: '', contact_email: '', website: '', logo_url: '',
   photo_urls: [], rating: '', review_count: 0, internal_notes: '',
   is_active: true, sort_order: 0,
 };
@@ -363,6 +364,33 @@ export default function Experiences() {
                 <input
                   type="text" className="form-input" value={form.website || ''}
                   onChange={(e) => patchForm({ website: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="form-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '16px' }}>
+              <div className="form-group">
+                <label className="form-label">Instagram (@handle or link)</label>
+                <input
+                  type="text" className="form-input" placeholder="@trinco_boat or https://..."
+                  value={form.contact_instagram || ''}
+                  onChange={(e) => patchForm({ contact_instagram: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Facebook (link or page)</label>
+                <input
+                  type="text" className="form-input" placeholder="facebook.com/... or page name"
+                  value={form.contact_facebook || ''}
+                  onChange={(e) => patchForm({ contact_facebook: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">X / Twitter (@handle or link)</label>
+                <input
+                  type="text" className="form-input" placeholder="@trinco_boat or https://..."
+                  value={form.contact_x || ''}
+                  onChange={(e) => patchForm({ contact_x: e.target.value })}
                 />
               </div>
             </div>

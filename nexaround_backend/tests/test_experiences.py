@@ -170,6 +170,7 @@ def test_an_implausible_party_size_is_rejected(size):
 # `experience_model.dart` in lockstep.
 PACKAGE_CARD_KEYS = {
     "id", "title", "summary", "category", "vendor_id", "vendor_name",
+    "vendor_whatsapp", "vendor_instagram", "vendor_facebook", "vendor_x",
     "cover_photo_url", "photo_count", "price_amount", "price_currency",
     "price_basis", "price_label", "duration_minutes", "duration_label",
     "latitude", "longitude", "distance_m", "tags",
@@ -208,4 +209,10 @@ def test_the_vendor_email_is_never_exposed_to_the_app():
     fields = set(ExperienceVendorPublic.model_fields.keys())
     assert "contact_email" not in fields
     assert "internal_notes" not in fields
-    assert {"contact_phone", "contact_whatsapp"} <= fields
+    assert {
+        "contact_phone",
+        "contact_whatsapp",
+        "contact_instagram",
+        "contact_facebook",
+        "contact_x",
+    } <= fields

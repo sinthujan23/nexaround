@@ -30,6 +30,9 @@ class ExperienceVendorPublic(BaseModel):
     longitude: float
     contact_phone: Optional[str] = None
     contact_whatsapp: Optional[str] = None
+    contact_instagram: Optional[str] = None
+    contact_facebook: Optional[str] = None
+    contact_x: Optional[str] = None
     website: Optional[str] = None
     logo_url: Optional[str] = None
     photo_urls: list[str] = []
@@ -46,6 +49,10 @@ class ExperiencePackageCard(BaseModel):
     category: Optional[str] = None
     vendor_id: uuid.UUID
     vendor_name: str
+    vendor_whatsapp: Optional[str] = None
+    vendor_instagram: Optional[str] = None
+    vendor_facebook: Optional[str] = None
+    vendor_x: Optional[str] = None
     cover_photo_url: Optional[str] = None
     photo_count: int = 0
     price_amount: Optional[float] = None
@@ -112,6 +119,9 @@ class ExperienceVendorBase(BaseModel):
     country_code: Optional[str] = Field(None, max_length=2)
     contact_phone: Optional[str] = Field(None, max_length=32)
     contact_whatsapp: Optional[str] = Field(None, max_length=32)
+    contact_instagram: Optional[str] = Field(None, max_length=255)
+    contact_facebook: Optional[str] = Field(None, max_length=500)
+    contact_x: Optional[str] = Field(None, max_length=255)
     contact_email: Optional[str] = Field(None, max_length=255)
     website: Optional[str] = Field(None, max_length=500)
     logo_url: Optional[str] = Field(None, max_length=500)

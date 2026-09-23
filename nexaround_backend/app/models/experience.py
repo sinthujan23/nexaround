@@ -55,6 +55,9 @@ class ExperienceVendor(Base):
 
     contact_phone: Mapped[str] = mapped_column(String(32), nullable=True)
     contact_whatsapp: Mapped[str] = mapped_column(String(32), nullable=True)
+    contact_instagram: Mapped[str] = mapped_column(String(255), nullable=True)
+    contact_facebook: Mapped[str] = mapped_column(String(500), nullable=True)
+    contact_x: Mapped[str] = mapped_column(String(255), nullable=True)
     contact_email: Mapped[str] = mapped_column(String(255), nullable=True)
     website: Mapped[str] = mapped_column(String(500), nullable=True)
 

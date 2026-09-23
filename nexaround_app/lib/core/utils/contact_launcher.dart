@@ -67,6 +67,79 @@ class ContactLauncher {
     }
   }
 
+  /// Opens an Instagram profile or link.
+  static Future<bool> instagram(String? handleOrUrl) async {
+    if (handleOrUrl == null || handleOrUrl.trim().isEmpty) return false;
+    var target = handleOrUrl.trim();
+    if (target.startsWith('http://') || target.startsWith('https://')) {
+      // Direct URL
+    } else if (target.startsWith('instagram.com/')) {
+      target = 'https://$target';
+    } else {
+      final handle = target.replaceAll(RegExp(r'^@+'), '').trim();
+      if (handle.isEmpty) return false;
+      target = 'https://instagram.com/$handle';
+    }
+    try {
+      return await launchUrl(
+        Uri.parse(target),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      debugPrint('Instagram launch failed: $e');
+      return false;
+    }
+  }
+
+  /// Opens a Facebook page or link.
+  static Future<bool> facebook(String? handleOrUrl) async {
+    if (handleOrUrl == null || handleOrUrl.trim().isEmpty) return false;
+    var target = handleOrUrl.trim();
+    if (target.startsWith('http://') || target.startsWith('https://')) {
+      // Direct URL
+    } else if (target.startsWith('facebook.com/') ||
+        target.startsWith('fb.com/')) {
+      target = 'https://$target';
+    } else {
+      final handle = target.replaceAll(RegExp(r'^@+'), '').trim();
+      if (handle.isEmpty) return false;
+      target = 'https://facebook.com/$handle';
+    }
+    try {
+      return await launchUrl(
+        Uri.parse(target),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      debugPrint('Facebook launch failed: $e');
+      return false;
+    }
+  }
+
+  /// Opens an X (Twitter) profile or link.
+  static Future<bool> x(String? handleOrUrl) async {
+    if (handleOrUrl == null || handleOrUrl.trim().isEmpty) return false;
+    var target = handleOrUrl.trim();
+    if (target.startsWith('http://') || target.startsWith('https://')) {
+      // Direct URL
+    } else if (target.startsWith('x.com/') || target.startsWith('twitter.com/')) {
+      target = 'https://$target';
+    } else {
+      final handle = target.replaceAll(RegExp(r'^@+'), '').trim();
+      if (handle.isEmpty) return false;
+      target = 'https://x.com/$handle';
+    }
+    try {
+      return await launchUrl(
+        Uri.parse(target),
+        mode: LaunchMode.externalApplication,
+      );
+    } catch (e) {
+      debugPrint('X launch failed: $e');
+      return false;
+    }
+  }
+
   /// Digits only — `wa.me` rejects a leading `+`.
   ///
   /// Mirrors `whatsapp_number()` on the backend; the two must agree or a

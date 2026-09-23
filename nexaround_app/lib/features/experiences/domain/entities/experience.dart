@@ -12,6 +12,9 @@ class ExperienceVendorEntity {
   final double longitude;
   final String? contactPhone;
   final String? contactWhatsapp;
+  final String? contactInstagram;
+  final String? contactFacebook;
+  final String? contactX;
   final String? website;
   final String? logoUrl;
   final List<String> photoUrls;
@@ -27,6 +30,9 @@ class ExperienceVendorEntity {
     required this.longitude,
     this.contactPhone,
     this.contactWhatsapp,
+    this.contactInstagram,
+    this.contactFacebook,
+    this.contactX,
     this.website,
     this.logoUrl,
     this.photoUrls = const [],
@@ -36,6 +42,10 @@ class ExperienceVendorEntity {
 
   bool get hasPhone => (contactPhone ?? '').trim().isNotEmpty;
   bool get hasWhatsapp => (contactWhatsapp ?? '').trim().isNotEmpty;
+  bool get hasInstagram => (contactInstagram ?? '').trim().isNotEmpty;
+  bool get hasFacebook => (contactFacebook ?? '').trim().isNotEmpty;
+  bool get hasX => (contactX ?? '').trim().isNotEmpty;
+  bool get hasSocials => hasWhatsapp || hasInstagram || hasFacebook || hasX;
   bool get hasWebsite => (website ?? '').trim().isNotEmpty;
 }
 
@@ -48,6 +58,10 @@ class ExperiencePackageEntity {
   final String? category;
   final String vendorId;
   final String vendorName;
+  final String? vendorWhatsapp;
+  final String? vendorInstagram;
+  final String? vendorFacebook;
+  final String? vendorX;
   final String? coverPhotoUrl;
   final int photoCount;
   final double? priceAmount;
@@ -80,6 +94,10 @@ class ExperiencePackageEntity {
     this.category,
     required this.vendorId,
     required this.vendorName,
+    this.vendorWhatsapp,
+    this.vendorInstagram,
+    this.vendorFacebook,
+    this.vendorX,
     this.coverPhotoUrl,
     this.photoCount = 0,
     this.priceAmount,
@@ -100,6 +118,13 @@ class ExperiencePackageEntity {
     this.meetingPointAddress,
     this.vendor,
   });
+
+  bool get hasVendorWhatsapp => (vendorWhatsapp ?? '').trim().isNotEmpty;
+  bool get hasVendorInstagram => (vendorInstagram ?? '').trim().isNotEmpty;
+  bool get hasVendorFacebook => (vendorFacebook ?? '').trim().isNotEmpty;
+  bool get hasVendorX => (vendorX ?? '').trim().isNotEmpty;
+  bool get hasSocials =>
+      hasVendorWhatsapp || hasVendorInstagram || hasVendorFacebook || hasVendorX;
 
   /// Every image for the gallery, falling back to the cover when the detail
   /// payload has not been loaded yet.

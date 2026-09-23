@@ -41,6 +41,9 @@ def vendor_to_public(vendor: ExperienceVendor) -> ExperienceVendorPublic:
         longitude=lng,
         contact_phone=vendor.contact_phone,
         contact_whatsapp=vendor.contact_whatsapp,
+        contact_instagram=vendor.contact_instagram,
+        contact_facebook=vendor.contact_facebook,
+        contact_x=vendor.contact_x,
         website=vendor.website,
         logo_url=vendor.logo_url,
         photo_urls=vendor.photo_urls or [],
@@ -54,7 +57,12 @@ def package_to_card(
 ) -> ExperiencePackageCard:
     lat, lng = get_lat_lng(package.location)
     amount = float(package.price_amount) if package.price_amount is not None else None
-    vendor_name = package.vendor.name if package.vendor else ""
+    vendor = package.vendor
+    vendor_name = vendor.name if vendor else ""
+    vendor_whatsapp = vendor.contact_whatsapp if vendor else None
+    vendor_instagram = vendor.contact_instagram if vendor else None
+    vendor_facebook = vendor.contact_facebook if vendor else None
+    vendor_x = vendor.contact_x if vendor else None
 
     return ExperiencePackageCard(
         id=package.id,
@@ -63,6 +71,10 @@ def package_to_card(
         category=package.category,
         vendor_id=package.vendor_id,
         vendor_name=vendor_name,
+        vendor_whatsapp=vendor_whatsapp,
+        vendor_instagram=vendor_instagram,
+        vendor_facebook=vendor_facebook,
+        vendor_x=vendor_x,
         cover_photo_url=_cover(package.photo_urls),
         photo_count=len(package.photo_urls or []),
         price_amount=amount,

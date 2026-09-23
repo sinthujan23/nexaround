@@ -6,6 +6,8 @@ import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 
+import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
+
 /// One package as a Discovery card. The vendor's name is the subtitle, which
 /// is what keeps a vendor's three boat tours readable as three distinct
 /// offers rather than three copies of the same agency.
@@ -100,15 +102,35 @@ class ExperiencePackageCard extends StatelessWidget {
                         ],
                       ],
                     ),
-                    if (package.priceLabel.isNotEmpty) ...[
+                    if (package.priceLabel.isNotEmpty || package.hasSocials) ...[
                       const SizedBox(height: 6),
-                      Text(
-                        package.priceLabel,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.brandGreen,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (package.priceLabel.isNotEmpty)
+                            Text(
+                              package.priceLabel,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.brandGreen,
+                              ),
+                            )
+                          else
+                            const SizedBox.shrink(),
+                          if (package.hasSocials)
+                            VendorSocialBar(
+                              whatsapp: package.vendorWhatsapp,
+                              instagram: package.vendorInstagram,
+                              facebook: package.vendorFacebook,
+                              x: package.vendorX,
+                              packageTitle: package.title,
+                              iconSize: 20,
+                              spacing: 6,
+                              isCompact: true,
+                            ),
+                        ],
                       ),
                     ],
                   ],

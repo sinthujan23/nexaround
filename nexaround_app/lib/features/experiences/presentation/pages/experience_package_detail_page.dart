@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
 
 /// Detail for one package.
 ///
@@ -338,6 +339,26 @@ class _ExperiencePackageDetailPageState
                 ),
               ),
             ],
+            if (vendor.hasSocials) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Connect with vendor',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 10),
+              VendorSocialBar(
+                whatsapp: vendor.contactWhatsapp,
+                instagram: vendor.contactInstagram,
+                facebook: vendor.contactFacebook,
+                x: vendor.contactX,
+                packageTitle: _package.title,
+                isCompact: false,
+              ),
+            ],
           ],
         ],
       ),
@@ -382,26 +403,72 @@ class _ExperiencePackageDetailPageState
   Widget _buildActionBar() {
     final vendor = _package.vendor;
 
+    final actionButtons = <Widget>[];
+
+    if (vendor != null && vendor.hasPhone) {
+      actionButtons.add(_iconAction(
+        Icons.call_rounded,
+        () => ContactLauncher.call(vendor.contactPhone),
+        tooltip: 'Call',
+      ));
+    }
+
+    if (vendor != null && vendor.hasWhatsapp) {
+      actionButtons.add(_imageIconAction(
+        'assets/images/social_whatsapp.png',
+        () => ContactLauncher.whatsApp(
+          vendor.contactWhatsapp,
+          message: 'Hi, I am interested in "${_package.title}" '
+              'I found on NexAround.',
+        ),
+        tooltip: 'WhatsApp',
+      ));
+    }
+
+    if (vendor != null && vendor.hasInstagram) {
+      actionButtons.add(_imageIconAction(
+        'assets/images/social_instagram.png',
+        () => ContactLauncher.instagram(vendor.contactInstagram),
+        tooltip: 'Instagram',
+      ));
+    }
+
+    if (vendor != null && vendor.hasFacebook) {
+      actionButtons.add(_imageIconAction(
+        'assets/images/social_facebook.png',
+        () => ContactLauncher.facebook(vendor.contactFacebook),
+        tooltip: 'Facebook',
+      ));
+    }
+
+    if (vendor != null && vendor.hasX) {
+      actionButtons.add(_imageIconAction(
+        'assets/images/social_x.png',
+        () => ContactLauncher.x(vendor.contactX),
+        tooltip: 'X (Twitter)',
+      ));
+    }
+
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
       child: Row(
         children: [
           Expanded(
-            flex: 2,
             child: SizedBox(
-              height: 56,
+              height: 52,
               child: ElevatedButton(
                 onPressed: () =>
                     showExperienceEnquirySheet(context, _package),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.brandGreen,
                   foregroundColor: Colors.white,
+                  elevation: 0,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18)),
+                      borderRadius: BorderRadius.circular(16)),
                 ),
                 child: const Text(
                   'Request booking',
@@ -411,21 +478,18 @@ class _ExperiencePackageDetailPageState
               ),
             ),
           ),
-          // Only rendered when the vendor actually gave us that channel —
-          // a dead Call button is worse than no Call button.
-          if (vendor != null && vendor.hasPhone) ...[
-            const SizedBox(width: 10),
-            _iconAction(Icons.call_rounded,
-                () => ContactLauncher.call(vendor.contactPhone)),
-          ],
-          if (vendor != null && vendor.hasWhatsapp) ...[
-            const SizedBox(width: 10),
-            _iconAction(
-              Icons.chat_rounded,
-              () => ContactLauncher.whatsApp(
-                vendor.contactWhatsapp,
-                message: 'Hi, I am interested in "${_package.title}" '
-                    'I found on NexAround.',
+          if (actionButtons.isNotEmpty) ...[
+            const SizedBox(width: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (int i = 0; i < actionButtons.length; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    actionButtons[i],
+                  ],
+                ],
               ),
             ),
           ],
@@ -434,19 +498,43 @@ class _ExperiencePackageDetailPageState
     );
   }
 
-  Widget _iconAction(IconData icon, VoidCallback onTap) {
+  Widget _iconAction(IconData icon, VoidCallback onTap, {String? tooltip}) {
     return SizedBox(
-      width: 56,
-      height: 56,
-      child: OutlinedButton(
-        onPressed: onTap,
-        style: OutlinedButton.styleFrom(
-          padding: EdgeInsets.zero,
-          side: const BorderSide(color: AppColors.border),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      width: 52,
+      height: 52,
+      child: Tooltip(
+        message: tooltip ?? '',
+        child: OutlinedButton(
+          onPressed: onTap,
+          style: OutlinedButton.styleFrom(
+            padding: EdgeInsets.zero,
+            side: const BorderSide(color: AppColors.border),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          child: Icon(icon, size: 20, color: AppColors.textPrimary),
         ),
-        child: Icon(icon, size: 20, color: AppColors.textPrimary),
+      ),
+    );
+  }
+
+  Widget _imageIconAction(String assetPath, VoidCallback onTap,
+      {String? tooltip}) {
+    return SizedBox(
+      width: 52,
+      height: 52,
+      child: Tooltip(
+        message: tooltip ?? '',
+        child: OutlinedButton(
+          onPressed: onTap,
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.all(12),
+            side: const BorderSide(color: AppColors.border),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          ),
+          child: Image.asset(assetPath, fit: BoxFit.contain),
+        ),
       ),
     );
   }
