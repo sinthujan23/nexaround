@@ -1,242 +1,351 @@
-import { useState } from 'react';
-import { useApi, apiPatch } from '../api';
-import { InboxIcon } from '../components/Icons';
+import { useEffect, useState } from 'react';
+import { useApi, apiGet, apiPatch } from '../api';
+import {
+  InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon,
+} from '../components/Icons';
 
+const PAGE_SIZE = 50;
 const STATUSES = ['new', 'contacted', 'closed', 'spam'];
+const STATUS_LABELS = { new: 'New', contacted: 'Contacted', closed: 'Closed', spam: 'Spam' };
 
-const STATUS_BADGE = {
-  new: 'badge-yellow',
-  contacted: 'badge-green',
-  closed: 'badge-ghost',
-  spam: 'badge-red',
+const TZ = 'Asia/Colombo';
+
+const formatDateTime = (value) =>
+  value
+    ? new Date(value).toLocaleString('en-GB', {
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: TZ,
+    })
+    : '—';
+
+// Short age for the list: "5m", "3h", "2d", then a date.
+const formatAge = (value) => {
+  const minutes = Math.floor((Date.now() - new Date(value).getTime()) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 60 * 24) return `${Math.floor(minutes / 60)}h`;
+  if (minutes < 60 * 24 * 7) return `${Math.floor(minutes / 1440)}d`;
+  return new Date(value).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: TZ });
 };
 
-const formatDate = (value) => {
-  if (!value) return '—';
-  return new Date(value).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-    timeZone: 'Asia/Colombo',
+// preferred_date is a plain YYYY-MM-DD; parse it as a calendar date, not UTC midnight.
+const formatDay = (value) => {
+  if (!value) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-GB', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
   });
+};
+
+const digitsOnly = (phone) => (phone || '').replace(/[^0-9]/g, '');
+
+const whatsAppLink = (enquiry) => {
+  const greeting = `Hi ${enquiry.contact_name}, thanks for your enquiry`
+    + (enquiry.package_title_snapshot ? ` about "${enquiry.package_title_snapshot}"` : '')
+    + ' on nexARound.';
+  return `https://wa.me/${digitsOnly(enquiry.contact_phone)}?text=${encodeURIComponent(greeting)}`;
 };
 
 export default function ExperienceEnquiries() {
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+  const [counts, setCounts] = useState({});
+  const [countsVersion, setCountsVersion] = useState(0);
+  const [toast, setToast] = useState(null);
 
-  const { data, loading, error, refetch } = useApi(
-    `/admin/experiences/enquiries?page=${page}&page_size=25` +
-    (statusFilter ? `&status=${statusFilter}` : '')
+  const { data, error, refetch } = useApi(
+    `/admin/experiences/enquiries?page=${page}&page_size=${PAGE_SIZE}`
+    + (statusFilter ? `&status=${statusFilter}` : '')
   );
 
-  const enquiries = data?.enquiries || [];
+  const rawEnquiries = data?.enquiries || [];
   const total = data?.total || 0;
-  const totalPages = Math.ceil(total / 25) || 1;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // The list endpoint only returns the page it was asked for, so per-status
+  // totals come from one page_size=1 request per status.
+  useEffect(() => {
+    let active = true;
+    Promise.all(
+      ['', ...STATUSES].map((s) =>
+        apiGet(`/admin/experiences/enquiries?page=1&page_size=1${s ? `&status=${s}` : ''}`)
+          .then((res) => [s || 'all', res.total])
+          .catch(() => [s || 'all', null])
+      )
+    ).then((pairs) => { if (active) setCounts(Object.fromEntries(pairs)); });
+    return () => { active = false; };
+  }, [countsVersion]);
+
+  const refresh = () => {
+    refetch();
+    setCountsVersion((n) => n + 1);
+  };
+
+  const notify = (message, tone = 'ok') => {
+    setToast({ message, tone });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Search only narrows the page already loaded.
+  const q = search.trim().toLowerCase();
+  const enquiries = rawEnquiries.filter((e) =>
+    !q || [e.contact_name, e.contact_phone, e.contact_email, e.package_title_snapshot, e.vendor_name_snapshot]
+      .some((f) => (f || '').toLowerCase().includes(q))
+  );
+
+  const notesDirty = selected && notes !== (selected.admin_notes || '');
 
   const open = (enquiry) => {
+    if (notesDirty && !confirm('Discard the unsaved note?')) return;
     setSelected(enquiry);
     setNotes(enquiry.admin_notes || '');
   };
 
-  const update = async (patch) => {
-    if (!selected) return;
+  const close = () => {
+    if (notesDirty && !confirm('Discard the unsaved note?')) return;
+    setSelected(null);
+  };
+
+  const changeFilter = (status) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const update = async (patch, message) => {
     setSaving(true);
     try {
       const updated = await apiPatch(`/admin/experiences/enquiries/${selected.id}`, patch);
       setSelected(updated);
-      refetch();
+      if ('admin_notes' in patch) setNotes(updated.admin_notes || '');
+      refresh();
+      notify(message);
     } catch (err) {
-      alert(`Failed to update enquiry: ${err.message}`);
+      notify(`Could not update enquiry: ${err.message}`, 'error');
     } finally {
       setSaving(false);
     }
   };
 
+  const filters = [['', 'All'], ...STATUSES.map((s) => [s, STATUS_LABELS[s]])];
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', alignItems: 'center' }}>
-        <select
-          className="form-select"
-          style={{ maxWidth: '200px' }}
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
+      <div className="xp-toolbar">
+        <div className="seg">
+          {filters.map(([value, label]) => (
+            <button
+              key={value || 'all'}
+              className={`seg-btn ${statusFilter === value ? 'active' : ''}`}
+              onClick={() => changeFilter(value)}
+            >
+              {value && <span className={`dot dot-${value}`} />}
+              {label}
+              {counts[value || 'all'] != null && <span className="seg-count">{counts[value || 'all']}</span>}
+            </button>
           ))}
-        </select>
-        <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-          {total} enquir{total === 1 ? 'y' : 'ies'}
+        </div>
+
+        <div className="xp-toolbar-right">
+          <div className="search-bar">
+            <SearchIcon size={16} />
+            <input
+              type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, phone, vendor…"
+            />
+          </div>
+          <button className="btn btn-ghost btn-sm" onClick={refresh} title="Refresh">
+            <RefreshIcon size={15} /> Refresh
+          </button>
         </div>
       </div>
 
       {error && <div className="login-error">{error}</div>}
-      {loading && <div className="loader" />}
 
-      {!loading && enquiries.length === 0 && (
-        <div className="empty-state">
-          <InboxIcon size={32} className="empty-icon" />
-          <div>No enquiries yet. They appear here the moment a traveller sends one.</div>
-        </div>
-      )}
+      <div className={`xp-split ${selected ? 'has-selection' : ''}`}>
+        <aside className="xp-pane xp-list-pane">
+          <div className="xp-list-body">
+            {!data && <div className="loader" />}
 
-      {!loading && enquiries.length > 0 && (
-        <div className="card">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Received</th>
-                  <th>Experience</th>
-                  <th>Vendor</th>
-                  <th>Traveller</th>
-                  <th>Phone</th>
-                  <th>Party</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {enquiries.map((enquiry) => (
-                  <tr
-                    key={enquiry.id}
-                    className={`clickable-row ${selected?.id === enquiry.id ? 'selected' : ''}`}
-                    onClick={() => open(enquiry)}
-                  >
-                    <td style={{ whiteSpace: 'nowrap' }}>{formatDate(enquiry.created_at)}</td>
-                    <td><strong>{enquiry.package_title_snapshot || '—'}</strong></td>
-                    <td style={{ color: 'var(--text-secondary)' }}>
-                      {enquiry.vendor_name_snapshot || '—'}
-                    </td>
-                    <td>{enquiry.contact_name}</td>
-                    <td>{enquiry.contact_phone}</td>
-                    <td>{enquiry.party_size ?? '—'}</td>
-                    <td>
-                      <span className={`badge ${STATUS_BADGE[enquiry.status] || 'badge-ghost'}`}>
-                        {enquiry.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px' }}>
-            <button
-              className="btn btn-ghost" disabled={page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </button>
-            <span style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
-              Page {page} of {totalPages}
-            </span>
-            <button
-              className="btn btn-ghost" disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </div>
-      )}
-
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="card-header">
-              <div className="card-title">{selected.package_title_snapshot || 'Enquiry'}</div>
-            </div>
-
-            <div style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '16px' }}>
-              {selected.vendor_name_snapshot} · {formatDate(selected.created_at)}
-            </div>
-
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Traveller</label>
-                <div>{selected.contact_name}</div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Party size</label>
-                <div>{selected.party_size ?? '—'}</div>
-              </div>
-            </div>
-
-            <div className="form-grid-2">
-              <div className="form-group">
-                <label className="form-label">Phone</label>
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <a href={`tel:${selected.contact_phone}`} className="btn btn-ghost">Call</a>
-                  <a
-                    href={`https://wa.me/${(selected.contact_phone || '').replace(/[^0-9]/g, '')}`}
-                    target="_blank" rel="noreferrer" className="btn btn-ghost"
-                  >
-                    WhatsApp
-                  </a>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Preferred date</label>
-                <div>{selected.preferred_date || '—'}</div>
-              </div>
-            </div>
-
-            {selected.contact_email && (
-              <div className="form-group">
-                <label className="form-label">Email</label>
-                <a href={`mailto:${selected.contact_email}`}>{selected.contact_email}</a>
+            {data && enquiries.length === 0 && (
+              <div className="xp-empty">
+                <InboxIcon size={32} />
+                <strong>{search || statusFilter ? 'Nothing matches' : 'No enquiries yet'}</strong>
+                {search || statusFilter
+                  ? 'Try another status or search.'
+                  : 'They appear here as soon as a traveller asks about a package in the app.'}
               </div>
             )}
 
-            {selected.message && (
-              <div className="form-group">
-                <label className="form-label">Message</label>
-                <div style={{
-                  background: 'var(--bg-dark)', borderRadius: '10px',
-                  padding: '12px 14px', color: 'var(--text-primary)',
-                }}>
-                  {selected.message}
-                </div>
-              </div>
-            )}
-
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select
-                className="form-select" value={selected.status} disabled={saving}
-                onChange={(e) => update({ status: e.target.value })}
-              >
-                {STATUSES.map((s) => (
-                  <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Internal notes</label>
-              <textarea
-                className="form-textarea" rows={3} value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px' }}>
+            {enquiries.map((e) => (
               <button
-                className="btn btn-primary" disabled={saving}
-                onClick={() => update({ admin_notes: notes })}
+                key={e.id}
+                className={`xp-row ${selected?.id === e.id ? 'active' : ''}`}
+                onClick={() => open(e)}
+                style={{ alignItems: 'flex-start' }}
               >
-                {saving ? 'Saving…' : 'Save notes'}
+                <span className={`dot dot-${e.status}`} style={{ marginTop: 6 }} title={STATUS_LABELS[e.status]} />
+                <div className="xp-row-main">
+                  <div className={`xp-row-title ${e.status === 'new' ? 'strong' : ''}`}>{e.contact_name}</div>
+                  <div className="xp-row-sub" style={{ color: 'var(--text-primary)' }}>
+                    {e.package_title_snapshot || 'General enquiry'}
+                  </div>
+                  <div className="xp-row-sub">
+                    {[
+                      e.vendor_name_snapshot,
+                      e.party_size ? `${e.party_size} ${e.party_size === 1 ? 'guest' : 'guests'}` : null,
+                      e.preferred_date ? formatDay(e.preferred_date) : null,
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                <div className="xp-row-side" title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</div>
               </button>
-              <button className="btn btn-ghost" onClick={() => setSelected(null)}>Close</button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
+
+          {totalPages > 1 && (
+            <div className="xp-list-foot">
+              <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+                Previous
+              </button>
+              <span>Page {page} of {totalPages}</span>
+              <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+                Next
+              </button>
+            </div>
+          )}
+        </aside>
+
+        <section className="xp-pane xp-detail-pane">
+          {!selected && (
+            <div className="xp-empty">
+              <InboxIcon size={36} />
+              <strong>Select an enquiry</strong>
+              {counts.new ? `${counts.new} new ${counts.new === 1 ? 'enquiry is' : 'enquiries are'} waiting for a reply.` : 'The traveller’s request and contact details open here.'}
+            </div>
+          )}
+
+          {selected && (
+            <>
+              <div className="xp-detail-head">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button className="xp-back" onClick={close}>← All enquiries</button>
+                  <div className="xp-detail-title">{selected.contact_name}</div>
+                  <div className="xp-detail-sub">Received {formatDateTime(selected.created_at)}</div>
+                </div>
+                <span className="status-label">
+                  <span className={`dot dot-${selected.status}`} /> {STATUS_LABELS[selected.status] || selected.status}
+                </span>
+              </div>
+
+              <div className="xp-body">
+                <div className="xp-section">
+                  <div className="contact-card">
+                    <div className="contact-card-lines">
+                      {selected.contact_phone}
+                      {selected.contact_email && <div><span>{selected.contact_email}</span></div>}
+                    </div>
+                    <div className="contact-card-actions">
+                      {selected.contact_phone && (
+                        <>
+                          <a className="btn btn-whatsapp btn-sm" href={whatsAppLink(selected)} target="_blank" rel="noreferrer">
+                            <WhatsAppIcon size={15} /> WhatsApp
+                          </a>
+                          <a className="btn btn-ghost btn-sm" href={`tel:${selected.contact_phone}`}>
+                            <PhoneIcon size={14} /> Call
+                          </a>
+                        </>
+                      )}
+                      {selected.contact_email && (
+                        <a className="btn btn-ghost btn-sm" href={`mailto:${selected.contact_email}`}>
+                          <MailIcon size={14} /> Email
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title" style={{ marginBottom: 14 }}>Request</div>
+                  <dl className="dl-grid">
+                    <div>
+                      <dt>Experience</dt>
+                      <dd>{selected.package_title_snapshot || 'General enquiry'}</dd>
+                    </div>
+                    <div>
+                      <dt>Vendor</dt>
+                      <dd>{selected.vendor_name_snapshot || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt>Party size</dt>
+                      <dd className={selected.party_size ? '' : 'muted'}>
+                        {selected.party_size ? `${selected.party_size} ${selected.party_size === 1 ? 'guest' : 'guests'}` : 'Not given'}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Preferred date</dt>
+                      <dd className={selected.preferred_date ? '' : 'muted'}>
+                        {formatDay(selected.preferred_date) || 'Flexible'}
+                      </dd>
+                    </div>
+                  </dl>
+                  {selected.message && (
+                    <div style={{ marginTop: 18 }}>
+                      <div className="dl-label">Message</div>
+                      <div className="quote">{selected.message}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title">Status</div>
+                  <div className="xp-section-hint">Changes save immediately.</div>
+                  <div className="status-seg">
+                    {STATUSES.map((s) => (
+                      <button
+                        key={s}
+                        className={selected.status === s ? 'active' : ''}
+                        disabled={saving || selected.status === s}
+                        onClick={() => update({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`)}
+                      >
+                        <span className={`dot dot-${s}`} /> {STATUS_LABELS[s]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title">Internal notes</div>
+                  <div className="xp-section-hint">Only admins see these.</div>
+                  <textarea
+                    className="form-textarea" rows={4} value={notes}
+                    placeholder="e.g. Called on WhatsApp, quoted LKR 30,000 for 4"
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                    {notesDirty && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setNotes(selected.admin_notes || '')}>
+                        Discard
+                      </button>
+                    )}
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={!notesDirty || saving}
+                      onClick={() => update({ admin_notes: notes }, 'Note saved')}
+                    >
+                      {saving ? 'Saving…' : 'Save note'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      {toast && <div className={`xp-toast ${toast.tone === 'error' ? 'error' : ''}`}>{toast.message}</div>}
     </div>
   );
 }

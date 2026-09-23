@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { apiUpload, API_ORIGIN } from '../api';
+import { apiUpload, mediaUrl } from '../api';
 import { ImageIcon, TrashIcon } from './Icons';
 
 /**
@@ -70,7 +70,7 @@ export default function ImageUploader({
                 position: 'relative', width: '96px', height: '96px',
                 borderRadius: '10px', overflow: 'hidden',
                 border: '1px solid var(--border)',
-                backgroundImage: `url(${url.startsWith('http') ? url : API_ORIGIN + url})`,
+                backgroundImage: `url(${mediaUrl(url)})`,
                 backgroundSize: 'cover', backgroundPosition: 'center',
               }}
             >

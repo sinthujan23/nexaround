@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiPost, apiGet } from './api';
 import {
-  CompassIcon, TicketIcon, InboxIcon, MapPinIcon, CrossIcon,
+  CompassIcon, TicketIcon, InboxIcon, MapPinIcon, LogOutIcon,
 } from './components/Icons';
 import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
@@ -83,9 +83,15 @@ export default function App() {
     return (
       <div className="login-page">
         <div className="login-card">
-          <div className="login-logo">nexARround</div>
-          <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-            Partner portal
+          <div className="login-logo">
+            <img 
+              src="/logo_2.png" 
+              alt="nexARound" 
+              className="login-logo-img" 
+              onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+            />
+            <div className="brand">nexARound</div>
+            <p>Partner Portal</p>
           </div>
           {error && <div className="login-error">{error}</div>}
           <form onSubmit={handleLogin}>
@@ -144,8 +150,16 @@ export default function App() {
     <div className="admin-layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="brand">nexARround</div>
-          <div className="brand-sub">PARTNER PORTAL</div>
+          <img 
+            src="/logo_2.png" 
+            alt="nexARound" 
+            className="sidebar-logo-img" 
+            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+          />
+          <div>
+            <div className="brand">nexARound</div>
+            <div className="brand-sub">PARTNER PORTAL</div>
+          </div>
         </div>
 
         <nav className="sidebar-nav">
@@ -164,16 +178,16 @@ export default function App() {
 
         <div className="sidebar-footer">
           <div className="admin-user">
-            <div className="admin-user-avatar">
+            <div className="admin-avatar">
               {(me?.vendor_name || '?').charAt(0).toUpperCase()}
             </div>
-            <div>
-              <div className="admin-user-name">{me?.vendor_name || 'Loading…'}</div>
-              <div className="admin-user-role">{me?.email || ''}</div>
+            <div className="user-info" style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: '2px' }}>
+              <div className="admin-name" title={me?.vendor_name || ''}>{me?.vendor_name || 'Loading…'}</div>
+              <div className="admin-role" title={me?.email || ''}>{me?.email || ''}</div>
             </div>
           </div>
-          <button className="action-icon-btn" title="Sign out" onClick={handleLogout}>
-            <CrossIcon size={16} />
+          <button className="logout-btn" title="Sign out" onClick={handleLogout}>
+            <LogOutIcon size={16} />
           </button>
         </div>
       </aside>

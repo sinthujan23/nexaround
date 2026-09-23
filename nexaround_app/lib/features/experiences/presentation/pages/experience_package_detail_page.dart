@@ -403,6 +403,9 @@ class _ExperiencePackageDetailPageState
   Widget _buildActionBar() {
     final vendor = _package.vendor;
 
+    // Only the direct channels sit beside the booking button. Instagram,
+    // Facebook and X are already in "Connect with vendor" above; with all five
+    // here the fixed-width icons squeezed "Request booking" down to "R".
     final actionButtons = <Widget>[];
 
     if (vendor != null && vendor.hasPhone) {
@@ -422,30 +425,6 @@ class _ExperiencePackageDetailPageState
               'I found on NexAround.',
         ),
         tooltip: 'WhatsApp',
-      ));
-    }
-
-    if (vendor != null && vendor.hasInstagram) {
-      actionButtons.add(_imageIconAction(
-        'assets/images/social_instagram.png',
-        () => ContactLauncher.instagram(vendor.contactInstagram),
-        tooltip: 'Instagram',
-      ));
-    }
-
-    if (vendor != null && vendor.hasFacebook) {
-      actionButtons.add(_imageIconAction(
-        'assets/images/social_facebook.png',
-        () => ContactLauncher.facebook(vendor.contactFacebook),
-        tooltip: 'Facebook',
-      ));
-    }
-
-    if (vendor != null && vendor.hasX) {
-      actionButtons.add(_imageIconAction(
-        'assets/images/social_x.png',
-        () => ContactLauncher.x(vendor.contactX),
-        tooltip: 'X (Twitter)',
       ));
     }
 
@@ -478,20 +457,9 @@ class _ExperiencePackageDetailPageState
               ),
             ),
           ),
-          if (actionButtons.isNotEmpty) ...[
+          for (final button in actionButtons) ...[
             const SizedBox(width: 8),
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  for (int i = 0; i < actionButtons.length; i++) ...[
-                    if (i > 0) const SizedBox(width: 8),
-                    actionButtons[i],
-                  ],
-                ],
-              ),
-            ),
+            button,
           ],
         ],
       ),

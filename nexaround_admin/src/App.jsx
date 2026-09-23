@@ -14,6 +14,7 @@ import Settings from './pages/Settings';
 import ApiUsage from './pages/ApiUsage';
 import Experiences from './pages/Experiences';
 import ExperienceEnquiries from './pages/ExperienceEnquiries';
+import ErrorBoundary from './components/ErrorBoundary';
 import { CompassIcon, UsersIcon, MapPinIcon, CreditCardIcon, MegaphoneIcon, FolderIcon, ImageIcon, SettingsIcon, ClipboardCheckIcon, TrendingUpIcon, EyeOffIcon, TicketIcon, InboxIcon } from './components/Icons';
 
 function App() {
@@ -66,8 +67,14 @@ function App() {
       <div className="login-page">
         <div className="login-card">
           <div className="login-logo">
-            <div className="brand">NexARound</div>
-            <p>NexARound Admin Portal</p>
+            <img 
+              src="/logo_2.png" 
+              alt="nexARound" 
+              className="login-logo-img" 
+              onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+            />
+            <div className="brand">nexARound</div>
+            <p>Admin Portal</p>
           </div>
           {error && <div className="login-error">{error}</div>}
           <form onSubmit={handleLogin}>
@@ -173,8 +180,16 @@ function App() {
       {/* Sidebar */}
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <div className="brand">nexARound</div>
-          <div className="brand-sub">nexARound Admin</div>
+          <img 
+            src="/logo_2.png" 
+            alt="nexARound" 
+            className="sidebar-logo-img" 
+            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+          />
+          <div>
+            <div className="brand">nexARound</div>
+            <div className="brand-sub">nexARound Admin</div>
+          </div>
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section-label">Main Menu</div>
@@ -267,7 +282,9 @@ function App() {
         </header>
 
         <div className="page-body">
-          {renderContent()}
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </div>
       </main>
     </div>

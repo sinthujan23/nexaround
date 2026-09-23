@@ -30,9 +30,15 @@ export default function ForgotPassword() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-logo">nexARround</div>
-        <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginBottom: '20px' }}>
-          Partner portal
+        <div className="login-logo">
+          <img 
+            src="/logo_2.png" 
+            alt="nexARound" 
+            className="login-logo-img" 
+            onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+          />
+          <div className="brand">nexARound</div>
+          <p>Partner Portal</p>
         </div>
 
         {sent ? (

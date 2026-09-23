@@ -158,4 +158,8 @@ export function useApi(endpoint, options = {}) {
 // prefixing an image src with API_BASE would 404.
 const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, '');
 
+// Uploads are stored as origin-relative /static/... paths; on the admin domain
+// those resolve to the SPA's index.html, not the image.
+export const mediaUrl = (url) => (!url || /^https?:/.test(url) ? url : API_ORIGIN + url);
+
 export { API_BASE, API_ORIGIN };
