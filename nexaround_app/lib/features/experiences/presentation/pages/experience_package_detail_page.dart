@@ -82,25 +82,52 @@ class _ExperiencePackageDetailPageState
     );
   }
 
+  Widget _headerButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        elevation: 3,
+        shadowColor: Colors.black38,
+        child: IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+          icon: Icon(icon, size: 20, color: AppColors.textPrimary),
+        ),
+      ),
+    );
+  }
+
   Widget _buildGalleryAppBar(List<String> photos) {
+    final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+
     return SliverAppBar(
       expandedHeight: 320,
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: AppColors.textPrimary,
+      // White circles rather than bare icons: over the photo a plain dark
+      // icon sits on the dark top gradient and all but disappears.
+      leading: _headerButton(
+        icon: isIOS ? Icons.arrow_back_ios_new_rounded : Icons.arrow_back_rounded,
+        tooltip: 'Back',
+        onPressed: () => Navigator.maybePop(context),
+      ),
       // Share lives up here, not in the bottom bar: a fourth fixed-width
       // button there squeezes "Request booking" on small phones.
       actions: [
-        IconButton(
+        _headerButton(
+          icon: isIOS ? Icons.ios_share : Icons.share_rounded,
           tooltip: 'Share',
-          icon: Icon(
-            Theme.of(context).platform == TargetPlatform.iOS
-                ? Icons.ios_share
-                : Icons.share_rounded,
-          ),
           onPressed: () => showExperienceShareSheet(context, _package),
         ),
-        const SizedBox(width: 4),
       ],
       flexibleSpace: FlexibleSpaceBar(
         background: photos.isEmpty
