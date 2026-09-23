@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     # out an absolute URL to itself — Odyssey cover photos served from the
     # place-photo cache, which the app's image loader fetches verbatim.
     PUBLIC_BASE_URL: str = "https://api.nexaround.com"
+    # Where a vendor's invite and password-reset links point. Must also be
+    # listed in docker-compose.yml's `environment:` block for either service
+    # that sends mail, or the value in .env never reaches the container and
+    # this default silently wins.
+    PARTNER_PORTAL_URL: str = "https://partner.nexaround.com"
     
     # JWT Security Configuration
     SECRET_KEY: str = ""

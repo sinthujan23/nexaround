@@ -199,6 +199,11 @@ class ExperienceEnquiry(Base):
     # new | contacted | closed
     status: Mapped[str] = mapped_column(String(20), default="new", index=True)
     admin_notes: Mapped[str] = mapped_column(Text, nullable=True)
+    # The vendor's own note, kept apart from `admin_notes` deliberately. That
+    # column already holds the admin's private commentary about vendors and
+    # travellers, so sharing it would leak the backlog the day the portal ships
+    # - and two sides writing one textarea silently clobber each other.
+    vendor_notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, index=True
@@ -209,3 +214,64 @@ class ExperienceEnquiry(Base):
 
     def __repr__(self) -> str:
         return f"<ExperienceEnquiry {self.contact_name} -> {self.vendor_name_snapshot}>"
+
+
+class VendorUser(Base):
+    """A login for the partner portal, belonging to exactly one vendor.
+
+    Deliberately NOT a row in `users`, and deliberately not an owner column on
+    `ExperienceVendor`.
+
+    Not `users`, because `get_current_user` validates only the signature, that
+    `sub` resolves to a `users` row, and `is_active` - no role check and no
+    token-type check. A vendor sitting in that table would therefore be handed
+    the entire traveller API, `DELETE /api/v1/auth/me` included, and the only
+    defence would be a role check retrofitted onto every existing endpoint.
+    Keeping the row out of `users` makes the isolation a property of the schema
+    rather than of a code path someone can forget. (`users.email` is unique
+    too, and a vendor's owner is very likely also a traveller.)
+
+    Not a column on the vendor, because an agency will eventually want an owner
+    plus a manager login; `vendor_id` here gives many-to-one for free.
+    """
+
+    __tablename__ = "vendor_users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_vendors.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    email: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True, nullable=False
+    )
+    # Null until the invite is accepted. `verify_password` already returns
+    # False for a null hash, so an unaccepted invite simply cannot log in.
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=True)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=True)
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    last_login_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # The only way to end sessions other than this one on a password reset: we
+    # never hold their jti values, so there is nothing to blacklist. Tokens
+    # issued before this moment are refused by `get_current_vendor`.
+    password_changed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow
+    )
+
+    def __repr__(self) -> str:
+        return f"<VendorUser {self.email}>"

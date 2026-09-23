@@ -34,6 +34,10 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - EMAILS_FROM_EMAIL=${EMAILS_FROM_EMAIL}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+      # Where partner invite / reset links point. Listed here on purpose:
+      # this block is an allowlist, so a value only in .env never arrives
+      # and the code default silently wins.
+      - PARTNER_PORTAL_URL=${PARTNER_PORTAL_URL:-https://partner.nexaround.com}
     volumes:
       - ./app:/app/app
       # Persist proxied place photos across container restarts.
@@ -96,6 +100,10 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD}
       - EMAILS_FROM_EMAIL=${EMAILS_FROM_EMAIL}
       - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS}
+      # Where partner invite / reset links point. Listed here on purpose:
+      # this block is an allowlist, so a value only in .env never arrives
+      # and the code default silently wins.
+      - PARTNER_PORTAL_URL=${PARTNER_PORTAL_URL:-https://partner.nexaround.com}
     volumes:
       - ./app:/app/app
       # The same photo volume as the api, or the two processes keep separate

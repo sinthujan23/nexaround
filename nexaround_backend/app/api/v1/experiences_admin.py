@@ -13,11 +13,20 @@ from fastapi import (
     APIRouter, Depends, File, HTTPException, Query, UploadFile, status,
 )
 from PIL import Image
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.admin import verify_admin_token
+from app.core.config import settings
 from app.core.database import get_db
-from app.models.experience import ExperiencePackage, ExperienceVendor
+from app.models.experience import ExperiencePackage, ExperienceVendor, VendorUser
+from app.schemas.partner import (
+    VendorLoginAdminResponse, VendorLoginCreate, VendorLoginListResponse,
+    VendorLoginUpdate,
+)
+from app.services.email_service import send_vendor_invite_email
+from app.services.partner_auth import store_link_token
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
     ExperienceEnquiryAdminResponse,
@@ -452,3 +461,139 @@ async def admin_place_search(
             "longitude": location.get("longitude"),
         })
     return {"places": results}
+
+
+# ── Partner portal logins ───────────────────────────────────────────────────
+#
+# A vendor's credentials live in `vendor_users`, not `users` — see the model
+# docstring for why that separation is structural rather than stylistic. These
+# endpoints are how a login comes into existence: the admin names the email,
+# the vendor sets their own password from the link. The admin never sees or
+# chooses the password.
+
+async def _login_response(vu: VendorUser) -> VendorLoginAdminResponse:
+    return VendorLoginAdminResponse(
+        id=vu.id,
+        vendor_id=vu.vendor_id,
+        email=vu.email,
+        display_name=vu.display_name,
+        is_active=bool(vu.is_active),
+        # The question the admin is actually asking of this row.
+        has_password=vu.password_hash is not None,
+        last_login_at=vu.last_login_at,
+        created_at=vu.created_at,
+    )
+
+
+async def _send_link(vu: VendorUser, vendor: ExperienceVendor, *, is_reset: bool) -> None:
+    token = await store_link_token(vu.id, is_reset=is_reset)
+    link = f"{settings.PARTNER_PORTAL_URL.rstrip('/')}/set-password?token={token}"
+    await send_vendor_invite_email(vu.email, vendor.name, link, is_reset=is_reset)
+
+
+@router.get("/vendors/{vendor_id}/logins", response_model=VendorLoginListResponse)
+async def list_vendor_logins(
+    vendor_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    rows = (
+        await db.execute(
+            select(VendorUser)
+            .where(VendorUser.vendor_id == vendor_id)
+            .order_by(VendorUser.created_at.asc())
+        )
+    ).scalars().all()
+    return VendorLoginListResponse(
+        logins=[await _login_response(r) for r in rows]
+    )
+
+
+@router.post(
+    "/vendors/{vendor_id}/logins",
+    response_model=VendorLoginAdminResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_vendor_login(
+    vendor_id: uuid.UUID,
+    data: VendorLoginCreate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    vendor = await ExperienceRepository(db).get_vendor(vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    vu = VendorUser(
+        vendor_id=vendor_id,
+        email=str(data.email).strip().lower(),
+        display_name=data.display_name,
+    )
+    db.add(vu)
+    try:
+        await db.commit()
+    except IntegrityError:
+        # The email is unique across every vendor. Without this the unique
+        # index surfaces as a 500 and the admin sees "something went wrong"
+        # instead of "that address already has a login".
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="That email address already has a partner login.",
+        )
+    await db.refresh(vu)
+
+    await _send_link(vu, vendor, is_reset=False)
+    return await _login_response(vu)
+
+
+@router.post(
+    "/logins/{login_id}/resend-invite", response_model=VendorLoginAdminResponse,
+)
+async def resend_vendor_invite(
+    login_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    vu = await db.get(VendorUser, login_id)
+    if not vu:
+        raise HTTPException(status_code=404, detail="Login not found")
+    vendor = await ExperienceRepository(db).get_vendor(vu.vendor_id)
+    if not vendor:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    # Sending a fresh token revokes the previous one (see `store_link_token`),
+    # so "resend because the first email went astray" closes the old link
+    # rather than leaving two live.
+    await _send_link(vu, vendor, is_reset=vu.password_hash is not None)
+    return await _login_response(vu)
+
+
+@router.patch("/logins/{login_id}", response_model=VendorLoginAdminResponse)
+async def update_vendor_login(
+    login_id: uuid.UUID,
+    data: VendorLoginUpdate,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    vu = await db.get(VendorUser, login_id)
+    if not vu:
+        raise HTTPException(status_code=404, detail="Login not found")
+    vu.is_active = data.is_active
+    await db.commit()
+    await db.refresh(vu)
+    return await _login_response(vu)
+
+
+@router.delete("/logins/{login_id}")
+async def delete_vendor_login(
+    login_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(verify_admin_token),
+):
+    vu = await db.get(VendorUser, login_id)
+    if not vu:
+        raise HTTPException(status_code=404, detail="Login not found")
+    await db.delete(vu)
+    await db.commit()
+    return {"status": "deleted"}
