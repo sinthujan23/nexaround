@@ -10,6 +10,8 @@ import 'package:nexaround_app/features/travel_stories/presentation/pages/travel_
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/core/utils/go_router_refresh_stream.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 
 class AppRouter {
   static GoRouter createRouter(AuthBloc authBloc) {
@@ -18,13 +20,25 @@ class AppRouter {
       refreshListenable: GoRouterRefreshStream(authBloc.stream),
       redirect: (context, state) {
         final authState = authBloc.state;
-        
+
+        // A shared experience link, https://nexaround.com/e/<id>, which Android
+        // App Links and iOS Universal Links hand to the router as /e/<id>. A
+        // signed-in user gets it on top of Home, so Back returns to Home and a
+        // link arriving while the app is open keeps Home's state. Anyone else
+        // sees it on its own; the package endpoint needs no account.
+        if (state.matchedLocation.startsWith('/e/') &&
+            CacheService.isLoggedIn() &&
+            authState is! AuthUnauthenticated) {
+          return '/home${state.matchedLocation}';
+        }
+
         // Define public routes that don't require authentication
         final bool isPublicRoute = state.matchedLocation == '/login' || 
                                   state.matchedLocation == '/register' || 
                                   state.matchedLocation == '/otp-verify' || 
                                   state.matchedLocation == '/' || 
-                                  state.matchedLocation == '/onboarding';
+                                  state.matchedLocation == '/onboarding' ||
+                                  state.matchedLocation.startsWith('/e/');
 
         // 1. If not authenticated and trying to access a private route -> Go to Login
         if (authState is AuthUnauthenticated && !isPublicRoute) {
@@ -81,6 +95,20 @@ class AppRouter {
             transitionsBuilder: (context, animation, secondaryAnimation, child) {
               return FadeTransition(opacity: animation, child: child);
             },
+          ),
+          routes: [
+            GoRoute(
+              path: 'e/:id',
+              builder: (context, state) =>
+                  ExperienceLinkPage(packageId: state.pathParameters['id']!),
+            ),
+          ],
+        ),
+        GoRoute(
+          path: '/e/:id',
+          builder: (context, state) => ExperienceLinkPage(
+            packageId: state.pathParameters['id']!,
+            standalone: true,
           ),
         ),
         GoRoute(

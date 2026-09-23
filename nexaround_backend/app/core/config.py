@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     # that sends mail, or the value in .env never reaches the container and
     # this default silently wins.
     PARTNER_PORTAL_URL: str = "https://partner.nexaround.com"
+    # The public website. Shared experience links are `<this>/e/<package id>`:
+    # nginx on that domain proxies /e/ to app/api/share.py, and the Android and
+    # iOS apps claim the same paths (assetlinks.json / apple-app-site-association
+    # under website/.well-known/).
+    PUBLIC_SITE_URL: str = "https://nexaround.com"
     
     # JWT Security Configuration
     SECRET_KEY: str = ""

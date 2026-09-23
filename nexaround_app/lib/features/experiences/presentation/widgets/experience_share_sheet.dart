@@ -7,10 +7,13 @@ import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// Where a shared package points. There is no per-package web page yet, so a
-/// share links to the app's download page; swap this for a package URL once
-/// deep links exist.
-const String experienceShareLink = 'https://nexaround.com/get-app';
+/// The link for one package. It opens the app on that package when the app
+/// is installed (Android App Links / iOS Universal Links), and otherwise a web
+/// page with the package and the store buttons (nexaround_backend
+/// app/api/share.py). The same page gives WhatsApp, Facebook and X their
+/// link preview.
+String experienceShareLink(ExperiencePackageEntity package) =>
+    'https://nexaround.com/e/${package.id}';
 
 /// Opens the "Share this experience" sheet for [package].
 Future<void> showExperienceShareSheet(
@@ -45,7 +48,7 @@ String experienceShareMessage(ExperiencePackageEntity package) {
     if (details.isNotEmpty) details,
     if (summary.isNotEmpty) summary,
     '',
-    'Get the app: $experienceShareLink',
+    'See it on nexARound: ${experienceShareLink(package)}',
   ].join('\n');
 }
 
@@ -248,7 +251,7 @@ class _ExperienceShareSheet extends StatelessWidget {
   Future<void> _shareFacebook() async {
     await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
     final uri = Uri.parse(
-      'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(experienceShareLink)}',
+      'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(experienceShareLink(package))}',
     );
     final opened = await _open(uri);
     _toast(opened
@@ -262,7 +265,7 @@ class _ExperienceShareSheet extends StatelessWidget {
     final uri = Uri.parse(
       'https://twitter.com/intent/tweet'
       '?text=${Uri.encodeComponent(text)}'
-      '&url=${Uri.encodeComponent(experienceShareLink)}',
+      '&url=${Uri.encodeComponent(experienceShareLink(package))}',
     );
     if (!await _open(uri)) _copy("Couldn't open X. Details copied instead.");
   }

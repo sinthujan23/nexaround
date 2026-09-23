@@ -30,6 +30,20 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
+            <!-- Shared experience links, https://nexaround.com/e/<package id>.
+                 autoVerify checks nexaround.com/.well-known/assetlinks.json, so
+                 a tapped link opens the app directly instead of the browser.
+                 lib/app/routes.dart routes /e/:id. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="nexaround.com" android:pathPrefix="/e/" />
+            </intent-filter>
+            <!-- Hand incoming links to go_router. Set explicitly: the default
+                 has changed between Flutter releases. -->
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="true" />
+
             <!-- Apple Sign-In Callback -->
             <intent-filter android:label="Apple Sign-In Callback">
                 <action android:name="android.intent.action.VIEW" />
