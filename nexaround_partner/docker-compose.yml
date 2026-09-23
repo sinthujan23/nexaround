@@ -1,0 +1,21 @@
+# Static SPA, same shape as nexaround_admin: nginx serves ./dist straight from
+# a bind mount, so deploying is `npm run build` with no container restart.
+#
+# Bound to loopback only — the host nginx terminates TLS for
+# partner.nexaround.com and proxies to it (security finding NA-03).
+services:
+  partner:
+    image: nginx:alpine
+    container_name: nexaround_partner_panel
+    restart: always
+    ports:
+      - "127.0.0.1:8021:80"
+    volumes:
+      - ./dist:/usr/share/nginx/html
+      # Without this the invite link 404s — see the file for why.
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

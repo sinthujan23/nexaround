@@ -26,6 +26,7 @@ from app.schemas.partner import (
     VendorLoginUpdate,
 )
 from app.services.email_service import send_vendor_invite_email
+from app.services.experience_upload import save_experience_images
 from app.services.partner_auth import store_link_token
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.experience import (
@@ -375,55 +376,11 @@ async def upload_experience_images(
 ):
     """Multi-image upload for vendor and package galleries.
 
-    Mirrors `travel_stories.upload_story_images` — extension allowlist, size
-    cap and a real Pillow decode, so a renamed executable cannot land in the
-    static directory. Returns `/static/...` paths, which the app serves without
-    auth headers.
+    The validation and storage live in `experience_upload` so the partner
+    router runs exactly the same checks — see that module for why they are not
+    two copies.
     """
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    urls = []
-    for file in files:
-        filename = file.filename or ""
-        file_ext = os.path.splitext(filename)[1].lower()
-        if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"File extension '{file_ext}' is not allowed. "
-                    "Only JPG, PNG, WEBP, and GIF images are permitted."
-                ),
-            )
-
-        content = await file.read()
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File size exceeds maximum allowed limit (10MB)",
-            )
-
-        try:
-            img = Image.open(io.BytesIO(content))
-            img.verify()
-            if img.format not in ["JPEG", "PNG", "WEBP", "GIF"]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid image format",
-                )
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Uploaded file is not a valid image",
-            )
-
-        unique_filename = f"{uuid.uuid4()}{file_ext}"
-        with open(os.path.join(UPLOAD_DIR, unique_filename), "wb") as buffer:
-            buffer.write(content)
-        urls.append(f"/static/uploads/experiences/{unique_filename}")
-
-    return {"urls": urls}
+    return {"urls": await save_experience_images(files)}
 
 
 @router.get("/place-search")

@@ -1,0 +1,165 @@
+import React, { useState } from 'react';
+
+// A copy of nexaround_admin/src/api.js with exactly two differences: the
+// localStorage key, and the endpoint prefix the 401 handler must not fire
+// on (signing in with the wrong password is a 401 that must not be read as
+// an expired session). Everything else is deliberately identical.
+const API_BASE = 'https://api.nexaround.com/api/v1';
+
+export async function apiFetch(endpoint, options = {}) {
+  const token = localStorage.getItem('partner_token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    let errorMsg = response.statusText;
+    try {
+      const errData = await response.json();
+      if (errData && errData.detail) {
+        errorMsg = typeof errData.detail === 'string' ? errData.detail : JSON.stringify(errData.detail);
+      }
+    } catch {
+      // Ignore error parsing
+    }
+
+    if (response.status === 401 && !endpoint.includes('/partner/auth/')) {
+      localStorage.removeItem('partner_token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+        detail: { message: 'Session expired. Please sign in again.' }
+      }));
+    }
+
+    throw new Error(errorMsg || `Request failed with status ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+export async function apiGet(endpoint) {
+  return apiFetch(endpoint, { method: 'GET' });
+}
+
+export async function apiPost(endpoint, body) {
+  return apiFetch(endpoint, {
+    method: 'POST',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+export async function apiPut(endpoint, body) {
+  return apiFetch(endpoint, {
+    method: 'PUT',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+export async function apiDelete(endpoint) {
+  return apiFetch(endpoint, { method: 'DELETE' });
+}
+
+export async function apiPatch(endpoint, body) {
+  return apiFetch(endpoint, {
+    method: 'PATCH',
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+// Multipart uploads cannot go through apiFetch: it hard-sets
+// 'Content-Type: application/json', which overwrites the multipart boundary
+// the browser needs to generate. The CSV importer in ApiUsage.jsx already
+// works around this with a raw fetch; this is that workaround, once, with the
+// 401 handling kept consistent with apiFetch.
+export async function apiUpload(endpoint, files) {
+  const body = new FormData();
+  Array.from(files).forEach((file) => body.append('files', file));
+
+  const response = await fetch(`${API_BASE}${endpoint}`, {
+    method: 'POST',
+    body,
+    headers: { 'Authorization': `Bearer ${localStorage.getItem('partner_token')}` },
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      localStorage.removeItem('partner_token');
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', {
+        detail: { message: 'Session expired. Please sign in again.' },
+      }));
+    }
+    let errorMsg = response.statusText;
+    try {
+      const errData = await response.json();
+      if (errData && errData.detail) {
+        errorMsg = typeof errData.detail === 'string'
+          ? errData.detail : JSON.stringify(errData.detail);
+      }
+    } catch { /* Ignore error parsing */ }
+    throw new Error(errorMsg || 'Upload failed');
+  }
+
+  return response.json();
+}
+
+export function useApi(endpoint, options = {}) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  const [prevEndpoint, setPrevEndpoint] = useState(endpoint);
+  const [prevTrigger, setPrevTrigger] = useState(refreshTrigger);
+
+  if (endpoint !== prevEndpoint || refreshTrigger !== prevTrigger) {
+    setPrevEndpoint(endpoint);
+    setPrevTrigger(refreshTrigger);
+    setLoading(true);
+  }
+
+  const refetch = () => setRefreshTrigger(prev => prev + 1);
+
+  React.useEffect(() => {
+    let active = true;
+    apiFetch(endpoint, options)
+      .then(res => {
+        if (active) {
+          setData(res);
+          setError(null);
+        }
+      })
+      .catch(err => {
+        if (active) {
+          setError(err.message || 'An error occurred');
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, refreshTrigger]);
+
+  return { data, loading, error, refetch };
+}
+
+// Uploaded media is served from /static/..., which is NOT under /api/v1 —
+// prefixing an image src with API_BASE would 404.
+const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, '');
+
+export { API_BASE, API_ORIGIN };

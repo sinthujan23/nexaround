@@ -12,9 +12,11 @@ would be wrong here:
    simply by pressing Save — even if their schema never declared them.
 """
 import uuid
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import (
+    APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import VendorPrincipal, get_current_vendor
@@ -35,7 +37,10 @@ from app.schemas.partner import (
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
+from app.services import google_places_client
 from app.services.email_service import send_vendor_invite_email
+from app.services.experience_upload import save_experience_images
+from app.services.settings_service import SettingsService
 from app.services.partner_auth import consume_link_token, store_link_token
 
 router = APIRouter(prefix="/partner", tags=["Partner Portal"])
@@ -616,3 +621,70 @@ async def partner_stats(
     return PartnerStatsResponse(
         **await ExperienceRepository(db).vendor_stats(principal.vendor.id)
     )
+
+
+# ── Media and map search ────────────────────────────────────────────────────
+#
+# Both mirror the admin endpoints but add a per-vendor quota. The admin ones
+# have none because an admin is trusted; an authenticated third party writing
+# unbounded files to a named volume can fill the host disk, and every
+# place-search spends real Google money.
+
+@router.post("/upload")
+async def partner_upload(
+    files: List[UploadFile] = File(...),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Gallery images for this vendor's own profile and packages.
+
+    The validation is `save_experience_images`, shared with the admin router so
+    the two cannot drift — and this is the copy a semi-trusted caller reaches.
+    """
+    await check_account_rate_limit(
+        str(principal.vendor.id),
+        action="partner_upload",
+        max_attempts=200,
+        window_seconds=3600,
+    )
+    return {"urls": await save_experience_images(files)}
+
+
+@router.get("/place-search")
+async def partner_place_search(
+    query: str = Query(..., min_length=2),
+    lat: float = Query(..., ge=-90.0, le=90.0),
+    lng: float = Query(..., ge=-180.0, le=180.0),
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Google text search, for placing a pin on the map.
+
+    Proxied rather than called from the browser so the Google key stays
+    server-side, which is this project's standing rule.
+    """
+    await check_account_rate_limit(
+        str(principal.vendor.id),
+        action="partner_place_search",
+        max_attempts=60,
+        window_seconds=3600,
+    )
+
+    # Same reload as the admin version: SettingsService caches per process and
+    # the API runs two workers, so a key saved in the admin panel can be live
+    # in one and stale in the other.
+    await SettingsService(db).load_settings()
+
+    raw = await google_places_client.text_search(
+        query=query, latitude=lat, longitude=lng
+    )
+    results = []
+    for place in raw or []:
+        location = place.get("location") or {}
+        results.append({
+            "place_id": place.get("id"),
+            "name": (place.get("displayName") or {}).get("text"),
+            "address": place.get("formattedAddress"),
+            "latitude": location.get("latitude"),
+            "longitude": location.get("longitude"),
+        })
+    return {"places": results}
