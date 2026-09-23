@@ -1,26 +1,12 @@
 import { useState } from 'react';
-import { useApi, apiPost, apiPut, apiDelete } from '../api';
-import { PlusIcon, EditIcon, TrashIcon, TicketIcon } from '../components/Icons';
+import { useApi, apiPost, apiPut, apiDelete, mediaUrl } from '../api';
+import { PlusIcon, TrashIcon, TicketIcon, SearchIcon } from '../components/Icons';
+import { Switch, Drawer, Toast } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
-
-const CATEGORIES = [
-  { value: 'boat', label: 'Boat ride' },
-  { value: 'water_sports', label: 'Water sports' },
-  { value: 'guided_tour', label: 'Guided tour' },
-  { value: 'wildlife', label: 'Wildlife' },
-  { value: 'cultural', label: 'Cultural' },
-  { value: 'adventure', label: 'Adventure' },
-  { value: 'food', label: 'Food' },
-  { value: 'other', label: 'Other' },
-];
-
-const PRICE_BASES = [
-  { value: 'per_person', label: 'Per person' },
-  { value: 'per_group', label: 'Per group' },
-  { value: 'from', label: 'Starting from' },
-  { value: 'on_request', label: 'On request' },
-];
+import {
+  CATEGORIES, PRICE_BASES, categoryLabel, basisLabel, formatPrice, formatDuration,
+} from '../format';
 
 const empty = {
   title: '', summary: '', description: '', category: 'boat', tags: [],
@@ -33,18 +19,50 @@ const empty = {
 const linesToArray = (t) => t.split('\n').map((l) => l.trim()).filter(Boolean);
 const arrayToLines = (a) => (a || []).join('\n');
 
+// A package that meets at the business has no point of its own; the server
+// copies the vendor's.
+const toPayload = (form) => ({
+  ...form,
+  price_amount: form.price_amount === '' || form.price_amount == null ? null : Number(form.price_amount),
+  duration_minutes: form.duration_minutes === '' || form.duration_minutes == null ? null : Number(form.duration_minutes),
+  max_participants: form.max_participants === '' || form.max_participants == null ? null : Number(form.max_participants),
+  latitude: form.uses_vendor_location ? null : Number(form.latitude),
+  longitude: form.uses_vendor_location ? null : Number(form.longitude),
+});
+
+// is_published is the server's word, not the form's: it also needs the whole
+// listing to be live, which only NexAround can switch.
+const visibility = (pkg) => {
+  if (!pkg.is_active) return 'Hidden';
+  return pkg.is_published ? 'Live' : 'On, not visible';
+};
+
 export default function Packages() {
-  // The shared hook rather than a hand-rolled loader: it owns the
-  // loading/error/refetch dance, and calling setState straight from an effect
-  // body is what React flags as a cascading render.
-  const { data, loading, error, refetch } = useApi('/partner/packages');
-  const packages = data?.packages || [];
-  const [modalOpen, setModalOpen] = useState(false);
+  const { data, error, refetch } = useApi('/partner/packages');
+  const [packages, setPackages] = useState(null); // optimistic copy of data
+  const list = packages ?? data?.packages ?? [];
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState(null);
 
-  const openNew = () => { setEditingId(null); setForm(empty); setModalOpen(true); };
+  const notify = (message, tone = 'ok') => {
+    setToast({ message, tone });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const reload = () => {
+    setPackages(null);
+    refetch();
+  };
+
+  const patch = (p) => setForm((prev) => ({ ...prev, ...p }));
+
+  const openNew = () => { setEditingId(null); setForm(empty); setDrawerOpen(true); };
   const openEdit = (pkg) => {
     setEditingId(pkg.id);
     setForm({
@@ -52,30 +70,27 @@ export default function Packages() {
       price_amount: pkg.price_amount ?? '',
       duration_minutes: pkg.duration_minutes ?? '',
       max_participants: pkg.max_participants ?? '',
+      summary: pkg.summary || '',
+      description: pkg.description || '',
     });
-    setModalOpen(true);
+    setDrawerOpen(true);
   };
 
   const save = async (e) => {
     e.preventDefault();
-    const payload = {
-      ...form,
-      price_amount: form.price_amount === '' ? null : Number(form.price_amount),
-      duration_minutes: form.duration_minutes === '' ? null : Number(form.duration_minutes),
-      max_participants: form.max_participants === '' ? null : Number(form.max_participants),
-      // A package that meets at the business has no point of its own; the
-      // server copies the vendor's.
-      latitude: form.uses_vendor_location ? null : Number(form.latitude),
-      longitude: form.uses_vendor_location ? null : Number(form.longitude),
-    };
+    if (!form.uses_vendor_location && (form.latitude === '' || form.latitude == null)) {
+      notify('Pick the meeting point on the map, or use your business address.', 'error');
+      return;
+    }
     setSaving(true);
     try {
-      if (editingId) await apiPut(`/partner/packages/${editingId}`, payload);
-      else await apiPost('/partner/packages', payload);
-      setModalOpen(false);
-      refetch();
+      if (editingId) await apiPut(`/partner/packages/${editingId}`, toPayload(form));
+      else await apiPost('/partner/packages', toPayload(form));
+      setDrawerOpen(false);
+      reload();
+      notify(editingId ? 'Package saved' : 'Package created');
     } catch (err) {
-      alert(`Could not save: ${err.message}`);
+      notify(`Could not save: ${err.message}`, 'error');
     } finally {
       setSaving(false);
     }
@@ -85,237 +100,291 @@ export default function Packages() {
     if (!confirm(`Delete "${pkg.title}"? This cannot be undone.`)) return;
     try {
       await apiDelete(`/partner/packages/${pkg.id}`);
-      refetch();
+      setDrawerOpen(false);
+      reload();
+      notify('Package deleted');
     } catch (err) {
-      alert(`Could not delete: ${err.message}`);
+      notify(`Could not delete: ${err.message}`, 'error');
     }
   };
 
+  const toggleLive = async (pkg, isActive) => {
+    // Optimistic, so the switch moves under the cursor.
+    setPackages(list.map((p) => (p.id === pkg.id ? { ...p, is_active: isActive } : p)));
+    try {
+      const updated = await apiPut(`/partner/packages/${pkg.id}`, toPayload({ ...pkg, is_active: isActive }));
+      setPackages((prev) => (prev || list).map((p) => (p.id === pkg.id ? updated : p)));
+    } catch (err) {
+      setPackages((prev) => (prev || list).map((p) => (p.id === pkg.id ? { ...p, is_active: !isActive } : p)));
+      notify(`Could not update: ${err.message}`, 'error');
+    }
+  };
+
+  const liveCount = list.filter((p) => p.is_active).length;
+  const q = search.trim().toLowerCase();
+  const filtered = list.filter((p) =>
+    (statusFilter === 'all' || (statusFilter === 'live' ? p.is_active : !p.is_active))
+    && (!q || [p.title, p.summary, categoryLabel(p.category)].some((f) => (f || '').toLowerCase().includes(q)))
+  );
+
+  const filters = [
+    ['all', 'All', list.length],
+    ['live', 'Live', liveCount],
+    ['hidden', 'Hidden', list.length - liveCount],
+  ];
+
   return (
     <>
-      {error && <div className="login-error">{error}</div>}
-
-      <div className="card" style={{ padding: '24px' }}>
-        <div className="card-header">
-          <div className="card-title">My packages ({packages.length})</div>
-          <button className="btn btn-primary" onClick={openNew}>
-            <PlusIcon size={16} /> Add package
+      <div className="xp-toolbar">
+        <div className="seg">
+          {filters.map(([value, label, count]) => (
+            <button
+              key={value}
+              className={`seg-btn ${statusFilter === value ? 'active' : ''}`}
+              onClick={() => setStatusFilter(value)}
+            >
+              {label} <span className="seg-count">{count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="xp-toolbar-right">
+          <div className="search-bar">
+            <SearchIcon size={16} />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search your packages…" />
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={openNew}>
+            <PlusIcon size={15} /> Add package
           </button>
         </div>
-
-        {loading && <div className="loader" />}
-
-        {!loading && packages.length === 0 && (
-          <div className="empty-state">
-            <TicketIcon size={32} className="empty-icon" />
-            <div>Nothing listed yet. Add your first package to appear in the app.</div>
-          </div>
-        )}
-
-        {!loading && packages.length > 0 && (
-          <div className="modern-list">
-            {packages.map((pkg) => (
-              <div key={pkg.id} className="modern-list-item">
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{pkg.title}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    {pkg.category} {' · '}
-                    {pkg.price_amount != null
-                      ? `${pkg.price_currency} ${pkg.price_amount}`
-                      : 'On request'}
-                    {pkg.duration_minutes ? ` · ${pkg.duration_minutes} min` : ''}
-                    {!pkg.uses_vendor_location ? ' · own meeting point' : ''}
-                  </div>
-                </div>
-                {/* is_published is the server's word, not the form's: it also
-                    depends on whether the whole listing is live. */}
-                <span className={`badge ${pkg.is_published ? 'badge-green' : 'badge-yellow'}`}>
-                  {pkg.is_published ? 'Live' : 'Hidden'}
-                </span>
-                <button className="action-icon-btn" title="Edit" onClick={() => openEdit(pkg)}>
-                  <EditIcon size={14} />
-                </button>
-                <button className="action-icon-btn" title="Delete" onClick={() => remove(pkg)}>
-                  <TrashIcon size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
 
-      {modalOpen && (
-        <div className="modal-overlay" onClick={() => setModalOpen(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <form onSubmit={save}>
-              <div className="card-header">
-                <div className="card-title">{editingId ? 'Edit package' : 'New package'}</div>
-              </div>
+      {error && <div className="login-error">{error}</div>}
 
-              <div className="form-group">
-                <label className="form-label">Title</label>
-                <input
-                  type="text" required className="form-input" value={form.title}
-                  onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
-                />
-              </div>
+      {!data && !error && <div className="loader" />}
 
-              <div className="form-group">
-                <label className="form-label">Short summary (shown on the card)</label>
-                <input
-                  type="text" maxLength={500} className="form-input" value={form.summary || ''}
-                  onChange={(e) => setForm((p) => ({ ...p, summary: e.target.value }))}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Full description</label>
-                <textarea
-                  className="form-textarea" rows={4} value={form.description || ''}
-                  onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-                />
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Category</label>
-                  <select
-                    className="form-select" value={form.category || 'other'}
-                    onChange={(e) => setForm((p) => ({ ...p, category: e.target.value }))}
-                  >
-                    {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
-                  </select>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Price basis</label>
-                  <select
-                    className="form-select" value={form.price_basis || 'per_person'}
-                    onChange={(e) => setForm((p) => ({ ...p, price_basis: e.target.value }))}
-                  >
-                    {PRICE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Price (blank = on request)</label>
-                  <input
-                    type="number" step="0.01" min="0" className="form-input"
-                    value={form.price_amount}
-                    onChange={(e) => setForm((p) => ({ ...p, price_amount: e.target.value }))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Currency</label>
-                  <input
-                    type="text" maxLength={10} className="form-input" value={form.price_currency || ''}
-                    onChange={(e) => setForm((p) => ({ ...p, price_currency: e.target.value.toUpperCase() }))}
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">Duration (minutes)</label>
-                  <input
-                    type="number" min="0" className="form-input" value={form.duration_minutes}
-                    onChange={(e) => setForm((p) => ({ ...p, duration_minutes: e.target.value }))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Max participants</label>
-                  <input
-                    type="number" min="1" className="form-input" value={form.max_participants}
-                    onChange={(e) => setForm((p) => ({ ...p, max_participants: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="form-grid-2">
-                <div className="form-group">
-                  <label className="form-label">What&rsquo;s included (one per line)</label>
-                  <textarea
-                    className="form-textarea" rows={3} value={arrayToLines(form.inclusions)}
-                    onChange={(e) => setForm((p) => ({ ...p, inclusions: linesToArray(e.target.value) }))}
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Languages (one per line)</label>
-                  <textarea
-                    className="form-textarea" rows={3} value={arrayToLines(form.languages)}
-                    onChange={(e) => setForm((p) => ({ ...p, languages: linesToArray(e.target.value) }))}
-                  />
-                </div>
-              </div>
-
-              <ImageUploader
-                label="Package photos (the first is the card photo)"
-                value={form.photo_urls}
-                uploadEndpoint="/partner/upload"
-                onChange={(urls) => setForm((p) => ({ ...p, photo_urls: urls }))}
-              />
-
-              <div className="form-group">
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <input
-                    type="checkbox"
-                    checked={!form.uses_vendor_location}
-                    onChange={(e) => setForm((p) => ({
-                      ...p,
-                      uses_vendor_location: !e.target.checked,
-                      latitude: e.target.checked ? '' : null,
-                      longitude: e.target.checked ? '' : null,
-                    }))}
-                  />
-                  This package meets somewhere other than my business address
-                </label>
-              </div>
-
-              {!form.uses_vendor_location && (
-                <LocationPicker
-                  mapId="partner-package-map"
-                  latitude={form.latitude ?? ''}
-                  longitude={form.longitude ?? ''}
-                  address={form.meeting_point_address || ''}
-                  searchEndpoint="/partner/place-search"
-                  onPick={(p) => {
-                    const next = { ...p };
-                    delete next.name;
-                    delete next.google_place_id;
-                    const picked = next.address;
-                    delete next.address;
-                    setForm((prev) => ({
-                      ...prev, ...next,
-                      ...(picked !== undefined ? { meeting_point_address: picked } : {}),
-                    }));
-                  }}
-                />
-              )}
-
-              <div className="form-group">
-                <label className="form-label">Show in the app</label>
-                <select
-                  className="form-select" value={form.is_active ? 'yes' : 'no'}
-                  onChange={(e) => setForm((p) => ({ ...p, is_active: e.target.value === 'yes' }))}
-                >
-                  <option value="yes">Yes</option>
-                  <option value="no">No &mdash; keep it hidden</option>
-                </select>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                <button type="submit" className="btn btn-primary" disabled={saving}>
-                  {saving ? 'Saving…' : editingId ? 'Save package' : 'Create package'}
-                </button>
-                <button type="button" className="btn btn-ghost" onClick={() => setModalOpen(false)}>
-                  Cancel
-                </button>
-              </div>
-            </form>
+      {data && list.length === 0 && (
+        <div className="card xp-empty" style={{ padding: 56 }}>
+          <TicketIcon size={36} />
+          <strong>List your first package</strong>
+          Each package appears in the app as its own experience travellers can enquire about.
+          <div style={{ marginTop: 14 }}>
+            <button className="btn btn-primary btn-sm" onClick={openNew}>
+              <PlusIcon size={15} /> Add package
+            </button>
           </div>
         </div>
       )}
+
+      {data && list.length > 0 && filtered.length === 0 && (
+        <div className="card xp-empty" style={{ padding: 48 }}>
+          <strong>Nothing matches</strong>
+          Try a different search or status.
+        </div>
+      )}
+
+      {filtered.length > 0 && (
+        <div className="pkg-grid">
+          {filtered.map((pkg) => (
+            <div
+              key={pkg.id}
+              className={`pkg-card ${pkg.is_published ? '' : 'is-hidden'}`}
+              onClick={() => openEdit(pkg)}
+            >
+              <div className="pkg-card-img">
+                {pkg.photo_urls?.[0] ? <img src={mediaUrl(pkg.photo_urls[0])} alt="" /> : <TicketIcon size={28} />}
+              </div>
+              <div className="pkg-card-body">
+                <div className="pkg-eyebrow">{categoryLabel(pkg.category)}</div>
+                <div className="pkg-card-title">{pkg.title}</div>
+                {pkg.summary && <div className="pkg-card-vendor">{pkg.summary}</div>}
+                <div className="pkg-card-foot">
+                  <div>
+                    <div className="pkg-price">{formatPrice(pkg)}</div>
+                    <div className="sub">
+                      {basisLabel(pkg.price_basis)}
+                      {pkg.duration_minutes ? ` · ${formatDuration(pkg.duration_minutes)}` : ''}
+                    </div>
+                  </div>
+                  <Switch checked={pkg.is_active} onChange={(v) => toggleLive(pkg, v)} label={visibility(pkg)} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {drawerOpen && (
+        <Drawer
+          title={editingId ? 'Edit package' : 'New package'}
+          subtitle={editingId ? undefined : 'Only the title is required. You can fill in the rest later.'}
+          onClose={() => setDrawerOpen(false)}
+          onSubmit={save}
+          footer={
+            <>
+              <Switch
+                checked={form.is_active}
+                onChange={(v) => patch({ is_active: v })}
+                label={form.is_active ? 'Show in the app' : 'Hidden (draft)'}
+              />
+              <div className="drawer-foot-actions">
+                {editingId && (
+                  <button type="button" className="icon-btn danger" title="Delete package" onClick={() => remove({ ...form, id: editingId })}>
+                    <TrashIcon size={15} />
+                  </button>
+                )}
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDrawerOpen(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+                  {saving ? 'Saving…' : editingId ? 'Save package' : 'Create package'}
+                </button>
+              </div>
+            </>
+          }
+        >
+          <div className="xp-section">
+            <div className="form-group">
+              <label className="form-label">Title *</label>
+              <input
+                type="text" required autoFocus className="form-input" value={form.title}
+                placeholder="Pigeon Island snorkelling & boat safari"
+                onChange={(e) => patch({ title: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Category</label>
+              <select className="form-select" value={form.category || 'other'} onChange={(e) => patch({ category: e.target.value })}>
+                {CATEGORIES.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Summary</label>
+              <input
+                type="text" maxLength={500} className="form-input" value={form.summary}
+                placeholder="One line for the card in the app"
+                onChange={(e) => patch({ summary: e.target.value })}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Description</label>
+              <textarea
+                className="form-textarea" rows={4} value={form.description}
+                placeholder="Itinerary, what to bring, safety notes…"
+                onChange={(e) => patch({ description: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="xp-section">
+            <div className="xp-section-title">Price & capacity</div>
+            <div className="xp-section-hint">Leave the price empty to show “On request”.</div>
+            <div className="form-grid-3">
+              <div className="form-group">
+                <label className="form-label">Price</label>
+                <input
+                  type="number" step="0.01" min="0" className="form-input" placeholder="7500"
+                  value={form.price_amount} onChange={(e) => patch({ price_amount: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Currency</label>
+                <input
+                  type="text" maxLength={10} className="form-input" value={form.price_currency || ''}
+                  onChange={(e) => patch({ price_currency: e.target.value.toUpperCase() })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Basis</label>
+                <select className="form-select" value={form.price_basis || 'per_person'} onChange={(e) => patch({ price_basis: e.target.value })}>
+                  {PRICE_BASES.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">Duration (minutes)</label>
+                <input
+                  type="number" min="0" className="form-input" placeholder="180"
+                  value={form.duration_minutes} onChange={(e) => patch({ duration_minutes: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Max participants</label>
+                <input
+                  type="number" min="1" className="form-input" placeholder="8"
+                  value={form.max_participants} onChange={(e) => patch({ max_participants: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="xp-section">
+            <ImageUploader
+              label="Photos (the first one is the card photo)"
+              value={form.photo_urls}
+              uploadEndpoint="/partner/upload"
+              onChange={(urls) => patch({ photo_urls: urls })}
+            />
+          </div>
+
+          <div className="xp-section">
+            <div className="xp-section-title">Included & languages</div>
+            <div className="xp-section-hint">One item per line.</div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">What&rsquo;s included</label>
+                <textarea
+                  className="form-textarea" rows={4} value={arrayToLines(form.inclusions)}
+                  placeholder={'Snorkelling gear\nLife jackets\nBottled water'}
+                  onChange={(e) => patch({ inclusions: linesToArray(e.target.value) })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Languages</label>
+                <textarea
+                  className="form-textarea" rows={4} value={arrayToLines(form.languages)}
+                  placeholder={'English\nTamil\nSinhala'}
+                  onChange={(e) => patch({ languages: linesToArray(e.target.value) })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="xp-section">
+            <div className="xp-section-head">
+              <div>
+                <div className="xp-section-title">Meeting point</div>
+                <div className="xp-section-hint">Where travellers meet you.</div>
+              </div>
+              <Switch
+                checked={form.uses_vendor_location}
+                onChange={(v) => patch({ uses_vendor_location: v, latitude: v ? null : '', longitude: v ? null : '' })}
+                label="My business address"
+              />
+            </div>
+            {!form.uses_vendor_location && (
+              <LocationPicker
+                mapId="partner-package-map"
+                latitude={form.latitude ?? ''}
+                longitude={form.longitude ?? ''}
+                address={form.meeting_point_address || ''}
+                searchEndpoint="/partner/place-search"
+                onPick={(p) => {
+                  const next = { ...p };
+                  delete next.name;
+                  delete next.google_place_id;
+                  const picked = next.address;
+                  delete next.address;
+                  setForm((prev) => ({
+                    ...prev, ...next,
+                    ...(picked !== undefined ? { meeting_point_address: picked } : {}),
+                  }));
+                }}
+              />
+            )}
+          </div>
+        </Drawer>
+      )}
+
+      <Toast toast={toast} />
     </>
   );
 }

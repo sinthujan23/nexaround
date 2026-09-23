@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { apiGet, apiPut } from '../api';
+import { apiGet, apiPut, mediaUrl } from '../api';
+import { StarIcon } from '../components/Icons';
+import { Toast } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 
@@ -13,26 +15,32 @@ import ImageUploader from '../components/ImageUploader';
  */
 export default function Profile({ onSaved }) {
   const [form, setForm] = useState(null);
+  const [base, setBase] = useState(null);
+  const [tab, setTab] = useState('details');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     apiGet('/partner/profile')
-      .then(setForm)
+      .then((profile) => { setForm(profile); setBase(profile); })
       .catch((err) => setError(err.message || 'Could not load your profile.'));
   }, []);
 
-  const patch = (p) => { setForm((prev) => ({ ...prev, ...p })); setSaved(false); };
+  const notify = (message, tone = 'ok') => {
+    setToast({ message, tone });
+    setTimeout(() => setToast(null), 3500);
+  };
 
-  const save = async (e) => {
-    e.preventDefault();
+  const patch = (p) => setForm((prev) => ({ ...prev, ...p }));
+
+  const save = async () => {
     if (form.latitude === '' || form.latitude == null) {
-      alert('Set your location on the map first.');
+      setTab('location');
+      notify('Set your location on the map first.', 'error');
       return;
     }
     setSaving(true);
-    setError('');
     try {
       const updated = await apiPut('/partner/profile', {
         ...form,
@@ -40,13 +48,14 @@ export default function Profile({ onSaved }) {
         longitude: Number(form.longitude),
       });
       setForm(updated);
-      setSaved(true);
+      setBase(updated);
+      notify('Saved. Travellers see this straight away.');
       // The sidebar shows the business name, so a rename must reach it.
       if (onSaved) {
         onSaved((prev) => (prev ? { ...prev, vendor_name: updated.name } : prev));
       }
     } catch (err) {
-      setError(err.message || 'Could not save.');
+      notify(err.message || 'Could not save.', 'error');
     } finally {
       setSaving(false);
     }
@@ -55,146 +64,197 @@ export default function Profile({ onSaved }) {
   if (error && !form) return <div className="login-error">{error}</div>;
   if (!form) return <div className="loader" />;
 
+  const dirty = JSON.stringify(form) !== JSON.stringify(base);
+  const photo = base.logo_url || base.photo_urls?.[0];
+
+  const TABS = [
+    ['details', 'Details'],
+    ['location', 'Location'],
+    ['contact', 'Contact & social'],
+  ];
+
   return (
-    <form className="card" style={{ padding: '24px' }} onSubmit={save}>
-      <div className="card-header">
-        <div className="card-title">Your business</div>
-        {form.rating != null && (
-          <span className="badge badge-ghost">
-            {form.rating} &#9733; &middot; {form.review_count} reviews
-          </span>
+    <div className="xp-pane xp-fill">
+      <div className="xp-detail-head">
+        <div className="xp-avatar lg">
+          {photo ? <img src={mediaUrl(photo)} alt="" /> : (base.name || '?').charAt(0).toUpperCase()}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="xp-detail-title">{base.name}</div>
+          <div className="xp-detail-sub">
+            {[base.city, `${base.package_count} ${base.package_count === 1 ? 'package' : 'packages'}`].filter(Boolean).join(' · ')}
+            {base.rating != null && (
+              <span style={{ marginLeft: 10, color: '#d97706', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                <StarIcon size={12} /> {base.rating}
+                <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>({base.review_count})</span>
+              </span>
+            )}
+          </div>
+        </div>
+        {/* Read-only: only NexAround can hide or show a whole listing. */}
+        <span className="status-label" title={base.is_active ? '' : 'Contact NexAround to make your listing live again'}>
+          <span className={`dot ${base.is_active ? 'dot-live' : 'dot-hidden'}`} />
+          {base.is_active ? 'Listing live' : 'Listing hidden'}
+        </span>
+      </div>
+
+      <div className="xp-tabs">
+        {TABS.map(([key, label]) => (
+          <button key={key} className={`xp-tab ${tab === key ? 'active' : ''}`} onClick={() => setTab(key)}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="xp-body">
+        {tab === 'details' && (
+          <div>
+            <div className="xp-section">
+              <div className="form-group">
+                <label className="form-label">Business name</label>
+                <input
+                  type="text" required className="form-input"
+                  value={form.name || ''} onChange={(e) => patch({ name: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Description</label>
+                <textarea
+                  className="form-textarea" rows={5} value={form.description || ''}
+                  placeholder="What you offer and what makes it worth booking"
+                  onChange={(e) => patch({ description: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="xp-section">
+              <ImageUploader
+                label="Photos of your business"
+                value={form.photo_urls || []}
+                uploadEndpoint="/partner/upload"
+                onChange={(urls) => patch({ photo_urls: urls })}
+              />
+            </div>
+          </div>
+        )}
+
+        {tab === 'location' && (
+          <div>
+            <div className="form-grid-2">
+              <div className="form-group">
+                <label className="form-label">City</label>
+                <input
+                  type="text" className="form-input" placeholder="Trincomalee"
+                  value={form.city || ''} onChange={(e) => patch({ city: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Country code</label>
+                <input
+                  type="text" maxLength={2} className="form-input" value={form.country_code || ''}
+                  onChange={(e) => patch({ country_code: e.target.value.toUpperCase() })}
+                />
+              </div>
+            </div>
+            <label className="form-label">Map pin</label>
+            <LocationPicker
+              mapId="partner-location-map"
+              latitude={form.latitude ?? ''}
+              longitude={form.longitude ?? ''}
+              address={form.address || ''}
+              searchEndpoint="/partner/place-search"
+              onPick={(p) => {
+                // The picker also offers a name and a Google place id. The name is
+                // the vendor's to choose, and the place id is admin-only, so both
+                // are dropped here rather than relied on being ignored downstream.
+                const next = { ...p };
+                delete next.name;
+                delete next.google_place_id;
+                patch(next);
+              }}
+            />
+          </div>
+        )}
+
+        {tab === 'contact' && (
+          <div>
+            <div className="xp-section">
+              <div className="xp-section-title">Direct contact</div>
+              <div className="xp-section-hint">Your email receives new enquiries and is not shown in the app.</div>
+              <div className="form-grid-2">
+                <div className="form-group">
+                  <label className="form-label">Phone</label>
+                  <input
+                    type="text" className="form-input" placeholder="+94 77 123 4567"
+                    value={form.contact_phone || ''} onChange={(e) => patch({ contact_phone: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">WhatsApp</label>
+                  <input
+                    type="text" className="form-input" placeholder="+94 77 123 4567"
+                    value={form.contact_whatsapp || ''} onChange={(e) => patch({ contact_whatsapp: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Email</label>
+                  <input
+                    type="email" className="form-input" placeholder="bookings@business.com"
+                    value={form.contact_email || ''} onChange={(e) => patch({ contact_email: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Website</label>
+                  <input
+                    type="text" className="form-input" placeholder="https://business.com"
+                    value={form.website || ''} onChange={(e) => patch({ website: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="xp-section">
+              <div className="xp-section-title">Social</div>
+              <div className="xp-section-hint">A handle or a full URL both work.</div>
+              <div className="form-grid-3">
+                <div className="form-group">
+                  <label className="form-label">Instagram</label>
+                  <input
+                    type="text" className="form-input" placeholder="@handle"
+                    value={form.contact_instagram || ''} onChange={(e) => patch({ contact_instagram: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Facebook</label>
+                  <input
+                    type="text" className="form-input" placeholder="facebook.com/…"
+                    value={form.contact_facebook || ''} onChange={(e) => patch({ contact_facebook: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">X</label>
+                  <input
+                    type="text" className="form-input" placeholder="@handle"
+                    value={form.contact_x || ''} onChange={(e) => patch({ contact_x: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
 
-      {error && <div className="login-error">{error}</div>}
-      {saved && (
-        <div className="badge badge-green" style={{ marginBottom: '12px' }}>
-          Saved. Travellers see this straight away.
-        </div>
-      )}
-
-      <div className="form-group">
-        <label className="form-label">Business name</label>
-        <input
-          type="text" required className="form-input"
-          value={form.name || ''} onChange={(e) => patch({ name: e.target.value })}
-        />
-      </div>
-
-      <div className="form-group">
-        <label className="form-label">Description</label>
-        <textarea
-          className="form-textarea" rows={4}
-          value={form.description || ''} onChange={(e) => patch({ description: e.target.value })}
-        />
-      </div>
-
-      <LocationPicker
-        mapId="partner-location-map"
-        latitude={form.latitude ?? ''}
-        longitude={form.longitude ?? ''}
-        address={form.address || ''}
-        searchEndpoint="/partner/place-search"
-        onPick={(p) => {
-          // The picker also offers a name and a Google place id. The name is
-          // the vendor's to choose, and the place id is admin-only, so both
-          // are dropped here rather than relied on being ignored downstream.
-          const next = { ...p };
-          delete next.name;
-          delete next.google_place_id;
-          patch(next);
-        }}
-      />
-
-      <div className="form-grid-2">
-        <div className="form-group">
-          <label className="form-label">City</label>
-          <input
-            type="text" className="form-input"
-            value={form.city || ''} onChange={(e) => patch({ city: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Country code (2 letters)</label>
-          <input
-            type="text" maxLength={2} className="form-input"
-            value={form.country_code || ''}
-            onChange={(e) => patch({ country_code: e.target.value.toUpperCase() })}
-          />
+      <div className="xp-savebar">
+        {dirty
+          ? <span className="unsaved"><span className="dot dot-new" /> Unsaved changes</span>
+          : <span>All changes saved</span>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {dirty && <button className="btn btn-ghost btn-sm" onClick={() => setForm(base)}>Discard</button>}
+          <button className="btn btn-primary btn-sm" disabled={!dirty || saving} onClick={save}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
         </div>
       </div>
 
-      <div className="form-grid-2">
-        <div className="form-group">
-          <label className="form-label">Phone</label>
-          <input
-            type="text" className="form-input"
-            value={form.contact_phone || ''} onChange={(e) => patch({ contact_phone: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">WhatsApp</label>
-          <input
-            type="text" className="form-input"
-            value={form.contact_whatsapp || ''} onChange={(e) => patch({ contact_whatsapp: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="form-grid-2">
-        <div className="form-group">
-          <label className="form-label">Email (for enquiries &mdash; not shown in the app)</label>
-          <input
-            type="email" className="form-input"
-            value={form.contact_email || ''} onChange={(e) => patch({ contact_email: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Website</label>
-          <input
-            type="text" className="form-input"
-            value={form.website || ''} onChange={(e) => patch({ website: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="form-grid-2">
-        <div className="form-group">
-          <label className="form-label">Instagram</label>
-          <input
-            type="text" className="form-input" placeholder="@handle"
-            value={form.contact_instagram || ''} onChange={(e) => patch({ contact_instagram: e.target.value })}
-          />
-        </div>
-        <div className="form-group">
-          <label className="form-label">Facebook</label>
-          <input
-            type="text" className="form-input" placeholder="facebook.com/..."
-            value={form.contact_facebook || ''} onChange={(e) => patch({ contact_facebook: e.target.value })}
-          />
-        </div>
-      </div>
-
-      <div className="form-group">
-        <label className="form-label">X</label>
-        <input
-          type="text" className="form-input" placeholder="@handle"
-          value={form.contact_x || ''} onChange={(e) => patch({ contact_x: e.target.value })}
-        />
-      </div>
-
-      <ImageUploader
-        label="Photos of your business"
-        value={form.photo_urls || []}
-        uploadEndpoint="/partner/upload"
-        onChange={(urls) => patch({ photo_urls: urls })}
-      />
-
-      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-        <button type="submit" className="btn btn-primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save changes'}
-        </button>
-      </div>
-    </form>
+      <Toast toast={toast} />
+    </div>
   );
 }

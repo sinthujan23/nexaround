@@ -23,6 +23,12 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem('partner_token'));
   const [me, setMe] = useState(null);
   const [activePage, setActivePage] = useState('dashboard');
+  // An optional target on the page, e.g. the enquiry the dashboard linked to.
+  const [pageTarget, setPageTarget] = useState(null);
+  const navigate = (page, target = null) => {
+    setActivePage(page);
+    setPageTarget(target);
+  };
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -140,9 +146,10 @@ export default function App() {
   const renderContent = () => {
     switch (activePage) {
       case 'packages': return <Packages />;
-      case 'enquiries': return <Enquiries />;
+      case 'enquiries':
+        return <Enquiries key={pageTarget || 'all'} initialId={pageTarget} vendorName={me?.vendor_name} />;
       case 'profile': return <Profile onSaved={setMe} />;
-      default: return <Dashboard onNavigate={setActivePage} />;
+      default: return <Dashboard onNavigate={navigate} />;
     }
   };
 
@@ -168,7 +175,7 @@ export default function App() {
             <div
               key={key}
               className={`nav-item ${activePage === key ? 'active' : ''}`}
-              onClick={() => setActivePage(key)}
+              onClick={() => navigate(key)}
             >
               <span className="icon"><Icon size={18} /></span>
               {label}

@@ -1,189 +1,306 @@
-import { useState } from 'react';
-import { useApi, apiPatch } from '../api';
-import { InboxIcon } from '../components/Icons';
+import { useEffect, useState } from 'react';
+import { useApi, apiGet, apiPatch } from '../api';
+import { InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon } from '../components/Icons';
+import { Toast } from '../components/Kit';
+import {
+  ENQUIRY_STATUSES, STATUS_LABELS, formatDateTime, formatAge, formatDay, guestsLabel, digitsOnly,
+} from '../format';
 
-const STATUSES = ['new', 'contacted', 'closed'];
-const COLOMBO = { timeZone: 'Asia/Colombo', dateStyle: 'medium', timeStyle: 'short' };
+const PAGE_SIZE = 50;
 
-const badgeFor = (s) =>
-  s === 'new' ? 'badge-yellow' : s === 'contacted' ? 'badge-green' : 'badge-ghost';
+const whatsAppLink = (enquiry, vendorName) => {
+  const greeting = `Hi ${enquiry.contact_name}, thanks for your enquiry`
+    + (enquiry.package_title_snapshot ? ` about "${enquiry.package_title_snapshot}"` : '')
+    + (vendorName ? `. This is ${vendorName}.` : '.');
+  return `https://wa.me/${digitsOnly(enquiry.contact_phone)}?text=${encodeURIComponent(greeting)}`;
+};
 
-export default function Enquiries() {
-  const [page, setPage] = useState(1);
+export default function Enquiries({ vendorName, initialId }) {
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
+  const [counts, setCounts] = useState({});
+  const [countsVersion, setCountsVersion] = useState(0);
+  const [toast, setToast] = useState(null);
 
-  const { data, loading, error, refetch } = useApi(
-    `/partner/enquiries?page=${page}&page_size=25${statusFilter ? `&status=${statusFilter}` : ''}`
+  const { data, error, refetch } = useApi(
+    `/partner/enquiries?page=${page}&page_size=${PAGE_SIZE}${statusFilter ? `&status=${statusFilter}` : ''}`
   );
-  const enquiries = data?.enquiries || [];
-  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / 25));
+  const rawEnquiries = data?.enquiries || [];
+  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / PAGE_SIZE));
 
-  const open = (e) => {
-    setSelected(e);
-    setNotes(e.vendor_notes || '');
+  // The list only returns one page, so per-status totals come from one
+  // page_size=1 request per status.
+  useEffect(() => {
+    let active = true;
+    Promise.all(
+      ['', ...ENQUIRY_STATUSES].map((s) =>
+        apiGet(`/partner/enquiries?page=1&page_size=1${s ? `&status=${s}` : ''}`)
+          .then((res) => [s || 'all', res.total])
+          .catch(() => [s || 'all', null])
+      )
+    ).then((pairs) => { if (active) setCounts(Object.fromEntries(pairs)); });
+    return () => { active = false; };
+  }, [countsVersion]);
+
+  // Opened from the dashboard: select that enquiry once the first page lands.
+  const [pendingId, setPendingId] = useState(initialId || null);
+  if (pendingId && data) {
+    const match = rawEnquiries.find((e) => e.id === pendingId);
+    setPendingId(null);
+    if (match) {
+      setSelected(match);
+      setNotes(match.vendor_notes || '');
+    }
+  }
+
+  const refresh = () => {
+    refetch();
+    setCountsVersion((n) => n + 1);
   };
 
-  const patch = async (body) => {
+  const notify = (message, tone = 'ok') => {
+    setToast({ message, tone });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // Search only narrows the page already loaded.
+  const q = search.trim().toLowerCase();
+  const enquiries = rawEnquiries.filter((e) =>
+    !q || [e.contact_name, e.contact_phone, e.contact_email, e.package_title_snapshot]
+      .some((f) => (f || '').toLowerCase().includes(q))
+  );
+
+  const notesDirty = selected && notes !== (selected.vendor_notes || '');
+
+  const open = (enquiry) => {
+    if (notesDirty && !confirm('Discard your unsaved note?')) return;
+    setSelected(enquiry);
+    setNotes(enquiry.vendor_notes || '');
+  };
+
+  const close = () => {
+    if (notesDirty && !confirm('Discard your unsaved note?')) return;
+    setSelected(null);
+  };
+
+  const changeFilter = (status) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const patch = async (body, message) => {
     setBusy(true);
     try {
       const updated = await apiPatch(`/partner/enquiries/${selected.id}`, body);
       setSelected(updated);
-      refetch();
+      if ('vendor_notes' in body) setNotes(updated.vendor_notes || '');
+      refresh();
+      notify(message);
     } catch (err) {
-      alert(`Could not save: ${err.message}`);
+      notify(`Could not save: ${err.message}`, 'error');
     } finally {
       setBusy(false);
     }
   };
 
-  // Digits only: wa.me rejects spaces, dashes and a leading +.
-  const waNumber = (phone) => (phone || '').replace(/\D/g, '');
+  const filters = [['', 'All'], ...ENQUIRY_STATUSES.map((s) => [s, STATUS_LABELS[s]])];
 
   return (
     <>
-      {error && <div className="login-error">{error}</div>}
-
-      <div className="card" style={{ padding: '24px' }}>
-        <div className="card-header">
-          <div className="card-title">Enquiries ({data?.total ?? 0})</div>
-          <select
-            className="form-select" style={{ maxWidth: '200px' }}
-            value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
+      <div className="xp-toolbar">
+        <div className="seg">
+          {filters.map(([value, label]) => (
+            <button
+              key={value || 'all'}
+              className={`seg-btn ${statusFilter === value ? 'active' : ''}`}
+              onClick={() => changeFilter(value)}
+            >
+              {value && <span className={`dot dot-${value}`} />}
+              {label}
+              {counts[value || 'all'] != null && <span className="seg-count">{counts[value || 'all']}</span>}
+            </button>
+          ))}
         </div>
-
-        {loading && <div className="loader" />}
-
-        {!loading && enquiries.length === 0 && (
-          <div className="empty-state">
-            <InboxIcon size={32} className="empty-icon" />
-            <div>Nothing here yet.</div>
+        <div className="xp-toolbar-right">
+          <div className="search-bar">
+            <SearchIcon size={16} />
+            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, phone, package…" />
           </div>
-        )}
-
-        {!loading && enquiries.length > 0 && (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Received</th>
-                  <th>Package</th>
-                  <th>Traveller</th>
-                  <th>Phone</th>
-                  <th>Party</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {enquiries.map((e) => (
-                  <tr key={e.id} className="clickable-row" onClick={() => open(e)}>
-                    <td>{e.created_at ? new Date(e.created_at).toLocaleString('en-GB', COLOMBO) : ''}</td>
-                    <td>{e.package_title_snapshot || '—'}</td>
-                    <td>{e.contact_name}</td>
-                    <td>{e.contact_phone}</td>
-                    <td>{e.party_size ?? '—'}</td>
-                    <td><span className={`badge ${badgeFor(e.status)}`}>{e.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {totalPages > 1 && (
-          <div style={{ display: 'flex', gap: '10px', marginTop: '16px', alignItems: 'center' }}>
-            <button className="btn btn-ghost" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </button>
-            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Page {page} of {totalPages}
-            </span>
-            <button className="btn btn-ghost" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </button>
-          </div>
-        )}
+          <button className="btn btn-ghost btn-sm" onClick={refresh} title="Refresh">
+            <RefreshIcon size={15} /> Refresh
+          </button>
+        </div>
       </div>
 
-      {selected && (
-        <div className="modal-overlay" onClick={() => setSelected(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="card-header">
-              <div className="card-title">{selected.contact_name}</div>
-            </div>
+      {error && <div className="login-error">{error}</div>}
 
-            <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
-              {selected.package_title_snapshot || 'General enquiry'}
-              {selected.party_size ? ` · party of ${selected.party_size}` : ''}
-              {selected.preferred_date ? ` · prefers ${selected.preferred_date}` : ''}
-            </div>
+      <div className={`xp-split ${selected ? 'has-selection' : ''}`}>
+        <aside className="xp-pane xp-list-pane">
+          <div className="xp-list-body">
+            {!data && !error && <div className="loader" />}
 
-            {/* The whole job: get the vendor talking to the traveller. */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-              <a className="btn btn-primary" href={`tel:${selected.contact_phone}`}>
-                Call {selected.contact_phone}
-              </a>
-              <a
-                className="btn btn-ghost"
-                href={`https://wa.me/${waNumber(selected.contact_phone)}`}
-                target="_blank" rel="noreferrer"
-              >
-                WhatsApp
-              </a>
-              {selected.contact_email && (
-                <a className="btn btn-ghost" href={`mailto:${selected.contact_email}`}>
-                  Email
-                </a>
-              )}
-            </div>
-
-            {selected.message && (
-              <div className="form-group">
-                <label className="form-label">Their message</label>
-                <div style={{
-                  background: 'var(--code-bg, #f1f5f9)', borderRadius: '10px',
-                  padding: '12px', fontSize: '13px', whiteSpace: 'pre-wrap',
-                }}>
-                  {selected.message}
-                </div>
+            {data && enquiries.length === 0 && (
+              <div className="xp-empty">
+                <InboxIcon size={32} />
+                <strong>{search || statusFilter ? 'Nothing matches' : 'No enquiries yet'}</strong>
+                {search || statusFilter
+                  ? 'Try another status or search.'
+                  : 'They arrive here as soon as a traveller asks about one of your packages.'}
               </div>
             )}
 
-            <div className="form-group">
-              <label className="form-label">Status</label>
-              <select
-                className="form-select" value={selected.status} disabled={busy}
-                onChange={(e) => patch({ status: e.target.value })}
+            {enquiries.map((e) => (
+              <button
+                key={e.id}
+                className={`xp-row ${selected?.id === e.id ? 'active' : ''}`}
+                onClick={() => open(e)}
+                style={{ alignItems: 'flex-start' }}
               >
-                {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">Your notes</label>
-              <textarea
-                className="form-textarea" rows={3} value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Only you and NexAround see this."
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-              <button className="btn btn-primary" disabled={busy} onClick={() => patch({ vendor_notes: notes })}>
-                {busy ? 'Saving…' : 'Save notes'}
+                <span className={`dot dot-${e.status}`} style={{ marginTop: 6 }} title={STATUS_LABELS[e.status]} />
+                <div className="xp-row-main">
+                  <div className={`xp-row-title ${e.status === 'new' ? 'strong' : ''}`}>{e.contact_name}</div>
+                  <div className="xp-row-sub" style={{ color: 'var(--text-primary)' }}>
+                    {e.package_title_snapshot || 'General enquiry'}
+                  </div>
+                  <div className="xp-row-sub">
+                    {[guestsLabel(e.party_size), formatDay(e.preferred_date)].filter(Boolean).join(' · ') || 'No date or party size given'}
+                  </div>
+                </div>
+                <div className="xp-row-side" title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</div>
               </button>
-              <button className="btn btn-ghost" onClick={() => setSelected(null)}>Close</button>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
+
+          {totalPages > 1 && (
+            <div className="xp-list-foot">
+              <button className="btn btn-ghost btn-sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Previous</button>
+              <span>Page {page} of {totalPages}</span>
+              <button className="btn btn-ghost btn-sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>Next</button>
+            </div>
+          )}
+        </aside>
+
+        <section className="xp-pane xp-detail-pane">
+          {!selected && (
+            <div className="xp-empty">
+              <InboxIcon size={36} />
+              <strong>Select an enquiry</strong>
+              {counts.new
+                ? `${counts.new} new ${counts.new === 1 ? 'enquiry is' : 'enquiries are'} waiting for your reply.`
+                : 'The traveller’s request and contact details open here.'}
+            </div>
+          )}
+
+          {selected && (
+            <>
+              <div className="xp-detail-head">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <button className="xp-back" onClick={close}>← All enquiries</button>
+                  <div className="xp-detail-title">{selected.contact_name}</div>
+                  <div className="xp-detail-sub">Received {formatDateTime(selected.created_at)}</div>
+                </div>
+                <span className="status-label">
+                  <span className={`dot dot-${selected.status}`} /> {STATUS_LABELS[selected.status] || selected.status}
+                </span>
+              </div>
+
+              <div className="xp-body">
+                {/* The whole job: get the vendor talking to the traveller. */}
+                <div className="xp-section">
+                  <div className="contact-card">
+                    <div className="contact-card-lines">
+                      {selected.contact_phone}
+                      {selected.contact_email && <div><span>{selected.contact_email}</span></div>}
+                    </div>
+                    <div className="contact-card-actions">
+                      <a className="btn btn-whatsapp btn-sm" href={whatsAppLink(selected, vendorName)} target="_blank" rel="noreferrer">
+                        <WhatsAppIcon size={15} /> WhatsApp
+                      </a>
+                      <a className="btn btn-ghost btn-sm" href={`tel:${selected.contact_phone}`}>
+                        <PhoneIcon size={14} /> Call
+                      </a>
+                      {selected.contact_email && (
+                        <a className="btn btn-ghost btn-sm" href={`mailto:${selected.contact_email}`}>
+                          <MailIcon size={14} /> Email
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title" style={{ marginBottom: 14 }}>Request</div>
+                  <dl className="dl-grid">
+                    <div>
+                      <dt>Package</dt>
+                      <dd>{selected.package_title_snapshot || 'General enquiry'}</dd>
+                    </div>
+                    <div>
+                      <dt>Party size</dt>
+                      <dd className={selected.party_size ? '' : 'muted'}>{guestsLabel(selected.party_size) || 'Not given'}</dd>
+                    </div>
+                    <div>
+                      <dt>Preferred date</dt>
+                      <dd className={selected.preferred_date ? '' : 'muted'}>{formatDay(selected.preferred_date) || 'Flexible'}</dd>
+                    </div>
+                  </dl>
+                  {selected.message && (
+                    <div style={{ marginTop: 18 }}>
+                      <div className="dl-label">Message</div>
+                      <div className="quote">{selected.message}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title">Status</div>
+                  <div className="xp-section-hint">Changes save immediately.</div>
+                  <div className="status-seg">
+                    {ENQUIRY_STATUSES.map((s) => (
+                      <button
+                        key={s}
+                        className={selected.status === s ? 'active' : ''}
+                        disabled={busy || selected.status === s}
+                        onClick={() => patch({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`)}
+                      >
+                        <span className={`dot dot-${s}`} /> {STATUS_LABELS[s]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="xp-section">
+                  <div className="xp-section-title">Your notes</div>
+                  <div className="xp-section-hint">Only you and NexAround see these.</div>
+                  <textarea
+                    className="form-textarea" rows={4} value={notes}
+                    placeholder="e.g. Quoted LKR 30,000 for 4, waiting to hear back"
+                    onChange={(e) => setNotes(e.target.value)}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                    {notesDirty && (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setNotes(selected.vendor_notes || '')}>Discard</button>
+                    )}
+                    <button
+                      className="btn btn-primary btn-sm"
+                      disabled={!notesDirty || busy}
+                      onClick={() => patch({ vendor_notes: notes }, 'Note saved')}
+                    >
+                      {busy ? 'Saving…' : 'Save note'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </div>
+
+      <Toast toast={toast} />
     </>
   );
 }

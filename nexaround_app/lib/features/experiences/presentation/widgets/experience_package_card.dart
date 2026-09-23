@@ -1,16 +1,21 @@
+import 'dart:math' as math;
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
-import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
 
-import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
-
-/// One package as a Discovery card. The vendor's name is the subtitle, which
-/// is what keeps a vendor's three boat tours readable as three distinct
-/// offers rather than three copies of the same agency.
+/// One package as a Discovery card: a large photo with the category and
+/// distance on it, then the title, the vendor, and the price.
+///
+/// The vendor's name is the subtitle, which is what keeps a vendor's three
+/// boat tours readable as three distinct offers rather than three copies of
+/// the same agency. Social links live on the detail page, not here: on a card
+/// they competed with the price for attention.
 class ExperiencePackageCard extends StatelessWidget {
   final ExperiencePackageEntity package;
   final int index;
@@ -23,133 +28,337 @@ class ExperiencePackageCard extends StatelessWidget {
     required this.onTap,
   });
 
+  static const double _radius = 24;
+
   @override
   Widget build(BuildContext context) {
-    final thumbUrl = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
+    final category = experienceCategoryFor(package.category);
 
     return RepaintBoundary(
-      child: GestureDetector(
-        onTap: onTap,
-        child: GlassCard(
-          margin: const EdgeInsets.only(bottom: 16),
-          padding: const EdgeInsets.all(12),
-          glowColor: index % 2 == 0 ? AppColors.secondary : AppColors.primary,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(16),
-                child: thumbUrl != null
-                    ? CachedNetworkImage(
-                        imageUrl: thumbUrl,
-                        httpHeaders: PlaceImageHelper.headersFor(thumbUrl),
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 270, // 90px thumbnail at 3x DPR
-                        placeholder: (_, __) => _placeholder(),
-                        errorWidget: (_, __, ___) => _placeholder(),
-                      )
-                    : _placeholder(),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(_radius),
+          border: Border.all(color: AppColors.border.withOpacity(0.6)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 24,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(_radius),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildPhoto(category),
+                _buildBody(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    )
+        .animate()
+        .fadeIn(
+          duration: 320.ms,
+          // Stagger the first screenful only; later pages appear together.
+          delay: (60 * math.min(index, 5)).ms,
+        )
+        .slideY(begin: 0.05, end: 0, curve: Curves.easeOutCubic);
+  }
+
+  Widget _buildPhoto(ExperienceCategory category) {
+    final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
+
+    return AspectRatio(
+      aspectRatio: 16 / 10,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (url != null)
+            CachedNetworkImage(
+              imageUrl: url,
+              httpHeaders: PlaceImageHelper.headersFor(url),
+              fit: BoxFit.cover,
+              memCacheWidth: 1080, // full-width card at ~3x DPR
+              placeholder: (_, __) => _placeholder(category),
+              errorWidget: (_, __, ___) => _placeholder(category),
+            )
+          else
+            _placeholder(category),
+
+          // A soft shade at the top so the white pills read on a bright sky.
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 72,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x40000000), Color(0x00000000)],
+                ),
               ),
-              const SizedBox(width: 12),
+            ),
+          ),
+
+          Positioned(
+            top: 12,
+            left: 12,
+            child: _Pill(
+              light: true,
+              child: Text(
+                '${category.emoji}  ${category.label}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ),
+          ),
+
+          if (package.distanceM != null)
+            Positioned(
+              top: 12,
+              right: 12,
+              child: _Pill(
+                child: _iconText(Icons.near_me_rounded, formatDistance(package.distanceM)),
+              ),
+            ),
+
+          if (package.photoCount > 1)
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: _Pill(
+                child: _iconText(Icons.photo_library_rounded, '${package.photoCount}'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBody() {
+    final summary = (package.summary ?? '').trim();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            package.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+              letterSpacing: -0.2,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              const Icon(Icons.storefront_rounded, size: 14, color: AppColors.brandGreen),
+              const SizedBox(width: 5),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      package.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      package.vendorName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        const Icon(Icons.near_me_rounded,
-                            size: 12, color: AppColors.textTertiary),
-                        const SizedBox(width: 3),
-                        Text(
-                          formatDistance(package.distanceM),
-                          style: const TextStyle(
-                              fontSize: 11, color: AppColors.textTertiary),
-                        ),
-                        if (package.durationLabel.isNotEmpty) ...[
-                          const SizedBox(width: 10),
-                          const Icon(Icons.schedule_rounded,
-                              size: 12, color: AppColors.textTertiary),
-                          const SizedBox(width: 3),
-                          Text(
-                            package.durationLabel,
-                            style: const TextStyle(
-                                fontSize: 11, color: AppColors.textTertiary),
-                          ),
-                        ],
-                      ],
-                    ),
-                    if (package.priceLabel.isNotEmpty || package.hasSocials) ...[
-                      const SizedBox(height: 6),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          if (package.priceLabel.isNotEmpty)
-                            Text(
-                              package.priceLabel,
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.brandGreen,
-                              ),
-                            )
-                          else
-                            const SizedBox.shrink(),
-                          if (package.hasSocials)
-                            VendorSocialBar(
-                              whatsapp: package.vendorWhatsapp,
-                              instagram: package.vendorInstagram,
-                              facebook: package.vendorFacebook,
-                              x: package.vendorX,
-                              packageTitle: package.title,
-                              iconSize: 20,
-                              spacing: 6,
-                              isCompact: true,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
+                child: Text(
+                  package.vendorName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.brandGreen,
+                  ),
                 ),
               ),
             ],
           ),
+          if (summary.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              summary,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                height: 1.45,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Container(height: 1, color: AppColors.border.withOpacity(0.6)),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: package.durationLabel.isNotEmpty
+                    ? _metaChip(Icons.schedule_rounded, package.durationLabel)
+                    : const SizedBox.shrink(),
+              ),
+              _buildPrice(),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The server renders "LKR 4,500 / person"; the card sets the amount large
+  /// and the unit small beneath it. "From …" and "Price on request" have no
+  /// unit and render whole.
+  Widget _buildPrice() {
+    final label = package.priceLabel.trim();
+    if (label.isEmpty) return const SizedBox.shrink();
+
+    final parts = label.split(' / ');
+    final amount = parts.first;
+    final unit = parts.length > 1 ? 'per ${parts.sublist(1).join(' / ')}' : null;
+    final onRequest =
+        package.priceAmount == null || package.priceBasis == 'on_request';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          amount,
+          style: TextStyle(
+            fontSize: onRequest ? 13 : 18,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+            color: onRequest ? AppColors.textSecondary : AppColors.textPrimary,
+          ),
+        ),
+        if (unit != null)
+          Text(
+            unit,
+            style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+          ),
+      ],
+    );
+  }
+
+  Widget _metaChip(IconData icon, String text) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.brandGreenLight,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: AppColors.brandGreen),
+            const SizedBox(width: 5),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.brandGreen,
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _placeholder() {
+  static Widget _iconText(IconData icon, String text) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 12, color: Colors.white),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.white,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _placeholder(ExperienceCategory category) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: category.tint,
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Two faint rings, so an empty photo still reads as designed.
+          Positioned(
+            right: -40,
+            bottom: -50,
+            child: _ring(180),
+          ),
+          Positioned(
+            left: -30,
+            top: -40,
+            child: _ring(120),
+          ),
+          Center(
+            child: Text(category.emoji, style: const TextStyle(fontSize: 48)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _ring(double size) {
     return Container(
-      width: 90,
-      height: 90,
-      color: AppColors.surfaceVariant,
-      child: const Icon(Icons.kayaking_rounded,
-          size: 26, color: AppColors.textMuted),
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withOpacity(0.18), width: 18),
+      ),
+    );
+  }
+}
+
+/// A small rounded label laid over the photo.
+class _Pill extends StatelessWidget {
+  final Widget child;
+  final bool light;
+
+  const _Pill({required this.child, this.light = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: light ? Colors.white.withOpacity(0.94) : Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: child,
     );
   }
 }

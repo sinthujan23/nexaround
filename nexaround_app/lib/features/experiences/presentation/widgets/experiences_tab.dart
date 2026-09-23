@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
-import 'package:nexaround_app/core/widgets/glass_card.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_package_detail_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_category.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_package_card.dart';
 
 /// The Discovery "Experiences" tab: vendor packages, nearest first.
@@ -27,24 +27,6 @@ class ExperiencesTab extends StatefulWidget {
   // it can call refresh() when the tab is selected or the location changes.
   State<ExperiencesTab> createState() => ExperiencesTabState();
 }
-
-class _CategoryChip {
-  final String? value;
-  final String emoji;
-  final String label;
-  const _CategoryChip(this.value, this.emoji, this.label);
-}
-
-const _categories = <_CategoryChip>[
-  _CategoryChip(null, '✨', 'All'),
-  _CategoryChip('boat', '🛥️', 'Boat'),
-  _CategoryChip('water_sports', '🏄', 'Water'),
-  _CategoryChip('guided_tour', '🧭', 'Guides'),
-  _CategoryChip('wildlife', '🐘', 'Wildlife'),
-  _CategoryChip('cultural', '🛕', 'Cultural'),
-  _CategoryChip('adventure', '🧗', 'Adventure'),
-  _CategoryChip('food', '🍽️', 'Food'),
-];
 
 class ExperiencesTabState extends State<ExperiencesTab> {
   final ScrollController _scrollController = ScrollController();
@@ -188,58 +170,186 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     _load();
   }
 
+
+  static const _gutter = EdgeInsets.symmetric(horizontal: 24);
+
   @override
   Widget build(BuildContext context) {
+    final showList = !_loading && !_awaitingLocation && _error == null && _packages.isNotEmpty;
+
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
         children: [
+          Padding(padding: _gutter, child: _buildHero()),
+          const SizedBox(height: 18),
           _buildCategoryChips(),
-          const SizedBox(height: 20),
-          if (!_loading && !_hasNearby && _packages.isNotEmpty)
-            _buildDistanceBanner(),
-          ..._buildContent(),
+          const SizedBox(height: 22),
+          if (showList && !_hasNearby)
+            Padding(padding: _gutter, child: _buildDistanceBanner()),
+          if (showList)
+            Padding(padding: _gutter, child: _buildSectionHeader()),
+          ..._buildContent().map((w) => Padding(padding: _gutter, child: w)),
         ],
+      ),
+    );
+  }
+
+  /// The banner at the top of the tab. Its last line tracks the load, so it
+  /// doubles as the status line.
+  Widget _buildHero() {
+    final String status;
+    if (_awaitingLocation) {
+      status = 'Turn on location to see what is around you';
+    } else if (_loading) {
+      status = 'Finding experiences around you…';
+    } else if (_error != null) {
+      status = 'Pull down to try again';
+    } else if (_packages.isEmpty) {
+      status = 'Local operators are joining soon';
+    } else {
+      final count = '$_total ${_total == 1 ? 'experience' : 'experiences'}';
+      status = _nearestDistanceM == null
+          ? count
+          : '$count · nearest ${formatDistanceCoarse(_nearestDistanceM)} away';
+    }
+
+    return Container(
+      height: 156,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF00A3A6), AppColors.brandGreen, AppColors.brandGreenDark],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.brandGreen.withOpacity(0.28),
+            blurRadius: 24,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          Positioned(right: -36, top: -44, child: _bubble(150, 0.10)),
+          Positioned(right: 70, bottom: -60, child: _bubble(120, 0.07)),
+          const Positioned(
+            right: 20,
+            bottom: 18,
+            child: Text('🛥️', style: TextStyle(fontSize: 54)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 90, 18),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'LOCAL EXPERIENCES',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.2,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Do something\nunforgettable',
+                  style: TextStyle(
+                    fontSize: 22,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.near_me_rounded, size: 13, color: Colors.white.withOpacity(0.8)),
+                    const SizedBox(width: 5),
+                    Flexible(
+                      child: Text(
+                        status,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.04, end: 0, curve: Curves.easeOutCubic);
+  }
+
+  static Widget _bubble(double size, double opacity) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white.withOpacity(opacity),
       ),
     );
   }
 
   Widget _buildCategoryChips() {
     return SizedBox(
-      height: 84,
+      height: 40,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        itemCount: _categories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        padding: _gutter,
+        itemCount: experienceCategories.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (_, index) {
-          final chip = _categories[index];
+          final chip = experienceCategories[index];
           final selected = _category == chip.value;
           return GestureDetector(
             onTap: () => _selectCategory(chip.value),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: 86,
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               decoration: BoxDecoration(
-                color: selected ? AppColors.brandGreen : Colors.white,
-                borderRadius: BorderRadius.circular(16),
+                // Charcoal, not brand green: the Discovery tab bar right above
+                // already uses green for its selection.
+                color: selected ? AppColors.charcoal : Colors.white,
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: selected ? AppColors.brandGreen : AppColors.border,
+                  color: selected ? AppColors.charcoal : AppColors.border,
                 ),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(chip.emoji, style: const TextStyle(fontSize: 22)),
-                  const SizedBox(height: 6),
+                  Text(chip.emoji, style: const TextStyle(fontSize: 15)),
+                  const SizedBox(width: 6),
                   Text(
-                    chip.label,
+                    chip.chipLabel,
                     style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
                       color: selected ? Colors.white : AppColors.textSecondary,
                     ),
                   ),
@@ -252,22 +362,49 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     );
   }
 
+  Widget _buildSectionHeader() {
+    final title = _category == null
+        ? 'Nearest to you'
+        : '${experienceCategoryFor(_category).label} near you';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+          const Text(
+            'Closest first',
+            style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDistanceBanner() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 18),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariant.withOpacity(0.5),
+        color: AppColors.brandGreenLight,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         children: [
-          const Icon(Icons.explore_off_rounded,
-              size: 18, color: AppColors.textSecondary),
+          const Icon(Icons.explore_rounded, size: 18, color: AppColors.brandGreen),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'No experiences nearby — showing the nearest, '
+              'No experiences nearby yet. Showing the nearest, '
               '${formatDistanceCoarse(_nearestDistanceM)} away.',
               style: const TextStyle(
                   fontSize: 13, color: AppColors.textSecondary, height: 1.4),
@@ -280,7 +417,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   List<Widget> _buildContent() {
     if (_loading) {
-      return List.generate(6, (_) => _buildShimmerCard());
+      return List.generate(3, (_) => _buildShimmerCard());
     }
 
     if (_awaitingLocation) {
@@ -299,19 +436,27 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           Icons.cloud_off_rounded,
           'Something went wrong',
           _error!,
+          actionLabel: 'Try again',
+          onAction: _load,
         ),
       ];
     }
 
     if (_packages.isEmpty) {
       return [
-        _buildEmptyState(
-          Icons.kayaking_rounded,
-          'No experiences yet',
-          _category == null
-              ? 'Local agencies are being added soon. Check back shortly.'
-              : 'Nothing in this category yet. Try another one.',
-        ),
+        _category == null
+            ? _buildEmptyState(
+                Icons.kayaking_rounded,
+                'No experiences yet',
+                'Local agencies are being added soon. Check back shortly.',
+              )
+            : _buildEmptyState(
+                Icons.kayaking_rounded,
+                'Nothing here yet',
+                'No ${experienceCategoryFor(_category).label.toLowerCase()} experiences nearby. Try another category.',
+                actionLabel: 'Show all',
+                onAction: () => _selectCategory(null),
+              ),
       ];
     }
 
@@ -347,30 +492,51 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     ];
   }
 
+  /// Same shape as ExperiencePackageCard, so the swap to real cards does not
+  /// jump.
   Widget _buildShimmerCard() {
-    return GlassCard(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(12),
-      child: Row(
+    Widget bar(double width, double height) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: Colors.grey[200],
+            borderRadius: BorderRadius.circular(6),
+          ),
+        );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.border.withOpacity(0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 90,
-            height: 90,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(16),
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            child: AspectRatio(
+              aspectRatio: 16 / 10,
+              child: Container(color: Colors.grey[200]),
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(height: 15, color: Colors.grey[200]),
-                const SizedBox(height: 8),
-                Container(height: 12, width: 120, color: Colors.grey[200]),
+                bar(220, 16),
                 const SizedBox(height: 10),
-                Container(height: 12, width: 80, color: Colors.grey[200]),
+                bar(140, 12),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    bar(70, 26),
+                    const Spacer(),
+                    bar(90, 20),
+                  ],
+                ),
               ],
             ),
           ),
@@ -381,16 +547,30 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         .shimmer(duration: 1200.ms, color: Colors.white54);
   }
 
-  Widget _buildEmptyState(IconData icon, String title, String body) {
+  Widget _buildEmptyState(
+    IconData icon,
+    String title,
+    String body, {
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 48),
+      padding: const EdgeInsets.symmetric(vertical: 36),
       child: Column(
         children: [
-          Icon(icon, size: 44, color: AppColors.textMuted),
-          const SizedBox(height: 14),
+          Container(
+            width: 72,
+            height: 72,
+            decoration: const BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.brandGreenLight,
+            ),
+            child: Icon(icon, size: 32, color: AppColors.brandGreen),
+          ),
+          const SizedBox(height: 16),
           Text(
             title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 6),
           Text(
@@ -399,6 +579,19 @@ class ExperiencesTabState extends State<ExperiencesTab> {
             style: const TextStyle(
                 fontSize: 13, color: AppColors.textSecondary, height: 1.5),
           ),
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: onAction,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.brandGreen,
+                side: const BorderSide(color: AppColors.brandGreen),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              ),
+              child: Text(actionLabel, style: const TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
         ],
       ),
     );

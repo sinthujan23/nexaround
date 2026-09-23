@@ -407,7 +407,8 @@ export default function Experiences() {
 
   const savePackage = async (e) => {
     e.preventDefault();
-    if (!packageForm.uses_vendor_location && (packageForm.latitude == null || packageForm.longitude == null)) {
+    if (!packageForm.uses_vendor_location
+      && [packageForm.latitude, packageForm.longitude].some((v) => v == null || v === '')) {
       notify('Pick the meeting point on the map, or use the vendor address.', 'error');
       return;
     }
@@ -810,14 +811,6 @@ export default function Experiences() {
                             onChange={(e) => patchForm({ country_code: e.target.value.toUpperCase() })}
                           />
                         </div>
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Street address</label>
-                        <input
-                          type="text" className="form-input" value={form.address || ''}
-                          placeholder="124 Beach Road, Trincomalee"
-                          onChange={(e) => patchForm({ address: e.target.value })}
-                        />
                       </div>
                       <label className="form-label">Map pin</label>
                       <LocationPicker
@@ -1310,30 +1303,22 @@ export default function Experiences() {
               />
             </div>
             {!packageForm.uses_vendor_location && (
-              <>
-                <div className="form-group">
-                  <label className="form-label">Meeting point address</label>
-                  <input
-                    type="text" className="form-input" placeholder="Dutch Bay jetty, Trincomalee"
-                    value={packageForm.meeting_point_address || ''}
-                    onChange={(e) => patchPackage({ meeting_point_address: e.target.value })}
-                  />
-                </div>
-                <LocationPicker
-                  mapId="package-meeting-map"
-                  latitude={packageForm.latitude}
-                  longitude={packageForm.longitude}
-                  address={packageForm.meeting_point_address}
-                  onPick={({ latitude, longitude, address }) =>
-                    setPackageForm((prev) => ({
-                      ...prev,
-                      latitude,
-                      longitude,
-                      meeting_point_address: address || prev.meeting_point_address,
-                    }))
-                  }
-                />
-              </>
+              <LocationPicker
+                mapId="package-meeting-map"
+                latitude={packageForm.latitude ?? ''}
+                longitude={packageForm.longitude ?? ''}
+                address={packageForm.meeting_point_address}
+                // The picker reports only what changed (typing a latitude sends
+                // just the latitude), so merge rather than overwrite all three.
+                onPick={({ latitude, longitude, address }) =>
+                  setPackageForm((prev) => ({
+                    ...prev,
+                    ...(latitude !== undefined ? { latitude } : {}),
+                    ...(longitude !== undefined ? { longitude } : {}),
+                    ...(address !== undefined ? { meeting_point_address: address } : {}),
+                  }))
+                }
+              />
             )}
           </div>
         </Drawer>

@@ -39,11 +39,11 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   String? _pendingPrompt;
   Map<String, dynamic>? _pendingPlaceContext;
-  // Which Discovery tab opens on the first build. Not a literal 0: index 0 is
-  // the Experiences marketplace now, and the landing tab should be a decision,
-  // not whichever section happens to be first in the list. Point this at
-  // 'Experiences' once enough vendors are live to fill it.
-  int _discoverInitialTab = DiscoverPage.tabIndexFor('POI');
+  // Which Discovery tab opens on the first build: the Experiences marketplace.
+  // Named rather than a literal 0, so reordering the tabs cannot silently
+  // change the landing tab. tabIndexFor() is not used here: it maps Around
+  // You's categories, where 'Experiences' means Google attractions (POI).
+  int _discoverInitialTab = DiscoverPage.tabs.indexOf('Experiences');
   int _discoverRequestCount = 0;
   DateTime? _lastBackPressTime;
   @override
@@ -464,10 +464,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       behavior: HitTestBehavior.opaque,
       onTap: () {
         if (index == 3) {
-          // Explicitly POI, not index 0. Index 0 is now the Experiences
-          // marketplace; point this there once enough vendors are live that
-          // it is not the first thing a user sees empty.
-          switchToDiscover(initialTab: DiscoverPage.tabIndexFor('POI'));
+          // Entering Discovery from the nav bar lands on the Experiences
+          // marketplace. Shortcuts into a specific place category (Around You)
+          // still name their own tab.
+          switchToDiscover(initialTab: DiscoverPage.tabs.indexOf('Experiences'));
         } else {
           setState(() => _selectedIndex = index);
         }
