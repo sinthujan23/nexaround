@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// The link for one package. It opens the app on that package when the app
@@ -180,40 +181,46 @@ class _ExperienceShareSheet extends StatelessWidget {
     BuildContext context,
     String label,
     String asset,
-    Future<void> Function() onShare,
+    Future<void> Function(Rect? origin) onShare,
   ) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () {
-        Navigator.pop(context);
-        onShare();
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              padding: const EdgeInsets.all(15),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border),
+    return Builder(
+      builder: (tileContext) => InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          // Read before the sheet closes: the iPad share popover anchors to it.
+          final box = tileContext.findRenderObject() as RenderBox?;
+          final origin =
+              box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+          Navigator.pop(context);
+          onShare(origin);
+        },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Image.asset(asset, fit: BoxFit.contain),
               ),
-              child: Image.asset(asset, fit: BoxFit.contain),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textSecondary,
+              const SizedBox(height: 8),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -221,13 +228,14 @@ class _ExperienceShareSheet extends StatelessWidget {
 
   // --- Targets --------------------------------------------------------------
   //
-  // All four go through https links rather than app schemes (whatsapp://,
-  // instagram://): the Android manifest already declares an https VIEW query
-  // and iOS lists https in LSApplicationQueriesSchemes, so no platform change
-  // is needed, and each link opens the app when it is installed and the
-  // website when it is not.
+  // WhatsApp is the only one of the four with a public link that opens it
+  // with a message ready (wa.me/?text=), so it gets that link. Facebook,
+  // Instagram and X take a shared post only through the phone's own share
+  // menu: picking them there opens their composer with the text and link in
+  // it. Their web links (facebook.com/sharer, twitter.com/intent) just open
+  // the app's feed on a phone, and Instagram has no link at all.
 
-  Future<void> _shareWhatsApp() async {
+  Future<void> _shareWhatsApp(Rect? origin) async {
     // No number: WhatsApp asks which chat to send it to.
     final uri = Uri.parse(
       'https://wa.me/?text=${Uri.encodeComponent(experienceShareMessage(package))}',
@@ -235,39 +243,34 @@ class _ExperienceShareSheet extends StatelessWidget {
     if (!await _open(uri)) _copy("Couldn't open WhatsApp. Details copied instead.");
   }
 
-  /// Instagram has no way to receive a link or text from another app, so
-  /// the details go on the clipboard and Instagram opens, ready to paste
-  /// into a chat or a story.
-  Future<void> _shareInstagram() async {
-    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
-    final opened = await _open(Uri.parse('https://www.instagram.com/'));
-    _toast(opened
-        ? 'Details copied. Paste them in an Instagram chat or story.'
-        : "Couldn't open Instagram. Details copied instead.");
-  }
+  /// Facebook shows the link as a card with the package photo and title
+  /// (from the share page's Open Graph tags). It drops any text by policy.
+  Future<void> _shareFacebook(Rect? origin) =>
+      _shareWithSystemSheet(experienceShareMessage(package), origin);
 
-  /// Facebook's share dialog takes a link only and ignores any text, so the
-  /// details are copied too, for the post itself.
-  Future<void> _shareFacebook() async {
-    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
-    final uri = Uri.parse(
-      'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(experienceShareLink(package))}',
-    );
-    final opened = await _open(uri);
-    _toast(opened
-        ? 'Details copied. Paste them into your post.'
-        : "Couldn't open Facebook. Details copied instead.");
-  }
+  /// Instagram takes it as a message to send in a chat.
+  Future<void> _shareInstagram(Rect? origin) =>
+      _shareWithSystemSheet(experienceShareMessage(package), origin);
 
   /// A post has a length limit, so X gets the headline and the link only.
-  Future<void> _shareX() async {
-    final text = 'Check out "${package.title}" by ${package.vendorName} on nexARound';
-    final uri = Uri.parse(
-      'https://twitter.com/intent/tweet'
-      '?text=${Uri.encodeComponent(text)}'
-      '&url=${Uri.encodeComponent(experienceShareLink(package))}',
-    );
-    if (!await _open(uri)) _copy("Couldn't open X. Details copied instead.");
+  Future<void> _shareX(Rect? origin) => _shareWithSystemSheet(
+        'Check out "${package.title}" by ${package.vendorName} on nexARound '
+        '${experienceShareLink(package)}',
+        origin,
+      );
+
+  /// The phone's own share menu, with the chosen app in it.
+  Future<void> _shareWithSystemSheet(String text, Rect? origin) async {
+    try {
+      await SharePlus.instance.share(ShareParams(
+        text: text,
+        subject: package.title,
+        sharePositionOrigin: origin,
+      ));
+    } catch (e) {
+      debugPrint('System share failed: $e');
+      await _copy("Couldn't open sharing. Details copied instead.");
+    }
   }
 
   Future<bool> _open(Uri uri) async {

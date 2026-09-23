@@ -1,5 +1,5 @@
 /* ===== NEXAROUND ADMIN PANEL - PREMIUM LIGHT THEME ===== */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   /* Type scale. Every font-size in this file uses one of these, so a heading,
@@ -52,7 +52,7 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   background: var(--bg-dark);
   color: var(--text-primary);
   min-height: 100vh;
@@ -302,7 +302,7 @@ body::before {
   cursor: pointer;
   font-size: var(--fs-small);
   font-weight: 700;
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   transition: var(--transition);
 }
 
@@ -810,7 +810,7 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   outline: none;
   color: var(--text-primary);
   font-size: var(--fs-body);
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   width: 100%;
 }
 
@@ -868,7 +868,7 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   font-weight: 700;
   cursor: pointer;
   transition: var(--transition);
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'DM Sans', sans-serif;
 }
 
 .action-btn:hover { background: var(--bg-card-hover); color: var(--text-primary); border-color: var(--accent); }
@@ -890,7 +890,7 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
   padding: 12px 16px;
   color: var(--text-primary);
   font-size: var(--fs-body);
-  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-family: 'DM Sans', sans-serif;
   transition: var(--transition);
   outline: none;
 }

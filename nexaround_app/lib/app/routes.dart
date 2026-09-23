@@ -14,6 +14,18 @@ import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_link_page.dart';
 
 class AppRouter {
+  /// A shared package (nexaround.com/e/<id>) opened while signed out. Held
+  /// until sign-in completes, then opened over Home. In memory only: if the
+  /// app is killed during sign-in, the user lands on Home as usual.
+  static String? _pendingPackageId;
+
+  /// The package id in /e/<id> or /home/e/<id>.
+  static String? _sharedPackageId(GoRouterState state) {
+    final segments = state.uri.pathSegments;
+    final i = segments.indexOf('e');
+    return (i >= 0 && i + 1 < segments.length) ? segments[i + 1] : null;
+  }
+
   static GoRouter createRouter(AuthBloc authBloc) {
     return GoRouter(
       initialLocation: '/',
@@ -21,27 +33,49 @@ class AppRouter {
       redirect: (context, state) {
         final authState = authBloc.state;
 
+        final location = state.matchedLocation;
+
         // A shared experience link, https://nexaround.com/e/<id>, which Android
-        // App Links and iOS Universal Links hand to the router as /e/<id>. A
-        // signed-in user gets it on top of Home, so Back returns to Home and a
-        // link arriving while the app is open keeps Home's state. Anyone else
-        // sees it on its own; the package endpoint needs no account.
-        if (state.matchedLocation.startsWith('/e/') &&
-            CacheService.isLoggedIn() &&
-            authState is! AuthUnauthenticated) {
-          return '/home${state.matchedLocation}';
+        // App Links and iOS Universal Links hand to the router as /e/<id>.
+        if (location.startsWith('/e/')) {
+          // Signed in: open it on top of Home, so Back returns to Home and a
+          // link arriving while the app is open keeps Home's state.
+          if (CacheService.isLoggedIn() && authState is! AuthUnauthenticated) {
+            return '/home$location';
+          }
+          // Signed out: sign in first, then it opens (below). A first-time
+          // user sees onboarding, which hands over to the login screen.
+          _pendingPackageId = _sharedPackageId(state);
+          return CacheService.isFirstTime() ? '/onboarding' : '/login';
+        }
+
+        // Just signed in with a shared package waiting: open it over Home.
+        // The OTP and social sign-in screens are pushed on top of these
+        // routes, so the router still reports login, register or onboarding.
+        if (authState is AuthAuthenticated &&
+            _pendingPackageId != null &&
+            (location == '/login' ||
+                location == '/register' ||
+                location == '/onboarding')) {
+          final id = _pendingPackageId;
+          _pendingPackageId = null;
+          return '/home/e/$id';
         }
 
         // Define public routes that don't require authentication
-        final bool isPublicRoute = state.matchedLocation == '/login' || 
-                                  state.matchedLocation == '/register' || 
-                                  state.matchedLocation == '/otp-verify' || 
-                                  state.matchedLocation == '/' || 
-                                  state.matchedLocation == '/onboarding' ||
-                                  state.matchedLocation.startsWith('/e/');
+        final bool isPublicRoute = location == '/login' ||
+                                  location == '/register' ||
+                                  location == '/otp-verify' ||
+                                  location == '/' ||
+                                  location == '/onboarding';
 
         // 1. If not authenticated and trying to access a private route -> Go to Login
         if (authState is AuthUnauthenticated && !isPublicRoute) {
+          // A session that ran out under an open shared package: reopen it
+          // once the user signs back in.
+          if (location.startsWith('/home/e/')) {
+            _pendingPackageId = _sharedPackageId(state);
+          }
           return '/login';
         }
         
@@ -104,6 +138,9 @@ class AppRouter {
             ),
           ],
         ),
+        // Matched so the redirect above can act on /e/<id>; it always sends
+        // the user on (to /home/e/<id>, or to sign in), so this page is a
+        // fallback only.
         GoRoute(
           path: '/e/:id',
           builder: (context, state) => ExperienceLinkPage(

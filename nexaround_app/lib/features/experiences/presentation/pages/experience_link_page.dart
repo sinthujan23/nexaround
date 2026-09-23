@@ -13,10 +13,10 @@ import 'package:nexaround_app/features/food_radar/presentation/pages/discover_pa
 /// its first frame, so this fetches it first and then shows the detail page
 /// in place.
 ///
-/// Routed twice (lib/app/routes.dart): under /home for a signed-in user, so
-/// Back returns to Home; and on its own at /e/:id for everyone else, where
-/// [standalone] makes Back go through the splash screen, which decides between
-/// onboarding, login and Home as it does on a normal launch.
+/// Opened at /home/e/:id (lib/app/routes.dart), over Home, so Back returns
+/// there. A signed-out user is sent to sign in first and lands here after.
+/// The standalone /e/:id route is a fallback the redirect never lets through;
+/// there [standalone] makes Back go through the splash screen.
 class ExperienceLinkPage extends StatefulWidget {
   final String packageId;
   final bool standalone;
