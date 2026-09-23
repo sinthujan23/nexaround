@@ -171,3 +171,64 @@ class ExperienceRepository:
         )
         rows = list((await self.db.execute(query)).scalars().all())
         return rows, total
+
+    # ── Partner portal: scope lives in the query ────────────────────────────
+    #
+    # These exist so no partner endpoint has to fetch a row and then remember
+    # to compare its vendor_id. That pattern is correct the day it is written
+    # and rots the moment someone copies the fetch without the comparison; a
+    # query that cannot return another vendor's row has no such failure mode.
+
+    async def get_package_for_vendor(
+        self, package_id: uuid.UUID, vendor_id: uuid.UUID
+    ) -> Optional[ExperiencePackage]:
+        """One package, only if this vendor owns it. None otherwise."""
+        query = select(ExperiencePackage).where(
+            ExperiencePackage.id == package_id,
+            ExperiencePackage.vendor_id == vendor_id,
+        )
+        return (await self.db.execute(query)).scalar_one_or_none()
+
+    async def get_enquiry_for_vendor(
+        self, enquiry_id: uuid.UUID, vendor_id: uuid.UUID
+    ) -> Optional[ExperienceEnquiry]:
+        """One enquiry, only if it was sent to this vendor. None otherwise."""
+        query = select(ExperienceEnquiry).where(
+            ExperienceEnquiry.id == enquiry_id,
+            ExperienceEnquiry.vendor_id == vendor_id,
+        )
+        return (await self.db.execute(query)).scalar_one_or_none()
+
+    async def vendor_stats(self, vendor_id: uuid.UUID) -> dict:
+        """Counts for the portal's dashboard, scoped to one vendor.
+
+        COUNT aggregates rather than loading rows: a vendor with a long enquiry
+        history should not pull it all into memory to show a number.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        pkg = select(
+            func.count().label("total"),
+            func.count().filter(ExperiencePackage.is_published.is_(True)).label("live"),
+        ).select_from(ExperiencePackage).where(
+            ExperiencePackage.vendor_id == vendor_id
+        )
+        pkg_row = (await self.db.execute(pkg)).one()
+
+        since = datetime.now(timezone.utc) - timedelta(days=30)
+        enq = select(
+            func.count().label("total"),
+            func.count().filter(ExperienceEnquiry.status == "new").label("new"),
+            func.count().filter(ExperienceEnquiry.created_at >= since).label("recent"),
+        ).select_from(ExperienceEnquiry).where(
+            ExperienceEnquiry.vendor_id == vendor_id
+        )
+        enq_row = (await self.db.execute(enq)).one()
+
+        return {
+            "packages_total": int(pkg_row.total or 0),
+            "packages_published": int(pkg_row.live or 0),
+            "enquiries_total": int(enq_row.total or 0),
+            "enquiries_new": int(enq_row.new or 0),
+            "enquiries_last_30d": int(enq_row.recent or 0),
+        }

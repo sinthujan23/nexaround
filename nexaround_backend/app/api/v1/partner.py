@@ -27,8 +27,13 @@ from app.core.security import (
 from app.models.experience import VendorUser
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.partner import (
+    ENQUIRY_STATUSES,
+    PartnerEnquiryListResponse, PartnerEnquiryResponse, PartnerEnquiryUpdate,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
-    PartnerMessageResponse, PartnerSetPasswordRequest, PartnerTokenResponse,
+    PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
+    PartnerPackageResponse, PartnerPackageUpdate, PartnerSetPasswordRequest,
+    PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
+    PartnerVendorProfileUpdate,
 )
 from app.services.email_service import send_vendor_invite_email
 from app.services.partner_auth import consume_link_token, store_link_token
@@ -288,3 +293,326 @@ async def partner_me(
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
     return _me(principal)
+
+
+# ── What a vendor may write to their own rows ───────────────────────────────
+#
+# Separate tuples, never the admin ones. `_VENDOR_SCALARS` drives a
+# full-replacement loop and every field on the admin schema has a default, so
+# importing it here would let a vendor write those defaults by pressing Save -
+# even though their own schema never declares the fields. Concretely they would
+# flip `is_active` back to True (un-suspending themselves, and
+# `apply_vendor_cascade` would re-publish every package), wipe `rating` and
+# `review_count`, zero `sort_order`, blank `internal_notes`, and re-point
+# `google_place_id` at someone else's Google listing.
+
+_PARTNER_VENDOR_SCALARS = (
+    "name", "description", "address", "city", "country_code",
+    "contact_phone", "contact_whatsapp", "contact_instagram",
+    "contact_facebook", "contact_x", "contact_email", "website",
+    "logo_url", "photo_urls",
+)
+
+_PARTNER_PACKAGE_SCALARS = (
+    "title", "summary", "description", "category", "tags", "photo_urls",
+    "price_amount", "price_currency", "price_basis", "duration_minutes",
+    "max_participants", "inclusions", "languages", "uses_vendor_location",
+    "meeting_point_address",
+    # Kept deliberately: on a package this is the vendor's own publish toggle.
+    # It is safe because `is_published` stays gated behind the vendor's
+    # `is_active`, which only an admin can set - so a suspended vendor cannot
+    # surface anything by flipping it.
+    "is_active",
+)
+
+
+def _profile_response(vendor, package_count: int) -> PartnerVendorProfileResponse:
+    """The vendor's own record, minus anything only the platform should see.
+
+    Not `_vendor_response` from the admin router: that one returns
+    `internal_notes`, which the model comment marks admin-only.
+    """
+    from app.utils.geo_utils import get_lat_lng
+
+    lat, lng = get_lat_lng(vendor.location)
+    return PartnerVendorProfileResponse(
+        id=vendor.id,
+        name=vendor.name,
+        description=vendor.description,
+        latitude=lat,
+        longitude=lng,
+        address=vendor.address,
+        city=vendor.city,
+        country_code=vendor.country_code,
+        contact_phone=vendor.contact_phone,
+        contact_whatsapp=vendor.contact_whatsapp,
+        contact_instagram=vendor.contact_instagram,
+        contact_facebook=vendor.contact_facebook,
+        contact_x=vendor.contact_x,
+        contact_email=vendor.contact_email,
+        website=vendor.website,
+        logo_url=vendor.logo_url,
+        photo_urls=vendor.photo_urls or [],
+        # Read-only here, and absent from the update schema: the vendor should
+        # be able to see that their listing is hidden without being able to
+        # un-hide it.
+        is_active=bool(vendor.is_active),
+        rating=float(vendor.rating) if vendor.rating is not None else None,
+        review_count=vendor.review_count or 0,
+        package_count=package_count,
+        created_at=vendor.created_at,
+        updated_at=vendor.updated_at,
+    )
+
+
+def _package_out(package) -> PartnerPackageResponse:
+    from app.utils.geo_utils import get_lat_lng
+
+    lat, lng = get_lat_lng(package.location)
+    return PartnerPackageResponse(
+        id=package.id,
+        vendor_id=package.vendor_id,
+        title=package.title,
+        summary=package.summary,
+        description=package.description,
+        category=package.category,
+        tags=package.tags or [],
+        photo_urls=package.photo_urls or [],
+        price_amount=float(package.price_amount) if package.price_amount is not None else None,
+        price_currency=package.price_currency,
+        price_basis=package.price_basis,
+        duration_minutes=package.duration_minutes,
+        max_participants=package.max_participants,
+        inclusions=package.inclusions or [],
+        languages=package.languages or [],
+        uses_vendor_location=bool(package.uses_vendor_location),
+        meeting_point_address=package.meeting_point_address,
+        is_active=bool(package.is_active),
+        is_published=bool(package.is_published),
+        latitude=lat,
+        longitude=lng,
+        created_at=package.created_at,
+        updated_at=package.updated_at,
+    )
+
+
+def _enquiry_out(e) -> PartnerEnquiryResponse:
+    return PartnerEnquiryResponse(
+        id=e.id,
+        package_id=e.package_id,
+        package_title_snapshot=e.package_title_snapshot,
+        contact_name=e.contact_name,
+        contact_phone=e.contact_phone,
+        contact_email=e.contact_email,
+        preferred_date=e.preferred_date,
+        party_size=e.party_size,
+        message=e.message,
+        status=e.status,
+        vendor_notes=e.vendor_notes,
+        created_at=e.created_at,
+    )
+
+
+# ── Profile ─────────────────────────────────────────────────────────────────
+
+@router.get("/profile", response_model=PartnerVendorProfileResponse)
+async def get_partner_profile(
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    packages = await ExperienceRepository(db).list_packages_for_vendor(
+        principal.vendor.id
+    )
+    return _profile_response(principal.vendor, len(packages))
+
+
+@router.put("/profile", response_model=PartnerVendorProfileResponse)
+async def update_partner_profile(
+    data: PartnerVendorProfileUpdate,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    from app.services.experience_service import apply_vendor_cascade
+    from app.utils.geo_utils import create_point
+
+    vendor = principal.vendor
+    for key in _PARTNER_VENDOR_SCALARS:
+        setattr(vendor, key, getattr(data, key))
+    vendor.location = create_point(data.latitude, data.longitude)
+
+    # A vendor that moved drags its packages with it. `apply_vendor_cascade`
+    # does not commit, so the call and the commit are both needed - forgetting
+    # the call leaves every package on the old coordinates with a stale
+    # `is_published`.
+    count = await apply_vendor_cascade(db, vendor)
+    await db.commit()
+    await db.refresh(vendor)
+    return _profile_response(vendor, count)
+
+
+# ── Packages ────────────────────────────────────────────────────────────────
+
+@router.get("/packages", response_model=PartnerPackageListResponse)
+async def list_partner_packages(
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    rows = await ExperienceRepository(db).list_packages_for_vendor(principal.vendor.id)
+    return PartnerPackageListResponse(packages=[_package_out(p) for p in rows])
+
+
+@router.post(
+    "/packages",
+    response_model=PartnerPackageResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_partner_package(
+    data: PartnerPackageCreate,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    from app.models.experience import ExperiencePackage
+    from app.services.experience_service import apply_package_derived_fields
+
+    package = ExperiencePackage(
+        # Taken from the token, never from the body: a vendor_id in the payload
+        # would be a way to file a package under someone else's name.
+        vendor_id=principal.vendor.id,
+        **{key: getattr(data, key) for key in _PARTNER_PACKAGE_SCALARS},
+    )
+    apply_package_derived_fields(
+        package, principal.vendor, data.latitude, data.longitude
+    )
+    db.add(package)
+    await db.commit()
+    await db.refresh(package)
+    return _package_out(package)
+
+
+@router.get("/packages/{package_id}", response_model=PartnerPackageResponse)
+async def get_partner_package(
+    package_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    package = await ExperienceRepository(db).get_package_for_vendor(
+        package_id, principal.vendor.id
+    )
+    if package is None:
+        # 404, not 403: a 403 would confirm the id exists and belongs to
+        # someone else, which is an enumeration oracle over the marketplace.
+        raise HTTPException(status_code=404, detail="Package not found")
+    return _package_out(package)
+
+
+@router.put("/packages/{package_id}", response_model=PartnerPackageResponse)
+async def update_partner_package(
+    package_id: uuid.UUID,
+    data: PartnerPackageUpdate,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    from app.services.experience_service import apply_package_derived_fields
+
+    repo = ExperienceRepository(db)
+    package = await repo.get_package_for_vendor(package_id, principal.vendor.id)
+    if package is None:
+        raise HTTPException(status_code=404, detail="Package not found")
+
+    for key in _PARTNER_PACKAGE_SCALARS:
+        setattr(package, key, getattr(data, key))
+    apply_package_derived_fields(
+        package, principal.vendor, data.latitude, data.longitude
+    )
+    await db.commit()
+    await db.refresh(package)
+    return _package_out(package)
+
+
+@router.delete("/packages/{package_id}")
+async def delete_partner_package(
+    package_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    repo = ExperienceRepository(db)
+    package = await repo.get_package_for_vendor(package_id, principal.vendor.id)
+    if package is None:
+        raise HTTPException(status_code=404, detail="Package not found")
+    await db.delete(package)
+    await db.commit()
+    return {"status": "deleted"}
+
+
+# ── Enquiries ───────────────────────────────────────────────────────────────
+
+@router.get("/enquiries", response_model=PartnerEnquiryListResponse)
+async def list_partner_enquiries(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """This vendor's enquiries.
+
+    There is deliberately NO `vendor_id` parameter. The admin version of this
+    endpoint has one, and copying it across would hand vendor A vendor B's
+    entire inbox with a single query string. The scope comes from the token.
+    """
+    rows, total = await ExperienceRepository(db).list_enquiries(
+        status=status_filter,
+        vendor_id=principal.vendor.id,
+        page=page,
+        page_size=page_size,
+    )
+    return PartnerEnquiryListResponse(
+        enquiries=[_enquiry_out(r) for r in rows],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.patch("/enquiries/{enquiry_id}", response_model=PartnerEnquiryResponse)
+async def update_partner_enquiry(
+    enquiry_id: uuid.UUID,
+    data: PartnerEnquiryUpdate,
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    enquiry = await ExperienceRepository(db).get_enquiry_for_vendor(
+        enquiry_id, principal.vendor.id
+    )
+    if enquiry is None:
+        raise HTTPException(status_code=404, detail="Enquiry not found")
+
+    if data.status is not None:
+        # The column has no CHECK constraint, so an unvalidated status would
+        # let a vendor write "deleted" and vanish the row from every filtered
+        # admin view.
+        if data.status not in ENQUIRY_STATUSES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Status must be one of: {', '.join(ENQUIRY_STATUSES)}",
+            )
+        enquiry.status = data.status
+    if data.vendor_notes is not None:
+        # Their own field. `admin_notes` is the platform's and stays untouched.
+        enquiry.vendor_notes = data.vendor_notes
+
+    await db.commit()
+    await db.refresh(enquiry)
+    return _enquiry_out(enquiry)
+
+
+# ── Stats ───────────────────────────────────────────────────────────────────
+
+@router.get("/stats", response_model=PartnerStatsResponse)
+async def partner_stats(
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    return PartnerStatsResponse(
+        **await ExperienceRepository(db).vendor_stats(principal.vendor.id)
+    )
