@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useApi, apiGet, apiPost, apiPut, apiDelete } from '../api';
-import { PlusIcon, EditIcon, TrashIcon, SearchIcon } from '../components/Icons';
+import { useApi, apiGet, apiPost, apiPut, apiPatch, apiDelete } from '../api';
+import {
+  PlusIcon, EditIcon, TrashIcon, SearchIcon, RefreshIcon, EyeOffIcon,
+} from '../components/Icons';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 
@@ -54,6 +56,10 @@ export default function Experiences() {
 
   const [packages, setPackages] = useState([]);
   const [packagesLoading, setPackagesLoading] = useState(false);
+  const [logins, setLogins] = useState([]);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', display_name: '' });
+  const [loginBusy, setLoginBusy] = useState(false);
   const [packageModalOpen, setPackageModalOpen] = useState(false);
   const [packageForm, setPackageForm] = useState(emptyPackage);
   const [editingPackageId, setEditingPackageId] = useState(null);
@@ -67,6 +73,60 @@ export default function Experiences() {
     `/admin/experiences/vendors?search=${encodeURIComponent(debouncedSearch)}&page=1&page_size=100`
   );
   const vendors = data?.vendors || [];
+
+  // The vendor's partner-portal accounts. Loaded beside the packages because
+  // a vendor can have logins and no packages, or the reverse.
+  const loadLogins = async (vendorId) => {
+    try {
+      const res = await apiGet(`/admin/experiences/vendors/${vendorId}/logins`);
+      setLogins(res.logins || []);
+    } catch {
+      setLogins([]);
+    }
+  };
+
+  const createLogin = async (e) => {
+    e.preventDefault();
+    setLoginBusy(true);
+    try {
+      await apiPost(`/admin/experiences/vendors/${selected.id}/logins`, loginForm);
+      setLoginModalOpen(false);
+      setLoginForm({ email: '', display_name: '' });
+      loadLogins(selected.id);
+    } catch (err) {
+      alert(`Could not create the login: ${err.message}`);
+    } finally {
+      setLoginBusy(false);
+    }
+  };
+
+  const resendInvite = async (login) => {
+    try {
+      await apiPost(`/admin/experiences/logins/${login.id}/resend-invite`, {});
+      alert(`A new link has been emailed to ${login.email}. Any earlier link stops working.`);
+    } catch (err) {
+      alert(`Could not send the link: ${err.message}`);
+    }
+  };
+
+  const toggleLogin = async (login) => {
+    try {
+      await apiPatch(`/admin/experiences/logins/${login.id}`, { is_active: !login.is_active });
+      loadLogins(selected.id);
+    } catch (err) {
+      alert(`Could not update the login: ${err.message}`);
+    }
+  };
+
+  const deleteLogin = async (login) => {
+    if (!confirm(`Remove the login for ${login.email}? They lose access immediately.`)) return;
+    try {
+      await apiDelete(`/admin/experiences/logins/${login.id}`);
+      loadLogins(selected.id);
+    } catch (err) {
+      alert(`Could not remove the login: ${err.message}`);
+    }
+  };
 
   const loadPackages = async (vendorId) => {
     setPackagesLoading(true);
@@ -91,12 +151,14 @@ export default function Experiences() {
       photo_urls: vendor.photo_urls || [],
     });
     loadPackages(vendor.id);
+    loadLogins(vendor.id);
   };
 
   const startNewVendor = () => {
     setSelected(null);
     setForm(emptyVendor);
     setPackages([]);
+    setLogins([]);
   };
 
   const patchForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
@@ -496,8 +558,134 @@ export default function Experiences() {
               )}
             </div>
           )}
+
+          {selected && (
+            <div className="card" style={{ padding: '24px', marginTop: '20px' }}>
+              <div className="card-header">
+                <div className="card-title">Portal logins ({logins.length})</div>
+                <button className="btn btn-primary" onClick={() => setLoginModalOpen(true)}>
+                  <PlusIcon size={16} /> Add login
+                </button>
+              </div>
+
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                Who can sign in at partner.nexaround.com to manage this vendor. They set
+                their own password from the emailed link &mdash; you never see it.
+              </div>
+
+              {logins.length === 0 && (
+                <div className="empty-state">
+                  <div>No logins yet. Add one to give this vendor access.</div>
+                </div>
+              )}
+
+              {logins.length > 0 && (
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Email</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Last sign-in</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {logins.map((l) => (
+                        <tr key={l.id}>
+                          <td>{l.email}</td>
+                          <td>{l.display_name || '—'}</td>
+                          <td>
+                            {!l.is_active ? (
+                              <span className="badge badge-ghost">Disabled</span>
+                            ) : l.has_password ? (
+                              <span className="badge badge-green">Active</span>
+                            ) : (
+                              <span className="badge badge-yellow">Invite pending</span>
+                            )}
+                          </td>
+                          <td>
+                            {l.last_login_at
+                              ? new Date(l.last_login_at).toLocaleString('en-GB', {
+                                  timeZone: 'Asia/Colombo',
+                                  dateStyle: 'medium',
+                                  timeStyle: 'short',
+                                })
+                              : 'Never'}
+                          </td>
+                          <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                            <button
+                              className="action-icon-btn"
+                              title={l.has_password ? 'Send a password reset link' : 'Resend the invite'}
+                              onClick={() => resendInvite(l)}
+                            >
+                              <RefreshIcon size={14} />
+                            </button>
+                            <button
+                              className="action-icon-btn"
+                              title={l.is_active ? 'Disable this login' : 'Enable this login'}
+                              onClick={() => toggleLogin(l)}
+                            >
+                              <EyeOffIcon size={14} />
+                            </button>
+                            <button
+                              className="action-icon-btn" title="Remove"
+                              onClick={() => deleteLogin(l)}
+                            >
+                              <TrashIcon size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {loginModalOpen && (
+        <div className="modal-overlay" onClick={() => setLoginModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <form onSubmit={createLogin}>
+              <div className="card-header">
+                <div className="card-title">Add a portal login</div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Email</label>
+                <input
+                  type="email" required className="form-input"
+                  placeholder="owner@theiragency.com"
+                  value={loginForm.email}
+                  onChange={(e) => setLoginForm((p) => ({ ...p, email: e.target.value }))}
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Name (optional)</label>
+                <input
+                  type="text" className="form-input"
+                  value={loginForm.display_name}
+                  onChange={(e) => setLoginForm((p) => ({ ...p, display_name: e.target.value }))}
+                />
+              </div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                They will be emailed a link to set their own password, valid for 3 days.
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
+                <button type="submit" className="btn btn-primary" disabled={loginBusy}>
+                  {loginBusy ? 'Sending…' : 'Create and send invite'}
+                </button>
+                <button type="button" className="btn btn-ghost" onClick={() => setLoginModalOpen(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {packageModalOpen && (
         <div className="modal-overlay" onClick={() => setPackageModalOpen(false)}>

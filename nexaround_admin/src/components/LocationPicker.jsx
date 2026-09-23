@@ -17,6 +17,9 @@ export default function LocationPicker({
   longitude,
   address,
   onPick,
+  // As with ImageUploader: defaulted to the admin path, so admin call sites
+  // need no edit at all.
+  searchEndpoint = '/admin/experiences/place-search',
 }) {
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -115,7 +118,7 @@ export default function LocationPicker({
     try {
       const center = mapRef.current ? mapRef.current.getCenter() : { lat: 7.87, lng: 80.77 };
       const res = await apiGet(
-        `/admin/experiences/place-search?query=${encodeURIComponent(query.trim())}` +
+        `${searchEndpoint}?query=${encodeURIComponent(query.trim())}` +
         `&lat=${center.lat.toFixed(6)}&lng=${center.lng.toFixed(6)}`
       );
       setResults(res.places || []);

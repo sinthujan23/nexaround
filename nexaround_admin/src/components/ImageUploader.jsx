@@ -11,7 +11,16 @@ import { ImageIcon, TrashIcon } from './Icons';
  * and every app payload with megabytes of inlined image. These upload to
  * /admin/experiences/upload and store the returned /static/... paths.
  */
-export default function ImageUploader({ value = [], onChange, label = 'Images' }) {
+export default function ImageUploader({
+  value = [],
+  onChange,
+  label = 'Images',
+  // Defaulted to the admin endpoint so every existing call site is unchanged.
+  // The partner portal passes its own, which is scoped to one vendor and
+  // quota'd; without the prop the two copies would drift and the partner one
+  // — the half reachable by a third party — would be the one left behind.
+  uploadEndpoint = '/admin/experiences/upload',
+}) {
   const inputRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
@@ -25,7 +34,7 @@ export default function ImageUploader({ value = [], onChange, label = 'Images' }
     setUploading(true);
     setError('');
     try {
-      const res = await apiUpload('/admin/experiences/upload', files);
+      const res = await apiUpload(uploadEndpoint, files);
       onChange([...urls, ...(res.urls || [])]);
     } catch (err) {
       setError(err.message || 'Upload failed.');
