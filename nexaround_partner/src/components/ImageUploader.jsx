@@ -59,7 +59,8 @@ export default function ImageUploader({
 
   return (
     <div className="form-group">
-      <label className="form-label">{label}</label>
+      {/* Optional: inside a titled Section the section heading does this job. */}
+      {label && <label className="form-label">{label}</label>}
 
       {urls.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
@@ -77,7 +78,7 @@ export default function ImageUploader({
               {index === 0 && (
                 <span
                   className="badge badge-green"
-                  style={{ position: 'absolute', top: '4px', left: '4px', fontSize: '10px' }}
+                  style={{ position: 'absolute', top: '4px', left: '4px' }}
                 >
                   Cover
                 </span>

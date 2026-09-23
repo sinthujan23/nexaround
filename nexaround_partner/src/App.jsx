@@ -9,6 +9,7 @@ import Enquiries from './pages/Enquiries';
 import Profile from './pages/Profile';
 import SetPassword from './pages/SetPassword';
 import ForgotPassword from './pages/ForgotPassword';
+import ErrorBoundary from './components/ErrorBoundary';
 
 /**
  * The partner portal shell.
@@ -149,7 +150,7 @@ export default function App() {
       case 'enquiries':
         return <Enquiries key={pageTarget || 'all'} initialId={pageTarget} vendorName={me?.vendor_name} />;
       case 'profile': return <Profile onSaved={setMe} />;
-      default: return <Dashboard onNavigate={navigate} />;
+      default: return <Dashboard onNavigate={navigate} me={me} />;
     }
   };
 
@@ -211,7 +212,9 @@ export default function App() {
               Your listing is currently hidden from travellers. Contact NexAround.
             </div>
           )}
-          {renderContent()}
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </div>
       </main>
     </div>

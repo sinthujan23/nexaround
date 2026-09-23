@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { apiGet, apiPut, mediaUrl } from '../api';
-import { StarIcon } from '../components/Icons';
-import { Toast } from '../components/Kit';
+import { StarIcon, CompassIcon, ImageIcon, MapPinIcon, PhoneIcon, GlobeIcon } from '../components/Icons';
+import { Toast, Section } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 
@@ -92,8 +92,10 @@ export default function Profile({ onSaved }) {
           </div>
         </div>
         {/* Read-only: only NexAround can hide or show a whole listing. */}
-        <span className="status-label" title={base.is_active ? '' : 'Contact NexAround to make your listing live again'}>
-          <span className={`dot ${base.is_active ? 'dot-live' : 'dot-hidden'}`} />
+        <span
+          className={`pill tone-${base.is_active ? 'green' : 'gray'}`}
+          title={base.is_active ? '' : 'Contact NexAround to make your listing live again'}
+        >
           {base.is_active ? 'Listing live' : 'Listing hidden'}
         </span>
       </div>
@@ -109,7 +111,7 @@ export default function Profile({ onSaved }) {
       <div className="xp-body">
         {tab === 'details' && (
           <div>
-            <div className="xp-section">
+            <Section tone="teal" icon={CompassIcon} title="Business details" hint="Your name and what you offer.">
               <div className="form-group">
                 <label className="form-label">Business name</label>
                 <input
@@ -125,20 +127,20 @@ export default function Profile({ onSaved }) {
                   onChange={(e) => patch({ description: e.target.value })}
                 />
               </div>
-            </div>
-            <div className="xp-section">
+            </Section>
+            <Section tone="violet" icon={ImageIcon} title="Photos" hint="Photos of your business. The first is the main one.">
               <ImageUploader
-                label="Photos of your business"
+                label={null}
                 value={form.photo_urls || []}
                 uploadEndpoint="/partner/upload"
                 onChange={(urls) => patch({ photo_urls: urls })}
               />
-            </div>
+            </Section>
           </div>
         )}
 
         {tab === 'location' && (
-          <div>
+          <Section tone="rose" icon={MapPinIcon} title="Location" hint="Where travellers find you on the map.">
             <div className="form-grid-2">
               <div className="form-group">
                 <label className="form-label">City</label>
@@ -155,7 +157,6 @@ export default function Profile({ onSaved }) {
                 />
               </div>
             </div>
-            <label className="form-label">Map pin</label>
             <LocationPicker
               mapId="partner-location-map"
               latitude={form.latitude ?? ''}
@@ -172,14 +173,12 @@ export default function Profile({ onSaved }) {
                 patch(next);
               }}
             />
-          </div>
+          </Section>
         )}
 
         {tab === 'contact' && (
           <div>
-            <div className="xp-section">
-              <div className="xp-section-title">Direct contact</div>
-              <div className="xp-section-hint">Your email receives new enquiries and is not shown in the app.</div>
+            <Section tone="green" icon={PhoneIcon} title="Direct contact" hint="Your email receives new enquiries and is not shown in the app.">
               <div className="form-grid-2">
                 <div className="form-group">
                   <label className="form-label">Phone</label>
@@ -210,10 +209,8 @@ export default function Profile({ onSaved }) {
                   />
                 </div>
               </div>
-            </div>
-            <div className="xp-section">
-              <div className="xp-section-title">Social</div>
-              <div className="xp-section-hint">A handle or a full URL both work.</div>
+            </Section>
+            <Section tone="blue" icon={GlobeIcon} title="Social" hint="A handle or a full URL both work.">
               <div className="form-grid-3">
                 <div className="form-group">
                   <label className="form-label">Instagram</label>
@@ -237,7 +234,7 @@ export default function Profile({ onSaved }) {
                   />
                 </div>
               </div>
-            </div>
+            </Section>
           </div>
         )}
       </div>

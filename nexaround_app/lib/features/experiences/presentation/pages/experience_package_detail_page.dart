@@ -8,6 +8,7 @@ import 'package:nexaround_app/core/widgets/full_screen_image_viewer.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/experience_enquiry_sheet.dart';
+import 'package:nexaround_app/features/experiences/presentation/widgets/experience_share_sheet.dart';
 import 'package:nexaround_app/features/experiences/presentation/widgets/vendor_social_bar.dart';
 
 /// Detail for one package.
@@ -87,6 +88,20 @@ class _ExperiencePackageDetailPageState
       pinned: true,
       backgroundColor: Colors.white,
       foregroundColor: AppColors.textPrimary,
+      // Share lives up here, not in the bottom bar: a fourth fixed-width
+      // button there squeezes "Request booking" on small phones.
+      actions: [
+        IconButton(
+          tooltip: 'Share',
+          icon: Icon(
+            Theme.of(context).platform == TargetPlatform.iOS
+                ? Icons.ios_share
+                : Icons.share_rounded,
+          ),
+          onPressed: () => showExperienceShareSheet(context, _package),
+        ),
+        const SizedBox(width: 4),
+      ],
       flexibleSpace: FlexibleSpaceBar(
         background: photos.isEmpty
             ? Container(

@@ -22,6 +22,24 @@ export const PRICE_BASES = [
 export const ENQUIRY_STATUSES = ['new', 'contacted', 'closed'];
 export const STATUS_LABELS = { new: 'New', contacted: 'Contacted', closed: 'Closed', spam: 'Spam' };
 
+// Colour families (see the .tone-* classes in index.css). One per category,
+// so a boat trip and a food tour read differently at a glance.
+const CATEGORY_TONES = {
+  boat: 'blue',
+  water_sports: 'cyan',
+  guided_tour: 'amber',
+  wildlife: 'green',
+  cultural: 'violet',
+  adventure: 'orange',
+  food: 'rose',
+};
+
+export const categoryTone = (value) => CATEGORY_TONES[value] || 'teal';
+
+// New needs action (amber), contacted is in progress (blue), closed is done
+// (green).
+export const STATUS_TONES = { new: 'amber', contacted: 'blue', closed: 'green', spam: 'rose' };
+
 export const categoryLabel = (value) => CATEGORIES.find((c) => c.value === value)?.label || value || 'Other';
 export const basisLabel = (value) => PRICE_BASES.find((b) => b.value === value)?.label || 'Per person';
 

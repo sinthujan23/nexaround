@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useApi, apiPost, apiPut, apiDelete, mediaUrl } from '../api';
-import { PlusIcon, TrashIcon, TicketIcon, SearchIcon } from '../components/Icons';
-import { Switch, Drawer, Toast } from '../components/Kit';
+import {
+  PlusIcon, TrashIcon, TicketIcon, SearchIcon, DollarIcon, ImageIcon, ClipboardCheckIcon, MapPinIcon,
+} from '../components/Icons';
+import { Switch, Drawer, Toast, Section } from '../components/Kit';
 import LocationPicker from '../components/LocationPicker';
 import ImageUploader from '../components/ImageUploader';
 import {
-  CATEGORIES, PRICE_BASES, categoryLabel, basisLabel, formatPrice, formatDuration,
+  CATEGORIES, PRICE_BASES, categoryLabel, categoryTone, basisLabel, formatPrice, formatDuration,
 } from '../format';
 
 const empty = {
@@ -35,6 +37,11 @@ const toPayload = (form) => ({
 const visibility = (pkg) => {
   if (!pkg.is_active) return 'Hidden';
   return pkg.is_published ? 'Live' : 'On, not visible';
+};
+
+const visibilityTone = (pkg) => {
+  if (!pkg.is_active) return 'gray';
+  return pkg.is_published ? 'green' : 'amber';
 };
 
 export default function Packages() {
@@ -192,9 +199,10 @@ export default function Packages() {
             >
               <div className="pkg-card-img">
                 {pkg.photo_urls?.[0] ? <img src={mediaUrl(pkg.photo_urls[0])} alt="" /> : <TicketIcon size={28} />}
+                <span className={`pill tone-${visibilityTone(pkg)}`}>{visibility(pkg)}</span>
               </div>
               <div className="pkg-card-body">
-                <div className="pkg-eyebrow">{categoryLabel(pkg.category)}</div>
+                <div className={`pkg-eyebrow tone-${categoryTone(pkg.category)}`}>{categoryLabel(pkg.category)}</div>
                 <div className="pkg-card-title">{pkg.title}</div>
                 {pkg.summary && <div className="pkg-card-vendor">{pkg.summary}</div>}
                 <div className="pkg-card-foot">
@@ -205,7 +213,7 @@ export default function Packages() {
                       {pkg.duration_minutes ? ` · ${formatDuration(pkg.duration_minutes)}` : ''}
                     </div>
                   </div>
-                  <Switch checked={pkg.is_active} onChange={(v) => toggleLive(pkg, v)} label={visibility(pkg)} />
+                  <Switch checked={pkg.is_active} onChange={(v) => toggleLive(pkg, v)} label="Show in app" />
                 </div>
               </div>
             </div>
@@ -240,7 +248,7 @@ export default function Packages() {
             </>
           }
         >
-          <div className="xp-section">
+          <Section tone="teal" icon={TicketIcon} title="Basic details" hint="What travellers see first.">
             <div className="form-group">
               <label className="form-label">Title *</label>
               <input
@@ -271,11 +279,9 @@ export default function Packages() {
                 onChange={(e) => patch({ description: e.target.value })}
               />
             </div>
-          </div>
+          </Section>
 
-          <div className="xp-section">
-            <div className="xp-section-title">Price & capacity</div>
-            <div className="xp-section-hint">Leave the price empty to show “On request”.</div>
+          <Section tone="amber" icon={DollarIcon} title="Price & capacity" hint="Leave the price empty to show “On request”.">
             <div className="form-grid-3">
               <div className="form-group">
                 <label className="form-label">Price</label>
@@ -314,20 +320,18 @@ export default function Packages() {
                 />
               </div>
             </div>
-          </div>
+          </Section>
 
-          <div className="xp-section">
+          <Section tone="violet" icon={ImageIcon} title="Photos" hint="The first photo is the one shown on the card.">
             <ImageUploader
-              label="Photos (the first one is the card photo)"
+              label={null}
               value={form.photo_urls}
               uploadEndpoint="/partner/upload"
               onChange={(urls) => patch({ photo_urls: urls })}
             />
-          </div>
+          </Section>
 
-          <div className="xp-section">
-            <div className="xp-section-title">Included & languages</div>
-            <div className="xp-section-hint">One item per line.</div>
+          <Section tone="blue" icon={ClipboardCheckIcon} title="Included & languages" hint="One item per line.">
             <div className="form-grid-2">
               <div className="form-group">
                 <label className="form-label">What&rsquo;s included</label>
@@ -346,20 +350,21 @@ export default function Packages() {
                 />
               </div>
             </div>
-          </div>
+          </Section>
 
-          <div className="xp-section">
-            <div className="xp-section-head">
-              <div>
-                <div className="xp-section-title">Meeting point</div>
-                <div className="xp-section-hint">Where travellers meet you.</div>
-              </div>
+          <Section
+            tone="rose"
+            icon={MapPinIcon}
+            title="Meeting point"
+            hint="Where travellers meet you."
+            action={
               <Switch
                 checked={form.uses_vendor_location}
                 onChange={(v) => patch({ uses_vendor_location: v, latitude: v ? null : '', longitude: v ? null : '' })}
                 label="My business address"
               />
-            </div>
+            }
+          >
             {!form.uses_vendor_location && (
               <LocationPicker
                 mapId="partner-package-map"
@@ -380,7 +385,7 @@ export default function Packages() {
                 }}
               />
             )}
-          </div>
+          </Section>
         </Drawer>
       )}
 

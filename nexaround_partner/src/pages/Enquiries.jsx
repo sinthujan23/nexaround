@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useApi, apiGet, apiPatch } from '../api';
-import { InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon } from '../components/Icons';
-import { Toast } from '../components/Kit';
 import {
-  ENQUIRY_STATUSES, STATUS_LABELS, formatDateTime, formatAge, formatDay, guestsLabel, digitsOnly,
+  InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon, TicketIcon, UsersIcon, ClockIcon, EditIcon,
+} from '../components/Icons';
+import { Toast, Section, InfoTile } from '../components/Kit';
+import {
+  ENQUIRY_STATUSES, STATUS_LABELS, STATUS_TONES, formatDateTime, formatAge, formatDay, guestsLabel, digitsOnly,
 } from '../format';
 
 const PAGE_SIZE = 50;
@@ -160,7 +162,6 @@ export default function Enquiries({ vendorName, initialId }) {
                 onClick={() => open(e)}
                 style={{ alignItems: 'flex-start' }}
               >
-                <span className={`dot dot-${e.status}`} style={{ marginTop: 6 }} title={STATUS_LABELS[e.status]} />
                 <div className="xp-row-main">
                   <div className={`xp-row-title ${e.status === 'new' ? 'strong' : ''}`}>{e.contact_name}</div>
                   <div className="xp-row-sub" style={{ color: 'var(--text-primary)' }}>
@@ -170,7 +171,10 @@ export default function Enquiries({ vendorName, initialId }) {
                     {[guestsLabel(e.party_size), formatDay(e.preferred_date)].filter(Boolean).join(' · ') || 'No date or party size given'}
                   </div>
                 </div>
-                <div className="xp-row-side" title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</div>
+                <div className="xp-row-side">
+                  <span title={formatDateTime(e.created_at)}>{formatAge(e.created_at)}</span>
+                  <span className={`pill tone-${STATUS_TONES[e.status] || 'gray'}`}>{STATUS_LABELS[e.status] || e.status}</span>
+                </div>
               </button>
             ))}
           </div>
@@ -203,15 +207,15 @@ export default function Enquiries({ vendorName, initialId }) {
                   <div className="xp-detail-title">{selected.contact_name}</div>
                   <div className="xp-detail-sub">Received {formatDateTime(selected.created_at)}</div>
                 </div>
-                <span className="status-label">
-                  <span className={`dot dot-${selected.status}`} /> {STATUS_LABELS[selected.status] || selected.status}
+                <span className={`pill tone-${STATUS_TONES[selected.status] || 'gray'}`}>
+                  {STATUS_LABELS[selected.status] || selected.status}
                 </span>
               </div>
 
               <div className="xp-body">
                 {/* The whole job: get the vendor talking to the traveller. */}
                 <div className="xp-section">
-                  <div className="contact-card">
+                  <div className="contact-card tone-green">
                     <div className="contact-card-lines">
                       {selected.contact_phone}
                       {selected.contact_email && <div><span>{selected.contact_email}</span></div>}
@@ -234,20 +238,20 @@ export default function Enquiries({ vendorName, initialId }) {
 
                 <div className="xp-section">
                   <div className="xp-section-title" style={{ marginBottom: 14 }}>Request</div>
-                  <dl className="dl-grid">
-                    <div>
-                      <dt>Package</dt>
-                      <dd>{selected.package_title_snapshot || 'General enquiry'}</dd>
-                    </div>
-                    <div>
-                      <dt>Party size</dt>
-                      <dd className={selected.party_size ? '' : 'muted'}>{guestsLabel(selected.party_size) || 'Not given'}</dd>
-                    </div>
-                    <div>
-                      <dt>Preferred date</dt>
-                      <dd className={selected.preferred_date ? '' : 'muted'}>{formatDay(selected.preferred_date) || 'Flexible'}</dd>
-                    </div>
-                  </dl>
+                  <div className="info-grid">
+                    <InfoTile
+                      tone="teal" icon={TicketIcon} label="Package"
+                      value={selected.package_title_snapshot || 'General enquiry'}
+                    />
+                    <InfoTile
+                      tone="blue" icon={UsersIcon} label="Party size"
+                      value={guestsLabel(selected.party_size) || 'Not given'} muted={!selected.party_size}
+                    />
+                    <InfoTile
+                      tone="amber" icon={ClockIcon} label="Preferred date"
+                      value={formatDay(selected.preferred_date) || 'Flexible'} muted={!selected.preferred_date}
+                    />
+                  </div>
                   {selected.message && (
                     <div style={{ marginTop: 18 }}>
                       <div className="dl-label">Message</div>
@@ -263,7 +267,7 @@ export default function Enquiries({ vendorName, initialId }) {
                     {ENQUIRY_STATUSES.map((s) => (
                       <button
                         key={s}
-                        className={selected.status === s ? 'active' : ''}
+                        className={`tone-${STATUS_TONES[s]} ${selected.status === s ? 'active' : ''}`}
                         disabled={busy || selected.status === s}
                         onClick={() => patch({ status: s }, `Marked as ${STATUS_LABELS[s].toLowerCase()}`)}
                       >
@@ -274,25 +278,27 @@ export default function Enquiries({ vendorName, initialId }) {
                 </div>
 
                 <div className="xp-section">
-                  <div className="xp-section-title">Your notes</div>
-                  <div className="xp-section-hint">Only you and NexAround see these.</div>
-                  <textarea
-                    className="form-textarea" rows={4} value={notes}
-                    placeholder="e.g. Quoted LKR 30,000 for 4, waiting to hear back"
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
-                    {notesDirty && (
-                      <button className="btn btn-ghost btn-sm" onClick={() => setNotes(selected.vendor_notes || '')}>Discard</button>
-                    )}
-                    <button
-                      className="btn btn-primary btn-sm"
-                      disabled={!notesDirty || busy}
-                      onClick={() => patch({ vendor_notes: notes }, 'Note saved')}
-                    >
-                      {busy ? 'Saving…' : 'Save note'}
-                    </button>
-                  </div>
+                  <Section tone="amber" icon={EditIcon} title="Your notes" hint="Only you and NexAround see these.">
+                    <div className="form-group">
+                      <textarea
+                        className="form-textarea" rows={4} value={notes}
+                        placeholder="e.g. Quoted LKR 30,000 for 4, waiting to hear back"
+                        onChange={(e) => setNotes(e.target.value)}
+                      />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                        {notesDirty && (
+                          <button className="btn btn-ghost btn-sm" onClick={() => setNotes(selected.vendor_notes || '')}>Discard</button>
+                        )}
+                        <button
+                          className="btn btn-primary btn-sm"
+                          disabled={!notesDirty || busy}
+                          onClick={() => patch({ vendor_notes: notes }, 'Note saved')}
+                        >
+                          {busy ? 'Saving…' : 'Save note'}
+                        </button>
+                      </div>
+                    </div>
+                  </Section>
                 </div>
               </div>
             </>
