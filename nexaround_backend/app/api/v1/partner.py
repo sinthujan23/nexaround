@@ -12,15 +12,17 @@ would be wrong here:
    simply by pressing Save — even if their schema never declared them.
 """
 import uuid
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import (
     APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status,
 )
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import VendorPrincipal, get_current_vendor
-from app.core.database import get_db
+from app.api.deps import VendorPrincipal, get_current_vendor, oauth2_scheme
+from app.core.database import async_session, get_db
 from app.core.rate_limiter import auth_rate_limiter, check_account_rate_limit
 from app.core.security import (
     blacklist_token, create_access_token, create_refresh_token,
@@ -30,6 +32,7 @@ from app.models.experience import VendorUser
 from app.repositories.experience_repository import ExperienceRepository
 from app.schemas.partner import (
     ENQUIRY_STATUSES,
+    PartnerActivity, PartnerActivityListResponse, PartnerActivityUnreadResponse,
     PartnerEnquiryListResponse, PartnerEnquiryResponse, PartnerEnquiryUpdate,
     PartnerForgotPasswordRequest, PartnerLoginRequest, PartnerMe,
     PartnerMessageResponse, PartnerPackageCreate, PartnerPackageListResponse,
@@ -37,7 +40,7 @@ from app.schemas.partner import (
     PartnerTokenResponse, PartnerStatsResponse, PartnerVendorProfileResponse,
     PartnerVendorProfileUpdate,
 )
-from app.services import google_places_client
+from app.services import google_places_client, partner_activity, partner_events
 from app.services.email_service import send_vendor_invite_email
 from app.services.experience_upload import save_experience_images
 from app.services.settings_service import SettingsService
@@ -235,6 +238,7 @@ async def partner_set_password(
     # Signs out every other session: their tokens predate this moment.
     login.password_changed_at = datetime.now(timezone.utc)
     await db.commit()
+    await partner_events.publish(login.vendor_id, partner_events.ACCOUNT_CHANGED)
 
     return PartnerMessageResponse(
         message="Password set. You can now sign in."
@@ -298,6 +302,70 @@ async def partner_me(
     principal: VendorPrincipal = Depends(get_current_vendor),
 ):
     return _me(principal)
+
+
+@router.get("/events")
+async def partner_event_stream(token: str = Depends(oauth2_scheme)):
+    """Live updates for an open portal tab, as Server-Sent Events.
+
+    The portal reads this with `fetch`, not `EventSource`, because EventSource
+    cannot send an Authorization header, and a token in the query string would
+    be written to the nginx access log.
+
+    Authenticated on a session of its own that is closed before streaming
+    starts. Taking `get_current_vendor` as a dependency instead would hold its
+    DB session for the life of the response — FastAPI closes yield-dependencies
+    only after the response is sent — so every open tab would pin a pool
+    connection for up to an hour.
+    """
+    from app.core.rate_limiter import get_redis_client
+    from app.core.security import decode_token
+
+    async with async_session() as db:
+        principal = await get_current_vendor(db=db, token=token)
+    vendor_id = principal.vendor.id
+
+    # Generous: a tab reconnects after network blips and API restarts. This
+    # only bounds how many hour-long streams one login can hold open.
+    await check_account_rate_limit(
+        str(principal.login.id),
+        action="partner_events",
+        max_attempts=120,
+        window_seconds=3600,
+    )
+
+    redis = await get_redis_client()
+    if redis is None:
+        raise HTTPException(status_code=503, detail="Live updates are unavailable.")
+
+    async def session_problem() -> Optional[str]:
+        # The same checks as every other partner request: the blacklist
+        # (logout), the password-change cutoff, a disabled login, a suspended
+        # or deleted vendor.
+        try:
+            async with async_session() as db:
+                await get_current_vendor(db=db, token=token)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                return str(exc.detail)
+            return partner_events.SESSION_EXPIRED_MESSAGE
+        return None
+
+    # Verified by get_current_vendor above, so `exp` is present and trusted.
+    expires_at = float(decode_token(token)["exp"])
+
+    return StreamingResponse(
+        partner_events.stream(
+            redis, vendor_id, expires_at=expires_at, session_problem=session_problem,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            # nginx buffers proxied responses by default, which would hold
+            # events back until a buffer filled.
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── What a vendor may write to their own rows ───────────────────────────────
@@ -441,6 +509,7 @@ async def update_partner_profile(
     from app.utils.geo_utils import create_point
 
     vendor = principal.vendor
+    before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS)
     for key in _PARTNER_VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
     vendor.location = create_point(data.latitude, data.longitude)
@@ -450,8 +519,13 @@ async def update_partner_profile(
     # the call leaves every package on the old coordinates with a stale
     # `is_published`.
     count = await apply_vendor_cascade(db, vendor)
+    activity = partner_activity.profile_updated(
+        db, vendor, before, actor=partner_activity.VENDOR, login=principal.login,
+    )
     await db.commit()
     await db.refresh(vendor)
+    await partner_events.publish(vendor.id, partner_events.ACCOUNT_CHANGED)
+    await partner_activity.announce(activity)
     return _profile_response(vendor, count)
 
 
@@ -489,8 +563,14 @@ async def create_partner_package(
         package, principal.vendor, data.latitude, data.longitude
     )
     db.add(package)
+    await db.flush()  # the feed line links to the package's id
+    activity = partner_activity.package_created(
+        db, package, actor=partner_activity.VENDOR, login=principal.login,
+    )
     await db.commit()
     await db.refresh(package)
+    await partner_events.publish(principal.vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return _package_out(package)
 
 
@@ -524,13 +604,19 @@ async def update_partner_package(
     if package is None:
         raise HTTPException(status_code=404, detail="Package not found")
 
+    before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
     for key in _PARTNER_PACKAGE_SCALARS:
         setattr(package, key, getattr(data, key))
     apply_package_derived_fields(
         package, principal.vendor, data.latitude, data.longitude
     )
+    activity = partner_activity.package_updated(
+        db, package, before, actor=partner_activity.VENDOR, login=principal.login,
+    )
     await db.commit()
     await db.refresh(package)
+    await partner_events.publish(principal.vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return _package_out(package)
 
 
@@ -544,8 +630,13 @@ async def delete_partner_package(
     package = await repo.get_package_for_vendor(package_id, principal.vendor.id)
     if package is None:
         raise HTTPException(status_code=404, detail="Package not found")
+    activity = partner_activity.package_deleted(
+        db, package, actor=partner_activity.VENDOR, login=principal.login,
+    )
     await db.delete(package)
     await db.commit()
+    await partner_events.publish(principal.vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return {"status": "deleted"}
 
 
@@ -592,6 +683,7 @@ async def update_partner_enquiry(
     if enquiry is None:
         raise HTTPException(status_code=404, detail="Enquiry not found")
 
+    activity = None
     if data.status is not None:
         # The column has no CHECK constraint, so an unvalidated status would
         # let a vendor write "deleted" and vanish the row from every filtered
@@ -601,13 +693,24 @@ async def update_partner_enquiry(
                 status_code=400,
                 detail=f"Status must be one of: {', '.join(ENQUIRY_STATUSES)}",
             )
-        enquiry.status = data.status
+        if data.status != enquiry.status:
+            enquiry.status = data.status
+            activity = partner_activity.enquiry_status(
+                db, enquiry, actor=partner_activity.VENDOR, login=principal.login,
+            )
     if data.vendor_notes is not None:
         # Their own field. `admin_notes` is the platform's and stays untouched.
         enquiry.vendor_notes = data.vendor_notes
 
     await db.commit()
     await db.refresh(enquiry)
+    # For the vendor's other tabs and logins: their badge and list follow.
+    await partner_events.publish(
+        principal.vendor.id,
+        partner_events.ENQUIRY_UPDATED,
+        {"id": enquiry.id, "status": enquiry.status, "vendor_notes": enquiry.vendor_notes},
+    )
+    await partner_activity.announce(activity)
     return _enquiry_out(enquiry)
 
 
@@ -621,6 +724,103 @@ async def partner_stats(
     return PartnerStatsResponse(
         **await ExperienceRepository(db).vendor_stats(principal.vendor.id)
     )
+
+
+# ── Activity feed ───────────────────────────────────────────────────────────
+#
+# What the bell shows. Scoped by the token's vendor like everything else here;
+# "notifications" is the same feed minus this login's own actions, and only
+# those lines count as unread.
+
+def _not_mine(login_id):
+    from sqlalchemy import or_
+    from app.models.experience import VendorActivity
+
+    return or_(
+        VendorActivity.actor_login_id.is_(None),
+        VendorActivity.actor_login_id != login_id,
+    )
+
+
+async def _unread_count(db: AsyncSession, principal: VendorPrincipal) -> int:
+    from sqlalchemy import func, select
+    from app.models.experience import VendorActivity
+
+    # A login that has never opened the panel counts from when it was
+    # created, so a newly invited teammate does not inherit the whole history
+    # as unread.
+    since = principal.login.activity_seen_at or principal.login.created_at
+    query = (
+        select(func.count())
+        .select_from(VendorActivity)
+        .where(
+            VendorActivity.vendor_id == principal.vendor.id,
+            _not_mine(principal.login.id),
+        )
+    )
+    if since is not None:
+        query = query.where(VendorActivity.created_at > since)
+    return int(await db.scalar(query) or 0)
+
+
+@router.get("/activity", response_model=PartnerActivityListResponse)
+async def list_partner_activity(
+    scope: str = Query("all", pattern="^(all|notifications)$"),
+    before: Optional[datetime] = Query(None),
+    limit: int = Query(30, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Newest first. Page back with `before` = the last row's `created_at`."""
+    from sqlalchemy import select
+    from app.models.experience import VendorActivity
+
+    query = select(VendorActivity).where(VendorActivity.vendor_id == principal.vendor.id)
+    if scope == "notifications":
+        query = query.where(_not_mine(principal.login.id))
+    if before is not None:
+        query = query.where(VendorActivity.created_at < before)
+    rows = (
+        await db.execute(
+            query.order_by(VendorActivity.created_at.desc()).limit(limit + 1)
+        )
+    ).scalars().all()
+
+    return PartnerActivityListResponse(
+        items=[PartnerActivity(**partner_activity.to_payload(r)) for r in rows[:limit]],
+        has_more=len(rows) > limit,
+        unread=await _unread_count(db, principal),
+        seen_at=principal.login.activity_seen_at or principal.login.created_at,
+    )
+
+
+@router.get("/activity/unread", response_model=PartnerActivityUnreadResponse)
+async def partner_activity_unread(
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    return PartnerActivityUnreadResponse(
+        unread=await _unread_count(db, principal),
+        seen_at=principal.login.activity_seen_at or principal.login.created_at,
+    )
+
+
+@router.post("/activity/seen", response_model=PartnerActivityUnreadResponse)
+async def mark_partner_activity_seen(
+    db: AsyncSession = Depends(get_db),
+    principal: VendorPrincipal = Depends(get_current_vendor),
+):
+    """Clear this login's bell. Teammates keep their own count."""
+    from datetime import timezone
+
+    login = principal.login
+    login.activity_seen_at = datetime.now(timezone.utc)
+    await db.commit()
+    # This login's other open tabs clear their badge too.
+    await partner_events.publish(
+        principal.vendor.id, "activity.seen", {"login_id": str(login.id)},
+    )
+    return PartnerActivityUnreadResponse(unread=0, seen_at=login.activity_seen_at)
 
 
 # ── Media and map search ────────────────────────────────────────────────────

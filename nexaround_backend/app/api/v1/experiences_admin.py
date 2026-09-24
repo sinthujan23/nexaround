@@ -25,6 +25,8 @@ from app.schemas.partner import (
     VendorLoginAdminResponse, VendorLoginCreate, VendorLoginListResponse,
     VendorLoginUpdate,
 )
+from app.api.v1.partner import _PARTNER_PACKAGE_SCALARS, _PARTNER_VENDOR_SCALARS
+from app.services import partner_activity, partner_events
 from app.services.email_service import send_vendor_invite_email
 from app.services.experience_upload import save_experience_images
 from app.services.partner_auth import store_link_token
@@ -211,6 +213,9 @@ async def update_vendor(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
+    # Judged on what the vendor can see, plus is_active for suspend/restore:
+    # an edit to internal_notes or sort_order must not reach their feed.
+    before = partner_activity.snapshot(vendor, _PARTNER_VENDOR_SCALARS + ("is_active",))
     for key in _VENDOR_SCALARS:
         setattr(vendor, key, getattr(data, key))
     vendor.location = create_point(data.latitude, data.longitude)
@@ -218,8 +223,15 @@ async def update_vendor(
     # A vendor that moved drags its packages with it; one that was deactivated
     # hides them. Without this the cards stay at the old coordinates forever.
     count = await apply_vendor_cascade(db, vendor)
+    activity = partner_activity.profile_updated(
+        db, vendor, before, actor=partner_activity.ADMIN,
+    )
     await db.commit()
     await db.refresh(vendor)
+    await partner_activity.announce(activity)
+    # Suspending a vendor ends their open portal sessions now; any other edit
+    # refreshes the name and package visibility they are looking at.
+    await partner_events.publish(vendor.id, partner_events.ACCOUNT_CHANGED)
     return _vendor_response(vendor, count)
 
 
@@ -235,6 +247,7 @@ async def delete_vendor(
         raise HTTPException(status_code=404, detail="Vendor not found")
     await db.delete(vendor)  # packages cascade at the FK
     await db.commit()
+    await partner_events.publish(vendor_id, partner_events.ACCOUNT_CHANGED)
     return {"status": "success"}
 
 
@@ -277,8 +290,12 @@ async def create_package(
     )
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
     db.add(package)
+    await db.flush()  # the feed line links to the package's id
+    activity = partner_activity.package_created(db, package, actor=partner_activity.ADMIN)
     await db.commit()
     await db.refresh(package)
+    await partner_events.publish(vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return _package_response(package)
 
 
@@ -297,12 +314,18 @@ async def update_package(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
 
+    before = partner_activity.snapshot(package, _PARTNER_PACKAGE_SCALARS)
     for key in _PACKAGE_SCALARS:
         setattr(package, key, getattr(data, key))
     apply_package_derived_fields(package, vendor, data.latitude, data.longitude)
+    activity = partner_activity.package_updated(
+        db, package, before, actor=partner_activity.ADMIN,
+    )
 
     await db.commit()
     await db.refresh(package)
+    await partner_events.publish(vendor.id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return _package_response(package)
 
 
@@ -316,8 +339,12 @@ async def delete_package(
     package = await repo.get_package(package_id, published_only=False)
     if not package:
         raise HTTPException(status_code=404, detail="Package not found")
+    vendor_id = package.vendor_id
+    activity = partner_activity.package_deleted(db, package, actor=partner_activity.ADMIN)
     await db.delete(package)
     await db.commit()
+    await partner_events.publish(vendor_id, partner_events.PACKAGES_CHANGED)
+    await partner_activity.announce(activity)
     return {"status": "success"}
 
 
@@ -358,12 +385,24 @@ async def update_enquiry(
     enquiry = await db.get(ExperienceEnquiry, enquiry_id)
     if not enquiry:
         raise HTTPException(status_code=404, detail="Enquiry not found")
-    if data.status is not None:
+    activity = None
+    if data.status is not None and data.status != enquiry.status:
         enquiry.status = data.status
+        if enquiry.vendor_id:
+            activity = partner_activity.enquiry_status(
+                db, enquiry, actor=partner_activity.ADMIN,
+            )
     if data.admin_notes is not None:
         enquiry.admin_notes = data.admin_notes
     await db.commit()
     await db.refresh(enquiry)
+    # Never admin_notes: those are the platform's, not the vendor's.
+    await partner_events.publish(
+        enquiry.vendor_id,
+        partner_events.ENQUIRY_UPDATED,
+        {"id": enquiry.id, "status": enquiry.status, "vendor_notes": enquiry.vendor_notes},
+    )
+    await partner_activity.announce(activity)
     return ExperienceEnquiryAdminResponse.model_validate(enquiry)
 
 
@@ -539,6 +578,8 @@ async def update_vendor_login(
     vu.is_active = data.is_active
     await db.commit()
     await db.refresh(vu)
+    # A disabled login's open portal tabs are signed out now, not in an hour.
+    await partner_events.publish(vu.vendor_id, partner_events.ACCOUNT_CHANGED)
     return await _login_response(vu)
 
 
@@ -551,6 +592,8 @@ async def delete_vendor_login(
     vu = await db.get(VendorUser, login_id)
     if not vu:
         raise HTTPException(status_code=404, detail="Login not found")
+    vendor_id = vu.vendor_id
     await db.delete(vu)
     await db.commit()
+    await partner_events.publish(vendor_id, partner_events.ACCOUNT_CHANGED)
     return {"status": "deleted"}

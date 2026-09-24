@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useState } from 'react';
 import { apiPost, apiGet } from './api';
 import {
-  CompassIcon, TicketIcon, InboxIcon, MapPinIcon, LogOutIcon,
+  CompassIcon, TicketIcon, InboxIcon, MapPinIcon, LogOutIcon, BellIcon,
 } from './components/Icons';
 import Dashboard from './pages/Dashboard';
 import Packages from './pages/Packages';
@@ -10,7 +10,14 @@ import Profile from './pages/Profile';
 import SetPassword from './pages/SetPassword';
 import ForgotPassword from './pages/ForgotPassword';
 import ErrorBoundary from './components/ErrorBoundary';
+import LiveAlerts from './components/LiveAlerts';
+import NotificationBell from './components/NotificationBell';
 import { AuthLayout } from './components/Kit';
+import {
+  RESYNC, broadcastLive, connectLiveStream, desktopAlertsPermission, showDesktopAlert,
+} from './live';
+
+const BASE_TITLE = document.title;
 
 /**
  * The partner portal shell.
@@ -25,6 +32,10 @@ export default function App() {
   const [token, setToken] = useState(localStorage.getItem('partner_token'));
   const [me, setMe] = useState(null);
   const [newCount, setNewCount] = useState(0);
+  // Bumped by live events, to re-read the new-enquiry count.
+  const [statsVersion, setStatsVersion] = useState(0);
+  const [alerts, setAlerts] = useState([]);
+  const [alertPermission, setAlertPermission] = useState(desktopAlertsPermission);
   const [activePage, setActivePage] = useState('dashboard');
   // An optional target on the page, e.g. the enquiry the dashboard linked to.
   const [pageTarget, setPageTarget] = useState(null);
@@ -43,6 +54,7 @@ export default function App() {
       localStorage.removeItem('partner_token');
       setToken(null);
       setMe(null);
+      setAlerts([]);
       setError(e.detail?.message || 'Session expired. Please sign in again.');
       setActivePage('dashboard');
     };
@@ -58,11 +70,68 @@ export default function App() {
   }, [token]);
 
   // The new-enquiry count on the Enquiries menu item. Re-read on every page
-  // change, so replying to an enquiry clears it by the time you look back.
+  // change, so replying to an enquiry clears it by the time you look back,
+  // and on every live enquiry event, so it moves without a click at all.
   useEffect(() => {
     if (!token) return;
     apiGet('/partner/stats').then((s) => setNewCount(s.enquiries_new || 0)).catch(() => {});
-  }, [token, activePage]);
+  }, [token, activePage, statsVersion]);
+
+  // Visible from other tabs: "(2) nexARound Partner".
+  useEffect(() => {
+    document.title = token && newCount > 0 ? `(${newCount}) ${BASE_TITLE}` : BASE_TITLE;
+  }, [token, newCount]);
+
+  const dismissAlert = useCallback((id) => {
+    setAlerts((list) => list.filter((a) => a.id !== id));
+  }, []);
+
+  const openEnquiry = (id) => {
+    dismissAlert(id);
+    navigate('enquiries', id);
+  };
+
+  const onLiveEvent = useEffectEvent((type, data) => {
+    broadcastLive(type, data);
+    if (type === 'ready' || type === RESYNC || type.startsWith('enquiry.')) {
+      setStatsVersion((v) => v + 1);
+    }
+    if (type === 'account.changed' || type === RESYNC) {
+      apiGet('/partner/me').then(setMe).catch(() => {});
+    }
+    if (type === 'enquiry.created') {
+      // Newest on top, at most three: a burst should not bury the page.
+      setAlerts((list) => [data, ...list.filter((a) => a.id !== data.id)].slice(0, 3));
+      if (document.visibilityState !== 'visible') {
+        showDesktopAlert({
+          title: `New enquiry from ${data.contact_name}`,
+          body: data.package_title || 'General enquiry',
+          tag: `enquiry-${data.id}`,
+          onClick: () => openEnquiry(data.id),
+        });
+      }
+    }
+  });
+
+  // One live-updates stream per signed-in tab. Signing out, or the stream
+  // saying the session is over, closes it.
+  useEffect(() => {
+    if (!token) return undefined;
+    return connectLiveStream({
+      onEvent: (type, data) => onLiveEvent(type, data),
+      onSessionEnded: (message) => {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: { message } }));
+      },
+    });
+  }, [token]);
+
+  const enableDesktopAlerts = async () => {
+    try {
+      setAlertPermission(await Notification.requestPermission());
+    } catch {
+      setAlertPermission(desktopAlertsPermission());
+    }
+  };
 
   // Before the gate, deliberately.
   if (path.startsWith('/set-password')) return <SetPassword />;
@@ -92,6 +161,7 @@ export default function App() {
     localStorage.removeItem('partner_token');
     setToken(null);
     setMe(null);
+    setAlerts([]);
     setActivePage('dashboard');
   };
 
@@ -160,6 +230,7 @@ export default function App() {
             <div className="brand">nexARound</div>
             <div className="brand-sub">PARTNER PORTAL</div>
           </div>
+          <NotificationBell loginId={me?.login_id} onNavigate={navigate} />
         </div>
 
         <nav className="sidebar-nav">
@@ -178,6 +249,16 @@ export default function App() {
             </button>
           ))}
         </nav>
+
+        {alertPermission === 'default' && (
+          <button type="button" className="alerts-optin" onClick={enableDesktopAlerts}>
+            <span className="alerts-optin-icon"><BellIcon size={16} /></span>
+            <span>
+              <strong>Turn on desktop alerts</strong>
+              <small>Hear about new enquiries while you work in other tabs.</small>
+            </span>
+          </button>
+        )}
 
         <div className="sidebar-footer">
           <div className="admin-user">
@@ -215,6 +296,8 @@ export default function App() {
           </ErrorBoundary>
         </div>
       </main>
+
+      <LiveAlerts alerts={alerts} onOpen={openEnquiry} onDismiss={dismissAlert} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useApi, apiGet, apiPatch } from '../api';
+import { RESYNC, useLiveEvent } from '../live';
 import {
   InboxIcon, SearchIcon, PhoneIcon, MailIcon, WhatsAppIcon, RefreshIcon, TicketIcon, UsersIcon, ClockIcon, EditIcon,
 } from '../components/Icons';
@@ -77,6 +78,17 @@ export default function Enquiries({ vendorName, initialId }) {
   );
 
   const notesDirty = selected && notes !== (selected.vendor_notes || '');
+
+  // A new enquiry, or a status changed in another tab, by another login or
+  // by NexAround: the list and counts follow, and so does the open enquiry —
+  // except a note the vendor is part-way through typing.
+  useLiveEvent(['enquiry.created', 'enquiry.updated', RESYNC], ({ type, data }) => {
+    refresh();
+    if (type === 'enquiry.updated' && selected?.id === data.id) {
+      setSelected((s) => ({ ...s, status: data.status, vendor_notes: data.vendor_notes }));
+      if (!notesDirty) setNotes(data.vendor_notes || '');
+    }
+  });
 
   const open = (enquiry) => {
     if (notesDirty && !confirm('Discard your unsaved note?')) return;

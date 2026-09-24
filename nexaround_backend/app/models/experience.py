@@ -19,7 +19,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from sqlalchemy import (
-    ARRAY, Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text,
+    ARRAY, Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -265,6 +265,13 @@ class VendorUser(Base):
     password_changed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # When this login last opened the portal's notification panel. Activity
+    # after it, by anyone but this login, is the bell's unread count. Per
+    # login, not per vendor: one teammate reading the feed must not clear it
+    # for the others.
+    activity_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow
@@ -275,3 +282,63 @@ class VendorUser(Base):
 
     def __repr__(self) -> str:
         return f"<VendorUser {self.email}>"
+
+
+class VendorActivity(Base):
+    """One line of a vendor's activity feed: the bell in the partner portal.
+
+    Written in the same transaction as the change it describes, so the feed
+    can never claim something that was rolled back, nor miss something that
+    was committed.
+
+    `title` and `body` are rendered text, stored rather than rebuilt at read
+    time: an enquiry's package or a package's title can change or disappear,
+    and the feed should still say what it said when it happened. The actor is
+    kept as an id plus a name snapshot for the same reason — the portal shows
+    "You" when the id is the viewer's own login.
+    """
+
+    __tablename__ = "vendor_activities"
+    __table_args__ = (
+        # The feed, newest first, and the unread count both read one vendor's
+        # rows in time order.
+        Index("ix_vendor_activities_vendor_created", "vendor_id", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    vendor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_vendors.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # e.g. "enquiry.created", "package.updated"; see app/services/partner_activity.py.
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    body: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    # "traveller", "vendor" or "admin".
+    actor: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_login_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("vendor_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    actor_name: Mapped[str] = mapped_column(String(255), nullable=True)
+
+    # What the row links to. SET NULL: the line outlives what it describes.
+    enquiry_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_enquiries.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    package_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("experience_packages.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, nullable=False
+    )

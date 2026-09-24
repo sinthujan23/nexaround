@@ -15,6 +15,7 @@ from app.services.ai_service import ai_service
 from app.services import odyssey_ai_service, odyssey_jobs
 from app.services.settings_service import SettingsService
 from app.services import cover_photo_service
+from app.services import ride_apps_service
 from app.schemas.itinerary import (
     BUDGET_RANGE,
     DAYS_RANGE,
@@ -28,6 +29,7 @@ from app.schemas.itinerary import (
     OdysseyRoutePreviewResponse,
     OdysseySwapRequest,
     OdysseyPartnerSwapRequest,
+    OdysseyRideAppsResponse,
     TRAVELERS_RANGE,
 )
 
@@ -95,6 +97,27 @@ async def preview_odyssey_route(
             detail="Could not plan a route just now.",
         )
     return OdysseyRoutePreviewResponse(route=route, notice=notice)
+
+
+@router.get("/odyssey/ride-apps", response_model=OdysseyRideAppsResponse)
+async def get_odyssey_ride_apps(
+    country: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Ride apps a traveller can use in a country, for the itinerary's chips.
+
+    Display only, so it never fails the screen: an unknown code, a missing
+    Gemini key or a failed lookup all answer with an empty list.
+    """
+    code = ride_apps_service.normalise_code(country)
+    if not code:
+        return OdysseyRideAppsResponse()
+    api_key = await SettingsService(db).get_setting("gemini_api_key")
+    if not api_key:
+        return OdysseyRideAppsResponse(country=code)
+    apps = await ride_apps_service.ride_apps_for(code, api_key)
+    return OdysseyRideAppsResponse(country=code, apps=apps)
 
 
 @router.post("/odyssey/generate", response_model=ItineraryResponse, status_code=status.HTTP_202_ACCEPTED)

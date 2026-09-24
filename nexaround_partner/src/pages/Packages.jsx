@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useApi, apiPost, apiPut, apiDelete, mediaUrl } from '../api';
+import { RESYNC, useLiveEvent } from '../live';
 import {
   PlusIcon, TrashIcon, TicketIcon, SearchIcon, DollarIcon, ImageIcon, ClipboardCheckIcon, MapPinIcon,
 } from '../components/Icons';
@@ -55,6 +56,19 @@ export default function Packages({ initialTarget }) {
     setPackages(null);
     refetch();
   };
+
+  // Changed elsewhere (another tab, another login, or NexAround). The
+  // optimistic copy is dropped only once the fresh list has landed, so a
+  // switch just flipped here does not blink back while the refetch is out.
+  const [staleData, setStaleData] = useState(null);
+  if (staleData && data !== staleData) {
+    setStaleData(null);
+    setPackages(null);
+  }
+  useLiveEvent(['packages.changed', 'account.changed', RESYNC], () => {
+    setStaleData(data || {});
+    refetch();
+  });
 
   const patch = (p) => setForm((prev) => ({ ...prev, ...p }));
 

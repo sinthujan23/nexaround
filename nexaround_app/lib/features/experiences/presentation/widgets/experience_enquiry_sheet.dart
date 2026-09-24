@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/contact_launcher.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:nexaround_app/features/auth/presentation/bloc/auth_state.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/enquiry_validation.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
@@ -37,6 +40,29 @@ class _EnquirySheetState extends State<_EnquirySheet> {
   bool _sending = false;
   bool _sent = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    try {
+      final authState = context.read<AuthBloc>().state;
+      if (authState is AuthAuthenticated) {
+        if (authState.user.displayName.trim().isNotEmpty) {
+          _nameController.text = authState.user.displayName.trim();
+        }
+        if (authState.user.email.trim().isNotEmpty) {
+          _emailController.text = authState.user.email.trim();
+        }
+        final phone = authState.user.preferences['phone'] ??
+            authState.user.preferences['phone_number'];
+        if (phone != null && phone.toString().trim().isNotEmpty) {
+          _phoneController.text = phone.toString().trim();
+        }
+      }
+    } catch (_) {
+      // In case AuthBloc is unavailable in context
+    }
+  }
 
   @override
   void dispose() {
@@ -210,20 +236,31 @@ class _EnquirySheetState extends State<_EnquirySheet> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      _stepper(Icons.remove_rounded,
-                          () => setState(() {
-                                if (_partySize > 1) _partySize--;
-                              })),
+                      _stepper(
+                        Icons.remove_rounded,
+                        () => setState(() {
+                          if (_partySize > 1) _partySize--;
+                        }),
+                        enabled: _partySize > 1,
+                      ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 14),
-                        child: Text('$_partySize',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w700)),
+                        child: Text(
+                          '$_partySize',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                       ),
-                      _stepper(Icons.add_rounded,
-                          () => setState(() {
-                                if (_partySize < 100) _partySize++;
-                              })),
+                      _stepper(
+                        Icons.add_rounded,
+                        () => setState(() {
+                          if (_partySize < 100) _partySize++;
+                        }),
+                        enabled: _partySize < 100,
+                      ),
                     ],
                   ),
                 ],
@@ -251,11 +288,17 @@ class _EnquirySheetState extends State<_EnquirySheet> {
                           const Icon(Icons.calendar_today_rounded,
                               size: 14, color: AppColors.textTertiary),
                           const SizedBox(width: 8),
-                          Text(
-                            _preferredDate == null
-                                ? 'Any'
-                                : '${_preferredDate!.day}/${_preferredDate!.month}',
-                            style: const TextStyle(fontSize: 14),
+                          Expanded(
+                            child: Text(
+                              _preferredDate == null
+                                  ? 'Any'
+                                  : '${_preferredDate!.day}/${_preferredDate!.month}/${_preferredDate!.year}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textPrimary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                       ),
@@ -325,17 +368,26 @@ class _EnquirySheetState extends State<_EnquirySheet> {
     );
   }
 
-  Widget _stepper(IconData icon, VoidCallback onTap) {
+  Widget _stepper(IconData icon, VoidCallback? onTap, {bool enabled = true}) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
+      behavior: HitTestBehavior.opaque,
       child: Container(
         width: 32,
         height: 32,
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.border),
+          color: enabled ? Colors.transparent : Colors.grey.withOpacity(0.08),
+          border: Border.all(
+            color: enabled ? AppColors.border : AppColors.border.withOpacity(0.5),
+          ),
           borderRadius: BorderRadius.circular(10),
         ),
-        child: Icon(icon, size: 16),
+        alignment: Alignment.center,
+        child: Icon(
+          icon,
+          size: 16,
+          color: enabled ? AppColors.textPrimary : AppColors.textTertiary,
+        ),
       ),
     );
   }
@@ -347,6 +399,18 @@ class _EnquirySheetState extends State<_EnquirySheet> {
       initialDate: _preferredDate ?? now.add(const Duration(days: 1)),
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: AppColors.brandGreen,
+              onPrimary: Colors.white,
+              onSurface: AppColors.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) setState(() => _preferredDate = picked);
   }

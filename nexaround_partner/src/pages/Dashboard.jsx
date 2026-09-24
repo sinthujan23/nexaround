@@ -1,4 +1,5 @@
 import { useApi, mediaUrl } from '../api';
+import { RESYNC, useLiveEvent } from '../live';
 import { TicketIcon, InboxIcon, ClockIcon, CheckIcon, PlusIcon, EditIcon } from '../components/Icons';
 import { Avatar } from '../components/Kit';
 import {
@@ -10,9 +11,18 @@ import {
 const PACKAGE_PREVIEW = 5;
 
 export default function Dashboard({ onNavigate, me }) {
-  const { data: stats } = useApi('/partner/stats');
-  const { data: recent } = useApi('/partner/enquiries?page=1&page_size=5');
-  const { data: packageData } = useApi('/partner/packages');
+  const { data: stats, refetch: refetchStats } = useApi('/partner/stats');
+  const { data: recent, refetch: refetchRecent } = useApi('/partner/enquiries?page=1&page_size=5');
+  const { data: packageData, refetch: refetchPackages } = useApi('/partner/packages');
+
+  useLiveEvent(
+    ['enquiry.created', 'enquiry.updated', 'packages.changed', 'account.changed', RESYNC],
+    ({ type }) => {
+      refetchStats();
+      if (type !== 'packages.changed' && type !== 'account.changed') refetchRecent();
+      if (!type.startsWith('enquiry.')) refetchPackages();
+    },
+  );
   const packages = packageData?.packages || [];
   const newCount = stats?.enquiries_new ?? 0;
 

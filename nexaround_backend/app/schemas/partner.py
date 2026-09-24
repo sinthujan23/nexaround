@@ -223,3 +223,35 @@ class PartnerStatsResponse(BaseModel):
     enquiries_total: int = 0
     enquiries_new: int = 0
     enquiries_last_30d: int = 0
+
+
+# --- Activity feed (the portal's bell) --------------------------------------
+
+class PartnerActivity(BaseModel):
+    id: uuid.UUID
+    kind: str
+    title: str
+    body: Optional[str] = None
+    # "traveller", "vendor" or "admin". The portal shows "You" when
+    # actor_login_id is the viewer's own login, the name for a teammate, and
+    # "NexAround" for an admin.
+    actor: str
+    actor_login_id: Optional[uuid.UUID] = None
+    actor_name: Optional[str] = None
+    enquiry_id: Optional[uuid.UUID] = None
+    package_id: Optional[uuid.UUID] = None
+    created_at: datetime
+
+
+class PartnerActivityListResponse(BaseModel):
+    items: list[PartnerActivity]
+    has_more: bool
+    unread: int
+    # This login's watermark as it was before this read; the portal
+    # highlights the lines newer than it.
+    seen_at: Optional[datetime] = None
+
+
+class PartnerActivityUnreadResponse(BaseModel):
+    unread: int
+    seen_at: Optional[datetime] = None

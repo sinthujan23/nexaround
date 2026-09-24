@@ -18,6 +18,11 @@ services:
       # background-fill bursts, and /health (which does no work at all) was
       # taking 1.4s behind it.
       - WEB_CONCURRENCY=2
+      # Uvicorn otherwise waits forever for open connections on shutdown, and
+      # the partner portal holds a live-updates stream open per tab — so every
+      # restart would stall until Docker's 10 s SIGKILL. After this timeout the
+      # streams are cancelled and the portal reconnects on its own.
+      - UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=5
       # 70 of the 80-connection budget; the worker takes the other 10. See
       # app/core/database.py.
       - DB_CONNECTION_BUDGET=70

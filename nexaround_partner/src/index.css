@@ -1924,6 +1924,335 @@ td { padding: 14px 16px; color: var(--text-primary); vertical-align: middle; }
 
 .xp-toast.error { background: var(--danger); }
 
+/* Live new-enquiry alerts (components/LiveAlerts.jsx). Warm amber, the
+   portal's one colour for "a new enquiry is waiting". */
+.live-alerts {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10001;
+}
+
+.live-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 14px 14px 16px;
+  background: var(--bg-card);
+  border: 1px solid #fbe0a0;
+  border-left: 4px solid var(--warning);
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.16);
+  animation: liveAlertIn 0.28s ease-out;
+}
+
+@keyframes liveAlertIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to { opacity: 1; transform: none; }
+}
+
+.live-alert-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #fff8e8;
+  color: #8a5b00;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.live-alert-body { flex: 1; min-width: 0; }
+
+.live-alert-kicker {
+  font-size: var(--fs-micro);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a5b00;
+}
+
+.live-alert-title {
+  margin-top: 2px;
+  font-size: var(--fs-title-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-alert-sub,
+.live-alert-meta {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.live-alert-meta { font-size: var(--fs-caption); color: var(--text-muted); }
+
+.live-alert-open { margin-top: 10px; }
+
+.live-alert-close {
+  width: 26px;
+  height: 26px;
+  margin: -4px -4px 0 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.live-alert-close:hover { background: var(--border-soft); color: var(--text-primary); }
+
+/* Notification bell (components/NotificationBell.jsx), in the sidebar header.
+   The panel floats beside the rail, over the page. */
+.bell-wrap { margin-left: auto; position: relative; }
+
+/* Room for the bell: its right edge lines up with the menu items below, and
+   the brand line stays on one row beside it. */
+.sidebar-logo { padding-right: 14px; }
+.sidebar-logo .brand-sub { white-space: nowrap; }
+
+.bell-btn {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bell-btn:hover,
+.bell-btn.open { background: rgba(255, 255, 255, 0.16); color: #ffffff; }
+
+.bell-badge {
+  position: absolute;
+  top: -5px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #ffb300;
+  color: #3d2a00;
+  border: 2px solid var(--rail-top);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 14px;
+  text-align: center;
+}
+
+.notif-panel {
+  position: fixed;
+  top: 16px;
+  left: calc(var(--sidebar-width) + 12px);
+  width: 392px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(16, 24, 40, 0.22);
+  overflow: hidden;
+  animation: notifIn 0.18s ease-out;
+  z-index: 2000;
+}
+
+@keyframes notifIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+.notif-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 10px 20px;
+}
+
+.notif-heading { font-size: var(--fs-heading); font-weight: 800; }
+
+.notif-close {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.notif-close:hover { background: var(--border-soft); color: var(--text-primary); }
+
+.notif-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notif-tab {
+  padding: 8px 10px 10px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notif-tab:hover { color: var(--text-primary); }
+.notif-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.notif-list { overflow-y: auto; padding: 6px 0; }
+
+.notif-row {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 18px 11px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  position: relative;
+}
+
+.notif-row:hover { background: var(--bg-card-hover); }
+.notif-row.fresh { background: #fffbeb; }
+.notif-row.fresh:hover { background: #fff6dc; }
+
+.notif-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--tone-chip);
+  color: var(--tone);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.notif-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.notif-title { font-size: var(--fs-body); font-weight: 600; line-height: 1.35; }
+.notif-row.fresh .notif-title { font-weight: 700; }
+
+.notif-body {
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notif-meta { font-size: var(--fs-caption); color: var(--text-muted); }
+
+.notif-dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--warning);
+  flex-shrink: 0;
+}
+
+.notif-more {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 6px 16px 10px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--fs-small);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notif-more:hover { border-color: var(--accent); }
+.notif-more:disabled { opacity: 0.6; cursor: default; }
+
+.notif-empty {
+  padding: 44px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  font-size: var(--fs-small);
+  color: var(--text-secondary);
+}
+
+.notif-empty svg { color: var(--text-muted); }
+.notif-empty strong { font-size: var(--fs-title-sm); color: var(--text-primary); }
+
+/* Sidebar opt-in for desktop notifications; gone once answered. */
+.alerts-optin {
+  margin: 0 14px;
+  padding: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.alerts-optin:hover { background: rgba(255, 255, 255, 0.1); border-style: solid; }
+
+.alerts-optin-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: rgba(255, 179, 0, 0.18);
+  color: #ffc940;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.alerts-optin strong { display: block; font-size: var(--fs-small); font-weight: 700; }
+.alerts-optin small { display: block; margin-top: 2px; font-size: var(--fs-caption); color: rgba(255, 255, 255, 0.6); line-height: 1.4; }
+
 /* Enquiry detail */
 .contact-card {
   display: flex;
@@ -2164,6 +2493,12 @@ a.btn { text-decoration: none; }
   .xp-toolbar-right { width: 100%; }
   .xp-toolbar .search-bar { flex: 1; width: auto; min-width: 0; }
   .seg { max-width: 100%; overflow-x: auto; }
+
+  /* Phones cannot show page notifications without a service worker. */
+  .alerts-optin { display: none; }
+  /* Drops from the bell, over the menu tabs. */
+  .notif-panel { top: 58px; left: 12px; right: 12px; width: auto; max-height: calc(100vh - 74px); }
+  .live-alerts { top: 12px; left: 12px; right: 12px; width: auto; }
 }
 
 @media (max-width: 560px) {

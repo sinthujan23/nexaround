@@ -27,6 +27,7 @@ from app.services.experience_format import (
 from app.services.experience_service import (
     package_to_card, package_to_detail, vendor_to_public,
 )
+from app.services import partner_activity, partner_events
 from app.services.settings_service import SettingsService
 
 router = APIRouter(prefix="/experiences", tags=["Experiences"])
@@ -179,9 +180,29 @@ async def create_experience_enquiry(
         status="new",
     )
     db.add(enquiry)
+    activity = None
+    if enquiry.vendor_id:
+        await db.flush()  # the feed line links to the enquiry's id
+        activity = partner_activity.enquiry_created(db, enquiry)
     await db.commit()
     await db.refresh(enquiry)
 
+    # Queued before the email: tasks run in order, and a slow SMTP handshake
+    # should not hold up the vendor's live portal alert.
+    background_tasks.add_task(
+        partner_events.publish,
+        enquiry.vendor_id,
+        partner_events.ENQUIRY_CREATED,
+        {
+            "id": enquiry.id,
+            "package_title": enquiry.package_title_snapshot,
+            "contact_name": enquiry.contact_name,
+            "party_size": enquiry.party_size,
+            "preferred_date": enquiry.preferred_date,
+            "created_at": enquiry.created_at,
+        },
+    )
+    background_tasks.add_task(partner_activity.announce, activity)
     background_tasks.add_task(_dispatch_enquiry_email, enquiry.id)
 
     return ExperienceEnquiryResponse(

@@ -18,6 +18,7 @@ from app.models.excluded_keyword import ExcludedKeyword
 from app.models.country_city import CountryCity
 from app.models.experience import (
     ExperienceVendor, ExperiencePackage, ExperienceEnquiry, VendorUser,
+    VendorActivity,
 )
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "ApiEvent", "ApiUsageHourly", "ApiUsageUserDaily", "ApiSkuRate", "ApiAlert",
     "ExcludedKeyword", "CountryCity",
     "ExperienceVendor", "ExperiencePackage", "ExperienceEnquiry", "VendorUser",
+    "VendorActivity",
 ]
 

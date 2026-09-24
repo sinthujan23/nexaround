@@ -11,6 +11,8 @@ import 'package:nexaround_app/core/services/google_places_service.dart';
 import 'package:nexaround_app/features/living_map/presentation/pages/smart_tourism_map_page.dart';
 import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/core/constants/trip_cost_floor.dart';
+import 'package:nexaround_app/features/planning/data/odyssey_repository.dart';
 
 
 /// Renders a generated/saved [Odyssey] as a scrollable blueprint. Shared by the
@@ -80,6 +82,11 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
   /// Prevents pushing multiple map pages if the user taps the direction button repeatedly.
   bool _isNavigatingToMap = false;
 
+  /// Ride apps for the trip's country, shown under transport stops once the
+  /// backend answers; empty until then, and for good if it never does.
+  List<String> _rideApps = const [];
+  String? _rideAppsCountry;
+
   @override
   void initState() {
     super.initState();
@@ -92,6 +99,25 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     if (widget.odyssey.budgetScenarios.containsKey('minimum')) {
       _selectedScenario = 'minimum';
     }
+    _loadRideApps();
+  }
+
+  @override
+  void didUpdateWidget(covariant OdysseyPlanView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The detail screen re-polls while a plan generates, and the country is
+    // only known once the finished plan's legs arrive.
+    if (_tripCountryCode != _rideAppsCountry) _loadRideApps();
+  }
+
+  Future<void> _loadRideApps() async {
+    final code = _tripCountryCode;
+    _rideAppsCountry = code;
+    _rideApps = const [];
+    if (code == null) return;
+    final apps = await OdysseyRepository().getRideApps(code);
+    if (!mounted || _rideAppsCountry != code) return;
+    setState(() => _rideApps = apps);
   }
 
   @override
@@ -2116,6 +2142,7 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
     final bool hasPlaceList =
         act.type == ActivityType.dining || act.restaurants.isNotEmpty;
     final bool isHotel = _isHotelActivity(act);
+    final List<String> rideApps = _rideAppsFor(act);
 
     return Material(
       key: key,
@@ -2269,6 +2296,10 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
                       );
                     },
                   ),
+                  if (rideApps.isNotEmpty) ...[
+                    _rideAppsRow(rideApps),
+                    const SizedBox(height: 6),
+                  ],
                   if (act.hours.isNotEmpty) ...[
                     Row(
                       children: [
@@ -2311,6 +2342,101 @@ class _OdysseyPlanViewState extends State<OdysseyPlanView> {
           ],
         ),
       ),
+    );
+  }
+
+  /// The trip's country as an ISO code, for the ride-app chips.
+  ///
+  /// The backend keeps a whole trip inside one country (it rejects legs that
+  /// disagree), so the first leg that names one speaks for every day. Plans
+  /// made before legs existed carry only the destination text.
+  String? get _tripCountryCode {
+    for (final leg in widget.odyssey.legs) {
+      final code = leg.country.trim().toUpperCase();
+      if (code.isNotEmpty) return code;
+    }
+    return TripCostFloor.countryFor(widget.odyssey.destination);
+  }
+
+  static final RegExp _flightWord = RegExp(r'\bflights?\b');
+
+  /// Flight rows are typed transport too, but a ride app is no use on board.
+  ///
+  /// Backend-priced flights carry "Google Flights" as their source or link;
+  /// the model's own rows read "Flight: KBL -> MZR" or "Departure from
+  /// Algiers (ALG)".
+  bool _isFlightRow(OdysseyActivity act) {
+    final name = act.name.trim().toLowerCase();
+    return act.priceSource.toLowerCase().contains('flight') ||
+        act.bookingUrl.toLowerCase().contains('flight') ||
+        _flightWord.hasMatch(name) ||
+        name.startsWith('depart');
+  }
+
+  /// The journey from home on a trip abroad ("Travel from Kinniya to Russia")
+  /// is typed transport too, but the destination's apps are no use on it.
+  ///
+  /// Only a home known to be in the trip's own country keeps its chips: a
+  /// domestic "Travel: Kinniya -> Colombo" is exactly where they help. A home
+  /// we cannot place is treated as abroad, since a missing chip costs nothing.
+  bool _isJourneyFromAbroad(OdysseyActivity act) {
+    final home = widget.odyssey.departureCity.split(',').first.trim().toLowerCase();
+    if (home.length < 3 || !act.name.toLowerCase().contains(home)) return false;
+    return TripCostFloor.countryFor(widget.odyssey.departureCity) != _tripCountryCode;
+  }
+
+  /// The ride apps to show under a ground-transport row; empty for any other.
+  List<String> _rideAppsFor(OdysseyActivity act) {
+    if (act.type != ActivityType.transport ||
+        _isFlightRow(act) ||
+        _isJourneyFromAbroad(act)) {
+      return const [];
+    }
+    return _rideApps;
+  }
+
+  /// "Available here" and one chip per app, styled like the hotel amenities.
+  ///
+  /// Plain containers rather than chips or buttons: the row only informs, and
+  /// anything that ripples on tap would promise an action that is not there.
+  Widget _rideAppsRow(List<String> apps) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.local_taxi_outlined, size: 12, color: Colors.black45),
+            SizedBox(width: 4),
+            Text(
+              'Available here',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.black54,
+              ),
+            ),
+          ],
+        ),
+        for (final app in apps)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              app,
+              style: const TextStyle(
+                fontSize: 11,
+                color: Colors.black87,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+      ],
     );
   }
 

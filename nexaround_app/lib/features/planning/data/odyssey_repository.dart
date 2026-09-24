@@ -306,6 +306,38 @@ class OdysseyRepository {
     }
   }
 
+  /// Ride apps answered per country, for the rest of the app session.
+  static final Map<String, List<String>> _rideAppsByCountry = {};
+
+  /// Ride apps a traveller can use in a country, for the itinerary's
+  /// display-only chips under transport stops.
+  ///
+  /// The backend asks Gemini with Google Search and caches the answer for a
+  /// month; this keeps it for the session so reopening trips does not ask
+  /// again. An empty answer is not kept, so a failed lookup is retried the
+  /// next time a plan opens. Never throws: a failure just means no chips.
+  Future<List<String>> getRideApps(String countryCode) async {
+    final code = countryCode.trim().toUpperCase();
+    if (code.length != 2) return const [];
+    final known = _rideAppsByCountry[code];
+    if (known != null) return known;
+    try {
+      final response = await _dio.get(
+        '${ApiConstants.itineraries}/odyssey/ride-apps',
+        queryParameters: {'country': code},
+      );
+      final raw = response.data is Map ? (response.data as Map)['apps'] : null;
+      final apps = (raw is List ? raw : const [])
+          .map((a) => a.toString().trim())
+          .where((a) => a.isNotEmpty)
+          .toList();
+      if (apps.isNotEmpty) _rideAppsByCountry[code] = apps;
+      return apps;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   Future<void> delete(String id) async {
     await _dio.delete('${ApiConstants.itineraries}/$id');
     final cachedRaw = CacheService.getCachedOdysseysRaw();

@@ -215,6 +215,12 @@ class OdysseyPartnerSwapRequest(BaseModel):
     partner_name: str
     reason: str = ""
 
+class OdysseyRideAppsResponse(BaseModel):
+    """Ride apps for the itinerary's display-only chips under transport stops.
+    `country` is the ISO code the apps are for, empty when none was usable."""
+    country: str = ""
+    apps: List[str] = Field(default_factory=list)
+
 class ItineraryResponse(ItineraryBase):
     id: UUID
     user_id: UUID
