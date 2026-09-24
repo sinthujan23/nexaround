@@ -89,6 +89,7 @@ dependencies:
   image: ^4.8.0
   # Analytics & Ad Attribution
   facebook_app_events: ^0.30.5
+  share_plus: ^13.3.0
 
 dependency_overrides:
   latlong2:

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +6,6 @@ import 'package:http/http.dart' as http;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
-import 'package:nexaround_share/nexaround_share.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -57,11 +54,24 @@ String experienceShareMessage(ExperiencePackageEntity package) {
   ].join('\n');
 }
 
-class _ExperienceShareSheet extends StatelessWidget {
+class _ExperienceShareSheet extends StatefulWidget {
   final ExperiencePackageEntity package;
   final ScaffoldMessengerState messenger;
 
   const _ExperienceShareSheet({required this.package, required this.messenger});
+
+  @override
+  State<_ExperienceShareSheet> createState() => _ExperienceShareSheetState();
+}
+
+class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
+  static const _shareChannel = MethodChannel('com.nexaround.app/share');
+
+  /// The target being prepared (its cover photo downloading), shown as a
+  /// spinner on that button so a second tap can't start another share.
+  String? _busy;
+
+  ExperiencePackageEntity get package => widget.package;
 
   @override
   Widget build(BuildContext context) {
@@ -83,34 +93,63 @@ class _ExperienceShareSheet extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _target(context, 'WhatsApp', 'assets/images/social_whatsapp.png', _shareWhatsApp),
-                _target(context, 'Instagram', 'assets/images/social_instagram.png', _shareInstagram),
-                _target(context, 'Facebook', 'assets/images/social_facebook.png', _shareFacebook),
-                _target(context, 'X', 'assets/images/social_x.png', _shareX),
+                _target('WhatsApp', 'assets/images/social_whatsapp.png', (_) => _shareWhatsApp()),
+                _target('Instagram', 'assets/images/social_instagram.png', _shareInstagram),
+                _target('Facebook', 'assets/images/social_facebook.png', _shareFacebook),
+                _target('X', 'assets/images/social_x.png', _shareX),
               ],
             ),
             const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _copy('Details copied. Paste them anywhere to share.');
-                },
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text(
-                  'Copy details',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            Row(
+              children: [
+                Expanded(
+                  child: _outlinedAction(
+                    icon: Icons.copy_rounded,
+                    label: 'Copy details',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _copy('Details copied. Paste them anywhere to share.');
+                    },
+                  ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
-                  side: const BorderSide(color: AppColors.border),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Builder(
+                    builder: (buttonContext) => _outlinedAction(
+                      icon: Icons.ios_share_rounded,
+                      label: 'More',
+                      onPressed: _busy != null
+                          ? null
+                          : () => _run('More', buttonContext, _shareMore),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _outlinedAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 18),
+        label: Text(
+          label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+        ),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.textPrimary,
+          side: const BorderSide(color: AppColors.border),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
     );
@@ -143,8 +182,8 @@ class _ExperienceShareSheet extends StatelessWidget {
                       httpHeaders: PlaceImageHelper.headersFor(url),
                       fit: BoxFit.cover,
                       memCacheWidth: 168,
-                      placeholder: (_, __) => _thumbPlaceholder(),
-                      errorWidget: (_, __, ___) => _thumbPlaceholder(),
+                      placeholder: (_, _) => _thumbPlaceholder(),
+                      errorWidget: (_, _, _) => _thumbPlaceholder(),
                     ),
             ),
           ),
@@ -182,22 +221,14 @@ class _ExperienceShareSheet extends StatelessWidget {
   }
 
   Widget _target(
-    BuildContext context,
     String label,
     String asset,
     Future<void> Function(Rect? origin) onShare,
   ) {
     return Builder(
-      builder: (tileContext) => InkWell(
+      builder: (targetContext) => InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          // Read before the sheet closes: the iPad share popover anchors to it.
-          final box = tileContext.findRenderObject() as RenderBox?;
-          final origin =
-              box == null ? null : box.localToGlobal(Offset.zero) & box.size;
-          Navigator.pop(context);
-          onShare(origin);
-        },
+        onTap: _busy != null ? null : () => _run(label, targetContext, onShare),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Column(
@@ -212,7 +243,15 @@ class _ExperienceShareSheet extends StatelessWidget {
                   shape: BoxShape.circle,
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Image.asset(asset, fit: BoxFit.contain),
+                child: _busy == label
+                    ? const Center(
+                        child: SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2.5),
+                        ),
+                      )
+                    : Image.asset(asset, fit: BoxFit.contain),
               ),
               const SizedBox(height: 8),
               Text(
@@ -230,20 +269,40 @@ class _ExperienceShareSheet extends StatelessWidget {
     );
   }
 
+  /// Runs [onShare] for the target called [label]. The sheet stays open, with
+  /// a spinner on that target, while the cover photo downloads, and closes
+  /// once the other app has taken over.
+  Future<void> _run(
+    String label,
+    BuildContext targetContext,
+    Future<void> Function(Rect? origin) onShare,
+  ) async {
+    // iPad anchors the system share popover to the tapped button, so its
+    // position is read now, while the sheet is still on screen.
+    final box = targetContext.findRenderObject() as RenderBox?;
+    final origin = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+
+    setState(() => _busy = label);
+    try {
+      await onShare(origin);
+    } finally {
+      if (mounted) Navigator.pop(context);
+    }
+  }
+
   // --- Targets --------------------------------------------------------------
   //
-  // Each opens its app directly where the app allows it, and falls back to
-  // the phone's own share menu where it does not:
-  //   WhatsApp   wa.me/?text= opens it with the message ready.
-  //   X          twitter://post opens its new-post screen with the text.
-  //   Facebook   Facebook's own share dialog (package:nexaround_share) opens
-  //              its post screen with the link as a card. Facebook takes no
-  //              text from another app.
-  //   Instagram  Only Stories can be opened directly (with the package photo);
-  //              no link or message can be handed over, so the link goes on
-  //              the clipboard for the Link sticker.
+  // Instagram, Facebook and X get the cover photo the same way the system
+  // share sheet passes it, so each app asks where it goes: Instagram offers
+  // Feed, Story or a chat, Facebook a post or a story, X a post or a Direct
+  // Message. On Android the photo goes straight to that app
+  // (MainActivity.shareToApp). iOS doesn't let an app pick the receiver, so
+  // there the system share sheet opens with the photo attached. The web links
+  // are the fallback when the app isn't installed; they go through https,
+  // which the Android manifest and iOS LSApplicationQueriesSchemes already
+  // allow.
 
-  Future<void> _shareWhatsApp(Rect? origin) async {
+  Future<void> _shareWhatsApp() async {
     // No number: WhatsApp asks which chat to send it to.
     final uri = Uri.parse(
       'https://wa.me/?text=${Uri.encodeComponent(experienceShareMessage(package))}',
@@ -251,39 +310,123 @@ class _ExperienceShareSheet extends StatelessWidget {
     if (!await _open(uri)) _copy("Couldn't open WhatsApp. Details copied instead.");
   }
 
-  Future<void> _shareFacebook(Rect? origin) async {
-    if (await NexaroundShare.facebookLink(experienceShareLink(package))) return;
-    await _shareWithSystemSheet(experienceShareMessage(package), origin);
+  /// Instagram drops any text it is given, so the details go on the
+  /// clipboard for the caption or the message.
+  Future<void> _shareInstagram(Rect? origin) async {
+    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
+    final shared = await _shareToApp(
+      androidPackage: 'com.instagram.android',
+      appName: 'Instagram',
+      origin: origin,
+    );
+    if (shared) {
+      _toast('Details copied. Paste them into your post, story or message.');
+      return;
+    }
+    final opened = await _open(Uri.parse('https://www.instagram.com/'));
+    _toast(opened
+        ? 'Details copied. Paste them in an Instagram chat or story.'
+        : "Couldn't open Instagram. Details copied instead.");
   }
 
-  Future<void> _shareInstagram(Rect? origin) async {
-    final image = await _coverImageBytes();
-    if (image != null) {
-      // Before Instagram opens, so the link is ready to paste there.
-      await Clipboard.setData(ClipboardData(text: experienceShareLink(package)));
-      if (await NexaroundShare.instagramStory(image)) {
-        _toast('Link copied. Add it to your story with the Link sticker.');
-        return;
-      }
+  /// Facebook ignores prefilled text, so the details are copied for the post.
+  Future<void> _shareFacebook(Rect? origin) async {
+    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
+    final shared = await _shareToApp(
+      androidPackage: 'com.facebook.katana',
+      appName: 'Facebook',
+      text: experienceShareLink(package),
+      origin: origin,
+    );
+    if (shared) {
+      _toast('Details copied. Paste them into your post or story.');
+      return;
     }
-    // Instagram not installed, or a package without a photo: send it as a
-    // message through the share menu instead.
-    await _shareWithSystemSheet(experienceShareMessage(package), origin);
+    final uri = Uri.parse(
+      'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(experienceShareLink(package))}',
+    );
+    final opened = await _open(uri);
+    _toast(opened
+        ? 'Details copied. Paste them into your post.'
+        : "Couldn't open Facebook. Details copied instead.");
   }
 
   /// A post has a length limit, so X gets the headline and the link only.
   Future<void> _shareX(Rect? origin) async {
-    final text = 'Check out "${package.title}" by ${package.vendorName} on nexARound '
-        '${experienceShareLink(package)}';
-    final opened = await _open(
-      Uri.parse('twitter://post?message=${Uri.encodeComponent(text)}'),
+    final text = 'Check out "${package.title}" by ${package.vendorName} on nexARound';
+    final shared = await _shareToApp(
+      androidPackage: 'com.twitter.android',
+      appName: 'X',
+      text: '$text ${experienceShareLink(package)}',
+      origin: origin,
     );
-    if (!opened) await _shareWithSystemSheet(text, origin);
+    if (shared) return;
+
+    final uri = Uri.parse(
+      'https://twitter.com/intent/tweet'
+      '?text=${Uri.encodeComponent(text)}'
+      '&url=${Uri.encodeComponent(experienceShareLink(package))}',
+    );
+    if (!await _open(uri)) _copy("Couldn't open X. Details copied instead.");
   }
 
-  /// The package's cover photo, for an Instagram Story. Null when there is
-  /// none or it cannot be fetched in time.
-  Future<Uint8List?> _coverImageBytes() async {
+  /// Every app on the phone, through the system share sheet.
+  Future<void> _shareMore(Rect? origin) async {
+    final image = await _coverImage();
+    if (!await _systemShare(image, experienceShareMessage(package), origin)) {
+      _copy("Couldn't open sharing. Details copied instead.");
+    }
+  }
+
+  /// Hands the cover photo (and [text], for apps that use it) to one app.
+  /// Returns false when that can't happen, so the caller falls back to the
+  /// app's website.
+  Future<bool> _shareToApp({
+    required String androidPackage,
+    required String appName,
+    String? text,
+    Rect? origin,
+  }) async {
+    final image = await _coverImage();
+    try {
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final shared = await _shareChannel.invokeMethod<bool>('shareToApp', {
+          'package': androidPackage,
+          'image': image?.bytes,
+          'mimeType': image?.mimeType,
+          'text': text,
+          'title': 'Share to $appName',
+        });
+        return shared ?? false;
+      }
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        return await _systemShare(image, text, origin);
+      }
+    } catch (e) {
+      debugPrint('Share to $appName failed: $e');
+    }
+    return false;
+  }
+
+  Future<bool> _systemShare(_CoverImage? image, String? text, Rect? origin) async {
+    try {
+      await SharePlus.instance.share(ShareParams(
+        text: text,
+        subject: package.title,
+        files: image == null ? null : [XFile.fromData(image.bytes, mimeType: image.mimeType)],
+        fileNameOverrides: image == null ? null : ['nexaround_share.${image.extension}'],
+        sharePositionOrigin: origin,
+      ));
+      return true;
+    } catch (e) {
+      debugPrint('System share failed: $e');
+      return false;
+    }
+  }
+
+  /// The package's cover photo, or null when there is none or it can't be
+  /// fetched in time, in which case only text is shared.
+  Future<_CoverImage?> _coverImage() async {
     final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
     if (url == null) return null;
     try {
@@ -291,24 +434,10 @@ class _ExperienceShareSheet extends StatelessWidget {
           .get(Uri.parse(url), headers: PlaceImageHelper.headersFor(url))
           .timeout(const Duration(seconds: 10));
       if (response.statusCode != 200 || response.bodyBytes.isEmpty) return null;
-      return response.bodyBytes;
+      return _CoverImage(response.bodyBytes);
     } catch (e) {
-      debugPrint('Story image fetch failed: $e');
+      debugPrint('Share image download failed: $e');
       return null;
-    }
-  }
-
-  /// The phone's own share menu, with the chosen app in it.
-  Future<void> _shareWithSystemSheet(String text, Rect? origin) async {
-    try {
-      await SharePlus.instance.share(ShareParams(
-        text: text,
-        subject: package.title,
-        sharePositionOrigin: origin,
-      ));
-    } catch (e) {
-      debugPrint('System share failed: $e');
-      await _copy("Couldn't open sharing. Details copied instead.");
     }
   }
 
@@ -327,8 +456,22 @@ class _ExperienceShareSheet extends StatelessWidget {
   }
 
   void _toast(String message) {
-    messenger
+    widget.messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+class _CoverImage {
+  final Uint8List bytes;
+
+  const _CoverImage(this.bytes);
+
+  /// PNG files start with 0x89 'P'; anything else is sent as JPEG, which is
+  /// what cover photos are.
+  bool get _isPng => bytes.length > 1 && bytes[0] == 0x89 && bytes[1] == 0x50;
+
+  String get mimeType => _isPng ? 'image/png' : 'image/jpeg';
+
+  String get extension => _isPng ? 'png' : 'jpg';
 }

@@ -1,5 +1,6 @@
 package com.nexaround.nexaround_app
 
+import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -14,16 +15,34 @@ import java.io.File
 import java.security.MessageDigest
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.nexaround.app/signature"
-
-    // Android side of package:nexaround_share (the iOS side lives in that
-    // package). Each method answers true when it handed the content to the
-    // other app, false when it could not, so Dart falls back to the share menu.
-    private val SHARE_CHANNEL = "com.nexaround.app/social_share"
+    private val SIGNATURE_CHANNEL = "com.nexaround.app/signature"
+    private val APP_SHARE_CHANNEL = "com.nexaround.app/share"
+    private val SOCIAL_SHARE_CHANNEL = "com.nexaround.app/social_share"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SHARE_CHANNEL).setMethodCallHandler { call, result ->
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_SHARE_CHANNEL).setMethodCallHandler { call, result ->
+            if (call.method == "shareToApp") {
+                try {
+                    result.success(
+                        shareToApp(
+                            call.argument<String>("package")!,
+                            call.argument<ByteArray>("image"),
+                            call.argument<String>("mimeType") ?: "image/jpeg",
+                            call.argument<String>("text"),
+                            call.argument<String>("title") ?: "Share",
+                        )
+                    )
+                } catch (e: Exception) {
+                    result.error("ERROR", e.message, null)
+                }
+            } else {
+                result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOCIAL_SHARE_CHANNEL).setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
                     "facebookLink" -> {
@@ -40,7 +59,8 @@ class MainActivity : FlutterActivity() {
                 result.success(false)
             }
         }
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL).setMethodCallHandler { call, result ->
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SIGNATURE_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "getSignatureSha1") {
                 try {
                     val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -102,6 +122,41 @@ class MainActivity : FlutterActivity() {
         grantUriPermission("com.instagram.android", uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         if (packageManager.resolveActivity(intent, 0) == null) return false
         startActivity(intent)
+        return true
+    }
+
+    /**
+     * Hands [image] (or [text] alone) to one app with a plain ACTION_SEND, the
+     * way the system share sheet does. The receiving app then offers its own
+     * choices: Instagram lists Feed, Stories and Chats as separate targets, X
+     * lists Post and Direct Message, so when [pkg] has more than one we show a
+     * chooser limited to that app. Returns false when the app isn't installed.
+     */
+    private fun shareToApp(
+        pkg: String,
+        image: ByteArray?,
+        mimeType: String,
+        text: String?,
+        title: String,
+    ): Boolean {
+        val send = Intent(Intent.ACTION_SEND).setPackage(pkg)
+        if (image != null) {
+            val dir = File(cacheDir, "share").apply { mkdirs() }
+            val ext = if (mimeType == "image/png") "png" else "jpg"
+            val file = File(dir, "nexaround_share.$ext").apply { writeBytes(image) }
+            val uri = FileProvider.getUriForFile(this, "$packageName.shareimages", file)
+            send.type = mimeType
+            send.putExtra(Intent.EXTRA_STREAM, uri)
+            send.clipData = ClipData.newRawUri(null, uri)
+            send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } else {
+            send.type = "text/plain"
+        }
+        if (text != null) send.putExtra(Intent.EXTRA_TEXT, text)
+
+        val targets = packageManager.queryIntentActivities(send, 0)
+        if (targets.isEmpty()) return false
+        startActivity(if (targets.size == 1) send else Intent.createChooser(send, title))
         return true
     }
 }
