@@ -24,18 +24,23 @@ class MainActivity : FlutterActivity() {
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, APP_SHARE_CHANNEL).setMethodCallHandler { call, result ->
             if (call.method == "shareToApp") {
-                try {
-                    result.success(
-                        shareToApp(
-                            call.argument<String>("package")!,
-                            call.argument<ByteArray>("image"),
-                            call.argument<String>("mimeType") ?: "image/jpeg",
-                            call.argument<String>("text"),
-                            call.argument<String>("title") ?: "Share",
+                val pkg = call.argument<String>("package")
+                if (pkg != null) {
+                    try {
+                        result.success(
+                            shareToApp(
+                                pkg,
+                                call.argument<ByteArray>("image"),
+                                call.argument<String>("mimeType") ?: "image/jpeg",
+                                call.argument<String>("text"),
+                                call.argument<String>("title") ?: "Share",
+                            )
                         )
-                    )
-                } catch (e: Exception) {
-                    result.error("ERROR", e.message, null)
+                    } catch (e: Exception) {
+                        result.error("ERROR", e.message, null)
+                    }
+                } else {
+                    result.error("INVALID_ARGUMENT", "Package name is required", null)
                 }
             } else {
                 result.notImplemented()
