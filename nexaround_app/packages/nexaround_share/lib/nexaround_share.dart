@@ -26,6 +26,28 @@ class NexaroundShare {
   static Future<bool> instagramStory(Uint8List image) =>
       _call('instagramStory', {'image': image});
 
+  /// A new Facebook Story with [image] as a sticker on a brand-colour
+  /// background. iOS only; Android goes through the share menu.
+  static Future<bool> facebookStory(Uint8List image) =>
+      _call('facebookStory', {'image': image});
+
+  /// Instagram's new-post editor on [image], which is saved to the photo
+  /// library first (Instagram only posts from there). iOS only. Throws
+  /// [NexaroundSharePhotosDenied] when the user refused photo access, so the
+  /// caller can say why nothing happened.
+  static Future<bool> instagramPost(Uint8List image) async {
+    try {
+      return await _channel.invokeMethod<bool>('instagramPost', {'image': image}) ?? false;
+    } on PlatformException catch (e) {
+      if (e.code == 'photos_denied') throw const NexaroundSharePhotosDenied();
+      debugPrint('NexaroundShare.instagramPost failed: $e');
+      return false;
+    } catch (e) {
+      debugPrint('NexaroundShare.instagramPost failed: $e');
+      return false;
+    }
+  }
+
   static Future<bool> _call(String method, Map<String, Object> args) async {
     try {
       return await _channel.invokeMethod<bool>(method, args) ?? false;
@@ -34,4 +56,10 @@ class NexaroundShare {
       return false;
     }
   }
+}
+
+/// The user refused nexARound access to add photos, which an Instagram post
+/// needs (see [NexaroundShare.instagramPost]).
+class NexaroundSharePhotosDenied implements Exception {
+  const NexaroundSharePhotosDenied();
 }

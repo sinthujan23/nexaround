@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "nexaround_share",
     platforms: [
-        .iOS("13.0")
+        .iOS("14.0")
     ],
     products: [
         // A plugin name containing "_" must use "-" in its library name.

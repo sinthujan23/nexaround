@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:nexaround_app/app/theme/app_colors.dart';
 import 'package:nexaround_app/core/utils/place_image_helper.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
+import 'package:nexaround_share/nexaround_share.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -71,7 +72,14 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
   /// spinner on that button so a second tap can't start another share.
   String? _busy;
 
+  /// iOS only: the app whose choices (story, post, message) the sheet is
+  /// showing in place of the app row. Android needs no such step, because
+  /// there each app lists its own choices when it receives the photo.
+  _ShareMenu? _menu;
+
   ExperiencePackageEntity get package => widget.package;
+
+  bool get _isIOS => defaultTargetPlatform == TargetPlatform.iOS;
 
   @override
   Widget build(BuildContext context) {
@@ -90,43 +98,134 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
             const SizedBox(height: 14),
             _buildPreview(),
             const SizedBox(height: 22),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _target('WhatsApp', 'assets/images/social_whatsapp.png', (_) => _shareWhatsApp()),
-                _target('Instagram', 'assets/images/social_instagram.png', _shareInstagram),
-                _target('Facebook', 'assets/images/social_facebook.png', _shareFacebook),
-                _target('X', 'assets/images/social_x.png', _shareX),
-              ],
+            if (_menu != null) _buildMenu(_menu!) else ..._buildTargets(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildTargets() {
+    return [
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _target('WhatsApp', 'assets/images/social_whatsapp.png', (_) => _shareWhatsApp()),
+          _target('Instagram', 'assets/images/social_instagram.png', _shareInstagram,
+              iosMenu: _instagramMenu),
+          _target('Facebook', 'assets/images/social_facebook.png', _shareFacebook,
+              iosMenu: _facebookMenu),
+          _target('X', 'assets/images/social_x.png', _shareX, iosMenu: _xMenu),
+        ],
+      ),
+      const SizedBox(height: 20),
+      Row(
+        children: [
+          Expanded(
+            child: _outlinedAction(
+              icon: Icons.copy_rounded,
+              label: 'Copy details',
+              onPressed: () {
+                Navigator.pop(context);
+                _copy('Details copied. Paste them anywhere to share.');
+              },
             ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _outlinedAction(
-                    icon: Icons.copy_rounded,
-                    label: 'Copy details',
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _copy('Details copied. Paste them anywhere to share.');
-                    },
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Builder(
-                    builder: (buttonContext) => _outlinedAction(
-                      icon: Icons.ios_share_rounded,
-                      label: 'More',
-                      onPressed: _busy != null
-                          ? null
-                          : () => _run('More', buttonContext, _shareMore),
-                    ),
-                  ),
-                ),
-              ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Builder(
+              builder: (buttonContext) => _outlinedAction(
+                icon: Icons.ios_share_rounded,
+                label: 'More',
+                onPressed: _busy != null
+                    ? null
+                    : () => _run('More', buttonContext, _shareMore),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// The second step on iOS: what to share to [menu]'s app, with a way back
+  /// to the app row.
+  Widget _buildMenu(_ShareMenu menu) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              onPressed: _busy != null ? null : () => setState(() => _menu = null),
+              icon: const Icon(Icons.arrow_back_rounded),
+              tooltip: 'Back',
+              visualDensity: VisualDensity.compact,
+            ),
+            const SizedBox(width: 4),
+            Image.asset(menu.asset, width: 22, height: 22),
+            const SizedBox(width: 10),
+            Text(
+              'Share to ${menu.appName}',
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ],
+        ),
+        const SizedBox(height: 8),
+        for (final option in menu.options) _menuOption(menu, option),
+      ],
+    );
+  }
+
+  Widget _menuOption(_ShareMenu menu, _ShareOption option) {
+    final key = '${menu.appName} ${option.label}';
+
+    return Builder(
+      builder: (optionContext) => InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: _busy != null ? null : () => _run(key, optionContext, option.onShare),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 10),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Icon(option.icon, size: 22, color: AppColors.textPrimary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      option.label,
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      option.hint,
+                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              if (_busy == key)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                )
+              else
+                const Icon(Icons.chevron_right_rounded, color: AppColors.textMuted),
+            ],
+          ),
         ),
       ),
     );
@@ -223,12 +322,17 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
   Widget _target(
     String label,
     String asset,
-    Future<void> Function(Rect? origin) onShare,
-  ) {
+    Future<void> Function(Rect? origin) onShare, {
+    List<_ShareOption> Function()? iosMenu,
+  }) {
     return Builder(
       builder: (targetContext) => InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: _busy != null ? null : () => _run(label, targetContext, onShare),
+        onTap: _busy != null
+            ? null
+            : _isIOS && iosMenu != null
+                ? () => setState(() => _menu = _ShareMenu(label, asset, iosMenu()))
+                : () => _run(label, targetContext, onShare),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
           child: Column(
@@ -292,12 +396,11 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
 
   // --- Targets --------------------------------------------------------------
   //
-  // Instagram, Facebook and X get the cover photo the same way the system
-  // share sheet passes it, so each app asks where it goes: Instagram offers
-  // Feed, Story or a chat, Facebook a post or a story, X a post or a Direct
-  // Message. On Android the photo goes straight to that app
-  // (MainActivity.shareToApp). iOS doesn't let an app pick the receiver, so
-  // there the system share sheet opens with the photo attached. The web links
+  // On Android, Instagram, Facebook and X get the cover photo the same way the
+  // system share sheet passes it, so each app asks where it goes: Instagram
+  // offers Feed, Story or a chat, Facebook a post or a story, X a post or a
+  // Direct Message (MainActivity.shareToApp). iOS shows its own choices
+  // first, see "iOS choices" below. The web links
   // are the fallback when the app isn't installed; they go through https,
   // which the Android manifest and iOS LSApplicationQueriesSchemes already
   // allow.
@@ -342,6 +445,121 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
       _toast('Details copied. Paste them into your post or story.');
       return;
     }
+    await _openFacebookSharer();
+  }
+
+  /// A post has a length limit, so X gets the headline and the link only.
+  Future<void> _shareX(Rect? origin) async {
+    final shared = await _shareToApp(
+      androidPackage: 'com.twitter.android',
+      appName: 'X',
+      text: '${_xHeadline()} ${experienceShareLink(package)}',
+      origin: origin,
+    );
+    if (shared) return;
+    if (!await _open(_xIntent())) _copy("Couldn't open X. Details copied instead.");
+  }
+
+  // --- iOS choices -----------------------------------------------------------
+  //
+  // iOS has no way to hand a photo to one chosen app, only the system share
+  // sheet, and there Instagram and Facebook often don't appear at all. So on
+  // iOS each app gets its own choices here, each going straight into the
+  // app: Stories through Meta's "Sharing to Stories" pasteboard hand-off, an
+  // Instagram post through the photo library, the rest through links the
+  // apps open themselves (package:nexaround_share has the native side).
+
+  List<_ShareOption> _instagramMenu() => [
+        _ShareOption('Story', 'Add the photo to your story', Icons.add_circle_outline_rounded,
+            (_) => _story('Instagram', NexaroundShare.instagramStory)),
+        _ShareOption('Post', 'Start a new post with the photo', Icons.grid_on_rounded,
+            (_) => _instagramPost()),
+        _ShareOption('Message', 'Send the details in a chat', Icons.send_rounded,
+            (_) => _instagramMessage()),
+      ];
+
+  List<_ShareOption> _facebookMenu() => [
+        _ShareOption('Post', 'Share the link on your feed', Icons.post_add_rounded,
+            (_) => _facebookPost()),
+        _ShareOption('Story', 'Add the photo to your story', Icons.add_circle_outline_rounded,
+            (_) => _story('Facebook', NexaroundShare.facebookStory)),
+      ];
+
+  List<_ShareOption> _xMenu() => [
+        _ShareOption('Post', 'Post the link', Icons.edit_outlined, (_) => _xPost()),
+        _ShareOption('Message', 'Send it in a Direct Message', Icons.mail_outline_rounded,
+            (_) => _xMessage()),
+      ];
+
+  /// The photo as a sticker on a new story. The pasteboard carries the photo
+  /// to the other app, which replaces the clipboard, so nothing is copied.
+  Future<void> _story(String appName, Future<bool> Function(Uint8List) share) async {
+    final image = await _coverImage();
+    if (image == null) {
+      _copy("Couldn't load the photo. Details copied instead.");
+      return;
+    }
+    if (!await share(image.bytes)) _copy("Couldn't open $appName. Details copied instead.");
+  }
+
+  Future<void> _instagramPost() async {
+    final image = await _coverImage();
+    if (image == null) {
+      _copy("Couldn't load the photo. Details copied instead.");
+      return;
+    }
+    // Copied first: once Instagram opens, the caption is ready to paste.
+    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
+    try {
+      if (await NexaroundShare.instagramPost(image.bytes)) {
+        _toast('Details copied. Paste them into your caption.');
+      } else {
+        _toast("Couldn't open Instagram. Details copied instead.");
+      }
+    } on NexaroundSharePhotosDenied {
+      _toast('Allow nexARound to add photos in Settings to post on Instagram.');
+    }
+  }
+
+  /// Instagram takes nothing from another app for a chat, so the details are
+  /// copied and Instagram opens on the chat list.
+  Future<void> _instagramMessage() async {
+    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
+    final opened = await _open(Uri.parse('instagram://direct-inbox')) ||
+        await _open(Uri.parse('https://www.instagram.com/direct/inbox/'));
+    _toast(opened
+        ? 'Details copied. Pick a chat and paste them.'
+        : "Couldn't open Instagram. Details copied instead.");
+  }
+
+  /// Facebook's own post screen with the link as a card, or its web share
+  /// page when the app can't take it.
+  Future<void> _facebookPost() async {
+    if (await NexaroundShare.facebookLink(experienceShareLink(package))) return;
+    await Clipboard.setData(ClipboardData(text: experienceShareMessage(package)));
+    await _openFacebookSharer();
+  }
+
+  Future<void> _xPost() async {
+    if (!await _open(_xIntent())) _copy("Couldn't open X. Details copied instead.");
+  }
+
+  /// X's new-message screen with the text filled in; X asks who to send it to.
+  Future<void> _xMessage() async {
+    final text = '${_xHeadline()} ${experienceShareLink(package)}';
+    final uri = Uri.parse('https://x.com/messages/compose?text=${Uri.encodeComponent(text)}');
+    if (!await _open(uri)) _copy("Couldn't open X. Details copied instead.");
+  }
+
+  String _xHeadline() => 'Check out "${package.title}" by ${package.vendorName} on nexARound';
+
+  Uri _xIntent() => Uri.parse(
+        'https://twitter.com/intent/tweet'
+        '?text=${Uri.encodeComponent(_xHeadline())}'
+        '&url=${Uri.encodeComponent(experienceShareLink(package))}',
+      );
+
+  Future<void> _openFacebookSharer() async {
     final uri = Uri.parse(
       'https://www.facebook.com/sharer/sharer.php?u=${Uri.encodeComponent(experienceShareLink(package))}',
     );
@@ -349,25 +567,6 @@ class _ExperienceShareSheetState extends State<_ExperienceShareSheet> {
     _toast(opened
         ? 'Details copied. Paste them into your post.'
         : "Couldn't open Facebook. Details copied instead.");
-  }
-
-  /// A post has a length limit, so X gets the headline and the link only.
-  Future<void> _shareX(Rect? origin) async {
-    final text = 'Check out "${package.title}" by ${package.vendorName} on nexARound';
-    final shared = await _shareToApp(
-      androidPackage: 'com.twitter.android',
-      appName: 'X',
-      text: '$text ${experienceShareLink(package)}',
-      origin: origin,
-    );
-    if (shared) return;
-
-    final uri = Uri.parse(
-      'https://twitter.com/intent/tweet'
-      '?text=${Uri.encodeComponent(text)}'
-      '&url=${Uri.encodeComponent(experienceShareLink(package))}',
-    );
-    if (!await _open(uri)) _copy("Couldn't open X. Details copied instead.");
   }
 
   /// Every app on the phone, through the system share sheet.
@@ -474,4 +673,22 @@ class _CoverImage {
   String get mimeType => _isPng ? 'image/png' : 'image/jpeg';
 
   String get extension => _isPng ? 'png' : 'jpg';
+}
+
+/// One app's choices on iOS, shown by [_ExperienceShareSheetState._buildMenu].
+class _ShareMenu {
+  final String appName;
+  final String asset;
+  final List<_ShareOption> options;
+
+  const _ShareMenu(this.appName, this.asset, this.options);
+}
+
+class _ShareOption {
+  final String label;
+  final String hint;
+  final IconData icon;
+  final Future<void> Function(Rect? origin) onShare;
+
+  const _ShareOption(this.label, this.hint, this.icon, this.onShare);
 }

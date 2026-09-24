@@ -1,5 +1,6 @@
 import FBSDKShareKit
 import Flutter
+import Photos
 import UIKit
 
 /// iOS side of package:nexaround_share (lib/nexaround_share.dart).
@@ -30,6 +31,18 @@ public class NexaroundSharePlugin: NSObject, FlutterPlugin {
                 return
             }
             shareToInstagramStory(image, result: result)
+        case "facebookStory":
+            guard let image = (args["image"] as? FlutterStandardTypedData)?.data else {
+                result(false)
+                return
+            }
+            shareToFacebookStory(image, result: result)
+        case "instagramPost":
+            guard let image = (args["image"] as? FlutterStandardTypedData)?.data else {
+                result(false)
+                return
+            }
+            shareToInstagramPost(image, result: result)
         default:
             result(FlutterMethodNotImplemented)
         }
@@ -80,6 +93,73 @@ public class NexaroundSharePlugin: NSObject, FlutterPlugin {
         )
         UIApplication.shared.open(url, options: [:]) { opened in
             result(opened)
+        }
+    }
+
+    /// Facebook's "Sharing to Stories": the same pasteboard hand-off as
+    /// Instagram's, under Facebook's keys, with the App ID on the pasteboard.
+    private func shareToFacebookStory(_ image: Data, result: @escaping FlutterResult) {
+        let appID = Bundle.main.object(forInfoDictionaryKey: "FacebookAppID") as? String ?? ""
+        guard !appID.isEmpty,
+              let url = URL(string: "facebook-stories://share"),
+              UIApplication.shared.canOpenURL(url)
+        else {
+            result(false)
+            return
+        }
+        let items: [[String: Any]] = [[
+            "com.facebook.sharedSticker.stickerImage": image,
+            "com.facebook.sharedSticker.backgroundTopColor": "#00A3A6",
+            "com.facebook.sharedSticker.backgroundBottomColor": "#005E60",
+            "com.facebook.sharedSticker.appID": appID,
+        ]]
+        UIPasteboard.general.setItems(
+            items,
+            options: [.expirationDate: Date().addingTimeInterval(5 * 60)]
+        )
+        UIApplication.shared.open(url, options: [:]) { opened in
+            result(opened)
+        }
+    }
+
+    /// A new Instagram feed post with [image]. Instagram only takes a post
+    /// from the photo library, so the image is saved there first (add-only
+    /// access, NSPhotoLibraryAddUsageDescription) and instagram://library
+    /// opens the post editor on it. Answers the FlutterError
+    /// "photos_denied" when the user refused photo access.
+    private func shareToInstagramPost(_ image: Data, result: @escaping FlutterResult) {
+        guard let probe = URL(string: "instagram://app"),
+              UIApplication.shared.canOpenURL(probe)
+        else {
+            result(false)
+            return
+        }
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized || status == .limited else {
+                DispatchQueue.main.async {
+                    result(FlutterError(code: "photos_denied", message: nil, details: nil))
+                }
+                return
+            }
+            var assetID: String?
+            PHPhotoLibrary.shared().performChanges({
+                let request = PHAssetCreationRequest.forAsset()
+                request.addResource(with: .photo, data: image, options: nil)
+                assetID = request.placeholderForCreatedAsset?.localIdentifier
+            }) { saved, _ in
+                DispatchQueue.main.async {
+                    guard saved,
+                          let id = assetID,
+                          let url = URL(string: "instagram://library?LocalIdentifier=\(id)")
+                    else {
+                        result(false)
+                        return
+                    }
+                    UIApplication.shared.open(url, options: [:]) { opened in
+                        result(opened)
+                    }
+                }
+            }
         }
     }
 
