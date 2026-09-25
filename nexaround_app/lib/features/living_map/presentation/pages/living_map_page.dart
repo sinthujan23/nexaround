@@ -50,6 +50,7 @@ import 'package:nexaround_app/features/living_map/presentation/widgets/location_
 import 'package:nexaround_app/features/living_map/presentation/widgets/animated_neva_banner.dart';
 import 'package:nexaround_app/features/living_map/presentation/widgets/discovery_engine_sheet.dart';
 import 'package:nexaround_app/features/planning/presentation/pages/museums_list_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 import 'package:nexaround_app/core/services/avatar_service.dart';
 
 class _LocalEvent {
@@ -2460,14 +2461,10 @@ class _LivingMapPageState extends State<LivingMapPage>
   Widget _buildExperienceRibbon() {
     return GestureDetector(
       onTap: () {
-        final homeState =
-            context.findAncestorStateOfType<HomePageState>() ??
-            HomePage.homeKey.currentState;
-        if (homeState != null) {
-          homeState.switchToDiscover(
-            initialTab: DiscoverPage.tabs.indexOf('Experiences'),
-          );
-        }
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const ExperiencesPage()),
+        );
       },
       child: Container(
         width: double.infinity,
@@ -2539,7 +2536,7 @@ class _LivingMapPageState extends State<LivingMapPage>
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'UNLEASH EXPERIENCES',
+                      'CHASE EXPERIENCES',
                       style: TextStyle(
                         fontSize: 16.5,
                         fontWeight: FontWeight.w900,

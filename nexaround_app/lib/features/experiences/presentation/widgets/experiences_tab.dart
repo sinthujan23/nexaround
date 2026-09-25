@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
+import 'package:nexaround_app/core/services/cache_service.dart';
 import 'package:nexaround_app/core/utils/distance_format.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
@@ -33,6 +34,8 @@ class ExperiencesTabState extends State<ExperiencesTab> {
 
   List<ExperiencePackageEntity> _packages = [];
   String? _category;
+  ExperienceCountry? _selectedCountry;
+  List<ExperienceCountry> _availableCountries = [];
   double? _nearestDistanceM;
   bool _hasNearby = false;
   int _total = 0;
@@ -56,6 +59,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     _lat = widget.latitude;
     _lng = widget.longitude;
     _scrollController.addListener(_onScroll);
+    _loadCountries();
     if (_lat != null && _lng != null) {
       _load();
     } else {
@@ -106,6 +110,40 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     }
   }
 
+  Future<void> _loadCountries() async {
+    final list = await ExperiencesService.fetchActiveCountries();
+    if (!mounted) return;
+    setState(() {
+      if (list.isNotEmpty) {
+        _availableCountries = list;
+      } else {
+        _availableCountries = [
+          const ExperienceCountry(code: 'LK', name: 'Sri Lanka', count: 0, latitude: 6.9271, longitude: 79.8612),
+          const ExperienceCountry(code: 'AE', name: 'United Arab Emirates', count: 0, latitude: 25.2048, longitude: 55.2708),
+          const ExperienceCountry(code: 'TH', name: 'Thailand', count: 0, latitude: 13.7563, longitude: 100.5018),
+          const ExperienceCountry(code: 'ID', name: 'Indonesia', count: 0, latitude: -8.3405, longitude: 115.0920),
+          const ExperienceCountry(code: 'FR', name: 'France', count: 0, latitude: 48.8566, longitude: 2.3522),
+          const ExperienceCountry(code: 'JP', name: 'Japan', count: 0, latitude: 35.6762, longitude: 139.6503),
+        ];
+      }
+    });
+  }
+
+  void _selectCountry(ExperienceCountry? country) {
+    if (_selectedCountry == country) return;
+    setState(() {
+      _selectedCountry = country;
+      if (country != null && country.latitude != null && country.longitude != null) {
+        _lat = country.latitude;
+        _lng = country.longitude;
+      } else {
+        _lat = widget.latitude ?? CacheService.getLastFetchLat();
+        _lng = widget.longitude ?? CacheService.getLastFetchLng();
+      }
+    });
+    _load();
+  }
+
   Future<void> _load() async {
     if (_lat == null || _lng == null) return;
     setState(() {
@@ -120,6 +158,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         latitude: _lat!,
         longitude: _lng!,
         category: _category,
+        countryCode: _selectedCountry?.code,
       );
       if (!mounted) return;
       setState(() {
@@ -150,6 +189,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         latitude: _lat!,
         longitude: _lng!,
         category: _category,
+        countryCode: _selectedCountry?.code,
         offset: next * ExperiencesService.pageSize,
       );
       if (!mounted) return;
@@ -185,10 +225,12 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
         children: [
           Padding(padding: _gutter, child: _buildHero()),
-          const SizedBox(height: 18),
+          const SizedBox(height: 14),
+          Padding(padding: _gutter, child: _buildCountrySelector()),
+          const SizedBox(height: 14),
           _buildCategoryChips(),
           const SizedBox(height: 22),
-          if (showList && !_hasNearby)
+          if (showList && !_hasNearby && _selectedCountry == null)
             Padding(padding: _gutter, child: _buildDistanceBanner()),
           if (showList)
             Padding(padding: _gutter, child: _buildSectionHeader()),
@@ -198,11 +240,248 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     );
   }
 
+  /// The country dropdown / pill selector.
+  Widget _buildCountrySelector() {
+    final hasCountry = _selectedCountry != null;
+    return Row(
+      children: [
+        InkWell(
+          onTap: _showCountryPicker,
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: hasCountry ? AppColors.brandGreenLight : AppColors.surface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: hasCountry ? AppColors.brandGreen : AppColors.border,
+                width: hasCountry ? 1.5 : 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  hasCountry ? _selectedCountry!.flag : '📍',
+                  style: const TextStyle(fontSize: 15),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  hasCountry ? _selectedCountry!.name : 'Near Me (GPS)',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: hasCountry ? AppColors.brandGreen : AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: hasCountry ? AppColors.brandGreen : AppColors.textSecondary,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (hasCountry) ...[
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: () => _selectCountry(null),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: const [
+                  Icon(Icons.close_rounded, size: 14, color: AppColors.textSecondary),
+                  SizedBox(width: 4),
+                  Text(
+                    'Reset',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  void _showCountryPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(ctx).size.height * 0.7,
+          ),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Row(
+                  children: const [
+                    Icon(Icons.public_rounded, color: AppColors.brandGreen, size: 22),
+                    SizedBox(width: 10),
+                    Text(
+                      'Select Destination',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textPrimary,
+                        letterSpacing: -0.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 24),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Browse experiences in specific countries or near your current spot.',
+                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Divider(height: 1, color: AppColors.border),
+              Flexible(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  children: [
+                    // Near Me option
+                    ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: _selectedCountry == null
+                              ? AppColors.brandGreenLight
+                              : AppColors.surface,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.near_me_rounded,
+                          color: _selectedCountry == null
+                              ? AppColors.brandGreen
+                              : AppColors.textSecondary,
+                          size: 20,
+                        ),
+                      ),
+                      title: const Text(
+                        'Near Me (Current Location)',
+                        style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                      ),
+                      subtitle: const Text(
+                        'Experiences closest to your current spot',
+                        style: TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                      ),
+                      trailing: _selectedCountry == null
+                          ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
+                          : null,
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        _selectCountry(null);
+                      },
+                    ),
+                    const Divider(indent: 20, endIndent: 20, height: 1, color: AppColors.border),
+                    // Countries list
+                    ..._availableCountries.map((c) {
+                      final isSelected = _selectedCountry?.code == c.code;
+                      return ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? AppColors.brandGreenLight
+                                : AppColors.surface,
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text(c.flag, style: const TextStyle(fontSize: 20)),
+                        ),
+                        title: Text(
+                          c.name,
+                          style: TextStyle(
+                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                            fontSize: 15,
+                            color: isSelected ? AppColors.brandGreen : AppColors.textPrimary,
+                          ),
+                        ),
+                        subtitle: c.count > 0
+                            ? Text(
+                                '${c.count} ${c.count == 1 ? 'experience' : 'experiences'}',
+                                style: const TextStyle(fontSize: 12, color: AppColors.textTertiary),
+                              )
+                            : null,
+                        trailing: isSelected
+                            ? const Icon(Icons.check_circle_rounded, color: AppColors.brandGreen)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _selectCountry(c);
+                        },
+                      );
+                    }),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// The banner at the top of the tab. Its last line tracks the load, so it
   /// doubles as the status line.
   Widget _buildHero() {
     final String status;
-    if (_awaitingLocation) {
+    if (_selectedCountry != null) {
+      if (_loading) {
+        status = 'Finding experiences in ${_selectedCountry!.name}…';
+      } else if (_error != null) {
+        status = 'Pull down to try again';
+      } else if (_packages.isEmpty) {
+        status = 'No experiences available in ${_selectedCountry!.name} yet';
+      } else {
+        final count = '$_total ${_total == 1 ? 'experience' : 'experiences'}';
+        status = '$count in ${_selectedCountry!.name}';
+      }
+    } else if (_awaitingLocation) {
       status = 'Turn on location to see what is around you';
     } else if (_loading) {
       status = 'Finding experiences around you…';
@@ -217,6 +496,14 @@ class ExperiencesTabState extends State<ExperiencesTab> {
           : '$count · nearest ${formatDistanceCoarse(_nearestDistanceM)} away';
     }
 
+    final badgeText = _selectedCountry != null
+        ? '${_selectedCountry!.flag} ${_selectedCountry!.name.toUpperCase()}'
+        : 'LOCAL EXPERIENCES';
+
+    final heroTitle = _selectedCountry != null
+        ? 'Explore\n${_selectedCountry!.name}'
+        : 'Do something\nunforgettable';
+
     return Container(
       height: 156,
       clipBehavior: Clip.antiAlias,
@@ -229,7 +516,7 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.brandGreen.withOpacity(0.28),
+            color: AppColors.brandGreen.withValues(alpha: 0.28),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -253,12 +540,12 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.18),
+                    color: Colors.white.withValues(alpha: 0.18),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Text(
-                    'LOCAL EXPERIENCES',
-                    style: TextStyle(
+                  child: Text(
+                    badgeText,
+                    style: const TextStyle(
                       fontSize: 10.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 1.2,
@@ -267,9 +554,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Do something\nunforgettable',
-                  style: TextStyle(
+                Text(
+                  heroTitle,
+                  style: const TextStyle(
                     fontSize: 22,
                     height: 1.15,
                     fontWeight: FontWeight.w800,
@@ -280,7 +567,11 @@ class ExperiencesTabState extends State<ExperiencesTab> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    Icon(Icons.near_me_rounded, size: 13, color: Colors.white.withOpacity(0.8)),
+                    Icon(
+                      _selectedCountry != null ? Icons.place_rounded : Icons.near_me_rounded,
+                      size: 13,
+                      color: Colors.white.withValues(alpha: 0.8),
+                    ),
                     const SizedBox(width: 5),
                     Flexible(
                       child: Text(
@@ -363,9 +654,16 @@ class ExperiencesTabState extends State<ExperiencesTab> {
   }
 
   Widget _buildSectionHeader() {
-    final title = _category == null
-        ? 'Nearest to you'
-        : '${experienceCategoryFor(_category).label} near you';
+    final String title;
+    if (_selectedCountry != null) {
+      title = _category == null
+          ? 'Experiences in ${_selectedCountry!.name}'
+          : '${experienceCategoryFor(_category).label} in ${_selectedCountry!.name}';
+    } else {
+      title = _category == null
+          ? 'Nearest to you'
+          : '${experienceCategoryFor(_category).label} near you';
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
       child: Row(

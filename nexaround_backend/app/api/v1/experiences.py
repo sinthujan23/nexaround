@@ -33,17 +33,28 @@ from app.services.settings_service import SettingsService
 router = APIRouter(prefix="/experiences", tags=["Experiences"])
 
 
+@router.get("/countries")
+async def experience_countries(
+    db: AsyncSession = Depends(get_db),
+):
+    """List of countries that have active, published vendor experiences."""
+    repo = ExperienceRepository(db)
+    countries = await repo.get_active_countries()
+    return {"countries": countries}
+
+
 @router.get("/nearby", response_model=ExperienceNearbyResponse)
 async def nearby_experiences(
     lat: float = Query(..., ge=-90.0, le=90.0),
     lng: float = Query(..., ge=-180.0, le=180.0),
     category: Optional[str] = Query(None, max_length=60),
+    country_code: Optional[str] = Query(None, max_length=2),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
     db: AsyncSession = Depends(get_db),
     _user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Vendor packages, nearest first, with no radius limit.
+    """Vendor packages, nearest first, with optional country or category filter.
 
     Vendors are sparse, so this deliberately never returns an empty list just
     because the user is far from one. `has_nearby` tells the app whether to show
@@ -52,9 +63,16 @@ async def nearby_experiences(
     """
     repo = ExperienceRepository(db)
     rows = await repo.get_nearest_packages(
-        latitude=lat, longitude=lng, category=category, limit=limit, offset=offset
+        latitude=lat,
+        longitude=lng,
+        category=category,
+        country_code=country_code,
+        limit=limit,
+        offset=offset,
     )
-    total = await repo.count_published_packages(category=category)
+    total = await repo.count_published_packages(
+        category=category, country_code=country_code
+    )
 
     packages = [package_to_card(pkg, distance) for pkg, distance in rows]
     nearest = rows[0][1] if rows else None

@@ -13,6 +13,7 @@ import 'package:nexaround_app/features/planning/presentation/pages/museums_list_
 import 'package:nexaround_app/core/utils/number_format.dart';
 import 'package:video_player/video_player.dart';
 import 'package:nexaround_app/core/error/user_message.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 
 class MyOdysseysPage extends StatefulWidget {
   const MyOdysseysPage({super.key});
@@ -113,15 +114,28 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
     );
   }
 
-  Widget _buildMiniTourCard() {
+  void _openExperiences() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ExperiencesPage()),
+    );
+  }
+
+  Widget _buildExperienceBanner() {
     return GestureDetector(
-      onTap: _openMiniTour,
+      onTap: _openExperiences,
       child: Container(
         height: 140,
-        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: AppColors.brandGradient,
           borderRadius: BorderRadius.circular(20),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF061A14),
+              Color(0xFF020B08),
+            ],
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.12),
@@ -130,49 +144,242 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
             ),
           ],
         ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('🚩', style: TextStyle(fontSize: 22)),
-                Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 28),
-              ],
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'TAKE A WALK',
-                  style: TextStyle(
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
-                    color: Colors.white70,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Background adventure collage image
+              Image.asset(
+                'assets/images/experiences_banner_bg.png',
+                fit: BoxFit.cover,
+                alignment: Alignment.center,
+              ),
+              // Gradient scrim to make text highly readable
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.topCenter,
+                    colors: [
+                      Color(0xEE061A14),
+                      Color(0x99030E0B),
+                      Color(0x22000000),
+                    ],
+                    stops: [0.0, 0.65, 1.0],
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  'Walking Challenge',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
+              ),
+              // Content overlay
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Icon(Icons.terrain_rounded, color: AppColors.brandGreen, size: 22),
+                        Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 14),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'CHASE EXPERIENCES',
+                          style: TextStyle(
+                            fontSize: 8.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 1.5,
+                            color: AppColors.brandGreen,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Handcrafted Tours',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          '120+ Curated adventures',
+                          style: TextStyle(fontSize: 10, color: Colors.white54),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                SizedBox(height: 2),
-                Text(
-                  'Visit stops & earn XP',
-                  style: TextStyle(fontSize: 10, color: Colors.white54),
-                ),
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     ).animate().fade().slideY(begin: 0.1, end: 0);
+  }
+
+  Widget _buildCreatePlanCard() {
+    return GestureDetector(
+      onTap: _openPlanner,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0C2E2A),
+              Color(0xFF061A18),
+              Color(0xFF03100E),
+            ],
+          ),
+          border: Border.all(
+            color: AppColors.brandGreen.withValues(alpha: 0.35),
+            width: 1.4,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.brandGreen.withValues(alpha: 0.12),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Subtle ambient glow in corner
+              Positioned(
+                top: -20,
+                right: -20,
+                width: 100,
+                height: 100,
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppColors.brandGreen.withValues(alpha: 0.25),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Top: Tag + AI Sparkle Icon
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 3.5),
+                          decoration: BoxDecoration(
+                            color: AppColors.brandGreen.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: AppColors.brandGreen.withValues(alpha: 0.3),
+                              width: 0.8,
+                            ),
+                          ),
+                          child: const Text(
+                            'ODYSSEY',
+                            style: TextStyle(
+                              fontSize: 8,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.2,
+                              color: AppColors.brandGreen,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: AppColors.brandGreen.withValues(alpha: 0.18),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome_rounded,
+                            color: AppColors.brandGreen,
+                            size: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Center: Large glowing + button
+                    Center(
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: AppColors.brandGradient,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.brandGreen.withValues(alpha: 0.45),
+                              blurRadius: 14,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      ),
+                    ),
+
+                    // Bottom: Title & Subtitle
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Build Odyssey',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: -0.2,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Chart your journey',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white60,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ).animate().fade().scale(
+          begin: const Offset(0.96, 0.96),
+          end: const Offset(1, 1),
+          duration: 200.ms,
+        );
   }
 
   Widget _buildMuseumBanner() {
@@ -354,40 +561,41 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                         ),
                       ),
                       const SizedBox(width: 6),
-                      // Create Plan Button
+                      // Walking Challenge Pill Button (Matching TOP MUSEUMS Cyan: 0xFF00E5FF)
                       Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: _openPlanner,
+                          onTap: _openMiniTour,
                           borderRadius: BorderRadius.circular(20),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
+                                horizontal: 10, vertical: 6),
                             decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF007A7C), Color(0xFF00B4D8)],
-                              ),
+                              color: const Color(0xFF00E5FF).withValues(alpha: 0.18),
                               borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFF00E5FF).withValues(alpha: 0.60),
+                                width: 1.1,
+                              ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: const Color(0xFF007A7C)
-                                      .withValues(alpha: 0.4),
+                                  color: const Color(0xFF00E5FF).withValues(alpha: 0.25),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
                             child: const Row(
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.auto_awesome_rounded,
-                                    color: Colors.white, size: 13),
-                                SizedBox(width: 5),
+                                Text('🚩', style: TextStyle(fontSize: 12)),
+                                SizedBox(width: 4),
                                 Text(
-                                  '+ Create Plan',
+                                  'Challenge',
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: Color(0xFF00E5FF),
                                     fontWeight: FontWeight.w800,
-                                    fontSize: 11.5,
+                                    fontSize: 11,
                                     letterSpacing: 0.2,
                                   ),
                                 ),
@@ -402,7 +610,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
               ],
               flexibleSpace: FlexibleSpaceBar(
                 centerTitle: false,
-                titlePadding: const EdgeInsets.only(left: 20, right: 180, bottom: 16),
+                titlePadding: const EdgeInsets.only(left: 20, right: 190, bottom: 16),
                 title: const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -488,7 +696,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                 padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
                 child: Row(
                   children: [
-                    Expanded(child: _buildMiniTourCard()),
+                    Expanded(child: _buildExperienceBanner()),
                     const SizedBox(width: 12),
                     Expanded(child: _buildMuseumBanner()),
                   ],
@@ -528,17 +736,6 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
       );
     }
     final active = _activeOdysseys;
-    if (active.isEmpty) {
-      return SliverToBoxAdapter(
-        child: _buildMessage(
-          icon: Icons.auto_awesome_rounded,
-          title: 'No odysseys yet',
-          subtitle: 'Generate an AI-crafted trip blueprint to get started.',
-          actionLabel: 'Build an Odyssey',
-          onAction: _openPlanner,
-        ),
-      );
-    }
 
     final double screenWidth = MediaQuery.of(context).size.width;
     final double cardWidth = (screenWidth - 32 - 12) / 2;
@@ -554,8 +751,13 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
           childAspectRatio: childAspectRatio,
         ),
         delegate: SliverChildBuilderDelegate(
-          (context, index) => _buildCinematicCard(active[index], index: index),
-          childCount: active.length,
+          (context, index) {
+            if (index == 0) {
+              return _buildCreatePlanCard();
+            }
+            return _buildCinematicCard(active[index - 1], index: index - 1);
+          },
+          childCount: 1 + active.length,
         ),
       ),
     );

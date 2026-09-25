@@ -49,6 +49,7 @@ class ApiConstants {
 
   // Experiences (vendor marketplace)
   static const String experiencesNearby = '$apiVersion/experiences/nearby';
+  static const String experiencesCountries = '$apiVersion/experiences/countries';
   static const String experiencePackages = '$apiVersion/experiences/packages';
   static const String experienceVendors = '$apiVersion/experiences/vendors';
   static const String experienceEnquiries = '$apiVersion/experiences/enquiries';

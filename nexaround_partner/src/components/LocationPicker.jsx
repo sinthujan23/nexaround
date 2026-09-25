@@ -139,6 +139,9 @@ export default function LocationPicker({
       address: place.address || '',
       google_place_id: place.place_id || '',
       name: place.name || '',
+      city: place.city || '',
+      country_code: place.country_code || '',
+      country_name: place.country_name || '',
     });
     setResults([]);
     setQuery('');

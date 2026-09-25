@@ -549,7 +549,7 @@ async def text_search(
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": google_maps_key,
-        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.rating,places.userRatingCount"
+        "X-Goog-FieldMask": "places.id,places.displayName,places.location,places.types,places.formattedAddress,places.photos,places.rating,places.userRatingCount,places.addressComponents"
     }
 
     bias_radius = float(min(max(radius_m, 500.0), 50000.0)) if radius_m else 50000.0
@@ -1092,6 +1092,33 @@ def _component(place: dict, wanted_type: str) -> tuple[str, str]:
         if wanted_type in (comp.get("types") or []):
             return (comp.get("longText") or "", comp.get("shortText") or "")
     return ("", "")
+
+
+def extract_place_address_parts(place: dict) -> dict:
+    """Extracts city, country_code, and country_name from a Google place dict."""
+    country_name, country_code = _component(place, "country")
+
+    city, _ = _component(place, "locality")
+    if not city:
+        city, _ = _component(place, "sublocality")
+    if not city:
+        city, _ = _component(place, "sublocality_level_1")
+    if not city:
+        city, _ = _component(place, "administrative_area_level_2")
+    if not city:
+        city, _ = _component(place, "administrative_area_level_1")
+
+    formatted = place.get("formattedAddress") or ""
+    if not country_code and formatted:
+        parts = [p.strip() for p in formatted.split(",") if p.strip()]
+        if parts:
+            country_name = country_name or parts[-1]
+
+    return {
+        "city": city or "",
+        "country_code": (country_code or "").upper(),
+        "country_name": country_name or "",
+    }
 
 
 async def resolve_place_geo(

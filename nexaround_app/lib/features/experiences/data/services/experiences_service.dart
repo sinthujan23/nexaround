@@ -4,6 +4,41 @@ import 'package:nexaround_app/core/network/api_client.dart';
 import 'package:nexaround_app/features/experiences/data/models/experience_model.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 
+/// One active country where vendors exist.
+class ExperienceCountry {
+  final String code;
+  final String name;
+  final int count;
+  final double? latitude;
+  final double? longitude;
+
+  const ExperienceCountry({
+    required this.code,
+    required this.name,
+    this.count = 0,
+    this.latitude,
+    this.longitude,
+  });
+
+  factory ExperienceCountry.fromJson(Map<String, dynamic> json) {
+    return ExperienceCountry(
+      code: (json['code'] ?? '').toString().toUpperCase(),
+      name: (json['name'] ?? '').toString(),
+      count: (json['count'] as num?)?.toInt() ?? 0,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+    );
+  }
+
+  /// Flag emoji for 2-letter ISO country code.
+  String get flag {
+    if (code.length != 2) return '🌐';
+    final first = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
+    final second = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
+    return String.fromCharCode(first) + String.fromCharCode(second);
+  }
+}
+
 /// One page of nearest-first results, plus what the tab needs to decide
 /// whether to show the "nothing nearby" banner.
 class ExperiencesResult {
@@ -32,10 +67,27 @@ class ExperiencesService {
   static const int maxPages = 5;
   static const int pageSize = 20;
 
+  static Future<List<ExperienceCountry>> fetchActiveCountries() async {
+    try {
+      final response = await ApiClient.instance.get(ApiConstants.experiencesCountries);
+      final data = response.data;
+      if (data is Map<String, dynamic> && data['countries'] is List) {
+        return (data['countries'] as List)
+            .whereType<Map<String, dynamic>>()
+            .map(ExperienceCountry.fromJson)
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching experience countries: $e');
+    }
+    return const [];
+  }
+
   static Future<ExperiencesResult> fetchNearby({
     required double latitude,
     required double longitude,
     String? category,
+    String? countryCode,
     int limit = pageSize,
     int offset = 0,
   }) async {
@@ -47,6 +99,7 @@ class ExperiencesService {
         'limit': limit,
         'offset': offset,
         if (category != null && category.isNotEmpty) 'category': category,
+        if (countryCode != null && countryCode.isNotEmpty) 'country_code': countryCode,
       },
     );
 

@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexaround_app/app/theme/app_colors.dart';
-import 'package:nexaround_app/features/auth/presentation/pages/home_page.dart';
 import 'package:nexaround_app/features/experiences/data/services/experiences_service.dart';
 import 'package:nexaround_app/features/experiences/domain/entities/experience.dart';
 import 'package:nexaround_app/features/experiences/presentation/pages/experience_package_detail_page.dart';
-import 'package:nexaround_app/features/food_radar/presentation/pages/discover_page.dart';
+import 'package:nexaround_app/features/experiences/presentation/pages/experiences_page.dart';
 
 /// What a shared link (`https://nexaround.com/e/<package id>`) opens.
 ///
@@ -76,8 +75,9 @@ class _ExperienceLinkPageState extends State<ExperienceLinkPage> {
       return;
     }
     Navigator.of(context).pop();
-    HomePage.homeKey.currentState?.switchToDiscover(
-      initialTab: DiscoverPage.tabs.indexOf('Experiences'),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ExperiencesPage()),
     );
   }
 

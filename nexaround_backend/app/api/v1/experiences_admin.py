@@ -449,12 +449,16 @@ async def admin_place_search(
     results = []
     for place in raw or []:
         location = place.get("location") or {}
+        parts = google_places_client.extract_place_address_parts(place)
         results.append({
             "place_id": place.get("id"),
             "name": (place.get("displayName") or {}).get("text"),
             "address": place.get("formattedAddress"),
             "latitude": location.get("latitude"),
             "longitude": location.get("longitude"),
+            "city": parts["city"],
+            "country_code": parts["country_code"],
+            "country_name": parts["country_name"],
         })
     return {"places": results}
 

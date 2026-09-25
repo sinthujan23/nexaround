@@ -18,6 +18,7 @@ from sqlalchemy.orm import selectinload
 from app.models.experience import (
     ExperienceEnquiry, ExperiencePackage, ExperienceVendor,
 )
+from app.services.ride_apps_service import COUNTRY_NAMES
 from app.utils.geo_utils import create_point
 
 
@@ -30,6 +31,7 @@ class ExperienceRepository:
         latitude: float,
         longitude: float,
         category: Optional[str] = None,
+        country_code: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[tuple[ExperiencePackage, float]]:
@@ -62,17 +64,61 @@ class ExperienceRepository:
         )
         if category:
             query = query.where(ExperiencePackage.category == category)
+        if country_code:
+            query = query.join(ExperiencePackage.vendor).where(
+                func.upper(ExperienceVendor.country_code) == country_code.upper()
+            )
 
         result = await self.db.execute(query)
         return [(row[0], float(row[1])) for row in result.all()]
 
-    async def count_published_packages(self, category: Optional[str] = None) -> int:
+    async def count_published_packages(
+        self, category: Optional[str] = None, country_code: Optional[str] = None
+    ) -> int:
         query = select(func.count()).select_from(ExperiencePackage).where(
             ExperiencePackage.is_published.is_(True)
         )
         if category:
             query = query.where(ExperiencePackage.category == category)
+        if country_code:
+            query = query.join(ExperiencePackage.vendor).where(
+                func.upper(ExperienceVendor.country_code) == country_code.upper()
+            )
         return int((await self.db.execute(query)).scalar() or 0)
+
+    async def get_active_countries(self) -> list[dict]:
+        """Returns distinct countries that have active, published packages."""
+        query = (
+            select(
+                ExperienceVendor.country_code,
+                func.count(ExperiencePackage.id).label("package_count"),
+                func.avg(func.ST_Y(ExperiencePackage.location)).label("avg_lat"),
+                func.avg(func.ST_X(ExperiencePackage.location)).label("avg_lng"),
+            )
+            .join(ExperiencePackage, ExperiencePackage.vendor_id == ExperienceVendor.id)
+            .where(
+                ExperiencePackage.is_published.is_(True),
+                ExperienceVendor.country_code.isnot(None),
+            )
+            .group_by(ExperienceVendor.country_code)
+            .order_by(func.count(ExperiencePackage.id).desc())
+        )
+        result = await self.db.execute(query)
+        rows = result.all()
+        countries = []
+        for code, count, avg_lat, avg_lng in rows:
+            if not code:
+                continue
+            code_upper = code.strip().upper()
+            name = COUNTRY_NAMES.get(code_upper, code_upper)
+            countries.append({
+                "code": code_upper,
+                "name": name,
+                "count": count,
+                "latitude": float(avg_lat) if avg_lat is not None else None,
+                "longitude": float(avg_lng) if avg_lng is not None else None,
+            })
+        return countries
 
     async def get_package(
         self, package_id: uuid.UUID, published_only: bool = True
