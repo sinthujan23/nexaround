@@ -2535,21 +2535,27 @@ class _LivingMapPageState extends State<LivingMapPage>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      'CHASE EXPERIENCES',
-                      style: TextStyle(
-                        fontSize: 16.5,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: 0.6,
-                        height: 1.15,
-                        shadows: [
-                          Shadow(
-                            color: Colors.black.withOpacity(0.7),
-                            blurRadius: 6,
-                            offset: const Offset(0, 1.5),
-                          ),
-                        ],
+                    // Shrinks slightly on narrow phones instead of wrapping:
+                    // the 88-tall card has no room for a second line.
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'UNFORGETTABLE EXPERIENCES',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 0.6,
+                          height: 1.15,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.7),
+                              blurRadius: 6,
+                              offset: const Offset(0, 1.5),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(height: 5),

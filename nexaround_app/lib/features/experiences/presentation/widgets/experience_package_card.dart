@@ -28,7 +28,7 @@ class ExperiencePackageCard extends StatelessWidget {
     required this.onTap,
   });
 
-  static const double _radius = 24;
+  static const double _radius = 20;
 
   @override
   Widget build(BuildContext context) {
@@ -36,16 +36,16 @@ class ExperiencePackageCard extends StatelessWidget {
 
     return RepaintBoundary(
       child: Container(
-        margin: const EdgeInsets.only(bottom: 20),
+        margin: const EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(_radius),
-          border: Border.all(color: AppColors.border.withOpacity(0.6)),
+          border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 24,
-              offset: const Offset(0, 10),
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 16,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
@@ -79,7 +79,7 @@ class ExperiencePackageCard extends StatelessWidget {
     final url = PlaceImageHelper.resolveUrl(package.coverPhotoUrl);
 
     return AspectRatio(
-      aspectRatio: 16 / 10,
+      aspectRatio: 16 / 9,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -100,7 +100,7 @@ class ExperiencePackageCard extends StatelessWidget {
             top: 0,
             left: 0,
             right: 0,
-            height: 72,
+            height: 60,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
@@ -113,14 +113,14 @@ class ExperiencePackageCard extends StatelessWidget {
           ),
 
           Positioned(
-            top: 12,
-            left: 12,
+            top: 10,
+            left: 10,
             child: _Pill(
               light: true,
               child: Text(
                 '${category.emoji}  ${category.label}',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w700,
                   color: AppColors.textPrimary,
                 ),
@@ -130,8 +130,8 @@ class ExperiencePackageCard extends StatelessWidget {
 
           if (package.distanceM != null)
             Positioned(
-              top: 12,
-              right: 12,
+              top: 10,
+              right: 10,
               child: _Pill(
                 child: _iconText(Icons.near_me_rounded, formatDistance(package.distanceM)),
               ),
@@ -139,8 +139,8 @@ class ExperiencePackageCard extends StatelessWidget {
 
           if (package.photoCount > 1)
             Positioned(
-              bottom: 12,
-              right: 12,
+              bottom: 10,
+              right: 10,
               child: _Pill(
                 child: _iconText(Icons.photo_library_rounded, '${package.photoCount}'),
               ),
@@ -154,7 +154,7 @@ class ExperiencePackageCard extends StatelessWidget {
     final summary = (package.summary ?? '').trim();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -163,17 +163,17 @@ class ExperiencePackageCard extends StatelessWidget {
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
-              fontSize: 17,
+              fontSize: 15.5,
               fontWeight: FontWeight.w800,
               height: 1.25,
               letterSpacing: -0.2,
               color: AppColors.textPrimary,
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Row(
             children: [
-              const Icon(Icons.storefront_rounded, size: 14, color: AppColors.brandGreen),
+              const Icon(Icons.storefront_rounded, size: 13, color: AppColors.brandGreen),
               const SizedBox(width: 5),
               Expanded(
                 child: Text(
@@ -181,7 +181,7 @@ class ExperiencePackageCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                    fontSize: 13,
+                    fontSize: 12.5,
                     fontWeight: FontWeight.w600,
                     color: AppColors.brandGreen,
                   ),
@@ -190,27 +190,27 @@ class ExperiencePackageCard extends StatelessWidget {
             ],
           ),
           if (summary.isNotEmpty) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
               summary,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 13,
-                height: 1.45,
+                fontSize: 12.5,
+                height: 1.35,
                 color: AppColors.textSecondary,
               ),
             ),
           ],
-          const SizedBox(height: 14),
-          Container(height: 1, color: AppColors.border.withOpacity(0.6)),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          Container(height: 1, color: AppColors.border.withValues(alpha: 0.5)),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: package.durationLabel.isNotEmpty
-                    ? _metaChip(Icons.schedule_rounded, package.durationLabel)
+                child: package.formattedDuration.isNotEmpty
+                    ? _metaChip(Icons.schedule_rounded, package.formattedDuration)
                     : const SizedBox.shrink(),
               ),
               _buildPrice(),
@@ -240,7 +240,7 @@ class ExperiencePackageCard extends StatelessWidget {
         Text(
           amount,
           style: TextStyle(
-            fontSize: onRequest ? 13 : 18,
+            fontSize: onRequest ? 12.5 : 16.5,
             fontWeight: FontWeight.w800,
             letterSpacing: -0.3,
             color: onRequest ? AppColors.textSecondary : AppColors.textPrimary,
@@ -249,7 +249,7 @@ class ExperiencePackageCard extends StatelessWidget {
         if (unit != null)
           Text(
             unit,
-            style: const TextStyle(fontSize: 11, color: AppColors.textTertiary),
+            style: const TextStyle(fontSize: 10.5, color: AppColors.textTertiary),
           ),
       ],
     );
@@ -259,20 +259,20 @@ class ExperiencePackageCard extends StatelessWidget {
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: AppColors.brandGreenLight,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 13, color: AppColors.brandGreen),
-            const SizedBox(width: 5),
+            Icon(icon, size: 12, color: AppColors.brandGreen),
+            const SizedBox(width: 4),
             Text(
               text,
               style: const TextStyle(
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: FontWeight.w600,
                 color: AppColors.brandGreen,
               ),
@@ -337,7 +337,7 @@ class ExperiencePackageCard extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: Colors.white.withOpacity(0.18), width: 18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 18),
       ),
     );
   }
@@ -353,10 +353,10 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: light ? Colors.white.withOpacity(0.94) : Colors.black.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(20),
+        color: light ? Colors.white.withValues(alpha: 0.94) : Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
       ),
       child: child,
     );

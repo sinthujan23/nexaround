@@ -188,7 +188,7 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'CHASE EXPERIENCES',
+                          'UNFORGETTABLE EXPERIENCES',
                           style: TextStyle(
                             fontSize: 8.5,
                             fontWeight: FontWeight.w900,
@@ -225,153 +225,148 @@ class _MyOdysseysPageState extends State<MyOdysseysPage> {
   Widget _buildCreatePlanCard() {
     return GestureDetector(
       onTap: _openPlanner,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF0C2E2A),
-              Color(0xFF061A18),
-              Color(0xFF03100E),
+      child: CustomPaint(
+        foregroundPainter: const _DashedRRectPainter(
+          color: Color(0xFF94A3B8),
+          strokeWidth: 1.5,
+          dashLength: 5.0,
+          dashGap: 4.0,
+          radius: 16.0,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Color(0xFFF8FAFC),
+                Color(0xFFF1F5F9),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.03),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
-          border: Border.all(
-            color: AppColors.brandGreen.withValues(alpha: 0.35),
-            width: 1.4,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.brandGreen.withValues(alpha: 0.12),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              // Subtle ambient glow in corner
-              Positioned(
-                top: -20,
-                right: -20,
-                width: 100,
-                height: 100,
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AppColors.brandGreen.withValues(alpha: 0.25),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-              Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Top: Tag + AI Sparkle Icon
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    // Top: Tag + AI Sparkle Icon
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 7, vertical: 3.5),
-                          decoration: BoxDecoration(
-                            color: AppColors.brandGreen.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: AppColors.brandGreen.withValues(alpha: 0.3),
-                              width: 0.8,
-                            ),
-                          ),
-                          child: const Text(
-                            'ODYSSEY',
-                            style: TextStyle(
-                              fontSize: 8,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 1.2,
-                              color: AppColors.brandGreen,
-                            ),
-                          ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 3.5),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: const Color(0xFFE2E8F0),
+                          width: 1,
                         ),
-                        Container(
-                          width: 28,
-                          height: 28,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.brandGreen.withValues(alpha: 0.18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
                           ),
-                          child: const Icon(
-                            Icons.auto_awesome_rounded,
-                            color: AppColors.brandGreen,
-                            size: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Center: Large glowing + button
-                    Center(
-                      child: Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: AppColors.brandGradient,
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.brandGreen.withValues(alpha: 0.45),
-                              blurRadius: 14,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.add_rounded,
-                          color: Colors.white,
-                          size: 28,
+                        ],
+                      ),
+                      child: const Text(
+                        'ODYSSEY',
+                        style: TextStyle(
+                          fontSize: 8.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.1,
+                          color: AppColors.brandGreen,
                         ),
                       ),
                     ),
-
-                    // Bottom: Title & Subtitle
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Build Odyssey',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.2,
-                          ),
+                    Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        border: Border.all(
+                          color: const Color(0xFFE2E8F0),
+                          width: 1,
                         ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Chart your journey',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white60,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: AppColors.brandGreen,
+                        size: 14,
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+
+                // Center: Elevated button with brand gradient
+                Center(
+                  child: Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: AppColors.brandGradient,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.brandGreen.withValues(alpha: 0.35),
+                          blurRadius: 14,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.add_rounded,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                ),
+
+                // Bottom: Title & Subtitle
+                const Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Build Odyssey',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.2,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Chart your journey',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -1299,4 +1294,66 @@ class _BudgetPill extends StatelessWidget {
     );
   }
 }
+
+/// Draws an industry-standard dashed/dotted border around a rounded rectangle
+class _DashedRRectPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double dashLength;
+  final double dashGap;
+  final double radius;
+
+  const _DashedRRectPainter({
+    required this.color,
+    this.strokeWidth = 1.5,
+    this.dashLength = 5.0,
+    this.dashGap = 4.0,
+    this.radius = 16.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.width <= 0 || size.height <= 0) return;
+
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final halfStroke = strokeWidth / 2;
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        halfStroke,
+        halfStroke,
+        size.width - strokeWidth,
+        size.height - strokeWidth,
+      ),
+      Radius.circular(radius > halfStroke ? radius - halfStroke : 0),
+    );
+
+    final path = Path()..addRRect(rrect);
+    for (final metric in path.computeMetrics()) {
+      double distance = 0.0;
+      while (distance < metric.length) {
+        final length = (distance + dashLength > metric.length)
+            ? metric.length - distance
+            : dashLength;
+        final extract = metric.extractPath(distance, distance + length);
+        canvas.drawPath(extract, paint);
+        distance += dashLength + dashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) {
+    return oldDelegate.color != color ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.dashLength != dashLength ||
+        oldDelegate.dashGap != dashGap ||
+        oldDelegate.radius != radius;
+  }
+}
+
 

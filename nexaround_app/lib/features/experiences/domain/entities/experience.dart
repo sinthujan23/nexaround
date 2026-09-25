@@ -126,6 +126,36 @@ class ExperiencePackageEntity {
   bool get hasSocials =>
       hasVendorWhatsapp || hasVendorInstagram || hasVendorFacebook || hasVendorX;
 
+  /// Human-friendly duration label for cards and detail views, e.g. "1 Hour Duration", "2 Hours Duration", "45 Mins Duration".
+  String get formattedDuration {
+    if (durationMinutes != null && durationMinutes! > 0) {
+      final mins = durationMinutes!;
+      final h = mins ~/ 60;
+      final m = mins % 60;
+      if (h > 0 && m > 0) {
+        return '$h hr $m mins duration';
+      } else if (h > 0) {
+        return h == 1 ? '1 Hour Duration' : '$h Hours Duration';
+      } else {
+        return '$m Mins Duration';
+      }
+    }
+    if (durationLabel.isNotEmpty) {
+      final clean = durationLabel.trim().toLowerCase();
+      if (clean == '1h') return '1 Hour Duration';
+      if (clean.endsWith('h')) {
+        final hours = clean.substring(0, clean.length - 1);
+        return '$hours Hours Duration';
+      }
+      if (clean.endsWith('m')) {
+        final minutes = clean.substring(0, clean.length - 1);
+        return '$minutes Mins Duration';
+      }
+      return '$durationLabel Duration';
+    }
+    return '';
+  }
+
   /// Every image for the gallery, falling back to the cover when the detail
   /// payload has not been loaded yet.
   List<String> get galleryUrls {

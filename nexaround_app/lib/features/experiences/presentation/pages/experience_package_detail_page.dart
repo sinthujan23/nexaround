@@ -246,8 +246,8 @@ class _ExperiencePackageDetailPageState
             children: [
               if (_package.priceLabel.isNotEmpty)
                 _chip(Icons.sell_rounded, _package.priceLabel, highlight: true),
-              if (_package.durationLabel.isNotEmpty)
-                _chip(Icons.schedule_rounded, _package.durationLabel),
+              if (_package.formattedDuration.isNotEmpty)
+                _chip(Icons.schedule_rounded, _package.formattedDuration),
               if (_package.distanceM != null)
                 _chip(Icons.near_me_rounded,
                     formatDistance(_package.distanceM)),

@@ -226,11 +226,9 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
         children: [
           Padding(padding: _gutter, child: _buildHero()),
-          const SizedBox(height: 14),
-          Padding(padding: _gutter, child: _buildCountrySelector()),
-          const SizedBox(height: 14),
-          _buildCategoryChips(),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
+          _buildFilterBar(),
+          const SizedBox(height: 20),
           if (showList && !_hasNearby && _selectedCountry == null)
             Padding(padding: _gutter, child: _buildDistanceBanner()),
           if (showList)
@@ -241,81 +239,137 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     );
   }
 
-  /// The country dropdown / pill selector.
-  Widget _buildCountrySelector() {
+  /// Unified filter bar: pinned country destination selector on the left,
+  /// followed by horizontally scrollable category chips on the right.
+  Widget _buildFilterBar() {
     final hasCountry = _selectedCountry != null;
-    return Row(
-      children: [
-        InkWell(
-          onTap: _showCountryPicker,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(
-              color: hasCountry ? AppColors.brandGreenLight : AppColors.surface,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: hasCountry ? AppColors.brandGreen : AppColors.border,
-                width: hasCountry ? 1.5 : 1,
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  hasCountry ? _selectedCountry!.flag : '📍',
-                  style: const TextStyle(fontSize: 15),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  hasCountry ? _selectedCountry!.name : 'Near Me (GPS)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: hasCountry ? AppColors.brandGreen : AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 18,
-                  color: hasCountry ? AppColors.brandGreen : AppColors.textSecondary,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (hasCountry) ...[
-          const SizedBox(width: 8),
+
+    return SizedBox(
+      height: 40,
+      child: Row(
+        children: [
+          const SizedBox(width: 24),
+          // Country Selector Pill (Pinned)
           InkWell(
-            onTap: () => _selectCountry(null),
+            onTap: _showCountryPicker,
             borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.surface,
+                color: hasCountry ? AppColors.brandGreenLight : Colors.white,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.border),
+                border: Border.all(
+                  color: hasCountry ? AppColors.brandGreen : AppColors.border,
+                  width: hasCountry ? 1.5 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
-                children: const [
-                  Icon(Icons.close_rounded, size: 14, color: AppColors.textSecondary),
-                  SizedBox(width: 4),
+                children: [
                   Text(
-                    'Reset',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textSecondary,
+                    hasCountry ? _selectedCountry!.flag : '📍',
+                    style: const TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 105),
+                    child: Text(
+                      hasCountry ? _selectedCountry!.name : 'Near Me',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: hasCountry ? AppColors.brandGreen : AppColors.textPrimary,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: 3),
+                  if (hasCountry)
+                    GestureDetector(
+                      onTap: () => _selectCountry(null),
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 2),
+                        child: Icon(Icons.close_rounded, size: 14, color: AppColors.brandGreen),
+                      ),
+                    )
+                  else
+                    const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
                 ],
               ),
             ),
           ),
+          const SizedBox(width: 10),
+          // Subtle Vertical Divider
+          Container(
+            width: 1,
+            height: 22,
+            color: AppColors.border,
+          ),
+          const SizedBox(width: 6),
+          // Category Chips (Horizontal Scroll)
+          Expanded(
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(right: 24, left: 4),
+              itemCount: experienceCategories.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, index) {
+                final chip = experienceCategories[index];
+                final selected = _category == chip.value;
+                return GestureDetector(
+                  onTap: () => _selectCategory(chip.value),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    decoration: BoxDecoration(
+                      color: selected ? AppColors.charcoal : Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: selected ? AppColors.charcoal : AppColors.border,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(chip.emoji, style: const TextStyle(fontSize: 14)),
+                        const SizedBox(width: 6),
+                        Text(
+                          chip.chipLabel,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                            color: selected ? Colors.white : AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
-      ],
+      ),
     );
   }
 
@@ -679,52 +733,6 @@ class ExperiencesTabState extends State<ExperiencesTab> {
     );
   }
 
-  Widget _buildCategoryChips() {
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: _gutter,
-        itemCount: experienceCategories.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, index) {
-          final chip = experienceCategories[index];
-          final selected = _category == chip.value;
-          return GestureDetector(
-            onTap: () => _selectCategory(chip.value),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                // Charcoal, not brand green: the Discovery tab bar right above
-                // already uses green for its selection.
-                color: selected ? AppColors.charcoal : Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: selected ? AppColors.charcoal : AppColors.border,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(chip.emoji, style: const TextStyle(fontSize: 15)),
-                  const SizedBox(width: 6),
-                  Text(
-                    chip.chipLabel,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                      color: selected ? Colors.white : AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildSectionHeader() {
     final String title;
@@ -876,30 +884,30 @@ class ExperiencesTabState extends State<ExperiencesTab> {
         );
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
+      margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withOpacity(0.6)),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.6)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ClipRRect(
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
             child: AspectRatio(
-              aspectRatio: 16 / 10,
+              aspectRatio: 16 / 9,
               child: Container(color: Colors.grey[200]),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                bar(220, 16),
-                const SizedBox(height: 10),
-                bar(140, 12),
+                bar(200, 15),
+                const SizedBox(height: 8),
+                bar(130, 12),
                 const SizedBox(height: 18),
                 Row(
                   children: [
